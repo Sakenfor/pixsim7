@@ -793,10 +793,10 @@ _SET_TAB_IDENTITY_TOOL = types.Tool(
     name="set_tab_identity",
     description=(
         "Set the icon and/or subtitle of YOUR OWN chat tab — the tab this "
-        "session runs in. Optional and freeform: use it to make the tab "
-        "self-describe what you're working on (e.g. on self-assigning a "
-        "plan, or when the focus shifts). The target tab is resolved from "
-        "your token; you cannot address another tab.\n\n"
+        "session runs in — so it self-describes what you're working on at a "
+        "glance. Worth calling once you've settled on a task: when you start "
+        "substantive work, claim a plan, or the focus shifts. The target tab "
+        "is resolved from your token; you cannot address another tab.\n\n"
         "- icon: an @lib/icons IconName (lucide-style, e.g. 'wrench', "
         "'bug', 'sparkles', 'flask', 'clipboard', 'rocket'). Unknown names "
         "fall back to a default glyph — prefer a common, recognisable name.\n"
@@ -804,7 +804,7 @@ _SET_TAB_IDENTITY_TOOL = types.Tool(
         "(where the profile name otherwise sits). Keep it terse (≤ ~40 "
         "chars), e.g. 'refactoring auth' or 'plan: tab-identity'.\n\n"
         "Pass empty string to clear a field; omit a field to leave it "
-        "untouched. Never required — skip it if nothing meaningful changed."
+        "untouched. Freeform and idempotent — re-call it as the work evolves."
     ),
     inputSchema={
         "type": "object",
@@ -974,6 +974,18 @@ def _identity_headers(token: str) -> dict[str, str]:
         run_id = _request_session_id.get()
     if isinstance(run_id, str) and run_id.strip():
         headers["X-Run-Id"] = run_id.strip()
+    # Tab/session binding for self-targeting tools (set_tab_identity, plan
+    # claim grouping). Bridge per-request tokens carry no scope_key /
+    # chat_session_id claim, so forward them from the token (STDIO agent
+    # token) or the per-request contextvars (HTTP/bridge). Without this the
+    # backend builds a binding-less `service` principal and self-tab
+    # resolution 404s / claims can't group. See plan `tab-identity-mode`.
+    scope_key = _extract_scope_key_from_token(token) or _request_scope.get()
+    if isinstance(scope_key, str) and scope_key.strip():
+        headers["X-Scope-Key"] = scope_key.strip()
+    chat_session_id = _extract_chat_session_id_from_token(token) or _request_session_id.get()
+    if isinstance(chat_session_id, str) and chat_session_id.strip():
+        headers["X-Chat-Session-Id"] = chat_session_id.strip()
     return headers
 
 
@@ -1128,11 +1140,27 @@ async def _handle_set_tab_identity(arguments: dict[str, Any]) -> list[types.Text
     if fallback:
         body["session_id"] = fallback
 
-    return await _proxy(
+    result = await _proxy(
         method="POST",
         path="/api/v1/chat-tabs/self/identity",
         body=body,
     )
+    # Surface a hard, actionable failure rather than a raw HTTP dump the agent
+    # may gloss over: if tab resolution failed, the icon/subtitle were NOT
+    # applied. The common cause is a token with no tab binding (bridge
+    # per-request token). Plan `tab-identity-mode`.
+    text = result[0].text if result else ""
+    if text.startswith("HTTP 4") or text.startswith("HTTP 5"):
+        return [types.TextContent(
+            type="text",
+            text=(
+                "Tab identity NOT set — could not resolve this session's chat "
+                "tab, so the icon/subtitle were left unchanged. This usually "
+                "means the session token carries no tab binding. "
+                f"(backend response: {text})"
+            ),
+        )]
+    return result
 
 
 _bridge_session_cache: dict[tuple[str | None, str | None, str | None], str] = {}

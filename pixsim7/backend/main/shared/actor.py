@@ -170,6 +170,8 @@ class RequestPrincipal(BaseModel):
         x_agent_id: Optional[str] = None,  # legacy header name, means profile_id
         x_run_id: Optional[str] = None,
         x_plan_id: Optional[str] = None,
+        x_scope_key: Optional[str] = None,
+        x_chat_session_id: Optional[str] = None,
     ) -> RequestPrincipal:
         """Build a principal from decoded JWT claims + optional agent headers."""
         purpose = payload.get("purpose")
@@ -197,8 +199,8 @@ class RequestPrincipal(BaseModel):
                 agent_type=payload.get("agent_type"),
                 run_id=payload.get("run_id") or x_run_id,
                 plan_id=payload.get("plan_id") or x_plan_id,
-                scope_key=payload.get("scope_key"),
-                chat_session_id=payload.get("chat_session_id"),
+                scope_key=payload.get("scope_key") or x_scope_key,
+                chat_session_id=payload.get("chat_session_id") or x_chat_session_id,
                 on_behalf_of=delegated_user_id if delegated_user_id > 0 else None,
                 role="agent",
                 admin=False,
@@ -230,6 +232,18 @@ class RequestPrincipal(BaseModel):
                 display_name=payload.get("display_name"),
                 email=payload.get("email") or (None if is_user_scoped else "bridge@service.local"),
                 active=bool(payload.get("is_active", True)),
+                # Tab/session binding for self-targeting tools. Bridge tokens
+                # carry no such claims, so recover from the forwarded X-*
+                # headers (or claims, if a richer token is ever used). Without
+                # this the principal is binding-less and set_tab_identity /
+                # plan-claim grouping silently no-op. Endpoints stay
+                # owner-scoped. Plan ``tab-identity-mode``.
+                profile_id=payload.get("profile_id") or x_agent_id,
+                agent_type=payload.get("agent_type"),
+                run_id=payload.get("run_id") or x_run_id,
+                plan_id=payload.get("plan_id") or x_plan_id,
+                scope_key=payload.get("scope_key") or x_scope_key,
+                chat_session_id=payload.get("chat_session_id") or x_chat_session_id,
             )
 
         # ── Regular user ──

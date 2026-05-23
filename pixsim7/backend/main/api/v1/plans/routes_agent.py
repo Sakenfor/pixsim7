@@ -166,7 +166,7 @@ async def get_agent_context(
     # plan. Best-effort: a claim failure must never break the read.
     if target is not None and plan_id:
         try:
-            session_id = getattr(_user, "chat_session_id", None) or None
+            session_id = await _resolve_claim_session_id(db, _user)
             await _h.claim_checkpoint(
                 db,
                 principal=_user,
@@ -592,6 +592,33 @@ class ReleaseResponse(BaseModel):
     released: int
 
 
+async def _resolve_claim_session_id(db: AsyncSession, principal) -> Optional[str]:
+    """Best-effort chat session id to stamp on a claim so the tab groups.
+
+    Grouping (``_derive_primary_plan_ids`` in chat_tabs.py) joins a tab to a
+    plan via ``PlanParticipant.session_id == ChatTab.session_id``; a NULL
+    session makes the claim roster-only and ungroupable. Resolution priority:
+    the principal's bound ``chat_session_id``, else the session of the
+    ``ChatTab`` named by a ``tab:<id>`` scope_key. Returns None for headless
+    callers (roster-only claim, no grouping). Plan ``tab-identity-mode``.
+    """
+    sid = getattr(principal, "chat_session_id", None)
+    if isinstance(sid, str) and sid.strip():
+        return sid.strip()
+    scope_key = getattr(principal, "scope_key", None)
+    if isinstance(scope_key, str) and scope_key.startswith("tab:"):
+        from uuid import UUID
+        from pixsim7.backend.main.domain.platform.agent_profile import ChatTab
+
+        try:
+            tab = await db.get(ChatTab, UUID(scope_key[len("tab:") :]))
+        except (ValueError, AttributeError):
+            tab = None
+        if tab is not None and tab.session_id:
+            return tab.session_id
+    return None
+
+
 @router.post("/{plan_id}/claim", response_model=ClaimResponse)
 async def claim_plan_checkpoint(
     plan_id: str,
@@ -609,8 +636,13 @@ async def claim_plan_checkpoint(
     if not bundle:
         raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
 
+    session_id = await _resolve_claim_session_id(db, _user)
     own, conflicts = await _h.claim_checkpoint(
-        db, principal=_user, plan_id=plan_id, checkpoint_id=payload.checkpoint_id
+        db,
+        principal=_user,
+        plan_id=plan_id,
+        checkpoint_id=payload.checkpoint_id,
+        session_id=session_id,
     )
 
     # Soft tab-identity nudge — first self-assign anchor. Best-effort: a

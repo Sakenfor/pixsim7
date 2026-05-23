@@ -28,7 +28,7 @@ try:
     )
     from pixsim7.backend.main.api.v1.agent_tokens import router as agent_token_router
     from pixsim7.backend.main.api.v1.dev_plans import router as plans_router
-    from pixsim7.backend.main.api.v1.ws_agent_cmd import _resolve_user_id, _resolve_user_id_strict
+    from pixsim7.backend.main.api.v1.ws_agent_cmd import _resolve_token, _resolve_user_id
     from pixsim7.backend.main.shared.actor import RequestPrincipal
     from pixsim7.backend.main.shared.auth import (
         create_agent_token,
@@ -268,6 +268,50 @@ class TestRequestPrincipal:
         assert p.source == "service:bridge"
         assert not p.is_admin()
 
+    def test_from_jwt_bridge_token_carries_binding_from_headers(self):
+        # Bridge per-request tokens carry no scope_key / chat_session_id
+        # claims; the MCP proxy forwards them as X-Scope-Key /
+        # X-Chat-Session-Id so self-targeting tools (set_tab_identity, plan
+        # claim grouping) can resolve the caller's own tab. Plan
+        # `tab-identity-mode`.
+        claims = {
+            "sub": "42", "purpose": "bridge",
+            "role": "user", "is_admin": False, "permissions": [],
+        }
+        p = RequestPrincipal.from_jwt_payload(
+            claims,
+            x_scope_key="tab:abc-123",
+            x_chat_session_id="sess-xyz",
+            x_run_id="run-7",
+        )
+        assert p.is_service
+        assert p.id == 42
+        assert p.scope_key == "tab:abc-123"
+        assert p.chat_session_id == "sess-xyz"
+        assert p.run_id == "run-7"
+
+    def test_from_jwt_bridge_token_binding_claims_win_over_headers(self):
+        claims = {
+            "sub": "42", "purpose": "bridge", "role": "user",
+            "scope_key": "tab:from-claim", "chat_session_id": "sess-claim",
+        }
+        p = RequestPrincipal.from_jwt_payload(
+            claims, x_scope_key="tab:hdr", x_chat_session_id="sess-hdr",
+        )
+        assert p.scope_key == "tab:from-claim"
+        assert p.chat_session_id == "sess-claim"
+
+    def test_from_jwt_bridge_token_without_binding_stays_none(self):
+        # Back-compat: a bare bridge token (no binding claims/headers) must
+        # still produce a binding-less service principal.
+        p = RequestPrincipal.from_jwt_payload(
+            {"sub": "0", "purpose": "bridge", "role": "admin", "is_admin": True},
+        )
+        assert p.is_service
+        assert p.scope_key is None
+        assert p.chat_session_id is None
+        assert p.is_admin()
+
     def test_from_jwt_regular_user(self):
         claims = {
             "sub": "7", "username": "alice", "email": "a@b.com",
@@ -288,6 +332,23 @@ class TestRequestPrincipal:
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
 class TestWsBridgeIdentity:
 
+    @staticmethod
+    def _patch_auth(monkeypatch, fake_auth):
+        """Swap ``AuthService`` and ``UserService`` constructors to return fakes.
+
+        The WS resolvers import these inside their function bodies and build
+        ``AuthService(db, UserService(db))`` directly — patching at the source
+        modules covers both call sites.
+        """
+        monkeypatch.setattr(
+            "pixsim7.backend.main.services.user.auth_service.AuthService",
+            lambda db, user_service: fake_auth,
+        )
+        monkeypatch.setattr(
+            "pixsim7.backend.main.services.user.user_service.UserService",
+            lambda db: SimpleNamespace(),
+        )
+
     @pytest.mark.asyncio
     async def test_resolve_user_id_from_agent_token_on_behalf_of(self, monkeypatch):
         fake_auth = SimpleNamespace(
@@ -304,12 +365,9 @@ class TestWsBridgeIdentity:
             )
         )
 
-        monkeypatch.setattr(
-            "pixsim7.backend.main.api.dependencies.get_auth_service",
-            lambda: fake_auth,
-        )
+        self._patch_auth(monkeypatch, fake_auth)
 
-        user_id = await _resolve_user_id("fake-token")
+        user_id = await _resolve_user_id("fake-token", SimpleNamespace())
         assert user_id == 1
         fake_auth.verify_token_claims.assert_awaited_once_with(
             "fake-token",
@@ -321,26 +379,20 @@ class TestWsBridgeIdentity:
         fake_auth = SimpleNamespace(
             verify_token_claims=AsyncMock(side_effect=RuntimeError("invalid token"))
         )
-        monkeypatch.setattr(
-            "pixsim7.backend.main.api.dependencies.get_auth_service",
-            lambda: fake_auth,
-        )
+        self._patch_auth(monkeypatch, fake_auth)
 
-        user_id = await _resolve_user_id("bad-token")
+        user_id = await _resolve_user_id("bad-token", SimpleNamespace())
         assert user_id is None
 
     @pytest.mark.asyncio
-    async def test_resolve_user_id_invalid_token_strict_raises(self, monkeypatch):
+    async def test_resolve_token_invalid_token_strict_raises(self, monkeypatch):
         fake_auth = SimpleNamespace(
             verify_token_claims=AsyncMock(side_effect=RuntimeError("invalid token"))
         )
-        monkeypatch.setattr(
-            "pixsim7.backend.main.api.dependencies.get_auth_service",
-            lambda: fake_auth,
-        )
+        self._patch_auth(monkeypatch, fake_auth)
 
         with pytest.raises(RuntimeError):
-            await _resolve_user_id_strict("bad-token")
+            await _resolve_token("bad-token", SimpleNamespace())
 
 
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")

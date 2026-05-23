@@ -33,7 +33,10 @@ try:
         get_database,
     )
     from pixsim7.backend.main.api.v1.plans import helpers as _h
-    from pixsim7.backend.main.api.v1.plans.routes_agent import router
+    from pixsim7.backend.main.api.v1.plans.routes_agent import (
+        router,
+        _resolve_claim_session_id,
+    )
     from pixsim7.backend.main.domain.docs.models import PlanParticipant
     from pixsim7.backend.main.shared.actor import RequestPrincipal
     from pixsim7.backend.main.shared.datetime_utils import utcnow
@@ -307,6 +310,72 @@ class TestClaimEndpoints:
                 r = await c.post("/api/v1/dev/plans/plan-a/release", json={})
         assert r.status_code == 200
         assert r.json()["released"] == 2
+
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
+class TestClaimSessionResolution:
+    """The claim must stamp the caller's chat session so the tab groups under
+    the plan (plan ``tab-identity-mode``). Bridge tokens carry no session
+    claim, so the binding arrives via the principal (recovered from X-* headers
+    in ``from_jwt_payload``) or via a ``tab:`` scope_key."""
+
+    @pytest.mark.asyncio
+    async def test_chat_session_id_wins(self):
+        principal = SimpleNamespace(
+            chat_session_id="sess-1", scope_key="tab:11111111-1111-1111-1111-111111111111",
+        )
+        db = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(session_id="from-tab")))
+        assert await _resolve_claim_session_id(db, principal) == "sess-1"
+        db.get.assert_not_awaited()  # no tab lookup needed
+
+    @pytest.mark.asyncio
+    async def test_scope_key_tab_fallback(self):
+        principal = SimpleNamespace(
+            chat_session_id=None, scope_key="tab:11111111-1111-1111-1111-111111111111",
+        )
+        db = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(session_id="from-tab")))
+        assert await _resolve_claim_session_id(db, principal) == "from-tab"
+
+    @pytest.mark.asyncio
+    async def test_headless_and_non_tab_scope_return_none(self):
+        db = SimpleNamespace(get=AsyncMock())
+        assert await _resolve_claim_session_id(
+            db, SimpleNamespace(chat_session_id=None, scope_key=None)
+        ) is None
+        assert await _resolve_claim_session_id(
+            db, SimpleNamespace(chat_session_id=None, scope_key="plan:foo")
+        ) is None
+        db.get.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_malformed_tab_uuid_returns_none(self):
+        db = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(session_id="x")))
+        assert await _resolve_claim_session_id(
+            db, SimpleNamespace(chat_session_id=None, scope_key="tab:not-a-uuid")
+        ) is None
+
+    @pytest.mark.asyncio
+    async def test_claim_endpoint_stamps_session_id(self):
+        principal = RequestPrincipal(
+            id=0, role="agent", principal_type="agent", agent_id="agent-1",
+            username="agent:agent-1", on_behalf_of=1, chat_session_id="sess-xyz",
+        )
+        app = _app(principal=principal)
+        own = _participant(meta={"claim": _open_claim("cp1")})
+        with (
+            patch(
+                "pixsim7.backend.main.api.v1.plans.routes_agent.get_plan_bundle",
+                new=AsyncMock(return_value=SimpleNamespace(id="plan-a")),
+            ),
+            patch.object(
+                _h, "claim_checkpoint", new=AsyncMock(return_value=(own, []))
+            ) as claim_mock,
+            patch.object(_h, "maybe_tab_identity_nudge", new=AsyncMock(return_value=None)),
+        ):
+            async with _client(app) as c:
+                r = await c.post("/api/v1/dev/plans/plan-a/claim", json={"checkpoint_id": "cp1"})
+        assert r.status_code == 200
+        assert claim_mock.await_args.kwargs.get("session_id") == "sess-xyz"
 
 
 def _scalar_result(value):

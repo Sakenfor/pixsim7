@@ -3462,6 +3462,7 @@ def build_user_system_prompt(focus: Optional[List[str]] = None) -> str:
         "- When the user asks to create or modify something — use tools, then confirm the result.",
         "- Always confirm before making destructive changes.",
         "- If a tool call fails, report the error clearly.",
+        "- When you settle into substantive work on a dev plan, claim it (plans.claim) so others can see who is working on what, and give this tab a self-describing icon + subtitle (set_tab_identity). Both are quick, optional, and worth doing once the focus is clear.",
         "- Be concise and helpful.",
     ])
 

@@ -217,12 +217,20 @@ async def get_current_principal(
     x_agent_id: Annotated[str | None, Header()] = None,
     x_run_id: Annotated[str | None, Header()] = None,
     x_plan_id: Annotated[str | None, Header()] = None,
+    x_scope_key: Annotated[str | None, Header()] = None,
+    x_chat_session_id: Annotated[str | None, Header()] = None,
 ) -> RequestPrincipal:
     """
     Single auth dependency — validates JWT, returns a ``RequestPrincipal``.
 
     Handles user tokens, agent tokens, bridge tokens, and user tokens with
     agent headers.  One decode, one object, no synthetic Users.
+
+    ``X-Scope-Key`` / ``X-Chat-Session-Id`` recover the tab/session binding
+    for bridge per-request tokens (which carry no such JWT claims), so
+    self-targeting tools (set_tab_identity, plan claim) can resolve the
+    caller's own tab. Endpoints stay owner-scoped, so a forwarded binding
+    can only ever address the caller's own resources. Plan ``tab-identity-mode``.
     """
     token = _extract_bearer_token(authorization)
 
@@ -240,6 +248,8 @@ async def get_current_principal(
         x_agent_id=x_agent_id,
         x_run_id=x_run_id,
         x_plan_id=x_plan_id,
+        x_scope_key=x_scope_key,
+        x_chat_session_id=x_chat_session_id,
     )
 
     if not principal.is_active:
