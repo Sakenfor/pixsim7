@@ -95,6 +95,17 @@ class AgentCmdSession:
     (Claude Code, Codex, etc.). The process stays alive between messages.
     """
 
+    # Max silence (seconds) tolerated when NO tool is outstanding. A healthy
+    # turn streams tokens/thinking every few seconds, so a gap longer than this
+    # with no tool to wait on is a stalled model/CLI stream (the upstream API
+    # delivered partial output then went silent, never closing the stream).
+    # Fail fast and free the slot instead of starving the full per-turn
+    # ``timeout`` (often 900s). Engine-agnostic: pure stdout-gap timing in our
+    # own reader loop — no reliance on per-CLI stream-resume/keepalive support.
+    # See plan ``launcher-health-probe-stability`` ›
+    # ``agent-idle-midstream-token-stall``.
+    AGENT_IDLE_GAP_SECONDS = 150
+
     def __init__(
         self,
         session_id: str,
@@ -729,10 +740,15 @@ class AgentCmdSession:
         # Wall-clock when the in-flight tool began emitting silence, so the
         # re-arm heartbeat below can report elapsed seconds.
         tool_started_at: Optional[datetime] = None
+        # No-tool silence budget. When a tool IS outstanding we re-arm in <=30s
+        # slices for the full turn (legit long tools / blocking MCP / human on
+        # mobile). When NOTHING is outstanding, cap the silence far tighter:
+        # past this gap the model/CLI stream has stalled (see AGENT_IDLE_GAP_*).
+        idle_gap = min(timeout, self.AGENT_IDLE_GAP_SECONDS)
         try:
             while True:
                 while True:
-                    slice_to = min(timeout, 30) if tool_inflight else timeout
+                    slice_to = min(timeout, 30) if tool_inflight else idle_gap
                     try:
                         event_raw = await asyncio.wait_for(
                             self._response_queue.get(),
@@ -979,9 +995,12 @@ class AgentCmdSession:
             # explicit here for triage (these read identically to the user
             # otherwise, and recur for upstream CLI/API hangs).
             stall_kind = "tool_inflight" if tool_inflight else "agent_idle"
+            # Report the budget that actually elapsed for this regime: the
+            # tighter idle gap when no tool was outstanding, else the full turn.
+            budget_s = timeout if tool_inflight else idle_gap
             self._log.warning(
                 "session_inactivity_timeout",
-                timeout_s=timeout,
+                timeout_s=budget_s,
                 stall_kind=stall_kind,
                 last_action=last_action,
                 last_detail=last_detail,
@@ -995,11 +1014,19 @@ class AgentCmdSession:
                     f"a tool was still running ({last_detail or last_action or 'unknown tool'})"
                 )
             else:
+                # No tool outstanding: the model/CLI stream went quiet mid-turn.
+                # `partial_result_len > 0` means it had started replying then
+                # froze (classic upstream stream stall); 0 means it never began.
+                started = (
+                    "had started replying then went silent"
+                    if result_text
+                    else "no reply tokens received"
+                )
                 hint = (
                     f"agent went silent after {last_detail or last_action or 'its last step'} "
-                    "— the model/CLI step appears stalled"
+                    f"— the model/CLI step appears stalled ({started})"
                 )
-            raise RuntimeError(f"No response within {timeout}s: {hint}")
+            raise RuntimeError(f"No response within {budget_s}s: {hint}")
         except asyncio.CancelledError:
             self._log.info("session_send_cancelled")
             raise

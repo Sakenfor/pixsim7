@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 TEST_SUITE = {
     "id": "client-codex-protocol",
@@ -252,3 +253,49 @@ class TestInactivityTimeoutMessage:
         # agent_idle hint, naming the last surfaced action.
         assert "stalled" in msg
         assert "ls foo" in msg
+
+    @staticmethod
+    def _text(text: str) -> dict:
+        return {"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}}
+
+    def test_agent_idle_gap_is_decoupled_from_full_turn_timeout(self):
+        """A mid-stream stall (no tool outstanding) must fail at the tighter
+        AGENT_IDLE_GAP budget, NOT starve the full per-turn ``timeout``. Mirrors
+        the 0b2a4b00 incident: the model streamed a partial reply then froze.
+        """
+        async def _run():
+            s = AgentCmdSession("test-session", command="claude")
+            s._process = _FakeProc()
+            # Tighten the idle gap far below the turn timeout so the test is
+            # fast AND proves the two budgets are independent.
+            s.AGENT_IDLE_GAP_SECONDS = 0.3
+
+            async def feed():
+                await asyncio.sleep(0.05)
+                # Model starts replying (partial result accumulates) then the
+                # stream goes silent — no tool to blame.
+                await s._response_queue.put(self._text("Let me check that file"))
+                # ...and nothing more.
+
+            feeder = asyncio.create_task(feed())
+            err: str | None = None
+            started = time.monotonic()
+            try:
+                # Full turn budget is 10s; the idle gap (0.3s) must win.
+                await s.send_message("go", timeout=10)
+            except RuntimeError as e:
+                err = str(e)
+            elapsed = time.monotonic() - started
+            feeder.cancel()
+            return err, elapsed
+
+        msg, elapsed = asyncio.run(_run())
+        assert msg is not None, "expected a RuntimeError on idle-gap timeout"
+        # Failed fast at the idle gap, nowhere near the 10s turn budget.
+        assert elapsed < 5, f"idle stall should fail at the gap, took {elapsed:.1f}s"
+        # Reports the idle-gap budget, not the full per-turn timeout.
+        assert "No response within 0.3s" in msg
+        assert "10s" not in msg
+        # Partial output was seen → the "started replying then went silent" wording.
+        assert "stalled" in msg
+        assert "had started replying" in msg
