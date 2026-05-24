@@ -1,0 +1,17 @@
+id: core-time-of-day
+title: Core Time of Day
+description: Diurnal scene-condition primitives (dawn → night).
+category: scene
+matrix_presets:
+  - label: Time-of-Day Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_time_of_day
+      include_empty: true
+  - label: Phase Tokens
+    query:
+      row_key: tag:time_of_day_phase
+      col_key: category
+      package_name: core_time_of_day
+      include_empty: true

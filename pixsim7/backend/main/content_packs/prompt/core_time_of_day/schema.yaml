@@ -1,0 +1,104 @@
+version: 1.0.0
+package_name: core_time_of_day
+defaults:
+  is_public: true
+  source: system
+blocks:
+  - id: time_of_day
+    block_schema:
+      id_prefix: core.scene.time_of_day
+      category: scene
+      capabilities:
+        - scene.time_of_day
+      text_template: 'Time-of-day token: {variant}.'
+      tags:
+        modifier_family: time_of_day
+        modality_support: both
+        temporal: neutral
+      op:
+        op_id: scene.timeofday.set
+        signature_id: scene.timeofday.v1
+        modalities:
+          - image
+          - video
+        refs:
+          - key: subject
+            capability: subject
+            required: false
+        params:
+          - key: phase
+            tag_key: time_of_day_phase
+            type: enum
+            enum:
+              - dawn
+              - morning
+              - midday
+              - golden_hour
+              - dusk
+              - night
+              - blue_hour
+            default: midday
+        default_args:
+          phase: midday
+      variants:
+        - key: dawn
+          tags:
+            time_of_day_synonyms:
+              - sunrise
+              - daybreak
+              - first light
+              - early dawn
+          op_args:
+            phase: dawn
+        - key: morning
+          tags:
+            time_of_day_synonyms:
+              - early morning
+              - morning light
+              - mid morning
+          op_args:
+            phase: morning
+        - key: midday
+          tags:
+            time_of_day_synonyms:
+              - noon
+              - high noon
+              - midday sun
+              - middle of the day
+          op_args:
+            phase: midday
+        - key: golden_hour
+          tags:
+            time_of_day_synonyms:
+              - golden hour
+              - magic hour
+              - warm evening sun
+              - late golden light
+          op_args:
+            phase: golden_hour
+        - key: dusk
+          tags:
+            time_of_day_synonyms:
+              - twilight
+              - sunset
+              - nightfall
+              - evening light
+          op_args:
+            phase: dusk
+        - key: night
+          tags:
+            time_of_day_synonyms:
+              - nighttime
+              - midnight
+              - moonlit
+              - after dark
+          op_args:
+            phase: night
+        - key: blue_hour
+          tags:
+            time_of_day_synonyms:
+              - blue hour
+              - predawn blue
+              - post sunset blue
+          op_args:
+            phase: blue_hour

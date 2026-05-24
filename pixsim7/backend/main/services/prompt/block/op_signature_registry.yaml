@@ -90,6 +90,13 @@ signatures:
     required_refs: [subject, target]
     allowed_modalities: [image, video]
 
+  - id: scene.timeofday.v1
+    op_namespace: scene.timeofday
+    requires_variant_template: false
+    required_params: [phase]
+    required_refs: []
+    allowed_modalities: [image, video]
+
   - id: sequence.continuity.v1
     op_namespace: sequence.continuity
     requires_variant_template: false

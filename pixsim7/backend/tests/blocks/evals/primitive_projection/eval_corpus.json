@@ -2,7 +2,7 @@
   "_meta": {
     "description": "Prompt corpus for primitive_projection shadow-mode evaluation",
     "version": "1.0.0",
-    "total_entries": 254,
+    "total_entries": 259,
     "categories": {
       "camera_motion": "Prompts describing camera movement (dolly, pan, zoom, orbit, etc.)",
       "camera_framing": "Prompts describing shots, angles, POV, focus",
@@ -10,7 +10,8 @@
       "lighting": "Prompts describing lighting conditions",
       "subject_action": "Subject pose, motion, gesture prompts",
       "unrelated": "General scene prose with no primitive signal",
-      "ambiguous": "Mixed-signal prompts that could match multiple categories or none"
+      "ambiguous": "Mixed-signal prompts that could match multiple categories or none",
+      "time_of_day": "Prompts naming a diurnal phase (dawn, night, golden hour, etc.)"
     }
   },
   "corpus": [
@@ -281,6 +282,12 @@
     {"id": "un72", "text": "A street musician plays guitar on the corner.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Street scene"},
     {"id": "un73", "text": "The alarm clock buzzes at six in the morning.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Domestic scene"},
     {"id": "un74", "text": "Two kids build a sandcastle on the beach.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Beach scene"},
-    {"id": "un75", "text": "A mechanic slides under the car to inspect.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Workshop scene"}
+    {"id": "un75", "text": "A mechanic slides under the car to inspect.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Workshop scene"},
+
+    {"id": "td01", "text": "A quiet city street at night.", "category": "time_of_day", "expected_block_prefix": "core.scene.time_of_day.night", "expected_category": "scene", "notes": "Literal night"},
+    {"id": "td02", "text": "The open field at dawn, mist rising.", "category": "time_of_day", "expected_block_prefix": "core.scene.time_of_day.dawn", "expected_category": "scene", "notes": "Dawn"},
+    {"id": "td03", "text": "Long shadows at dusk across the rooftops.", "category": "time_of_day", "expected_block_prefix": "core.scene.time_of_day.dusk", "expected_category": "scene", "notes": "Dusk; across is low-weight directional"},
+    {"id": "td04", "text": "The harsh midday heat.", "category": "time_of_day", "expected_block_prefix": "core.scene.time_of_day.midday", "expected_category": "scene", "notes": "Midday"},
+    {"id": "td05", "text": "A calm early morning scene.", "category": "time_of_day", "expected_block_prefix": "core.scene.time_of_day.morning", "expected_category": "scene", "notes": "Morning"}
   ]
 }
