@@ -104,6 +104,13 @@ signatures:
     required_refs: []
     allowed_modalities: [image, video]
 
+  - id: camera.composition.v1
+    op_namespace: camera.composition
+    requires_variant_template: false
+    required_params: [framing]
+    required_refs: []
+    allowed_modalities: [image, video]
+
   - id: sequence.continuity.v1
     op_namespace: sequence.continuity
     requires_variant_template: false

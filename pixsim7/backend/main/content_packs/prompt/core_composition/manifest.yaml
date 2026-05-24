@@ -1,0 +1,17 @@
+id: core-composition
+title: Core Composition
+description: Framing / composition primitives (centered, rule of thirds, symmetry, etc.).
+category: composition
+matrix_presets:
+  - label: Composition Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_composition
+      include_empty: true
+  - label: Framing Tokens
+    query:
+      row_key: tag:composition_framing
+      col_key: category
+      package_name: core_composition
+      include_empty: true

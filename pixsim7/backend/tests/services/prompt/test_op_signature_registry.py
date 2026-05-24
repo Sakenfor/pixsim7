@@ -322,6 +322,7 @@ class TestRegistryLoaderHappyPath:
 
 _EXPECTED_SIGNATURE_IDS = {
     "camera.angle.v1",
+    "camera.composition.v1",
     "camera.focus.v1",
     "camera.motion.v1",
     "camera.pov.v1",
