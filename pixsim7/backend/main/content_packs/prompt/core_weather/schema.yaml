@@ -1,0 +1,113 @@
+version: 1.0.0
+package_name: core_weather
+defaults:
+  is_public: true
+  source: system
+blocks:
+  - id: weather
+    block_schema:
+      id_prefix: core.scene.weather
+      category: scene
+      capabilities:
+        - scene.weather
+      text_template: 'Weather token: {variant}.'
+      tags:
+        modifier_family: weather
+        modality_support: both
+        temporal: neutral
+      op:
+        op_id: scene.weather.set
+        signature_id: scene.weather.v1
+        modalities:
+          - image
+          - video
+        refs:
+          - key: subject
+            capability: subject
+            required: false
+        params:
+          - key: condition
+            tag_key: weather_condition
+            type: enum
+            enum:
+              - sunny
+              - overcast
+              - rain
+              - snow
+              - fog
+              - storm
+              - wind
+            default: sunny
+        default_args:
+          condition: sunny
+      variants:
+        - key: sunny
+          tags:
+            weather_synonyms:
+              - cloudless
+              - blue sky
+              - bright sunshine
+              - sunlit
+              - fair weather
+          op_args:
+            condition: sunny
+        - key: overcast
+          tags:
+            weather_synonyms:
+              - cloudy
+              - grey sky
+              - gray sky
+              - gloomy sky
+              - heavy clouds
+          op_args:
+            condition: overcast
+        - key: rain
+          tags:
+            weather_synonyms:
+              - rainy
+              - rainfall
+              - downpour
+              - drizzle
+              - pouring rain
+          op_args:
+            condition: rain
+        - key: snow
+          tags:
+            weather_synonyms:
+              - snowy
+              - snowfall
+              - snowing
+              - blizzard
+              - falling snow
+          op_args:
+            condition: snow
+        - key: fog
+          tags:
+            weather_synonyms:
+              - foggy
+              - mist
+              - misty
+              - haze
+              - hazy
+          op_args:
+            condition: fog
+        - key: storm
+          tags:
+            weather_synonyms:
+              - stormy
+              - thunderstorm
+              - lightning
+              - tempest
+              - thunder
+          op_args:
+            condition: storm
+        - key: wind
+          tags:
+            weather_synonyms:
+              - windy
+              - gusty
+              - blustery
+              - gusts
+              - strong breeze
+          op_args:
+            condition: wind

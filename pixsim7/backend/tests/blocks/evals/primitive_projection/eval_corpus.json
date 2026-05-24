@@ -2,7 +2,7 @@
   "_meta": {
     "description": "Prompt corpus for primitive_projection shadow-mode evaluation",
     "version": "1.0.0",
-    "total_entries": 259,
+    "total_entries": 266,
     "categories": {
       "camera_motion": "Prompts describing camera movement (dolly, pan, zoom, orbit, etc.)",
       "camera_framing": "Prompts describing shots, angles, POV, focus",
@@ -11,7 +11,8 @@
       "subject_action": "Subject pose, motion, gesture prompts",
       "unrelated": "General scene prose with no primitive signal",
       "ambiguous": "Mixed-signal prompts that could match multiple categories or none",
-      "time_of_day": "Prompts naming a diurnal phase (dawn, night, golden hour, etc.)"
+      "time_of_day": "Prompts naming a diurnal phase (dawn, night, golden hour, etc.)",
+      "weather": "Prompts naming an atmospheric condition (rain, fog, snow, etc.)"
     }
   },
   "corpus": [
@@ -122,14 +123,14 @@
 
     {"id": "un01", "text": "A beautiful sunset paints the sky in orange and purple.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Pure scene description"},
     {"id": "un02", "text": "Two friends share a laugh over coffee at the corner cafe.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Character interaction"},
-    {"id": "un03", "text": "Rain falls gently on the cobblestone street.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Weather description"},
+    {"id": "un03", "text": "Rain falls gently on the cobblestone street.", "category": "weather", "expected_block_prefix": "core.scene.weather.rain", "expected_category": "scene", "notes": "Weather description [relabeled: weather signal present]"},
     {"id": "un04", "text": "The old bookstore smells of leather and vanilla.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Sensory detail"},
     {"id": "un05", "text": "She wears a flowing red dress.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Wardrobe"},
     {"id": "un06", "text": "A vintage car parked under the elm tree.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Object description"},
     {"id": "un07", "text": "The detective examines the crime scene carefully.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Action narrative"},
     {"id": "un08", "text": "Waves crash against the rocky shoreline.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Nature"},
     {"id": "un09", "text": "A child plays with a toy train.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Simple action"},
-    {"id": "un10", "text": "The mountain peak is covered in fresh snow.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Landscape"},
+    {"id": "un10", "text": "The mountain peak is covered in fresh snow.", "category": "weather", "expected_block_prefix": "core.scene.weather.snow", "expected_category": "scene", "notes": "Landscape [relabeled: weather signal present]"},
     {"id": "un11", "text": "He adjusts his tie nervously before the interview.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Character action"},
     {"id": "un12", "text": "The garden is full of blooming roses.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Setting detail"},
     {"id": "un13", "text": "A saxophone plays a mournful tune in the distance.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Audio cue"},
@@ -142,11 +143,11 @@
     {"id": "un20", "text": "The old photograph shows a family picnic by the lake.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Description"},
     {"id": "un21", "text": "A robot assembles circuit boards on the factory floor.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Industrial scene"},
     {"id": "un22", "text": "The wizard raises his staff and chants the spell.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Fantasy action"},
-    {"id": "un23", "text": "Dense fog covers the entire valley floor.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Weather/atmosphere"},
+    {"id": "un23", "text": "Dense fog covers the entire valley floor.", "category": "weather", "expected_block_prefix": "core.scene.weather.fog", "expected_category": "scene", "notes": "Weather/atmosphere [relabeled: weather signal present]"},
     {"id": "un24", "text": "Two samurai face each other at dawn.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Character scene"},
     {"id": "un25", "text": "The library is quiet, with dust motes floating in the air.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Setting atmosphere"},
     {"id": "un26", "text": "A wedding reception in a grand ballroom.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Event scene"},
-    {"id": "un27", "text": "The pirate ship sails into the storm.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Adventure scene"},
+    {"id": "un27", "text": "The pirate ship sails into the storm.", "category": "weather", "expected_block_prefix": "core.scene.weather.storm", "expected_category": "scene", "notes": "Adventure scene [relabeled: weather signal present]"},
     {"id": "un28", "text": "Fresh paint dries on the canvas in the studio.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Art scene"},
     {"id": "un29", "text": "A violin solo fills the concert hall.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Music scene"},
     {"id": "un30", "text": "The train pulls into the station at midnight.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Transport scene"},
@@ -170,7 +171,7 @@
     {"id": "un48", "text": "A surfer rides the perfect wave.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Sports scene"},
     {"id": "un49", "text": "The chandelier sparkles in the grand foyer.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Interior detail"},
     {"id": "un50", "text": "A magician pulls a rabbit from his hat.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Performance scene"},
-    {"id": "un51", "text": "Snow falls silently across the empty parking lot.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Weather scene"},
+    {"id": "un51", "text": "Snow falls silently across the empty parking lot.", "category": "weather", "expected_block_prefix": "core.scene.weather.snow", "expected_category": "scene", "notes": "Weather scene [relabeled: weather signal present]"},
     {"id": "un52", "text": "The boxer throws a powerful right hook.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Sports action"},
     {"id": "un53", "text": "A campfire crackles under the starry sky.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Outdoor scene"},
     {"id": "un54", "text": "The ballerina performs a perfect pirouette.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Dance scene"},
@@ -288,6 +289,14 @@
     {"id": "td02", "text": "The open field at dawn, mist rising.", "category": "time_of_day", "expected_block_prefix": "core.scene.time_of_day.dawn", "expected_category": "scene", "notes": "Dawn"},
     {"id": "td03", "text": "Long shadows at dusk across the rooftops.", "category": "time_of_day", "expected_block_prefix": "core.scene.time_of_day.dusk", "expected_category": "scene", "notes": "Dusk; across is low-weight directional"},
     {"id": "td04", "text": "The harsh midday heat.", "category": "time_of_day", "expected_block_prefix": "core.scene.time_of_day.midday", "expected_category": "scene", "notes": "Midday"},
-    {"id": "td05", "text": "A calm early morning scene.", "category": "time_of_day", "expected_block_prefix": "core.scene.time_of_day.morning", "expected_category": "scene", "notes": "Morning"}
+    {"id": "td05", "text": "A calm early morning scene.", "category": "time_of_day", "expected_block_prefix": "core.scene.time_of_day.morning", "expected_category": "scene", "notes": "Morning"},
+
+    {"id": "we01", "text": "Heavy rain falls on the empty street.", "category": "weather", "expected_block_prefix": "core.scene.weather.rain", "expected_category": "scene", "notes": "Rain"},
+    {"id": "we02", "text": "Thick fog rolls over the moor.", "category": "weather", "expected_block_prefix": "core.scene.weather.fog", "expected_category": "scene", "notes": "Fog (over is low-weight)"},
+    {"id": "we03", "text": "Fresh snow blankets the rooftops.", "category": "weather", "expected_block_prefix": "core.scene.weather.snow", "expected_category": "scene", "notes": "Snow"},
+    {"id": "we04", "text": "An overcast grey afternoon.", "category": "weather", "expected_block_prefix": "core.scene.weather.overcast", "expected_category": "scene", "notes": "Overcast"},
+    {"id": "we05", "text": "A violent storm batters the coast.", "category": "weather", "expected_block_prefix": "core.scene.weather.storm", "expected_category": "scene", "notes": "Storm"},
+    {"id": "we06", "text": "A bright sunny meadow.", "category": "weather", "expected_block_prefix": "core.scene.weather.sunny", "expected_category": "scene", "notes": "Sunny (distinctive token, not generic clear)"},
+    {"id": "am54", "text": "A clear shot of the target.", "category": "ambiguous", "expected_block_prefix": null, "expected_category": null, "notes": "False friend: clear as unobstructed, not weather"}
   ]
 }

@@ -1,0 +1,17 @@
+id: core-weather
+title: Core Weather
+description: Atmospheric / weather-condition scene primitives.
+category: scene
+matrix_presets:
+  - label: Weather Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_weather
+      include_empty: true
+  - label: Condition Tokens
+    query:
+      row_key: tag:weather_condition
+      col_key: category
+      package_name: core_weather
+      include_empty: true

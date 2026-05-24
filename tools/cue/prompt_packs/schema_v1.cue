@@ -62,6 +62,7 @@ import "list"
 #CameraHeightValues: ["ground", "waist", "chest", "eye_level", "overhead"]
 #VisibilityValues: ["visible", "hidden"]
 #TimeOfDayValues: ["dawn", "morning", "midday", "golden_hour", "dusk", "night", "blue_hour"]
+#WeatherValues: ["sunny", "overcast", "rain", "snow", "fog", "storm", "wind"]
 #HandsGestureValues: ["neutral", "open", "fist", "point", "reach", "hold_object"]
 #LevelValues: ["low", "medium", "high"]
 #PoseValues: ["standing", "seated", "kneeling", "leaning", "crouching", "lying"]

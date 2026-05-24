@@ -333,6 +333,7 @@ _EXPECTED_SIGNATURE_IDS = {
     "scene.anchor.v1",
     "scene.relation.v1",
     "scene.timeofday.v1",
+    "scene.weather.v1",
     "sequence.continuity.v1",
     "subject.action.v1",
     "subject.expression.v1",

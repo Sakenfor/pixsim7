@@ -97,6 +97,13 @@ signatures:
     required_refs: []
     allowed_modalities: [image, video]
 
+  - id: scene.weather.v1
+    op_namespace: scene.weather
+    requires_variant_template: false
+    required_params: [condition]
+    required_refs: []
+    allowed_modalities: [image, video]
+
   - id: sequence.continuity.v1
     op_namespace: sequence.continuity
     requires_variant_template: false
