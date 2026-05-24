@@ -805,21 +805,23 @@ async def _adaptive_provider_concurrency_record_limit_error(
     observed_cap = _clamp_provider_cap(max(1, attempted_level - 1), configured_cap)
     is_probe_level_reject = attempted_level > existing_effective
 
-    # Discriminator A: a genuine concurrent-limit needs the account to actually
-    # be at capacity. A 500044 while the account is essentially IDLE (local
-    # concurrency at/below a small floor, default 1) is physically impossible as
-    # a real limit — Pixverse emits it spuriously for problematic request
-    # content (content-path bug) even with nothing else running. That idle-reject
-    # is the true bug fingerprint and is what would otherwise wrongly drive the
-    # cap down (observed: acct 2, 8 -> 1, all at local=1).
+    # Two DECOUPLED signals (they were wrongly merged before, which either
+    # over-paused or let the cap collapse depending on the single threshold):
     #
-    # NOTE: rejects at higher local concurrency (e.g. flooding many gens of one
-    # image until the account fills) are *normal backpressure*, NOT this bug —
-    # they must keep lowering the cap so adaptive learning still works. Using the
-    # configured cap here (the old behaviour) wrongly tagged that backpressure as
-    # spurious and over-quarantined. Filtering is unrelated (different error
-    # codes, never reaches this path).
-    is_spurious = observed_local <= _spurious_concurrent_local_floor()
+    # 1. protect_cap — broad. A genuine concurrent-limit can only happen when the
+    #    account is actually at its configured cap. ANY 500044 while local
+    #    concurrency is below the configured cap is impossible as a real limit
+    #    (observed: 500044 at local=5 vs cap=8), so it must NOT lower the learned
+    #    cap. This is what keeps one bad batch from ratcheting an account down.
+    #
+    # 2. is_idle_reject — narrow. Only when the account is essentially IDLE
+    #    (local <= floor, default 1) do we treat the reject as a strong enough
+    #    signal to *quarantine* the offending request. Rejects at higher local
+    #    concurrency are too ambiguous to pause a prompt the user is iterating on.
+    #
+    # Filtering is unrelated (different error codes, never reaches this path).
+    protect_cap = observed_local < configured_cap
+    is_idle_reject = observed_local <= _spurious_concurrent_local_floor()
     # Seed-agnostic grouping key over the full request (prompt + input image(s)
     # + params) — lets the caller pause sibling generations (same content, any
     # seed) that would otherwise keep hammering the provider with the same
@@ -839,10 +841,10 @@ async def _adaptive_provider_concurrency_record_limit_error(
     # within a short window — a lone reject must not pause a prompt the user is
     # actively iterating on — and only when quarantine is explicitly enabled
     # (default off, since for filtered adult content these rejects are normal
-    # churn). Discriminator A above protects the cap regardless of this gate.
+    # churn). Cap protection (protect_cap below) is independent of this gate.
     spurious_count = 0
     quarantine_now = False
-    if is_spurious and prompt_group_hash and _spurious_concurrent_quarantine_enabled():
+    if is_idle_reject and prompt_group_hash and _spurious_concurrent_quarantine_enabled():
         spurious_count = await bump_spurious_concurrent_count(
             str(getattr(account, "provider_id", "") or ""),
             prompt_group_hash,
@@ -876,7 +878,7 @@ async def _adaptive_provider_concurrency_record_limit_error(
         and existing_effective > 1
         and not recently_lowered
         and enough_evidence
-        and not is_spurious
+        and not protect_cap
     ):
         new_effective = _clamp_provider_cap(
             min(existing_effective, observed_cap), configured_cap
@@ -926,7 +928,8 @@ async def _adaptive_provider_concurrency_record_limit_error(
         "consecutive_in_cap_limit_rejects": consecutive_in_cap_rejects,
         "lower_after_consecutive_rejects": lower_after_rejects,
         "is_probe_level_reject": is_probe_level_reject,
-        "spurious": is_spurious,
+        "protect_cap": protect_cap,
+        "is_idle_reject": is_idle_reject,
         "spurious_count": spurious_count,
         "quarantine_now": quarantine_now,
         "prompt_group_hash": prompt_group_hash,

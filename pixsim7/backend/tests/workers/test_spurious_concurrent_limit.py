@@ -96,7 +96,7 @@ async def test_spurious_reject_does_not_lower_cap():
         )
 
     assert result is not None
-    assert result["spurious"] is True
+    assert result["protect_cap"] is True
     assert result["cap_lowered"] is False
     assert result["effective_cap"] == 8  # unchanged
     assert result["prompt_group_hash"]  # attribution key present
@@ -121,7 +121,7 @@ async def test_spurious_below_threshold_does_not_quarantine():
             gen_logger=_NoopLogger(),
         )
 
-    assert result["spurious"] is True
+    assert result["is_idle_reject"] is True
     assert result["spurious_count"] == 1
     assert result["quarantine_now"] is False  # below threshold -> no pause
     assert result["cap_lowered"] is False
@@ -146,10 +146,10 @@ async def test_spurious_at_threshold_quarantines():
             gen_logger=_NoopLogger(),
         )
 
-    assert result["spurious"] is True
+    assert result["is_idle_reject"] is True
     assert result["spurious_count"] == 3
     assert result["quarantine_now"] is True
-    assert result["cap_lowered"] is False  # still never lowered on spurious
+    assert result["cap_lowered"] is False  # still never lowered while below cap
 
 
 @pytest.mark.asyncio
@@ -170,36 +170,40 @@ async def test_quarantine_disabled_by_default():
             gen_logger=_NoopLogger(),
         )
 
-    assert result["spurious"] is True       # still classified (protects cap)
+    assert result["protect_cap"] is True       # still protects the cap
     assert result["quarantine_now"] is False  # but never pauses when disabled
     assert result["cap_lowered"] is False
 
 
 @pytest.mark.asyncio
-async def test_backpressure_reject_is_not_spurious():
-    """A reject at higher local concurrency (flooding one image) is normal
-    backpressure, NOT the idle-reject bug: not spurious, and cap can lower."""
+async def test_subcap_reject_protects_cap_but_does_not_quarantine():
+    """A 500044 below the configured cap (e.g. local=5 vs cap=8) is impossible
+    as a real limit, so it must NOT lower the cap — but local=5 is above the
+    idle floor, so it is not strong enough to quarantine either. This is the
+    decoupled behaviour: cap protection is broad, quarantine is narrow."""
     state = _state(effective_cap=8, configured_cap=8, in_cap_rejects=2)
     p_load, p_save, p_rel, p_hint = _patches(state)
     base = "pixsim7.backend.main.workers.worker_concurrency."
     with p_load, p_save, p_rel, p_hint, patch(
         base + "_spurious_concurrent_local_floor", return_value=1,
-    ):
+    ), patch(base + "_spurious_concurrent_quarantine_enabled", return_value=True):
         result = await _adaptive_provider_concurrency_record_limit_error(
             generation=_make_generation(),
             account=_make_account(max_concurrent_jobs=8, current=5),
             model="gemini-3.1-flash",
-            local_concurrency=5,  # 5 > floor(1) -> backpressure, not the bug
+            local_concurrency=5,  # below cap 8 -> protect; above floor 1 -> no quarantine
             gen_logger=_NoopLogger(),
         )
 
-    assert result["spurious"] is False
+    assert result["protect_cap"] is True
+    assert result["is_idle_reject"] is False
     assert result["quarantine_now"] is False
-    assert result["cap_lowered"] is True  # normal adaptive learning still works
+    assert result["cap_lowered"] is False  # cap is protected, NOT ratcheted down
+    assert result["effective_cap"] == 8
 
 
 @pytest.mark.asyncio
-async def test_genuine_reject_still_lowers_cap():
+async def test_genuine_reject_at_cap_lowers():
     """500044 while local (8) == configured cap (8) is genuine -> cap may lower."""
     state = _state(effective_cap=8, configured_cap=8, in_cap_rejects=2)
     p_load, p_save, p_rel, p_hint = _patches(state)
@@ -213,7 +217,7 @@ async def test_genuine_reject_still_lowers_cap():
         )
 
     assert result is not None
-    assert result["spurious"] is False
+    assert result["protect_cap"] is False
     assert result["cap_lowered"] is True
     assert result["effective_cap"] == 7  # lowered to observed_cap (attempted_level - 1)
 
