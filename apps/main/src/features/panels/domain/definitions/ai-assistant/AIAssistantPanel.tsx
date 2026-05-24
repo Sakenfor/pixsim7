@@ -1416,6 +1416,7 @@ export function AIAssistantPanel() {
         profiles={profiles}
         tabCount={tabs.length}
         isSending={isSending}
+        activityTick={bridgeReq?._lastActivity ?? 0}
         hasUnread={
           !isActive &&
           (!!unreadByTab[tab.id] ||

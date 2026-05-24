@@ -3,11 +3,26 @@
  * Extracted from the former `renderSessionItem` useCallback in AIAssistantPanel.
  */
 
+import { useEffect, useState } from 'react';
+
 import { Icon, getIcon } from '@lib/icons';
 
 import type { ChatTab } from './assistantChatStore';
 import type { UnifiedProfile } from './assistantTypes';
 import { EngineProfileIcon, resolveProfileIcon } from './EngineProfileIcon';
+
+// Green "agent working" halo speed. Each agent activity event (a tool-use
+// heartbeat, surfaced as an `activityTick` bump) snaps the pulse to the fast
+// rate, which then eases back through these steps to a calm baseline — a flurry
+// of tool calls reads as a rapid heartbeat, a settled/thinking agent as a slow
+// one. [delayMs, animation-duration].
+const WORK_PULSE_BASELINE = '0.95s';
+const WORK_PULSE_DECAY: ReadonlyArray<readonly [number, string]> = [
+  [0, '0.4s'],
+  [1100, '0.6s'],
+  [2400, '0.8s'],
+  [4000, WORK_PULSE_BASELINE],
+];
 
 export interface SessionItemProps {
   tab: ChatTab;
@@ -23,6 +38,13 @@ export interface SessionItemProps {
    * unread pip — a blocked agent is more urgent than an unread reply.
    */
   hasPendingQuestion?: boolean;
+  /**
+   * Changing value that ticks on each agent activity event for this tab — the
+   * bridge request's `_lastActivity` timestamp, bumped on *every* heartbeat
+   * (including the `thinking`/keepalive ones that `thinkingLog` filters out).
+   * Each change momentarily speeds up the green work halo.
+   */
+  activityTick?: number;
   renamingTabId: string | null;
   renameValue: string;
   onSetActive: (id: string) => void;
@@ -50,6 +72,7 @@ export function SessionItem({
   isSending,
   hasUnread = false,
   hasPendingQuestion = false,
+  activityTick = 0,
   renamingTabId,
   renameValue,
   onSetActive,
@@ -80,6 +103,38 @@ export function SessionItem({
   const isRenaming = renamingTabId === tab.id;
   const isFailedCreate = tab.pending === 'create-failed';
 
+  // Tempo of the green work halo, driven by agent activity. A new `activityTick`
+  // (the agent used a tool) snaps it fast, then timers ease it back to baseline.
+  const [workPulse, setWorkPulse] = useState(WORK_PULSE_BASELINE);
+  useEffect(() => {
+    if (!isSending) {
+      setWorkPulse(WORK_PULSE_BASELINE);
+      return;
+    }
+    const timers = WORK_PULSE_DECAY.map(([delay, dur]) =>
+      setTimeout(() => setWorkPulse(dur), delay),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [activityTick, isSending]);
+
+  // Status halo: a colored ring around the tab icon (replaces the old 1.5px
+  // corner pip, which washed out under some themes). One status wins, in
+  // urgency order. The larger ring surface keeps the signal legible even when
+  // a theme mutes the token color, and the glow separates it from the row
+  // background. Pulse *speed* encodes meaning: fast green = actively working,
+  // slow blue = passively waiting on the user to read. `pulse` is the
+  // animation-duration (inline style reliably overrides Tailwind's fixed-2s
+  // `animate-pulse` shorthand); null = static.
+  const status: { ring: string; title: string; pulse: string | null } | null = isFailedCreate
+    ? { ring: 'ring-signal-error', title: "Couldn't save this tab to the server — retry or dismiss", pulse: null }
+    : hasPendingQuestion
+      ? { ring: 'ring-signal-warning', title: 'Agent is waiting on your answer', pulse: '1.4s' }
+      : isSending
+        ? { ring: 'ring-signal-success', title: 'Working…', pulse: workPulse }
+        : hasUnread
+          ? { ring: 'ring-signal-info', title: 'Unread reply', pulse: '2.8s' }
+          : null;
+
   return (
     <div
       role="option"
@@ -93,26 +148,15 @@ export function SessionItem({
           : 'text-th-secondary hover:bg-surface-secondary'
       }`}
     >
-      <div className="relative shrink-0">
+      <div className="relative flex shrink-0" title={status?.title}>
         <EngineProfileIcon engine={tab.engine} icon={tabIcon} size={12} />
-        {isFailedCreate ? (
+        {status && (
           <span
-            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-signal-error ring-1 ring-surface"
-            title="Couldn't save this tab to the server — retry or dismiss"
+            aria-hidden="true"
+            className={`pointer-events-none absolute -inset-0.5 rounded-full ring-2 ${status.ring} shadow-[0_0_5px_var(--tw-ring-color)] ${status.pulse ? 'animate-pulse' : ''}`}
+            style={status.pulse ? { animationDuration: status.pulse } : undefined}
           />
-        ) : hasPendingQuestion ? (
-          <span
-            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-signal-warning ring-1 ring-surface animate-pulse"
-            title="Agent is waiting on your answer"
-          />
-        ) : isSending ? (
-          <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-signal-success animate-pulse" />
-        ) : hasUnread ? (
-          <span
-            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-signal-info ring-1 ring-surface"
-            title="Unread reply"
-          />
-        ) : null}
+        )}
       </div>
       <div className="flex-1 min-w-0">
         {isRenaming ? (

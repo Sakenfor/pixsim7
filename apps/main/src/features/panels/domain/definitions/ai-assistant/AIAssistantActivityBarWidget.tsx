@@ -4,8 +4,8 @@
  * User-facing widget in the activity bar tray.
  * Shows connection status and opens the AI Assistant chat panel on click.
  */
-import { useHoverExpand } from '@pixsim7/shared.ui';
-import { useCallback, useRef } from 'react';
+import { runAnimation, useHoverExpand } from '@pixsim7/shared.ui';
+import { useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useBridgeStatus } from '@lib/agent/useBridgeStatus';
@@ -22,12 +22,32 @@ export function AIAssistantActivityBarWidget() {
   const connected = bridge?.connected ?? 0;
   const { total: unreadTotal, questionsTotal, questionsByTabId } = useChatUnread();
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+  // The AI panel opens as a floating panel; it's "on screen" only when it's in
+  // the floating list and not minimized. When it isn't, an arriving agent
+  // question has no visible ConfirmationCard, so the icon escalates with a shake.
+  const aiPanelVisible = useWorkspaceStore((s) => {
+    const p = s.floatingPanels.find((fp) => fp.id === 'ai-assistant');
+    return !!p && !p.minimized;
+  });
   const triggerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const { isExpanded: hovered, handlers } = useHoverExpand({
     expandDelay: 400,
     collapseDelay: 0,
   });
+
+  // Shake the activity-bar icon when a new question arrives while the panel is
+  // out of sight (closed / minimized / dismissed). One-shot on increase only —
+  // the 15s unread poll re-reports the same total, which must not re-trigger.
+  const prevQuestionsRef = useRef(questionsTotal);
+  useEffect(() => {
+    const prev = prevQuestionsRef.current;
+    prevQuestionsRef.current = questionsTotal;
+    if (questionsTotal > prev && !aiPanelVisible && buttonRef.current) {
+      runAnimation(buttonRef.current, 'shake', { amplitude: 5 });
+    }
+  }, [questionsTotal, aiPanelVisible]);
 
   const handleClick = useCallback(() => {
     openFloatingPanel('ai-assistant' as any);
@@ -50,6 +70,7 @@ export function AIAssistantActivityBarWidget() {
       {...handlers}
     >
       <button
+        ref={buttonRef}
         onClick={handleClick}
         className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors relative ${
           connected > 0
