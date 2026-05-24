@@ -1355,8 +1355,10 @@ class TestDrainLateResult:
         bridge.get_completed_result.return_value = None  # never lands
         store_mock = AsyncMock()
 
-        # Capture commits to a fake DB.
-        fake_session = SimpleNamespace(messages=[], last_used_at=None)
+        # Capture commits to a fake DB. `status` is read by the placeholder
+        # path's archived-guard (ws_chat.py) — omitting it makes the bare
+        # except swallow an AttributeError and skip the placeholder write.
+        fake_session = SimpleNamespace(messages=[], last_used_at=None, status="active")
         fake_db = AsyncMock()
         fake_db.get = AsyncMock(return_value=fake_session)
         fake_db.commit = AsyncMock()

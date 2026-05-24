@@ -2797,7 +2797,10 @@ async def _store_session_response(
     log = logging.getLogger(__name__)
 
     try:
-        from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+        from pixsim7.backend.main.domain.platform.agent_profile import (
+            ChatSession,
+            ChatTab,
+        )
         from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
         from pixsim7.backend.main.shared.datetime_utils import utcnow
 
@@ -2862,6 +2865,30 @@ async def _store_session_response(
             notif_session_id = session.id
             notif_user_id = session.user_id
             notif_label = session.label
+            # Only ping if this session is surfaced in a ChatTab — i.e. there
+            # is a UI affordance that can ever clear the unread count via
+            # clear-on-focus (AIAssistantPanel) or chat_tabs DELETE cleanup.
+            # Ephemeral probe/CLI/bridge/mcp sessions that no human opened a
+            # tab for would otherwise emit a chat_session unread that the
+            # activity-bar aggregate badge counts forever (it sums ALL
+            # chat_session unread) with no way to dismiss it — the "stuck at
+            # N unread" bug. Match both the canonical id and the cli_session
+            # alias because MCP-derived sessions key the tab by the alias.
+            # Tab binding always precedes this call on every reply path
+            # (_bind_and_persist_result binds before persisting; CP-A
+            # early-binds on the live path), so a real chat's first reply is
+            # never suppressed. Closing the tab deletes the row, so a late
+            # drain to a closed tab self-heals instead of re-sticking.
+            tab_match_ids = [notif_session_id]
+            if session.cli_session_id and session.cli_session_id != notif_session_id:
+                tab_match_ids.append(session.cli_session_id)
+            has_tab_surface = (
+                await db.execute(
+                    select(ChatTab.id)
+                    .where(ChatTab.session_id.in_(tab_match_ids))
+                    .limit(1)
+                )
+            ).first() is not None
             await db.commit()
 
         # DEBUG-floor diagnostic for the chat.message emit gate. Flip the
@@ -2873,9 +2900,10 @@ async def _store_session_response(
         # `chat-unread-dot-regression`.
         log.debug(
             "store_session_response_decision session_id=%s assistant_is_new=%s "
-            "user_id=%s pre_keys_count=%d entry_text_head=%r",
+            "has_tab_surface=%s user_id=%s pre_keys_count=%d entry_text_head=%r",
             session_id,
             assistant_is_new,
+            has_tab_surface,
             notif_user_id,
             len(pre_keys),
             (assistant_response or "")[:60],
@@ -2886,8 +2914,14 @@ async def _store_session_response(
         # share one unread state (convention: chat_tabs.py:27-34). Targeted,
         # not broadcast — chat tabs are user-private. Isolated from the
         # message-persist transaction so a notification failure can never
-        # roll back the reply we just saved.
-        if assistant_is_new and assistant_response and assistant_response.strip():
+        # roll back the reply we just saved. Gated on `has_tab_surface` so
+        # tab-less probe/CLI sessions don't accrue an uncleanable unread.
+        if (
+            assistant_is_new
+            and assistant_response
+            and assistant_response.strip()
+            and has_tab_surface
+        ):
             await _emit_chat_message_notification(
                 session_id=notif_session_id,
                 user_id=notif_user_id,

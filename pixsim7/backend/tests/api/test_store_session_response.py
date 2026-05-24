@@ -58,11 +58,13 @@ def _make_session(
     status: str = "active",
     user_id: int = 7,
     label: str = "Test Session",
+    cli_session_id: str | None = None,
 ):
-    # status/user_id/label are read by the archived-guard (commit f5857102d)
-    # and the Phase 4a chat-message notification source — a bare namespace
-    # without them makes _store_session_response's broad except swallow an
-    # AttributeError and silently no-op.
+    # status/user_id/label/cli_session_id are read by the archived-guard
+    # (commit f5857102d), the Phase 4a chat-message notification source, and
+    # the tab-surface gate — a bare namespace without them makes
+    # _store_session_response's broad except swallow an AttributeError and
+    # silently no-op.
     return SimpleNamespace(
         id=session_id,
         messages=messages,
@@ -70,15 +72,19 @@ def _make_session(
         status=status,
         user_id=user_id,
         label=label,
+        cli_session_id=cli_session_id,
     )
 
 
-def _mock_db(session=None, alias_session=None):
+def _mock_db(session=None, alias_session=None, has_tab=True):
     """Build a fake AsyncSessionLocal context manager returning a mock DB.
 
     ``session`` is returned by ``db.get`` (PK lookup).
     ``alias_session`` is returned by ``db.execute(select).scalars().all()``
     (the ``cli_session_id`` fallback). ``None`` for either means "no row".
+    ``has_tab`` controls the tab-surface gate query
+    (``db.execute(select(ChatTab.id)...).first()``): True means a ChatTab
+    references the session so the chat-message ping is allowed to fire.
     """
     db = AsyncMock()
     db.get = AsyncMock(return_value=session)
@@ -91,13 +97,18 @@ def _mock_db(session=None, alias_session=None):
             return self._rows
 
     class _ExecuteResult:
-        def __init__(self, rows):
+        def __init__(self, rows, tab_row):
             self._rows = rows
+            self._tab_row = tab_row
         def scalars(self):
             return _ScalarResult(self._rows)
+        def first(self):
+            # Tab-surface probe: a truthy row means "a tab points here".
+            return self._tab_row
 
     rows = [alias_session] if alias_session is not None else []
-    db.execute = AsyncMock(return_value=_ExecuteResult(rows))
+    tab_row = ("tab-1",) if has_tab else None
+    db.execute = AsyncMock(return_value=_ExecuteResult(rows, tab_row))
     return db
 
 
@@ -370,14 +381,17 @@ class TestCliSessionIdFallback:
 
     @pytest.mark.asyncio
     async def test_pk_match_skips_cli_session_id_lookup(self):
-        """When PK lookup hits, the alias query should not run."""
+        """When PK lookup hits, the cli_session_id alias fallback should not
+        run. ``db.execute`` is still called exactly once — for the
+        tab-surface gate probe, not the alias lookup — and the reply lands on
+        the PK-matched session."""
         session = _make_session(messages=[])
         db = _mock_db(session=session, alias_session=None)
         with _patch_db(db):
             await _store_session_response("sess-1", "Hello", "Hi!")
 
-        # execute (the alias query) should NOT have been called
-        db.execute.assert_not_called()
+        # Only the tab-surface probe runs; no alias fallback query.
+        db.execute.assert_called_once()
         assert len(session.messages) == 2
 
 
@@ -466,6 +480,38 @@ class TestChatMessageNotificationSource:
             await _store_session_response("sess-1", "Hello", "   ")
 
         _stub_chat_notification.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_emit_when_no_tab_surface(self, _stub_chat_notification):
+        """A genuinely-new reply on a session that NO ChatTab references
+        (ephemeral probe/CLI/bridge/mcp sessions) must not emit: the
+        activity-bar aggregate badge sums all chat_session unread, and with
+        no focusable tab the count could never be cleared — the historical
+        "stuck at N unread" bug."""
+        session = _make_session(messages=[], user_id=42)
+        db = _mock_db(session, has_tab=False)
+        with _patch_db(db):
+            await _store_session_response("sess-1", "Hello", "Hi there!")
+
+        _stub_chat_notification.assert_not_awaited()
+        # Reply is still persisted — only the unread ping is suppressed.
+        assert len(session.messages) == 2
+        db.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_emits_when_tab_surface_matches_cli_session_id(
+        self, _stub_chat_notification
+    ):
+        """The tab-surface probe matches on the cli_session_id alias too, so
+        an MCP-derived session whose tab is keyed by the alias still pings."""
+        session = _make_session(
+            messages=[], user_id=42, cli_session_id="cli-abc"
+        )
+        db = _mock_db(session, has_tab=True)
+        with _patch_db(db):
+            await _store_session_response("sess-1", "Hello", "Hi there!")
+
+        _stub_chat_notification.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_emit_failure_does_not_break_persistence(self):
