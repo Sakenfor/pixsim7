@@ -56,6 +56,16 @@ pack: #PromptBlockPackV1 & {
 							tag_key: "rack_focus"
 						},
 						{
+							// Lens focal length — an optics property of the same
+							// camera.focus op (aperture/DoF already lives here).
+							// Optional: existing focus variants inherit "normal".
+							key:     "focal_length"
+							type:    "enum"
+							default: "normal"
+							enum:    #FocalLengthValues
+							tag_key: "focal_length"
+						},
+						{
 							key:            "target_ref"
 							type:           "ref"
 							required:       false
@@ -66,6 +76,7 @@ pack: #PromptBlockPackV1 & {
 						focus_target:   "subject"
 						depth_of_field: "medium"
 						rack:           false
+						focal_length:   "normal"
 					}
 				}
 				variants: [
@@ -117,10 +128,65 @@ pack: #PromptBlockPackV1 & {
 							rack:           true
 						}
 					},
+					// Lens / focal-length variants (optics intent, folded into
+					// the camera.focus op rather than a separate pack). Canonical
+					// tokens are all distinctive (telephoto/macro/fisheye/
+					// anamorphic) — no collision-prone "wide" member, which would
+					// false-match a wide SHOT (that stays core_shot's job).
+					{
+						key: "telephoto"
+						op_args: {
+							focus_target:   "subject"
+							depth_of_field: "shallow"
+							rack:           false
+							focal_length:   "telephoto"
+						}
+						tags: focal_synonyms: ["telephoto lens", "long lens", "compressed perspective", "tele lens"]
+					},
+					{
+						key: "macro"
+						op_args: {
+							focus_target:   "subject"
+							depth_of_field: "shallow"
+							rack:           false
+							focal_length:   "macro"
+						}
+						tags: focal_synonyms: ["macro lens", "macro photography", "extreme magnification", "tiny detail"]
+					},
+					{
+						key: "fisheye"
+						op_args: {
+							focus_target:   "subject"
+							depth_of_field: "deep"
+							rack:           false
+							focal_length:   "fisheye"
+						}
+						tags: focal_synonyms: ["fisheye lens", "fish-eye", "spherical distortion", "curved distortion"]
+					},
+					{
+						key: "anamorphic"
+						op_args: {
+							focus_target:   "subject"
+							depth_of_field: "shallow"
+							rack:           false
+							focal_length:   "anamorphic"
+						}
+						tags: focal_synonyms: ["anamorphic lens", "cinemascope", "horizontal lens flare", "oval bokeh"]
+					},
 				]
 			}
 		},
 	]
+}
+
+tag_registry: #TagRegistryV1 & {
+	focal_length: {
+		label:          "Focal Length"
+		description:    "Lens focal length / optical character: wide_angle, normal, telephoto, macro, fisheye, or anamorphic."
+		allowed_values: #FocalLengthValues
+		applies_to: [{role: "modifier", category: "camera"}]
+		status: "active"
+	}
 }
 
 manifest: #PromptPackManifestV1 & {

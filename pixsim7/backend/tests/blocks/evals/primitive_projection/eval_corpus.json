@@ -2,7 +2,7 @@
   "_meta": {
     "description": "Prompt corpus for primitive_projection shadow-mode evaluation",
     "version": "1.0.0",
-    "total_entries": 273,
+    "total_entries": 277,
     "categories": {
       "camera_motion": "Prompts describing camera movement (dolly, pan, zoom, orbit, etc.)",
       "camera_framing": "Prompts describing shots, angles, POV, focus",
@@ -306,6 +306,11 @@
     {"id": "cp04", "text": "Strong leading lines draw the eye.", "category": "composition", "expected_block_prefix": "core.camera.composition.leading_lines", "expected_category": "composition", "notes": "Leading lines (compound)"},
     {"id": "cp05", "text": "Lots of negative space around the lone figure.", "category": "composition", "expected_block_prefix": "core.camera.composition.negative_space", "expected_category": "composition", "notes": "Negative space (compound)"},
     {"id": "cp06", "text": "An off-center, asymmetric layout.", "category": "composition", "expected_block_prefix": "core.camera.composition.off_center", "expected_category": "composition", "notes": "Off-center"},
-    {"id": "am55", "text": "Power lines stretch across the sky.", "category": "ambiguous", "expected_block_prefix": null, "expected_category": null, "notes": "False friend: lines as power lines, not leading_lines"}
+    {"id": "am55", "text": "Power lines stretch across the sky.", "category": "ambiguous", "expected_block_prefix": null, "expected_category": null, "notes": "False friend: lines as power lines, not leading_lines"},
+
+    {"id": "le01", "text": "Shot on a telephoto lens, compressed background.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.telephoto", "expected_category": "camera", "notes": "Telephoto lens (optics on camera.focus)"},
+    {"id": "le02", "text": "A macro lens capturing tiny dewdrops.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.macro", "expected_category": "camera", "notes": "Macro lens"},
+    {"id": "le03", "text": "Distorted fisheye view of the skate park.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.fisheye", "expected_category": "camera", "notes": "Fisheye lens"},
+    {"id": "le04", "text": "Anamorphic lens with horizontal flares.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.anamorphic", "expected_category": "camera", "notes": "Anamorphic lens"}
   ]
 }
