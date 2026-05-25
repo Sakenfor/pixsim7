@@ -23,6 +23,7 @@ import clsx from 'clsx';
 import { useCallback, useState, type ReactNode } from 'react';
 
 import type { ShadowAnalysisState } from '../hooks/useShadowAnalysis';
+import { usePromptAnalysisEmphasisStore } from '../stores/promptAnalysisEmphasisStore';
 
 import { PromptRoleLegend } from './PromptRoleLegend';
 import { ShadowSidePanel } from './ShadowSidePanel';
@@ -59,20 +60,31 @@ export function PromptAnalysisLayout({
   className,
   surfaceId,
 }: PromptAnalysisLayoutProps) {
-  // Emphasis state — hover previews, click pins. Effective role =
-  // hover override (transient) or pinned role (sticky).
+  // Emphasis state — hover previews (ephemeral), click pins (persisted per
+  // surface so it survives tab switches / reloads).
   const [hoveredRole, setHoveredRole] = useState<string | null>(null);
-  const [pinnedRole, setPinnedRole] = useState<string | null>(null);
-  const emphasizedRole = hoveredRole ?? pinnedRole;
+  const pinnedRole = usePromptAnalysisEmphasisStore(
+    (s) => s.pinnedRoleBySurface[surfaceId] ?? null,
+  );
+  const setPinnedRole = usePromptAnalysisEmphasisStore((s) => s.setPinnedRole);
+
+  const candidates = analysis.result?.candidates ?? [];
+
+  // Guard a restored pin: if the pinned role isn't present in the current
+  // candidates, don't apply it as emphasis (it would dim every span). The
+  // legend still receives the raw pin, but its chip simply won't render.
+  const pinnedRolePresent = pinnedRole != null && candidates.some((c) => c.role === pinnedRole);
+  const emphasizedRole = hoveredRole ?? (pinnedRolePresent ? pinnedRole : null);
 
   const handleRoleHover = useCallback((role: string | null) => {
     setHoveredRole(role);
   }, []);
-  const handleRoleClick = useCallback((role: string) => {
-    setPinnedRole((prev) => (prev === role ? null : role));
-  }, []);
-
-  const candidates = analysis.result?.candidates ?? [];
+  const handleRoleClick = useCallback(
+    (role: string) => {
+      setPinnedRole(surfaceId, pinnedRole === role ? null : role);
+    },
+    [pinnedRole, setPinnedRole, surfaceId],
+  );
 
   // ── side-by-side: editor + side panel as siblings, legend below editor only
   // ── stacked: editor → side panel → legend, all in one column

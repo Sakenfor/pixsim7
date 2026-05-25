@@ -24,6 +24,14 @@ export interface PromptSettings {
   // Block layout mode
   blocksLayout: 'stacked' | 'inline';
 
+  // Composer view state — remembered across tab switches / reloads so the
+  // composer reopens the way the user left it (per-prompt text + history are
+  // persisted elsewhere; these are the "how I like the composer arranged"
+  // view choices that previously reset on every remount).
+  composerMode: 'text' | 'blocks';
+  composerShowAnalysis: boolean;
+  composerShowTools: boolean;
+
   // Editor engine: 'textarea' (default) or 'codemirror'
   editorEngine: 'textarea' | 'codemirror';
 
@@ -55,6 +63,9 @@ interface PromptSettingsStore extends PromptSettings {
   setPromptRoleColor: (roleId: string, color: string) => void;
   setPromptRoleColors: (colors: Record<string, string>) => void;
   setBlocksLayout: (value: PromptSettings['blocksLayout']) => void;
+  setComposerMode: (value: PromptSettings['composerMode']) => void;
+  setComposerShowAnalysis: (value: boolean) => void;
+  setComposerShowTools: (value: boolean) => void;
   setSemanticEnabled: (value: boolean) => void;
   setSemanticThreshold: (value: number) => void;
   setSemanticLimit: (value: number) => void;
@@ -72,6 +83,9 @@ const DEFAULT_SETTINGS: PromptSettings = {
   viewerEngine: 'inline',
   ghostDiffPrecision: 'coarse',
   blocksLayout: 'stacked',
+  composerMode: 'text',
+  composerShowAnalysis: false,
+  composerShowTools: false,
   semanticEnabled: false,
   semanticThreshold: 0.65,
   semanticLimit: 5,
@@ -99,6 +113,9 @@ export const usePromptSettingsStore = create<PromptSettingsStore>()(
         })),
       setPromptRoleColors: (colors) => set({ promptRoleColors: { ...colors } }),
       setBlocksLayout: (value) => set({ blocksLayout: value }),
+      setComposerMode: (value) => set({ composerMode: value }),
+      setComposerShowAnalysis: (value) => set({ composerShowAnalysis: value }),
+      setComposerShowTools: (value) => set({ composerShowTools: value }),
       setSemanticEnabled: (value) => set({ semanticEnabled: value }),
       setSemanticThreshold: (value) => set({ semanticThreshold: value }),
       setSemanticLimit: (value) => set({ semanticLimit: value }),

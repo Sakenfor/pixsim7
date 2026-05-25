@@ -347,7 +347,10 @@ export function PromptComposer({
     (state) => state.setGhostDiffPrecision,
   );
   const useCodemirror = editorEngine === 'codemirror';
-  const [mode, setMode] = useState<PromptComposerMode>('text');
+  // View choices persisted in promptSettingsStore so they survive tab switches
+  // and reloads (alongside blocksLayout / editorEngine).
+  const mode = usePromptSettingsStore((state) => state.composerMode);
+  const setMode = usePromptSettingsStore((state) => state.setComposerMode);
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const layoutTriggerRef = useRef<HTMLButtonElement>(null);
   const [blocks, setBlocks] = useState<PromptBlockItem[]>([
@@ -356,13 +359,15 @@ export function PromptComposer({
   const [isParsing, setIsParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
 
-  const [showShadow, setShowShadow] = useState(false);
+  const showShadow = usePromptSettingsStore((state) => state.composerShowAnalysis);
+  const setShowShadow = usePromptSettingsStore((state) => state.setComposerShowAnalysis);
   const [showHistory, setShowHistory] = useState(false);
   const [, forceHistoryRender] = useState(0);
   const [promotingHistoryIndex, setPromotingHistoryIndex] = useState<number | null>(null);
   const [historyPromotionNotice, setHistoryPromotionNotice] = useState<string | null>(null);
   const [historyPromotionError, setHistoryPromotionError] = useState<string | null>(null);
-  const [showPromptTools, setShowPromptTools] = useState(false);
+  const showPromptTools = usePromptSettingsStore((state) => state.composerShowTools);
+  const setShowPromptTools = usePromptSettingsStore((state) => state.setComposerShowTools);
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
 
   // --- Shadow analysis click popover (CM path) ---
@@ -1446,7 +1451,7 @@ export function PromptComposer({
       }
       setMode('text');
     },
-    [blocks, mode]
+    [blocks, mode, setMode]
   );
 
   useEffect(() => {
@@ -1588,7 +1593,7 @@ export function PromptComposer({
 
       setShowPromptTools(false);
     },
-    [blocks, disabled, flushSnapshot, mode, onPromptToolRunContextPatch, seedBlocksFromPrompt, updateBlocks, value],
+    [blocks, disabled, flushSnapshot, mode, onPromptToolRunContextPatch, seedBlocksFromPrompt, setMode, setShowPromptTools, updateBlocks, value],
   );
 
   const composedPrompt = useMemo(() => composePrompt(blocks), [blocks]);
@@ -1864,7 +1869,7 @@ export function PromptComposer({
           <button
             type="button"
             disabled={disabled}
-            onClick={() => setShowShadow((prev) => !prev)}
+            onClick={() => setShowShadow(!showShadow)}
             title={showShadow ? 'Hide shadow analysis' : 'Show shadow analysis'}
             className={clsx(
               'p-1 rounded transition-colors',
@@ -1880,10 +1885,10 @@ export function PromptComposer({
         <button
           type="button"
           disabled={disabled}
-          onClick={() => setShowPromptTools((prev) => !prev)}
+          onClick={() => setShowPromptTools(!showPromptTools)}
           onContextMenu={(e) => {
             e.preventDefault();
-            setShowPromptTools((prev) => !prev);
+            setShowPromptTools(!showPromptTools);
           }}
           title="Prompt tools"
           className={clsx(

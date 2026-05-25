@@ -128,3 +128,9 @@ export {
 // ============================================================================
 
 export { usePromptSettingsStore } from './stores/promptSettingsStore';
+export {
+  usePromptAuthoringDraftStore,
+  type PromptAuthoringDraft,
+  type PromptAuthoringDraftField,
+} from './stores/promptAuthoringDraftStore';
+export { usePromptAnalysisEmphasisStore } from './stores/promptAnalysisEmphasisStore';

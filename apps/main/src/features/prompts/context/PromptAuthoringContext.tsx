@@ -30,6 +30,8 @@ import type { AssetModel } from '@features/assets';
 import { fromAssetResponse } from '@features/assets/models/asset';
 import { useGenerationScopeStores } from '@features/generation';
 
+import { usePromptAuthoringDraftStore } from '../stores/promptAuthoringDraftStore';
+
 // ── Types ──
 
 export type AssetScopeMode = 'version' | 'branch' | 'family';
@@ -166,7 +168,12 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
   const [families, setFamilies] = useState<PromptFamilySummary[]>([]);
   const [familiesLoading, setFamiliesLoading] = useState(false);
   const [familiesError, setFamiliesError] = useState<string | null>(null);
-  const [selectedFamilyId, setSelectedFamilyId] = useState<string | null>(null);
+  // Seed from the persisted draft store so reopening lands where we left off.
+  // refreshFamilies keeps this value when it still exists, else falls back to
+  // the first family — so a stale persisted id degrades gracefully.
+  const [selectedFamilyId, setSelectedFamilyId] = useState<string | null>(
+    () => usePromptAuthoringDraftStore.getState().lastFamilyId,
+  );
 
   // ── Family creation form ──
   const [newFamilyTitle, setNewFamilyTitle] = useState('');
@@ -179,16 +186,21 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
   const [versions, setVersions] = useState<PromptVersionSummary[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState<string | null>(null);
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(
+    () => usePromptAuthoringDraftStore.getState().lastVersionId,
+  );
   const [authoringModes, setAuthoringModes] = useState<PromptAuthoringModeContract[]>([]);
 
   // ── Editor state ──
   const { useSessionStore } = useGenerationScopeStores();
   const editorText = useSessionStore((s) => s.prompt);
   const setEditorText = useSessionStore((s) => s.setPrompt);
-  const [instructionInput, setInstructionInput] = useState('');
-  const [commitMessageInput, setCommitMessageInput] = useState('');
-  const [versionTagsInput, setVersionTagsInput] = useState('');
+  // Raw setters update local state only; hydration uses these so loading a
+  // version never fabricates a draft. The exposed setters (below) additionally
+  // persist the edit to the per-version draft store.
+  const [instructionInput, setInstructionInputRaw] = useState('');
+  const [commitMessageInput, setCommitMessageInputRaw] = useState('');
+  const [versionTagsInput, setVersionTagsInputRaw] = useState('');
 
   // ── Asset state ──
   const [scopeMode, setScopeMode] = useState<AssetScopeMode>('version');
@@ -201,18 +213,44 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const lastLoadedVersionIdRef = useRef<string | null>(null);
+  // Mirror selectedVersionId in a ref so the stable draft-persisting setters
+  // below can key the draft by the version currently being edited.
+  const selectedVersionIdRef = useRef<string | null>(selectedVersionId);
+  selectedVersionIdRef.current = selectedVersionId;
   const { versions: versionTimeline } = useVersions('prompt', selectedFamilyId);
+
+  // ── Draft-persisting setters ──
+  // Exposed to consumers: update local state AND persist the edit as a draft
+  // keyed by the current version, so the text survives tab switches / reloads.
+  const setInstructionInput = useCallback((value: string) => {
+    setInstructionInputRaw(value);
+    const versionId = selectedVersionIdRef.current;
+    if (versionId) usePromptAuthoringDraftStore.getState().setDraftField(versionId, 'instruction', value);
+  }, []);
+  const setCommitMessageInput = useCallback((value: string) => {
+    setCommitMessageInputRaw(value);
+    const versionId = selectedVersionIdRef.current;
+    if (versionId) usePromptAuthoringDraftStore.getState().setDraftField(versionId, 'commitMessage', value);
+  }, []);
+  const setVersionTagsInput = useCallback((value: string) => {
+    setVersionTagsInputRaw(value);
+    const versionId = selectedVersionIdRef.current;
+    if (versionId) usePromptAuthoringDraftStore.getState().setDraftField(versionId, 'tags', value);
+  }, []);
 
   // ── Version hydration ──
   // Single definition of "what it means to load a version into the editor".
   // Called by the auto-sync effect (guarded by lastLoadedVersionIdRef) and
   // exposed to consumers for explicit reloads (e.g. Navigator version click).
+  // Restores any unsaved draft for the version; otherwise falls back to the
+  // version's committed values. Uses raw setters so it never writes a draft.
   const hydrateFromVersion = useCallback(
     (version: PromptVersionSummary) => {
+      const draft = usePromptAuthoringDraftStore.getState().drafts[version.id] ?? null;
       setEditorText(version.prompt_text ?? '');
-      setCommitMessageInput(version.commit_message ?? '');
-      setVersionTagsInput((version.tags ?? []).join(', '));
-      setInstructionInput('');
+      setCommitMessageInputRaw(draft?.commitMessage ?? version.commit_message ?? '');
+      setVersionTagsInputRaw(draft?.tags ?? (version.tags ?? []).join(', '));
+      setInstructionInputRaw(draft?.instruction ?? '');
     },
     [setEditorText],
   );
@@ -286,6 +324,11 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
   useEffect(() => {
     void refreshVersions(selectedFamilyId);
   }, [refreshVersions, selectedFamilyId]);
+
+  // Remember the open family/version so reopening the workbench restores it.
+  useEffect(() => {
+    usePromptAuthoringDraftStore.getState().rememberSelection(selectedFamilyId, selectedVersionId);
+  }, [selectedFamilyId, selectedVersionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -442,6 +485,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
     }
     setBusyAction('version');
     setStatusMessage(null);
+    const sourceVersionId = selectedVersionId;
     try {
       const created = await createPromptVersion(selectedFamilyId, {
         prompt_text: editorText,
@@ -449,6 +493,8 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
         parent_version_id: selectedVersionId ?? undefined,
         tags: parseTags(versionTagsInput),
       });
+      // Committed — drop the source version's draft so it doesn't resurface.
+      if (sourceVersionId) usePromptAuthoringDraftStore.getState().clearDraft(sourceVersionId);
       await refreshVersions(selectedFamilyId, created.id);
       setStatusMessage(`Version v${created.version_number} created`);
     } catch (error) {
@@ -480,6 +526,8 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
         commit_message: commitMessageInput.trim() || undefined,
         tags: parseTags(versionTagsInput),
       });
+      // Committed — drop the source version's draft so it doesn't resurface.
+      usePromptAuthoringDraftStore.getState().clearDraft(selectedVersionId);
       if (selectedFamilyId) {
         await refreshVersions(selectedFamilyId, response.created_version.id);
       }
@@ -516,6 +564,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
       newFamilyTitle, newFamilyPromptType, newFamilyCategory, newFamilyTagsInput, newFamilyCharacterId,
       versions, versionsLoading, versionsError, selectedVersionId,
       editorText, setEditorText, instructionInput, commitMessageInput, versionTagsInput,
+      setInstructionInput, setCommitMessageInput, setVersionTagsInput,
       scopeMode, scopeAssets, assetsLoading, assetsError,
       busyAction, statusMessage,
       authoringModes, selectedFamily, selectedVersion, targetVersionIds, truncatedVersionCount,
