@@ -283,6 +283,10 @@ interface FloatingPanelProps {
   activeProjectSource: "override" | "authoring-context" | "editor-runtime" | "fallback" | "none";
   /** When true, render as a fullscreen sheet with drag/resize disabled. */
   isMobile: boolean;
+  /** Extra bottom inset reserved for mobile controls (e.g. tab strip). */
+  mobileBottomInset: number;
+  /** Hide panel visually while keeping it mounted (mobile tab switching). */
+  hidden?: boolean;
 }
 
 const FloatingPanel = memo(function FloatingPanel({
@@ -294,6 +298,8 @@ const FloatingPanel = memo(function FloatingPanel({
   activeProjectName,
   activeProjectSource,
   isMobile,
+  mobileBottomInset,
+  hidden = false,
 }: FloatingPanelProps) {
   const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
   const updateFloatingPanelPosition = useWorkspaceStore(
@@ -580,63 +586,66 @@ const FloatingPanel = memo(function FloatingPanel({
     }
   };
 
-  // Mobile: pin to viewport as a fullscreen sheet so the close button is always
-  // reachable. Stored geometry (panel.x/y/width/height) is preserved for when
-  // the user returns to a desktop viewport.
-  const mobilePosition = isMobile ? { x: 0, y: 0 } : { x: panel.x, y: panel.y };
-  const mobileSize = isMobile
-    ? {
-        width: typeof window !== 'undefined' ? window.innerWidth : panel.width,
-        height: panel.minimized
-          ? 42
-          : typeof window !== 'undefined'
-            ? window.innerHeight
-            : panel.height,
-      }
-    : panel.minimized
-      ? { width: panel.width, height: 42 }
-      : { width: panel.width, height: panel.height };
+  // Backup geometry sync: some drag/resize paths can miss onResizeStop updates,
+  // so observe the rendered floating wrapper and persist size changes.
+  useEffect(() => {
+    if (isMobile || panel.minimized || flyingAway) return;
+    const el = rndRef.current?.getSelfElement();
+    if (!el || typeof ResizeObserver === 'undefined') return;
 
-  return (
-    <Rnd
-      ref={rndRef}
-      key={panel.id}
-      position={mobilePosition}
-      size={mobileSize}
-      onDragStart={handleDragStart}
-      onDrag={handleDrag}
-      onDragStop={handleDragStop}
-      onResizeStop={(e, direction, ref, delta, position) => {
-        const measuredWidth = Math.round(ref.getBoundingClientRect().width);
-        const measuredHeight = Math.round(ref.getBoundingClientRect().height);
-        const fallbackWidth = parseInt(ref.style.width, 10);
-        const fallbackHeight = parseInt(ref.style.height, 10);
-        const nextWidth =
-          Number.isFinite(measuredWidth) && measuredWidth > 0 ? measuredWidth : fallbackWidth;
-        const nextHeight =
-          Number.isFinite(measuredHeight) && measuredHeight > 0 ? measuredHeight : fallbackHeight;
-        updateFloatingPanelSize(
-          panel.id,
-          nextWidth,
-          nextHeight
-        );
-        updateFloatingPanelPosition(panel.id, position.x, position.y);
-      }}
-      onMouseDown={() => bringFloatingPanelToFront(panel.id)}
-      minWidth={isMobile ? undefined : 200}
-      minHeight={panel.minimized ? 42 : isMobile ? undefined : 200}
-      bounds="window"
-      dragHandleClassName="floating-panel-header"
-      style={{
-        zIndex: Z.floatPanel + panel.zIndex,
-        opacity: dimmed ? 0.45 : 1,
-        transition: 'opacity 0.2s ease-out',
-        pointerEvents: dimmed ? 'none' : undefined,
-      }}
-      className="floating-panel"
-      disableDragging={flyingAway || isMobile}
-      enableResizing={!flyingAway && !panel.minimized && !isMobile}
-    >
+    let rafId: number | null = null;
+    let cancelled = false;
+    const observer = new ResizeObserver((entries) => {
+      if (cancelled) return;
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      const nextWidth = Math.round(rect.width);
+      const nextHeight = Math.round(rect.height);
+      if (!Number.isFinite(nextWidth) || !Number.isFinite(nextHeight)) return;
+
+      const current = useWorkspaceStore.getState().getFloatingPanel(panel.id);
+      if (!current) return;
+      const widthChanged = Math.abs(current.width - nextWidth) > 1;
+      const heightChanged = Math.abs(current.height - nextHeight) > 1;
+      if (!widthChanged && !heightChanged) return;
+
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        if (cancelled) return;
+        // Re-check inside the rAF: closeFloatingPanel may have removed the
+        // panel between the observer firing and this callback running. Without
+        // this guard the rAF overwrites lastFloatingPanelStates with whatever
+        // contentRect was captured pre-close, intermittently clobbering the
+        // geometry that closeFloatingPanel just saved.
+        if (!useWorkspaceStore.getState().getFloatingPanel(panel.id)) return;
+        updateFloatingPanelSize(panel.id, nextWidth, nextHeight);
+      });
+    });
+
+    observer.observe(el);
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    };
+  }, [flyingAway, isMobile, panel.id, panel.minimized, updateFloatingPanelSize]);
+
+  // Minimize is a desktop-only affordance. On mobile, panels are fullscreen
+  // sheets switched via the bottom tab bar, so we ignore any stored minimized
+  // state (which may have been set on a wider viewport) and always render full.
+  const isMinimized = !!panel.minimized && !isMobile;
+
+  const desktopPosition = { x: panel.x, y: panel.y };
+  const desktopSize = isMinimized
+    ? { width: panel.width, height: 42 }
+    : { width: panel.width, height: panel.height };
+
+  const panelBody = (
       <div
         className={
           isMobile
@@ -646,26 +655,26 @@ const FloatingPanel = memo(function FloatingPanel({
       >
         {/* Header — stays interactive when unfocused so users can re-focus */}
         <div
-          className="floating-panel-header flex items-center justify-between cursor-move select-none px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b dark:border-neutral-700"
+          className={`floating-panel-header flex items-center justify-between select-none px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b dark:border-neutral-700${isMobile ? '' : ' cursor-move'}`}
           style={dimmed ? { pointerEvents: 'auto' } : undefined}
           onMouseDown={() => bringFloatingPanelToFront(panel.id)}
-          onDoubleClick={() => useWorkspaceStore.getState().minimizeFloatingPanel(panel.id)}
+          onDoubleClick={isMobile ? undefined : () => useWorkspaceStore.getState().minimizeFloatingPanel(panel.id)}
         >
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-semibold text-neutral-800 dark:text-neutral-200 truncate text-sm">
               {title}
             </span>
-            {!panel.minimized && panelCategoryBadge && (
+            {!isMinimized && panelCategoryBadge && (
               <span className="shrink-0 px-1.5 py-0.5 text-[10px] bg-neutral-200/70 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded font-medium uppercase tracking-wide">
                 {panelCategoryBadge}
               </span>
             )}
-            {!panel.minimized && panelContextSummary && (
+            {!isMinimized && panelContextSummary && (
               <span className="shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
                 {panelContextSummary}
               </span>
             )}
-            {!panel.minimized && originLabel && (
+            {!isMinimized && originLabel && (
               <span className="shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
                 From {originLabel}
               </span>
@@ -682,14 +691,16 @@ const FloatingPanel = memo(function FloatingPanel({
           >
             <CubeHeaderChips onSendToCube={handleSendToCube} />
             <div className="w-px h-4 bg-neutral-300 dark:bg-neutral-600 mx-1" />
-            <IconButton
-              size="md"
-              rounded="md"
-              icon={<Icon name="minus" size={12} />}
-              onClick={() => useWorkspaceStore.getState().minimizeFloatingPanel(panel.id)}
-              className="text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-              title="Minimize"
-            />
+            {!isMobile && (
+              <IconButton
+                size="md"
+                rounded="md"
+                icon={<Icon name="minus" size={12} />}
+                onClick={() => useWorkspaceStore.getState().minimizeFloatingPanel(panel.id)}
+                className="text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                title="Minimize"
+              />
+            )}
             <IconButton
               size="md"
               rounded="md"
@@ -721,7 +732,7 @@ const FloatingPanel = memo(function FloatingPanel({
           </div>
         </div>
         {/* Content — hidden when minimized */}
-        {!panel.minimized && (
+        {!isMinimized && (
           <div className="flex-1 overflow-auto">
             <ContextHubHost hostId={floatingInstanceId}>
               <FloatingPanelContextProvider
@@ -742,12 +753,87 @@ const FloatingPanel = memo(function FloatingPanel({
           </div>
         )}
       </div>
+  );
+
+  // Mobile: render as a fixed fullscreen sheet sized with dynamic viewport
+  // units (dvh/dvw) so it tracks the *visual* viewport — i.e. it shrinks to fit
+  // under the browser's dynamic URL/toolbar instead of overflowing it (which
+  // forced a scroll/zoom to reach the bottom). Drag/resize/fly-away are disabled
+  // on mobile, so we skip react-rnd entirely here.
+  if (isMobile) {
+    return (
+      <div
+        className="floating-panel"
+        style={{
+          position: 'fixed',
+          left: 0,
+          right: 0,
+          top: 0,
+          height: `calc(100dvh - ${mobileBottomInset}px - env(safe-area-inset-bottom, 0px))`,
+          zIndex: Z.floatPanel + panel.zIndex,
+          display: hidden ? 'none' : undefined,
+        }}
+        onMouseDown={() => bringFloatingPanelToFront(panel.id)}
+      >
+        {panelBody}
+      </div>
+    );
+  }
+
+  return (
+    <Rnd
+      ref={rndRef}
+      key={panel.id}
+      position={desktopPosition}
+      size={desktopSize}
+      onDragStart={handleDragStart}
+      onDrag={handleDrag}
+      onDragStop={handleDragStop}
+      onResizeStop={(e, direction, ref, delta, position) => {
+        const measuredWidth = Math.round(ref.getBoundingClientRect().width);
+        const measuredHeight = Math.round(ref.getBoundingClientRect().height);
+        const fallbackWidth = parseInt(ref.style.width, 10);
+        const fallbackHeight = parseInt(ref.style.height, 10);
+        const nextWidth =
+          Number.isFinite(measuredWidth) && measuredWidth > 0 ? measuredWidth : fallbackWidth;
+        const nextHeight =
+          Number.isFinite(measuredHeight) && measuredHeight > 0 ? measuredHeight : fallbackHeight;
+        updateFloatingPanelSize(panel.id, nextWidth, nextHeight);
+        updateFloatingPanelPosition(panel.id, position.x, position.y);
+      }}
+      onMouseDown={() => bringFloatingPanelToFront(panel.id)}
+      minWidth={200}
+      minHeight={isMinimized ? 42 : 200}
+      bounds="window"
+      dragHandleClassName="floating-panel-header"
+      style={{
+        zIndex: Z.floatPanel + panel.zIndex,
+        display: hidden ? 'none' : undefined,
+        opacity: dimmed ? 0.45 : 1,
+        transition: 'opacity 0.2s ease-out',
+        pointerEvents: dimmed ? 'none' : undefined,
+      }}
+      className="floating-panel"
+      disableDragging={flyingAway}
+      enableResizing={!flyingAway && !isMinimized}
+    >
+      {panelBody}
     </Rnd>
   );
 });
 
+function resolveFloatingPanelTitle(panel: FloatingPanelState): string {
+  const definitionId = getFloatingDefinitionId(panel.id);
+  if (definitionId.startsWith("dev-tool:")) {
+    const toolId = definitionId.slice("dev-tool:".length);
+    return devToolSelectors.get(toolId)?.label ?? toolId;
+  }
+  return panelSelectors.get(definitionId)?.title ?? definitionId;
+}
+
 export function FloatingPanelsManager() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
+  const bringFloatingPanelToFront = useWorkspaceStore((s) => s.bringFloatingPanelToFront);
   const {
     selectedProjectId: activeProjectId,
     selectedProjectName: activeProjectName,
@@ -819,6 +905,18 @@ export function FloatingPanelsManager() {
     () => computeDimmedPanels(floatingPanels, focusedId),
     [floatingPanels, focusedId],
   );
+  const orderedPanels = useMemo(
+    () => [...floatingPanels].sort((a, b) => a.zIndex - b.zIndex),
+    [floatingPanels],
+  );
+  const mobileActivePanelId = useMemo(() => {
+    if (!isMobile || orderedPanels.length === 0) return null;
+    if (focusedId && orderedPanels.some((panel) => panel.id === focusedId)) {
+      return focusedId;
+    }
+    return orderedPanels[orderedPanels.length - 1]?.id ?? null;
+  }, [isMobile, orderedPanels, focusedId]);
+  const mobileTabBarHeight = isMobile && orderedPanels.length > 1 ? 56 : 0;
 
   // Don't render floating panels until panel definitions are available.
   // The DropZoneOverlay is always safe to render.
@@ -829,15 +927,51 @@ export function FloatingPanelsManager() {
           <FloatingPanel
             key={panel.id}
             panel={panel}
-            dimmed={dimmedIds.has(panel.id)}
+            dimmed={isMobile ? false : dimmedIds.has(panel.id)}
             onDragStateChange={handleDragStateChange}
             catalogVersion={catalogVersion}
             activeProjectId={activeProjectId}
             activeProjectName={activeProjectName}
             activeProjectSource={activeProjectSource}
             isMobile={isMobile}
+            mobileBottomInset={mobileTabBarHeight}
+            hidden={isMobile && panel.id !== mobileActivePanelId}
           />
         ))}
+      {isMobile && orderedPanels.length > 1 && (
+        <nav
+          className="fixed left-0 right-0 bottom-0 border-t border-neutral-300 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm flex items-stretch overflow-x-auto"
+          role="tablist"
+          aria-label="Floating panels"
+          style={{
+            zIndex: Z.floatPanel + 300,
+            height: mobileTabBarHeight,
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          }}
+        >
+          {orderedPanels.map((panel) => {
+            const isActive = panel.id === mobileActivePanelId;
+            return (
+              <button
+                key={panel.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => bringFloatingPanelToFront(panel.id)}
+                className={
+                  "flex-1 min-w-[84px] px-3 text-[11px] font-medium truncate " +
+                  (isActive
+                    ? "text-blue-700 dark:text-blue-300 bg-blue-50/70 dark:bg-blue-900/30"
+                    : "text-neutral-600 dark:text-neutral-300")
+                }
+                title={resolveFloatingPanelTitle(panel)}
+              >
+                {resolveFloatingPanelTitle(panel)}
+              </button>
+            );
+          })}
+        </nav>
+      )}
       <DropZoneOverlay
         isDragging={dragState.isDragging}
         activeZone={dragState.activeZone}
