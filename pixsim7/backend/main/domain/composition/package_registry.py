@@ -38,6 +38,9 @@ class CompositionRoleDefinition:
     color: str
     """Tailwind color name for UI badges (e.g., 'amber', 'blue')"""
 
+    icon: str = "blocks"
+    """Icon name (from @lib/icons) for UI display (e.g., 'camera', 'palette')"""
+
     default_layer: int = 0
     """Default layer order (0=background, higher=foreground)"""
 

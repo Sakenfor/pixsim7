@@ -75,6 +75,7 @@ def _build_core_roles() -> List[CompositionRoleDefinition]:
                 label=role.label or _format_role_label(role_id),
                 description=role.description or "",
                 color=role.color or "slate",
+                icon=role.icon or "blocks",
                 default_layer=int(default_layer),
                 tags=list(role.tags or []),
                 parent=parent,

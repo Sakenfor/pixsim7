@@ -95,6 +95,37 @@ export const ROLE_COLORS = {
 } as const satisfies Record<ImageCompositionRole, string>;
 
 /**
+ * Role icons (icon names from @lib/icons) for badges/UI.
+ * @see compositionPackageStore.getRoleIcon() for runtime API
+ */
+export const ROLE_ICONS = {
+  "entities": "users",
+  "entities:subject": "user",
+  "entities:main_character": "user",
+  "entities:companion": "users",
+  "entities:placed": "user",
+  "entities:prop": "package",
+  "world": "globe",
+  "world:environment": "image",
+  "world:setting": "map",
+  "camera": "camera",
+  "camera:angle": "eye",
+  "camera:fov": "maximize2",
+  "camera:composition": "layers",
+  "lighting": "lightbulb",
+  "lighting:key": "lightbulb",
+  "lighting:fill": "lightbulb",
+  "materials": "palette",
+  "materials:wardrobe": "palette",
+  "materials:rendering": "paintbrush",
+  "materials:atmosphere": "cloud",
+  "materials:romance": "heart",
+  "animation": "play",
+  "animation:action": "zap",
+  "animation:pose": "hand"
+} as const satisfies Record<ImageCompositionRole, string>;
+
+/**
  * Default layer order per role (0=background, higher=foreground).
  * @see compositionPackageStore.roles for runtime API
  */

@@ -42,6 +42,7 @@ class RoleDef:
     label: str
     description: str = ""
     color: str = "gray"
+    icon: str = "blocks"
     default_layer: int = 0
     default_influence: str = "content"
     slots: SlotBinding = field(default_factory=SlotBinding)

@@ -11,6 +11,7 @@ roles:
     label: "Entities"
     description: "Things in the scene — characters, creatures, objects"
     color: blue
+    icon: users
     is_group: true
     default_layer: 1
     default_influence: content
@@ -20,6 +21,7 @@ roles:
     label: "Subject"
     description: "Preservation-locked reference subject for image-edit"
     color: blue
+    icon: user
     default_layer: 1
     default_influence: content
     slots:
@@ -32,6 +34,7 @@ roles:
     label: "Main Character"
     description: "Primary subject/character in the scene"
     color: blue
+    icon: user
     default_layer: 1
     default_influence: content
     slots:
@@ -44,6 +47,7 @@ roles:
     label: "Companion"
     description: "Supporting characters (NPCs, pets, monsters)"
     color: blue
+    icon: users
     default_layer: 1
     default_influence: content
     slots:
@@ -56,6 +60,7 @@ roles:
     label: "Placed Character"
     description: "Positioned secondary character in the scene"
     color: blue
+    icon: user
     default_layer: 1
     default_influence: content
     slots:
@@ -68,6 +73,7 @@ roles:
     label: "Prop"
     description: "Objects, vehicles, items"
     color: blue
+    icon: package
     default_layer: 1
     default_influence: content
     slots:
@@ -83,6 +89,7 @@ roles:
     label: "World"
     description: "The space, location, and broader setting"
     color: green
+    icon: globe
     is_group: true
     default_layer: 0
     default_influence: content
@@ -92,6 +99,7 @@ roles:
     label: "Environment"
     description: "Background, setting, location"
     color: green
+    icon: image
     default_layer: 0
     default_influence: content
     slots:
@@ -104,6 +112,7 @@ roles:
     label: "Setting"
     description: "Broader location, time period, or world context"
     color: green
+    icon: map
     default_layer: 0
     default_influence: content
     slots:
@@ -119,6 +128,7 @@ roles:
     label: "Camera"
     description: "Viewpoint and framing controls"
     color: slate
+    icon: camera
     is_group: true
     default_layer: 2
     default_influence: blend
@@ -128,6 +138,7 @@ roles:
     label: "Camera Angle"
     description: "Viewpoint direction (low angle, bird's eye, etc.)"
     color: slate
+    icon: eye
     default_layer: 2
     default_influence: blend
     slots:
@@ -140,6 +151,7 @@ roles:
     label: "Field of View"
     description: "Field of view / focal length"
     color: slate
+    icon: maximize2
     default_layer: 2
     default_influence: blend
     slots:
@@ -152,6 +164,7 @@ roles:
     label: "Composition"
     description: "Layer ordering, depth arrangement"
     color: slate
+    icon: layers
     default_layer: 2
     default_influence: blend
     slots:
@@ -167,6 +180,7 @@ roles:
     label: "Lighting"
     description: "Light sources and illumination"
     color: amber
+    icon: lightbulb
     is_group: true
     default_layer: 2
     default_influence: blend
@@ -176,6 +190,7 @@ roles:
     label: "Key Light"
     description: "Primary light source"
     color: amber
+    icon: lightbulb
     default_layer: 2
     default_influence: blend
     slots:
@@ -188,6 +203,7 @@ roles:
     label: "Fill Light"
     description: "Secondary/fill light source"
     color: amber
+    icon: lightbulb
     default_layer: 2
     default_influence: blend
     slots:
@@ -203,6 +219,7 @@ roles:
     label: "Materials"
     description: "Visual treatment, style, and aesthetic"
     color: pink
+    icon: palette
     is_group: true
     default_layer: 0
     default_influence: style
@@ -212,6 +229,7 @@ roles:
     label: "Wardrobe"
     description: "Clothing, armor, accessories"
     color: pink
+    icon: palette
     default_layer: 0
     default_influence: style
     slots:
@@ -224,6 +242,7 @@ roles:
     label: "Rendering Style"
     description: "Render style, art direction, aesthetic reference"
     color: pink
+    icon: paintbrush
     default_layer: 0
     default_influence: style
     slots:
@@ -236,6 +255,7 @@ roles:
     label: "Atmosphere"
     description: "Emotional tone, mood, ambiance"
     color: pink
+    icon: cloud
     default_layer: 0
     default_influence: style
     slots:
@@ -248,6 +268,7 @@ roles:
     label: "Romance"
     description: "Intimate/romantic visual treatment"
     color: pink
+    icon: heart
     default_layer: 0
     default_influence: style
     slots:
@@ -263,6 +284,7 @@ roles:
     label: "Animation"
     description: "Movement, behavior, and pose directives"
     color: cyan
+    icon: play
     is_group: true
     default_layer: 2
     default_influence: blend
@@ -272,6 +294,7 @@ roles:
     label: "Action"
     description: "Actions, interactions, movement behaviors"
     color: cyan
+    icon: zap
     default_layer: 2
     default_influence: blend
     slots:
@@ -284,6 +307,7 @@ roles:
     label: "Pose"
     description: "Static pose or body position"
     color: cyan
+    icon: hand
     default_layer: 2
     default_influence: blend
     slots:

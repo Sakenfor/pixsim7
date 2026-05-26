@@ -16,7 +16,8 @@ import {
   type BlockTemplateDetail,
   type BlockTemplateSummary,
 } from '@lib/api/blockTemplates';
-import { Icon } from '@lib/icons';
+import { getRoleIcon } from '@lib/blockVisuals';
+import { Icon, type IconName } from '@lib/icons';
 import { resolveBlockTemplates } from '@lib/resolvers';
 
 import {
@@ -44,20 +45,6 @@ const COLOR_BADGE: Record<string, string> = {
   gray: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   amber: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
   slate: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
-};
-
-const COLOR_DOT: Record<string, string> = {
-  blue: 'bg-blue-400',
-  purple: 'bg-purple-400',
-  green: 'bg-green-400',
-  orange: 'bg-orange-400',
-  pink: 'bg-pink-400',
-  cyan: 'bg-cyan-400',
-  red: 'bg-red-400',
-  yellow: 'bg-yellow-400',
-  gray: 'bg-gray-400',
-  amber: 'bg-amber-400',
-  slate: 'bg-slate-400',
 };
 
 const COLOR_TEXT: Record<string, string> = {
@@ -186,8 +173,9 @@ function RoleDetail({
       <div className="mb-4">
         <div className="flex items-center gap-2 mb-1">
           <span
-            className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold border ${badgeClass}`}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold border ${badgeClass}`}
           >
+            <Icon name={(role.icon as IconName | undefined) ?? getRoleIcon(role.id)} size={12} />
             {role.id}
           </span>
           {role.isGroup && (
@@ -831,12 +819,13 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
 
           <div className="flex-1 overflow-y-auto py-1 px-1">
             {groups.map(({ group, leaves }) => {
-              const dotClass = COLOR_DOT[group.color] ?? COLOR_DOT.gray;
+              const textClass = COLOR_TEXT[group.color] ?? COLOR_TEXT.gray;
               return (
                 <SidebarTreeGroup
                   key={group.id}
                   label={group.label}
-                  dotClassName={dotClass}
+                  icon={(group.icon as IconName | undefined) ?? getRoleIcon(group.id)}
+                  iconClassName={textClass}
                   labelClassName="text-neutral-300"
                 >
                   {leaves.map((role) => {
@@ -850,7 +839,8 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
                       <SidebarTreeLeafButton
                         key={role.id}
                         label={leafName}
-                        dotClassName={dotClass}
+                        icon={(role.icon as IconName | undefined) ?? getRoleIcon(role.id)}
+                        iconClassName={textClass}
                         selected={role.id === selectedId}
                         onClick={() => setSelectedId(role.id)}
                         labelClassName={isUnmapped ? 'opacity-40' : ''}

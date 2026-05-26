@@ -23,6 +23,9 @@ export interface CompositionRoleDefinition {
   /** Tailwind color name for UI badges (e.g., 'amber', 'blue') */
   color: string;
 
+  /** Icon name (from @lib/icons) for UI display (e.g., 'camera', 'palette') */
+  icon?: string;
+
   /** Default layer order (0=background, higher=foreground) */
   defaultLayer: number;
 

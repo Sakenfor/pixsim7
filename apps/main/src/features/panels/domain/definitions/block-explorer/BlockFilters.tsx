@@ -47,6 +47,10 @@ export function BlockFilters({
   const [localQuery, setLocalQuery] = useState(searchQuery);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  // Facet browser is collapsed by default so it doesn't stack a second long
+  // list above the block tree — most filtering happens by clicking a block's
+  // own tags in the detail pane.
+  const [showFacets, setShowFacets] = useState(false);
 
   // Sync local query when external searchQuery changes (e.g. on clear)
   useEffect(() => {
@@ -141,13 +145,26 @@ export function BlockFilters({
         </div>
       )}
 
-      {/* Tag facet browser */}
+      {/* Tag facet browser (collapsed by default) */}
       {facetKeys.length > 0 && (
         <div className="space-y-0.5">
-          <h4 className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider">
-            Tags
-          </h4>
-          {facetKeys.map((key) => (
+          <button
+            type="button"
+            onClick={() => setShowFacets((v) => !v)}
+            className="w-full flex items-center gap-1 text-[10px] font-semibold text-neutral-500 uppercase tracking-wider hover:text-neutral-300 transition-colors"
+          >
+            <Icon
+              name={showFacets ? 'chevronDown' : 'chevronRight'}
+              size={10}
+              className="shrink-0"
+            />
+            <span>Filter by tag</span>
+            <span className="text-neutral-600 ml-auto normal-case tracking-normal">
+              {facetKeys.length} keys
+            </span>
+          </button>
+          {showFacets &&
+            facetKeys.map((key) => (
             <div key={key}>
               <button
                 onClick={() => toggleKey(key)}
@@ -165,24 +182,38 @@ export function BlockFilters({
               </button>
 
               {expandedKeys.has(key) && (
-                <div className="ml-4 flex flex-wrap gap-1 py-0.5">
+                <div className="ml-4 py-0.5">
                   {tagFacets[key].map((value) => {
                     const active = isTagActive(key, value);
                     return (
                       <button
                         key={value}
+                        type="button"
                         onClick={() =>
                           active
                             ? onTagFilterRemove({ key, value })
                             : onTagFilterAdd({ key, value })
                         }
-                        className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                          active
-                            ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                            : 'bg-neutral-800/50 text-neutral-400 border-neutral-700/50 hover:border-neutral-600 hover:text-neutral-300'
-                        }`}
+                        className="w-full flex items-center gap-1.5 px-1 py-0.5 rounded text-left hover:bg-neutral-800/60 transition-colors"
                       >
-                        {value}
+                        <span
+                          className={`w-3 h-3 rounded-sm border flex items-center justify-center shrink-0 ${
+                            active
+                              ? 'bg-blue-500 border-blue-500'
+                              : 'border-neutral-600'
+                          }`}
+                        >
+                          {active && (
+                            <Icon name="check" size={8} className="text-white" />
+                          )}
+                        </span>
+                        <span
+                          className={`text-[10px] truncate ${
+                            active ? 'text-neutral-200' : 'text-neutral-400'
+                          }`}
+                        >
+                          {value}
+                        </span>
                       </button>
                     );
                   })}

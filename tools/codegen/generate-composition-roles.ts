@@ -46,6 +46,7 @@ interface RoleEntry {
   label?: string;
   description: string;
   color: string;
+  icon?: string;
   default_layer?: number;
   defaultLayer?: number;
   tags?: string[];
@@ -137,6 +138,9 @@ const descriptions = Object.fromEntries(
 const colors = Object.fromEntries(
   Object.entries(rolesData).map(([k, v]) => [normalizeRoleId(k), v.color])
 );
+const icons = Object.fromEntries(
+  Object.entries(rolesData).map(([k, v]) => [normalizeRoleId(k), v.icon ?? 'blocks'])
+);
 const defaultLayers = Object.fromEntries(
   Object.entries(rolesData).map(([k, v]) => [
     normalizeRoleId(k),
@@ -206,6 +210,12 @@ export const ROLE_DESCRIPTIONS = ${JSON.stringify(descriptions, null, 2)} as con
  * @see compositionPackageStore.getRoleColor() for runtime API
  */
 export const ROLE_COLORS = ${JSON.stringify(colors, null, 2)} as const satisfies Record<ImageCompositionRole, string>;
+
+/**
+ * Role icons (icon names from @lib/icons) for badges/UI.
+ * @see compositionPackageStore.getRoleIcon() for runtime API
+ */
+export const ROLE_ICONS = ${JSON.stringify(icons, null, 2)} as const satisfies Record<ImageCompositionRole, string>;
 
 /**
  * Default layer order per role (0=background, higher=foreground).

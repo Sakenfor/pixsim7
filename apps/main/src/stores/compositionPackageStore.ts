@@ -45,6 +45,7 @@ interface CompositionPackageState {
   // Role metadata helpers
   getRoleDescription: (roleId: string) => string;
   getRoleColor: (roleId: string) => string;
+  getRoleIcon: (roleId: string) => string;
 }
 
 /**
@@ -88,6 +89,10 @@ function toCompositionRole(role: ConceptResponse): CompositionRoleDefinition {
       ? isGroupValue
       : undefined;
 
+  const iconValue = metadata.icon;
+  const icon =
+    typeof iconValue === 'string' && iconValue.length > 0 ? iconValue : undefined;
+
   const normalizeList = (value: unknown): string[] => {
     if (!Array.isArray(value)) {
       return [];
@@ -100,6 +105,7 @@ function toCompositionRole(role: ConceptResponse): CompositionRoleDefinition {
     label: role.label,
     description: role.description ?? '',
     color: role.color ?? 'gray',
+    icon,
     defaultLayer,
     tags: normalizeList(role.tags),
     parent,
@@ -284,6 +290,14 @@ export const useCompositionPackageStore = create<CompositionPackageState>((set, 
   getRoleColor: (roleId: string) => {
     const role = get().roles.find(r => r.id === roleId);
     return role?.color ?? 'gray';
+  },
+
+  /**
+   * Get icon name (from @lib/icons) for a role
+   */
+  getRoleIcon: (roleId: string) => {
+    const role = get().roles.find(r => r.id === roleId);
+    return role?.icon ?? 'blocks';
   },
 }));
 

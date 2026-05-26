@@ -27,6 +27,7 @@ import {
   type BlockOpParamSchema,
   type BlockOpRefSchema,
 } from '@lib/api/blockTemplates';
+import { getBlockIcon, getCategoryIcon, getRoleIcon } from '@lib/blockVisuals';
 import { Icon } from '@lib/icons';
 
 import {
@@ -34,7 +35,10 @@ import {
   useProvideCapability,
   type BlockSelection,
 } from '@features/contextHub';
-import { SidebarTreeLeafButton } from '@features/panels/components/shared/SidebarTree';
+import {
+  SidebarTreeGroup,
+  SidebarTreeLeafButton,
+} from '@features/panels/components/shared/SidebarTree';
 import { useWorkspaceStore } from '@features/workspace';
 
 import { BlockFilters, type TagFilter } from './BlockFilters';
@@ -51,15 +55,15 @@ import { useVocabResolver, type ResolvedTag } from './useVocabResolver';
 
 const PALETTE = ['blue', 'green', 'amber', 'slate', 'pink', 'purple', 'cyan'] as const;
 
-const COLOR_DOT: Record<string, string> = {
-  blue: 'bg-blue-400',
-  green: 'bg-green-400',
-  amber: 'bg-amber-400',
-  slate: 'bg-slate-400',
-  pink: 'bg-pink-400',
-  purple: 'bg-purple-400',
-  cyan: 'bg-cyan-400',
-  gray: 'bg-gray-400',
+const COLOR_TEXT: Record<string, string> = {
+  blue: 'text-blue-400',
+  green: 'text-green-400',
+  amber: 'text-amber-400',
+  slate: 'text-slate-400',
+  pink: 'text-pink-400',
+  purple: 'text-purple-400',
+  cyan: 'text-cyan-400',
+  gray: 'text-gray-400',
 };
 
 const COLOR_BADGE: Record<string, string> = {
@@ -212,23 +216,70 @@ function TagKeyLabel({
   );
 }
 
+/** Only scalar values can be turned into a `key:value` block filter. */
+function isFilterableTagValue(value: unknown): value is string | number | boolean {
+  return (
+    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+  );
+}
+
 function TagGrid({
   entries,
   resolveTagValue,
   classifyTagKey,
+  activeTagFilters,
+  onToggleFilter,
 }: {
   entries: [string, unknown][];
   resolveTagValue: (raw: string) => ResolvedTag;
   classifyTagKey: (key: string) => TagKeyClass;
+  /** When provided, scalar tags become clickable block filters. */
+  activeTagFilters?: TagFilter[];
+  onToggleFilter?: (filter: TagFilter, active: boolean) => void;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-      {entries.map(([key, value]) => (
-        <div key={key} className="contents">
-          <TagKeyLabel tagKey={key} cls={classifyTagKey(key)} />
-          <TagValue raw={formatTagValue(value)} resolveTagValue={resolveTagValue} />
-        </div>
-      ))}
+    <div className="flex flex-wrap gap-1.5 text-[11px]">
+      {entries.map(([key, value]) => {
+        const raw = formatTagValue(value);
+        const filterable = !!onToggleFilter && isFilterableTagValue(value);
+        const active =
+          filterable && (activeTagFilters ?? []).some((f) => f.key === key && f.value === raw);
+
+        const inner = (
+          <>
+            <TagKeyLabel tagKey={key} cls={classifyTagKey(key)} />
+            <span className="text-neutral-600">:</span>
+            <TagValue raw={raw} resolveTagValue={resolveTagValue} />
+          </>
+        );
+
+        if (!filterable) {
+          return (
+            <span
+              key={key}
+              className="inline-flex items-center gap-1 max-w-full bg-neutral-800/50 border border-neutral-700/50 rounded px-1.5 py-0.5"
+            >
+              {inner}
+            </span>
+          );
+        }
+
+        return (
+          <button
+            key={key}
+            type="button"
+            title={active ? 'Remove filter' : 'Filter blocks by this tag'}
+            onClick={() => onToggleFilter!({ key, value: raw }, active)}
+            className={`inline-flex items-center gap-1 max-w-full rounded px-1.5 py-0.5 border transition-colors ${
+              active
+                ? 'bg-blue-500/20 border-blue-500/40'
+                : 'bg-neutral-800/50 border-neutral-700/50 hover:border-neutral-500'
+            }`}
+          >
+            {inner}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -392,6 +443,9 @@ function BlockDetail({
   resolveTagValue,
   classifyTagKey,
   onOpenMatrix,
+  activeTagFilters,
+  onTagFilterAdd,
+  onTagFilterRemove,
 }: {
   block: PromptBlockResponse;
   schema: BlockSchemaResponse | null;
@@ -399,6 +453,9 @@ function BlockDetail({
   resolveTagValue: (raw: string) => ResolvedTag;
   classifyTagKey: (key: string) => TagKeyClass;
   onOpenMatrix: (block: PromptBlockResponse) => void;
+  activeTagFilters: TagFilter[];
+  onTagFilterAdd: (filter: TagFilter) => void;
+  onTagFilterRemove: (filter: TagFilter) => void;
 }) {
   const [showSystemTags, setShowSystemTags] = useState(false);
 
@@ -418,7 +475,8 @@ function BlockDetail({
             {block.category ?? 'uncategorized'}
           </span>
           {block.composition_role && (
-            <span className="text-[10px] text-neutral-400 bg-neutral-800 px-1.5 py-0.5 rounded font-mono">
+            <span className="flex items-center gap-1 text-[10px] text-neutral-400 bg-neutral-800 px-1.5 py-0.5 rounded font-mono">
+              <Icon name={getRoleIcon(block.composition_role)} size={11} />
               {block.composition_role}
             </span>
           )}
@@ -485,16 +543,23 @@ function BlockDetail({
         <p className="text-[10px] text-neutral-600 mt-1">{block.word_count} words</p>
       </div>
 
-      {/* Tags */}
+      {/* Tags — clickable to filter the block list by that tag. */}
       {authoringTags.length > 0 && (
         <div>
           <h4 className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">
             Tags
+            <span className="ml-1.5 normal-case tracking-normal font-normal text-neutral-600">
+              click to filter
+            </span>
           </h4>
           <TagGrid
             entries={authoringTags}
             resolveTagValue={resolveTagValue}
             classifyTagKey={classifyTagKey}
+            activeTagFilters={activeTagFilters}
+            onToggleFilter={(filter, active) =>
+              active ? onTagFilterRemove(filter) : onTagFilterAdd(filter)
+            }
           />
         </div>
       )}
@@ -556,53 +621,6 @@ function BlockDetail({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Block list (middle section when no block selected)
-// ============================================================================
-
-function BlockList({
-  blocks,
-  selectedId,
-  onSelect,
-}: {
-  blocks: PromptBlockResponse[];
-  selectedId: string | null;
-  onSelect: (block: PromptBlockResponse) => void;
-}) {
-  return (
-    <div className="divide-y divide-neutral-800/50">
-      {blocks.map((block) => {
-        const color = categoryColor(block.category);
-        const dotClass = COLOR_DOT[color] ?? COLOR_DOT.gray;
-        const isSelected = block.block_id === selectedId;
-
-        return (
-          <button
-            key={block.block_id}
-            onClick={() => onSelect(block)}
-            className={`w-full text-left px-3 py-2 transition-colors ${
-              isSelected ? 'bg-neutral-700/60' : 'hover:bg-neutral-800/50'
-            }`}
-          >
-            <div className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
-              <span className="text-[11px] text-neutral-200 truncate font-medium">
-                {block.block_id}
-              </span>
-            </div>
-            <p className="text-[10px] text-neutral-500 mt-0.5 line-clamp-1 ml-3">
-              {block.text}
-            </p>
-          </button>
-        );
-      })}
-      {blocks.length === 0 && (
-        <p className="text-xs text-neutral-500 text-center py-8">No blocks found</p>
-      )}
     </div>
   );
 }
@@ -781,8 +799,10 @@ export function BlockExplorerPanel() {
     };
   }, [selectedBlock]);
 
-  const handleSelectCategory = useCallback((category: string) => {
-    setSelectedCategory(category);
+  // Clicking a category expands it (and fetches its blocks); clicking the
+  // already-open one collapses the tree back to the category list.
+  const handleToggleCategory = useCallback((category: string) => {
+    setSelectedCategory((prev) => (prev === category ? null : category));
     setSelectedBlock(null);
     setSearchQuery('');
     setActiveTagFilters([]);
@@ -830,104 +850,102 @@ export function BlockExplorerPanel() {
 
   return (
     <div className="h-full flex bg-neutral-900">
-      {/* Left sidebar: category tree */}
-      <div className="w-44 shrink-0 flex flex-col border-r border-neutral-800">
+      {/* Single nested sidebar: categories expand inline to their blocks. */}
+      <div className="w-64 shrink-0 flex flex-col border-r border-neutral-800">
         <div className="px-2 py-2 border-b border-neutral-800">
           <h2 className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
-            Categories
+            Blocks
           </h2>
           <p className="text-[10px] text-neutral-500">
             {categoryTree.length} categories · {totalBlocks} blocks
           </p>
         </div>
+
+        {/* Filters apply to the open category — kept above the tree. */}
+        {selectedCategory && (
+          <div className="border-b border-neutral-800 shrink-0">
+            <BlockFilters
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              packages={packages}
+              selectedPackage={selectedPackage}
+              onPackageChange={setSelectedPackage}
+              tagFacets={tagFacets}
+              activeTagFilters={activeTagFilters}
+              onTagFilterAdd={handleTagFilterAdd}
+              onTagFilterRemove={handleTagFilterRemove}
+              onClearFilters={handleClearFilters}
+            />
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto py-1 px-1">
           {categoryTree.map((node) => {
             const color = categoryColor(node.category);
-            const dotClass = COLOR_DOT[color] ?? COLOR_DOT.gray;
             const isSelected = selectedCategory === node.category;
 
             return (
-              <SidebarTreeLeafButton
+              <SidebarTreeGroup
                 key={node.category}
-                label={
-                  <span className="flex items-center gap-1.5 min-w-0">
-                    <span className="truncate">{node.category}</span>
-                    {node.roles.length > 0 && (
-                      <span
-                        className="text-[9px] text-neutral-600 truncate"
-                        title={node.roles.join(', ')}
-                      >
-                        {node.roles.length === 1
-                          ? node.roles[0]
-                          : `${node.roles.length} roles`}
-                      </span>
-                    )}
-                  </span>
-                }
-                dotClassName={dotClass}
+                label={node.category}
+                labelClassName="normal-case tracking-normal font-normal"
+                icon={getCategoryIcon(node.category, node.roles)}
+                iconClassName={COLOR_TEXT[color] ?? COLOR_TEXT.gray}
                 selected={isSelected}
-                onClick={() => handleSelectCategory(node.category)}
+                expanded={isSelected}
+                onClick={() => handleToggleCategory(node.category)}
                 trailing={
                   <span className="text-[9px] text-neutral-600 tabular-nums ml-auto">
                     {node.totalCount}
                   </span>
                 }
-              />
+              >
+                {isSelected &&
+                  (blocks.length > 0 ? (
+                    blocks.map((block) => (
+                      <SidebarTreeLeafButton
+                        key={block.block_id}
+                        label={block.block_id}
+                        icon={getBlockIcon(block)}
+                        selected={selectedBlock?.block_id === block.block_id}
+                        onClick={() => setSelectedBlock(block)}
+                        compact
+                      />
+                    ))
+                  ) : (
+                    <p className="px-2 py-1 text-[10px] text-neutral-600">
+                      No blocks match
+                    </p>
+                  ))}
+              </SidebarTreeGroup>
             );
           })}
         </div>
       </div>
 
-      {/* Right: block list + detail */}
-      <div className="flex-1 flex min-w-0">
-        {/* Block list with filters */}
-        {selectedCategory && (
-          <div className="w-56 shrink-0 border-r border-neutral-800 flex flex-col">
-            <div className="border-b border-neutral-800 shrink-0">
-              <BlockFilters
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
-                packages={packages}
-                selectedPackage={selectedPackage}
-                onPackageChange={setSelectedPackage}
-                tagFacets={tagFacets}
-                activeTagFilters={activeTagFilters}
-                onTagFilterAdd={handleTagFilterAdd}
-                onTagFilterRemove={handleTagFilterRemove}
-                onClearFilters={handleClearFilters}
-              />
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <BlockList
-                blocks={blocks}
-                selectedId={selectedBlock?.block_id ?? null}
-                onSelect={setSelectedBlock}
-              />
-            </div>
+      {/* Detail */}
+      <div className="flex-1 overflow-y-auto">
+        {selectedBlock ? (
+          <BlockDetail
+            block={selectedBlock}
+            schema={blockSchema}
+            schemaLoading={schemaLoading}
+            resolveTagValue={resolveTagValue}
+            classifyTagKey={classifyTagKey}
+            onOpenMatrix={handleOpenMatrix}
+            activeTagFilters={activeTagFilters}
+            onTagFilterAdd={handleTagFilterAdd}
+            onTagFilterRemove={handleTagFilterRemove}
+          />
+        ) : (
+          <div className="h-full flex items-center justify-center px-6">
+            <p className="text-xs text-neutral-500">
+              {selectedCategory
+                ? 'Select a block to view details'
+                : 'Select a category to browse its blocks'}
+            </p>
           </div>
         )}
-
-        {/* Detail */}
-        <div className="flex-1 overflow-y-auto">
-          {selectedBlock ? (
-            <BlockDetail
-              block={selectedBlock}
-              schema={blockSchema}
-              schemaLoading={schemaLoading}
-              resolveTagValue={resolveTagValue}
-              classifyTagKey={classifyTagKey}
-              onOpenMatrix={handleOpenMatrix}
-            />
-          ) : (
-            <div className="h-full flex items-center justify-center px-6">
-              <p className="text-xs text-neutral-500">
-                {selectedCategory
-                  ? 'Select a block to view details'
-                  : 'Select a category from the sidebar'}
-              </p>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

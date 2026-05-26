@@ -33,6 +33,7 @@ class CompositionRoleYaml(BaseModel):
     label: Optional[str] = None
     description: str
     color: str
+    icon: Optional[str] = None
     defaultLayer: int = 0
     tags: List[str] = Field(default_factory=list)
     parent: Optional[str] = None
@@ -110,6 +111,7 @@ def load_composition_package_from_yaml(
             label=role_label,
             description=str(role_data.description),
             color=str(role_data.color),
+            icon=str(role_data.icon) if role_data.icon else "blocks",
             default_layer=int(role_data.defaultLayer),
             tags=list(role_data.tags),
             parent=str(role_data.parent) if role_data.parent else None,

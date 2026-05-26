@@ -63,6 +63,7 @@ def make_role(id: str, data: Dict[str, Any], source: str) -> RoleDef:
         label=data.get("label", ""),
         description=data.get("description", ""),
         color=data.get("color", "gray"),
+        icon=data.get("icon", "blocks"),
         default_layer=data.get("default_layer", 0),
         default_influence=data.get("default_influence", data.get("defaultInfluence", "content")),
         slots=SlotBinding(

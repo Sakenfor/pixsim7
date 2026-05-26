@@ -24,6 +24,7 @@ import {
   type BlockTagDictionaryResponse,
   type BlockTagNormalizeResponse,
 } from '@lib/api/blockTemplates';
+import { getRoleIcon } from '@lib/blockVisuals';
 import { Icon } from '@lib/icons';
 
 import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
@@ -1096,7 +1097,16 @@ function MatrixGrid({
                   )}
                   title={`${col} — total: ${total}`}
                 >
-                  <div>{col}</div>
+                  <div className="flex items-center justify-center gap-1">
+                    {query.col_key === 'composition_role' && (
+                      <Icon
+                        name={getRoleIcon(col)}
+                        size={11}
+                        className="shrink-0 text-neutral-500"
+                      />
+                    )}
+                    <span>{col}</span>
+                  </div>
                   {/* Distribution bar */}
                   <div className="mt-1 h-1 rounded-full bg-neutral-800 overflow-hidden">
                     <div
@@ -1131,6 +1141,13 @@ function MatrixGrid({
                   title={`${row} — total: ${rowTotal}`}
                 >
                   <div className="flex items-center gap-2">
+                    {query.row_key === 'composition_role' && (
+                      <Icon
+                        name={getRoleIcon(row)}
+                        size={11}
+                        className="shrink-0 text-neutral-500"
+                      />
+                    )}
                     <span className="flex-1">{row}</span>
                     {/* Inline distribution bar */}
                     <div className="w-12 h-1 rounded-full bg-neutral-800 overflow-hidden shrink-0">

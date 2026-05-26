@@ -363,6 +363,7 @@ class RoleConceptProvider(ConceptProvider):
                     group=self.group_name,
                     tags=role.tags,
                     metadata={
+                        "icon": role.icon,
                         "default_layer": role.default_layer,
                         "slug_mappings": list(role.slug_mappings),
                         "namespace_mappings": list(role.namespace_mappings),
