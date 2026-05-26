@@ -2032,11 +2032,22 @@ async def _proxy(
         headers = _identity_headers(token)
         client = _get_client()
 
+        # A body-less write resolves to body=None, but FastAPI routes that
+        # declare a required body model 422 on an absent body (e.g.
+        # plans.claim / plans.release, whose only field is optional and which
+        # callers reasonably omit since the MCP schema marks just `endpoint`
+        # required). Send an empty object for write methods so a field-less
+        # write succeeds instead of failing on a field the agent can't see.
+        method_upper = method.upper()
+        json_body = body
+        if json_body is None and method_upper in {"POST", "PATCH", "PUT"}:
+            json_body = {}
+
         resp = await client.request(
-            method=method.upper(),
+            method=method_upper,
             url=path,
             params=query_params,
-            json=body,
+            json=json_body,
             headers=headers,
         )
 
@@ -2046,10 +2057,10 @@ async def _proxy(
             if new_token:
                 headers = _identity_headers(new_token)
                 resp = await client.request(
-                    method=method.upper(),
+                    method=method_upper,
                     url=path,
                     params=query_params,
-                    json=body,
+                    json=json_body,
                     headers=headers,
                 )
 
