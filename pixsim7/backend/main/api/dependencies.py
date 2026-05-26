@@ -190,6 +190,7 @@ async def get_llm_service() -> LLMService:
 # ===== AUTHENTICATION DEPENDENCY =====
 
 CODEGEN_PERMISSION = "devtools.codegen"
+DIAGNOSTICS_PERMISSION = "devtools.diagnostics"
 
 
 def _extract_bearer_token(authorization: str | None) -> str:
@@ -321,6 +322,24 @@ async def get_current_codegen_principal(
     return principal
 
 
+async def get_current_diagnostics_principal(
+    principal: RequestPrincipal = Depends(get_current_principal),
+) -> RequestPrincipal:
+    """Require devtools.diagnostics permission (admins pass implicitly).
+
+    Gates the diagnostic *run* surface (start/cancel of allowlisted
+    tools/scripts) so non-admin agents can be granted the capability
+    per-profile via a JWT permission claim, without becoming admins.
+    ``has_permission`` already short-circuits ``True`` for admins, so
+    the human admin UI path is unaffected.
+    """
+    if not principal.has_permission(DIAGNOSTICS_PERMISSION):
+        raise HTTPException(
+            status_code=403, detail=f"Missing required permission: {DIAGNOSTICS_PERMISSION}"
+        )
+    return principal
+
+
 async def get_current_game_principal(
     authorization: Annotated[str | None, Header()] = None,
     auth_service: AuthService = Depends(get_auth_service),
@@ -401,6 +420,7 @@ CurrentUser = Annotated[RequestPrincipal, Depends(get_current_principal)]
 CurrentActiveUser = Annotated[RequestPrincipal, Depends(get_current_principal)]
 CurrentAdminUser = Annotated[RequestPrincipal, Depends(get_current_admin_principal)]
 CurrentCodegenUser = Annotated[RequestPrincipal, Depends(get_current_codegen_principal)]
+CurrentDiagnosticsUser = Annotated[RequestPrincipal, Depends(get_current_diagnostics_principal)]
 CurrentGamePrincipal = Annotated[AuthPrincipal, Depends(get_current_game_principal)]
 
 # Aliases for explicit use

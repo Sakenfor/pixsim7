@@ -1742,6 +1742,107 @@ def _builtin_testing_catalog() -> MetaContract:
     )
 
 
+def _builtin_diagnostics() -> MetaContract:
+    return MetaContract(
+        id="diagnostics",
+        name="Diagnostics Runner",
+        endpoint=None,
+        version="1.0.0",
+        auth_required=True,
+        owner="platform",
+        audience=["dev", "agent"],
+        summary=(
+            "Run allowlisted maintenance scripts (tools/ and scripts/) as tracked "
+            "diagnostic runs and read their history. Every run is persisted to the "
+            "diagnostic_runs table attributed to the caller (started_by), so an "
+            "agent-triggered backfill is auditable just like a human-triggered one. "
+            "Running requires the 'devtools.diagnostics' permission (admins pass "
+            "implicitly); the read endpoints share the same gate. Scripts default "
+            "to dry-run — set params.apply=true only to make destructive changes."
+        ),
+        provides=[
+            "diagnostic_discovery",
+            "script_run",
+            "run_history",
+        ],
+        relates_to=["testing.catalog", "plans.management", "devtools.codegen"],
+        sub_endpoints=[
+            MetaContractEndpoint(
+                id="diagnostics.list",
+                method="GET",
+                path="/api/v1/dev/testing/diagnostics",
+                summary=(
+                    "List runnable diagnostics with their param contract. For the "
+                    "'shell-script' diagnostic, the 'script' param's options are the "
+                    "allowlisted tools/ and scripts/ paths ([--apply] marks scripts "
+                    "that support a dry-run/apply toggle)."
+                ),
+                permissions=["devtools.diagnostics"],
+                tags=["discovery"],
+            ),
+            MetaContractEndpoint(
+                id="diagnostics.runs",
+                method="GET",
+                path="/api/v1/dev/testing/diagnostics/runs",
+                summary=(
+                    "Recent diagnostic run history (most recent first). Each summary "
+                    "carries status, started_by, params, timestamps, and event_count. "
+                    "Use this to check whether a backfill/script already ran."
+                ),
+                permissions=["devtools.diagnostics"],
+                tags=["history"],
+            ),
+            MetaContractEndpoint(
+                id="diagnostics.run_status",
+                method="GET",
+                path="/api/v1/dev/testing/diagnostics/runs/{run_id}",
+                summary="One run with its full typed-event log (poll this after diagnostics.run).",
+                permissions=["devtools.diagnostics"],
+                tags=["history"],
+            ),
+            MetaContractEndpoint(
+                id="diagnostics.run",
+                method="POST",
+                path="/api/v1/dev/testing/diagnostics/{diagnostic_id}/run",
+                summary=(
+                    "Start a diagnostic run; returns run_id immediately (async). "
+                    "diagnostic_id is usually 'shell-script'. Body: {\"params\": {...}}. "
+                    "For 'shell-script' set params.script to an allowlisted path from "
+                    "diagnostics.list; params.apply defaults to false (dry-run)."
+                ),
+                permissions=["devtools.diagnostics"],
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "body": {
+                            "type": "object",
+                            "properties": {
+                                "params": {
+                                    "type": "object",
+                                    "description": (
+                                        "Diagnostic params. For 'shell-script': "
+                                        "{script: <allowlisted path>, apply: bool, "
+                                        "args: str, kill_grace_s: str}."
+                                    ),
+                                },
+                            },
+                        },
+                    },
+                },
+                tags=["run"],
+            ),
+            MetaContractEndpoint(
+                id="diagnostics.cancel",
+                method="POST",
+                path="/api/v1/dev/testing/diagnostics/runs/{run_id}/cancel",
+                summary="Request cancellation of an in-flight run.",
+                permissions=["devtools.diagnostics"],
+                tags=["run"],
+            ),
+        ],
+    )
+
+
 def _builtin_project_files() -> MetaContract:
     return MetaContract(
         id="project.files",
@@ -1837,6 +1938,7 @@ _BUILTIN_FACTORIES = {
     "devtools.codegen": _builtin_devtools_codegen,
     "ui.catalog": _builtin_ui_catalog,
     "testing.catalog": _builtin_testing_catalog,
+    "diagnostics": _builtin_diagnostics,
     "user.assistant": _builtin_user_assistant,
     "project.files": _builtin_project_files,
 }

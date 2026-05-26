@@ -37,7 +37,7 @@ from fastapi import (
 from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import (
-    CurrentAdminUser,
+    CurrentDiagnosticsUser,
     get_auth_service,
     get_current_principal_ws,
 )
@@ -127,7 +127,7 @@ def _coerce_one(spec: DiagnosticParam, value: Any) -> Any:
 
 
 @router.get("", summary="List registered diagnostics")
-async def list_diagnostics(_: CurrentAdminUser) -> dict[str, Any]:
+async def list_diagnostics(_: CurrentDiagnosticsUser) -> dict[str, Any]:
     items = [d.spec.to_dict() for d in diagnostic_registry.values()]
     items.sort(key=lambda s: s["label"])
     return {"diagnostics": items, "total": len(items)}
@@ -141,14 +141,18 @@ async def list_diagnostics(_: CurrentAdminUser) -> dict[str, Any]:
 async def run_diagnostic(
     diagnostic_id: str,
     body: RunRequest,
-    principal: CurrentAdminUser,
+    principal: CurrentDiagnosticsUser,
 ) -> RunStartedResponse:
     diagnostic = diagnostic_registry.get_or_none(diagnostic_id)
     if diagnostic is None:
         raise HTTPException(status_code=404, detail=f"Unknown diagnostic '{diagnostic_id}'")
     coerced = _coerce_params(diagnostic, body.params)
+    # ``source`` resolves to ``agent:<profile_id>`` for agent principals,
+    # ``user:<id>`` for humans, ``service:bridge`` for bridge tokens — so the
+    # persisted ``started_by`` attributes the run to whoever launched it,
+    # including agents reaching this via the MCP diagnostics contract.
     run = await diagnostic_run_manager.start(
-        diagnostic, coerced, started_by=str(getattr(principal, "id", "admin"))
+        diagnostic, coerced, started_by=principal.source
     )
     logger.info(
         "diagnostic_run_started diagnostic_id=%s run_id=%s by=%s",
@@ -162,13 +166,13 @@ async def run_diagnostic(
 
 
 @router.get("/runs", summary="List recent diagnostic runs")
-async def list_runs(_: CurrentAdminUser, limit: int = Query(25, ge=1, le=200)) -> dict[str, Any]:
+async def list_runs(_: CurrentDiagnosticsUser, limit: int = Query(25, ge=1, le=200)) -> dict[str, Any]:
     runs = await diagnostic_run_manager.list_summaries(limit=limit)
     return {"runs": runs, "total": len(runs)}
 
 
 @router.get("/runs/{run_id}", summary="Get a single diagnostic run with its event log")
-async def get_run(run_id: str, _: CurrentAdminUser) -> dict[str, Any]:
+async def get_run(run_id: str, _: CurrentDiagnosticsUser) -> dict[str, Any]:
     detail = await diagnostic_run_manager.get_detail(run_id)
     if detail is None:
         raise HTTPException(status_code=404, detail=f"Unknown run '{run_id}'")
@@ -176,7 +180,7 @@ async def get_run(run_id: str, _: CurrentAdminUser) -> dict[str, Any]:
 
 
 @router.post("/runs/{run_id}/cancel", summary="Cancel a running diagnostic")
-async def cancel_run(run_id: str, _: CurrentAdminUser) -> dict[str, Any]:
+async def cancel_run(run_id: str, _: CurrentDiagnosticsUser) -> dict[str, Any]:
     run = diagnostic_run_manager.get(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail=f"Unknown run '{run_id}'")
