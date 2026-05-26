@@ -758,6 +758,115 @@ class TestStoreSessionResponseMerges:
         assert "A" in texts
 
 
+class TestStorePendingUserMessage:
+    """`_store_pending_user_message` — durability CP-A.
+
+    The user turn is persisted at dispatch, before any assistant reply, so
+    an interrupted turn (bridge/MCP drop, timeout) still shows the unanswered
+    user turn server-side instead of vanishing into client-only localStorage.
+    Pinned in isolation because it's otherwise only exercised transitively
+    through the WS handler.
+    """
+
+    @staticmethod
+    def _make_async_session_factory(db):
+        class _Ctx:
+            async def __aenter__(self):
+                return db
+
+            async def __aexit__(self, *args):
+                return None
+
+        return lambda: _Ctx()
+
+    @pytest.mark.asyncio
+    async def test_persists_user_turn_before_any_reply(self, monkeypatch):
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        session_obj.messages = []
+        db.get_values["sess-1"] = session_obj
+
+        monkeypatch.setattr(
+            "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+            self._make_async_session_factory(db),
+        )
+
+        await meta_contracts._store_pending_user_message(
+            session_id="sess-1",
+            user_message="my interrupted question",
+        )
+
+        assert db.commit_count == 1
+        rows = [(m["role"], m["text"]) for m in session_obj.messages]
+        assert ("user", "my interrupted question") in rows
+
+    @pytest.mark.asyncio
+    async def test_empty_message_is_noop(self, monkeypatch):
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        session_obj.messages = []
+        db.get_values["sess-1"] = session_obj
+
+        monkeypatch.setattr(
+            "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+            self._make_async_session_factory(db),
+        )
+
+        await meta_contracts._store_pending_user_message(
+            session_id="sess-1",
+            user_message="",
+        )
+
+        assert db.commit_count == 0
+        assert session_obj.messages == []
+
+    @pytest.mark.asyncio
+    async def test_resolves_session_by_cli_session_id_fallback(self, monkeypatch):
+        """PK lookup misses (id is a bridge handle), but the row exists keyed
+        by ``cli_session_id`` — the fallback SELECT must find it so the user
+        turn still lands on the right session."""
+        db = _FakeDB()
+        session_obj = _make_session_obj("real-pk")
+        session_obj.messages = []
+        # db.get(ChatSession, "bridge-handle") → None; fallback SELECT hits.
+        db.execute_results = [_ExecuteResult(scalars=[session_obj])]
+
+        monkeypatch.setattr(
+            "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+            self._make_async_session_factory(db),
+        )
+
+        await meta_contracts._store_pending_user_message(
+            session_id="bridge-handle",
+            user_message="routed by cli_session_id",
+        )
+
+        assert db.commit_count == 1
+        rows = [(m["role"], m["text"]) for m in session_obj.messages]
+        assert ("user", "routed by cli_session_id") in rows
+
+    @pytest.mark.asyncio
+    async def test_archived_session_is_skipped(self, monkeypatch):
+        db = _FakeDB()
+        archived = _make_session_obj("sess-archived")
+        archived.status = "archived"
+        archived.messages = []
+        db.get_values["sess-archived"] = archived
+
+        monkeypatch.setattr(
+            "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+            self._make_async_session_factory(db),
+        )
+
+        await meta_contracts._store_pending_user_message(
+            session_id="sess-archived",
+            user_message="should not land",
+        )
+
+        assert db.commit_count == 0
+        assert archived.messages == []
+
+
 class TestArchivedSessionWriteGuards:
     """User-archived sessions must not receive background writes.
 

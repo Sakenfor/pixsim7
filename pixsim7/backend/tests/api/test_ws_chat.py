@@ -1427,6 +1427,74 @@ class TestDrainLateResult:
         store_mock.assert_not_awaited()
 
 
+# ── _bind_and_persist_result durability ──────────────────────────
+
+
+class TestBindAndPersistResult:
+    """Reply persistence must survive a tab-bind failure.
+
+    The bind only drives the unread pip; the persist is what keeps the
+    assistant reply recoverable on the next reconcile/poll. If a bind error
+    short-circuited the persist, the reply would exist nowhere — the exact
+    "lost agent reply" symptom this belt-and-suspenders path guards.
+    """
+
+    @pytest.mark.asyncio
+    async def test_bind_failure_still_persists_response(self):
+        from pixsim7.backend.main.api.v1 import ws_chat
+
+        bind_mock = AsyncMock(side_effect=RuntimeError("ownership race"))
+        store_mock = AsyncMock()
+        with (
+            patch.object(ws_chat, "_bind_tab_to_session", bind_mock),
+            patch(
+                "pixsim7.backend.main.api.v1.meta_contracts._store_session_response",
+                store_mock,
+            ),
+        ):
+            # Must not raise despite the bind blowing up.
+            await ws_chat._bind_and_persist_result(
+                tab_id="tab-1",
+                cli_session_id="sess-1",
+                user_id=1,
+                user_message="my question",
+                response_text="the answer",
+                duration_ms=1234,
+            )
+
+        bind_mock.assert_awaited_once()
+        # The reply still landed — bind failure did not skip the persist.
+        store_mock.assert_awaited_once()
+        kwargs = store_mock.await_args.kwargs
+        assert kwargs["session_id"] == "sess-1"
+        assert kwargs["assistant_response"] == "the answer"
+
+    @pytest.mark.asyncio
+    async def test_no_session_id_is_noop(self):
+        from pixsim7.backend.main.api.v1 import ws_chat
+
+        bind_mock = AsyncMock()
+        store_mock = AsyncMock()
+        with (
+            patch.object(ws_chat, "_bind_tab_to_session", bind_mock),
+            patch(
+                "pixsim7.backend.main.api.v1.meta_contracts._store_session_response",
+                store_mock,
+            ),
+        ):
+            await ws_chat._bind_and_persist_result(
+                tab_id="tab-1",
+                cli_session_id=None,
+                user_id=1,
+                user_message="q",
+                response_text="a",
+                duration_ms=None,
+            )
+
+        bind_mock.assert_not_awaited()
+        store_mock.assert_not_awaited()
+
+
 # ── _handle_message TimeoutError → drain spawn wiring ─────────────
 
 

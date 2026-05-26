@@ -34,7 +34,7 @@ import {
   createTabId,
   findLatestUnansweredUserMessage,
   findMissingAssistantTail,
-  evaluateTranscriptRecovery,
+  planReconcileAction,
   isLastAssistantMessageEqual,
   tabPrimaryPlanId,
   type ChatTab,
@@ -311,15 +311,15 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           return;
         }
 
-        const recovery = evaluateTranscriptRecovery(current, serverMsgs);
-        if (recovery.recoveredAssistantTail.length > 0) {
+        const action = planReconcileAction(current, serverMsgs);
+        if (action.kind === 'recover-tail') {
           // Match the consume-effect's reconnect-failure recovery UX — surface
           // a system note so the user knows this came from server reconciliation
           // rather than the live agent stream.
           st.setMessages(tab.id, [
             ...current,
             { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date(), recovered: true },
-            ...recovery.recoveredAssistantTail.map((m) => ({ ...m, recovered: true })),
+            ...action.tail.map((m) => ({ ...m, recovered: true })),
           ]);
           setPendingServerMessages(0);
           setServerTranscriptDiverged(false);
@@ -327,7 +327,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           return;
         }
 
-        if (recovery.pendingServerMessages > 0 && recovery.diverged) {
+        if (action.kind === 'adopt-server') {
           // Strict tail-prefix recovery couldn't append safely, but the server
           // still reports additional assistant replies. Prefer server truth so
           // the panel self-heals after bridge/backend restarts instead of
@@ -339,18 +339,18 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           return;
         }
 
-        setPendingServerMessages(recovery.pendingServerMessages);
-        setServerTranscriptDiverged(recovery.diverged);
-        setResponseLost(recovery.responseLost);
+        setPendingServerMessages(action.pendingServerMessages);
+        setServerTranscriptDiverged(action.diverged);
+        setResponseLost(action.responseLost);
 
-        const currentUnresolved = recovery.unresolvedUser;
+        const currentUnresolved = action.unresolvedUser;
         const sameUnresolved =
           unresolved &&
           currentUnresolved &&
           currentUnresolved.text === unresolved.text;
         // Keep retrying only if the server hasn't yet confirmed the loss —
         // a confirmed-lost state won't change without user action.
-        if (sameUnresolved && !recovery.responseLost) {
+        if (sameUnresolved && !action.responseLost) {
           schedule();
         }
       }).catch(() => {

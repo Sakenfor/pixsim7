@@ -297,7 +297,20 @@ async def _bind_and_persist_result(
     """
     if not cli_session_id:
         return
-    await _bind_tab_to_session(tab_id, cli_session_id, user_id)
+    # Reply durability must NOT depend on the tab bind succeeding. The bind
+    # only drives the unread pip; the persist is what keeps the assistant
+    # reply recoverable. Isolate the bind so a bind failure (ownership race,
+    # tab deleted mid-turn, DB hiccup) can't skip the persist below and lose
+    # the reply — the exact "reply exists nowhere" failure this path guards.
+    try:
+        await _bind_tab_to_session(tab_id, cli_session_id, user_id)
+    except Exception as exc:
+        logger.warning(
+            "ws_chat_replay_bind_tab_failed",
+            tab_id=tab_id,
+            session_id=cli_session_id,
+            error=str(exc),
+        )
     if response_text:
         try:
             from pixsim7.backend.main.api.v1.meta_contracts import (

@@ -56,6 +56,7 @@ import {
   getAssistantTailGap,
   serverHasUnansweredUserTurn,
   evaluateTranscriptRecovery,
+  planReconcileAction,
   isLastAssistantMessageEqual,
   __resetChatTabsPollForTest,
   type ChatTab,
@@ -630,6 +631,124 @@ describe('Assistant Chat Store', () => {
         ],
       );
       expect(status.responseLost).toBe(true);
+    });
+  });
+
+  describe('planReconcileAction', () => {
+    // This maps evaluateTranscriptRecovery's signals to the action the panel
+    // reconcile effect takes. The priority ordering is the load-bearing part
+    // for "lost replies": a recoverable assistant tail must ALWAYS win, so a
+    // reply sitting on the server is never surfaced to the user as lost.
+
+    it('returns recover-tail when the server has an unseen assistant reply', () => {
+      const action = planReconcileAction(
+        [makeMsg('user', 'continue')],
+        [
+          makeMsg('user', 'continue'),
+          makeMsg('assistant', 'Here is the continuation'),
+        ],
+      );
+      expect(action.kind).toBe('recover-tail');
+      if (action.kind === 'recover-tail') {
+        expect(action.tail).toHaveLength(1);
+        expect(action.tail[0].text).toBe('Here is the continuation');
+      }
+    });
+
+    it('recover-tail wins over a lost-looking unresolved user turn (the core guard)', () => {
+      // The user turn looks unanswered locally (only a "Bridge disconnected"
+      // system row follows it), but the server actually has the reply. The
+      // verdict MUST be recover-tail, never status/responseLost — otherwise a
+      // reply that exists on the server gets shown to the user as lost.
+      const action = planReconcileAction(
+        [
+          makeMsg('user', 'why did this fail?'),
+          makeMsg('system', 'Bridge disconnected'),
+        ],
+        [
+          makeMsg('user', 'why did this fail?'),
+          makeMsg('assistant', 'It failed because of X — here is the fix.'),
+        ],
+      );
+      expect(action.kind).toBe('recover-tail');
+      if (action.kind === 'recover-tail') {
+        expect(action.tail[0].text).toContain('here is the fix');
+      }
+    });
+
+    it('adopts server truth when local/server diverged but the server has more replies', () => {
+      // Strict tail-prefix recovery can't append safely (the local tail
+      // doesn't prefix the server's), yet the server reports extra assistant
+      // turns — prefer server truth so the panel self-heals instead of
+      // sticking on a permanent "N server" badge.
+      const action = planReconcileAction(
+        [
+          makeMsg('user', 'q'),
+          makeMsg('assistant', 'a local-only draft that never reached the server'),
+        ],
+        [
+          makeMsg('user', 'q'),
+          makeMsg('assistant', 'the real server answer'),
+          makeMsg('assistant', 'and a follow-up'),
+        ],
+      );
+      expect(action.kind).toBe('adopt-server');
+    });
+
+    it('returns status with responseLost when the server confirms no reply landed', () => {
+      const action = planReconcileAction(
+        [
+          makeMsg('user', 'why did this fail?'),
+          makeMsg('system', 'Bridge disconnected'),
+        ],
+        [
+          makeMsg('user', 'why did this fail?'),
+          makeMsg('system', 'Bridge disconnected'),
+        ],
+      );
+      expect(action.kind).toBe('status');
+      if (action.kind === 'status') {
+        expect(action.responseLost).toBe(true);
+        expect(action.pendingServerMessages).toBe(0);
+        expect(action.unresolvedUser).toEqual({ index: 0, text: 'why did this fail?' });
+      }
+    });
+
+    it('returns status without responseLost when the server never received the user turn (keep retrying)', () => {
+      // The user message hasn't reached the server yet — not lost, just not
+      // there. responseLost stays false so the effect keeps retrying rather
+      // than declaring the reply gone.
+      const action = planReconcileAction(
+        [makeMsg('user', 'never reached server')],
+        [
+          makeMsg('user', 'a different earlier message'),
+          makeMsg('assistant', 'done'),
+        ],
+      );
+      expect(action.kind).toBe('status');
+      if (action.kind === 'status') {
+        expect(action.responseLost).toBe(false);
+        expect(action.unresolvedUser).toEqual({ index: 0, text: 'never reached server' });
+      }
+    });
+
+    it('treats a server abandoned-marker as terminal status (not recoverable, not retried)', () => {
+      const abandonedSys: ChatMessage = {
+        role: 'system',
+        text: 'Agent did not respond within 900s — response abandoned.',
+        kind: 'abandoned',
+        timestamp: new Date(),
+      };
+      const action = planReconcileAction(
+        [makeMsg('user', 'why did this fail?')],
+        [makeMsg('user', 'why did this fail?'), abandonedSys],
+      );
+      // No assistant tail to recover; the abandoned marker means the turn is
+      // closed, so responseLost is false (it's a terminal answer, just empty).
+      expect(action.kind).toBe('status');
+      if (action.kind === 'status') {
+        expect(action.responseLost).toBe(false);
+      }
     });
   });
 

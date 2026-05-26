@@ -363,20 +363,26 @@ function sweepOrphanedAssistantKeys(
  * mutation paths stay aligned.
  */
 function deriveTab(server: ServerChatTab, prefs: TabPrefs | undefined): ChatTab {
+  const hasLocalPrefs = !!prefs;
   const p = prefs ?? DEFAULT_PREFS;
+  const profileId = hasLocalPrefs
+    ? p.profileId
+    : normalizeProfileId(server.profileId ?? null);
+  const serverEngine = (server.engine ?? null) as AgentEngine | null;
+  const engine = hasLocalPrefs ? p.engine : (serverEngine ?? DEFAULT_PREFS.engine);
   const derived: ChatTab = {
     id: server.id,
     label: server.label,
     icon: server.icon ?? null,
     subtitle: server.subtitle ?? null,
     sessionId: server.sessionId || null,
-    profileId: p.profileId,
-    engine: p.engine,
+    profileId,
+    engine,
     modelOverride: p.modelOverride,
     usePersona: p.usePersona,
     customInstructions: p.customInstructions,
     focusAreas: p.focusAreas,
-    injectToken: p.injectToken,
+    injectToken: hasLocalPrefs ? p.injectToken : Boolean(profileId),
     planId: server.planId,
     primaryPlanId: server.primaryPlanId ?? server.planId ?? null,
     createdAt: server.createdAt,
@@ -579,6 +585,57 @@ function evaluateTranscriptRecovery(
     pendingServerMessages: gap.pendingCount,
     diverged: gap.diverged,
     responseLost,
+  };
+}
+
+/**
+ * The action the panel reconcile effect should take given the local vs server
+ * transcripts. Extracted from `AIAssistantPanel`'s reconcile effect so the
+ * *decision* (which `evaluateTranscriptRecovery` signal wins, and in what
+ * priority) is unit-testable on its own — the effect itself only does I/O
+ * (fetch + setMessages + retry scheduling) around this verdict.
+ *
+ * The priority ordering is load-bearing for "lost replies": a recoverable
+ * assistant tail must ALWAYS win over a `status` verdict, otherwise a reply
+ * that's sitting on the server would be surfaced to the user as lost.
+ *
+ *  - `recover-tail`  — server has assistant message(s) we can safely append.
+ *  - `adopt-server`  — local/server diverged but the server reports more
+ *                      replies; prefer server truth so the panel self-heals
+ *                      after a bridge/backend restart instead of getting
+ *                      stuck on a permanent "N server" badge.
+ *  - `status`        — nothing to append; report pending/diverged/lost so the
+ *                      effect can render badges + decide whether to keep
+ *                      retrying (only while not yet confirmed-lost).
+ */
+type ReconcileAction =
+  | { kind: 'recover-tail'; tail: ChatMessage[] }
+  | { kind: 'adopt-server' }
+  | {
+      kind: 'status';
+      pendingServerMessages: number;
+      diverged: boolean;
+      responseLost: boolean;
+      unresolvedUser: { index: number; text: string } | null;
+    };
+
+function planReconcileAction(
+  localMessages: ChatMessage[],
+  serverMessages: ChatMessage[],
+): ReconcileAction {
+  const recovery = evaluateTranscriptRecovery(localMessages, serverMessages);
+  if (recovery.recoveredAssistantTail.length > 0) {
+    return { kind: 'recover-tail', tail: recovery.recoveredAssistantTail };
+  }
+  if (recovery.pendingServerMessages > 0 && recovery.diverged) {
+    return { kind: 'adopt-server' };
+  }
+  return {
+    kind: 'status',
+    pendingServerMessages: recovery.pendingServerMessages,
+    diverged: recovery.diverged,
+    responseLost: recovery.responseLost,
+    unresolvedUser: recovery.unresolvedUser,
   };
 }
 
@@ -1514,8 +1571,10 @@ export {
   getAssistantTailGap,
   serverHasUnansweredUserTurn,
   evaluateTranscriptRecovery,
+  planReconcileAction,
   isLastAssistantMessageEqual,
 };
+export type { ReconcileAction };
 
 // Re-export for tests so resetStore helpers can wipe the cross-test
 // chatTabsPoll snapshot alongside the store's own state.
