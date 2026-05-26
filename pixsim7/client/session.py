@@ -1127,6 +1127,12 @@ class AgentCmdSession:
         return {
             "session_id": self.session_id,
             "cli_session_id": self.cli_session_id,
+            # The engine binary this session actually runs (e.g. "claude" /
+            # "codex"). Per-session — a multi-engine pool registers under a
+            # single bridge-level agent_type ("claude-cli"), so consumers that
+            # need the true engine of a *specific* session must read this, not
+            # the bridge agent_type. See ws_agent_cmd._sync_cli_sessions_from_pool.
+            "engine": self._command,
             "cli_model": self.cli_model,
             "state": self.state.value,
             "pid": self.pid,

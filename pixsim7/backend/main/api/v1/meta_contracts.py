@@ -1259,7 +1259,11 @@ async def generate_cli_token(
     from pixsim7.backend.main.domain import UserSession
     from pixsim7.backend.main.api.v1.agent_profiles import resolve_agent_profile
     from datetime import timedelta
-    from pixsim7.backend.main.services.user.token_policy import TokenKind, mint_token
+    from pixsim7.backend.main.services.user.token_policy import (
+        TokenKind,
+        mint_token,
+        resolve_inheritable_agent_permissions,
+    )
     from pixsim7.backend.main.shared.auth import decode_access_token
 
     normalized_agent_type = _normalize_agent_type_hint(agent_type) or "claude"
@@ -1272,11 +1276,13 @@ async def generate_cli_token(
     )
     agent_id = resolved_profile.id if resolved_profile else f"cli-{secrets.token_hex(4)}"
 
+    inherited_permissions = await resolve_inheritable_agent_permissions(db, effective_user_id)
     token = mint_token(
         TokenKind.AGENT,
         agent_id=agent_id,
         agent_type=normalized_agent_type,
         on_behalf_of=effective_user_id,
+        permissions=inherited_permissions,
         ttl=timedelta(hours=hours),
     )
 
@@ -2679,6 +2685,24 @@ async def _upsert_chat_session(
                 if increment_messages:
                     existing.message_count += 1
                 existing.last_used_at = utcnow()
+                # Heal a stale engine. Historically engine was set only on
+                # INSERT, so a row first created by the bridge-pool sync with
+                # the wrong (bridge-wide) engine could never be corrected by a
+                # later authoritative turn — a codex session stayed pinned to
+                # "claude". A session's engine is fixed for its lifetime, and
+                # every wrong value is the "claude" field/column default; the
+                # only writers that emit a *concrete non-default* engine are
+                # the authoritative ones (per-session bridge sync, profile
+                # agent_type). So accept a differing engine, but never let a
+                # defaulted "claude" downgrade a concrete engine — that guards
+                # the reverse regression (a callers' omitted engine clobbering
+                # a correct "codex").
+                if (
+                    engine
+                    and engine != existing.engine
+                    and not (engine == "claude" and existing.engine not in (None, "", "claude"))
+                ):
+                    existing.engine = engine
                 if label and label != existing.label:
                     existing.label = label
                 if normalized_profile_id is not None:

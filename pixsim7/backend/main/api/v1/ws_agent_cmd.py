@@ -38,18 +38,31 @@ logger = get_logger()
 router = APIRouter()
 
 
-async def _resolve_user_id(token: str | None) -> int | None:
-    """Resolve user ID from JWT token, returns None if no token or invalid."""
+async def _resolve_user_id(token: str | None, db) -> int | None:
+    """Resolve user ID from JWT token, returns None if no token or invalid.
+
+    Requires a real ``AsyncSession`` — do NOT call ``get_auth_service()``
+    outside FastAPI DI; its ``Depends(...)`` defaults aren't resolved, so
+    ``self.db`` ends up as a placeholder and ``verify_token_claims`` raises
+    when it hits ``self.db.execute(...)``. See plan ``community-chat``
+    Pitfalls / Canon and the duck-check in ``AuthService.__init__``.
+    """
     if not token:
         return None
     try:
-        from pixsim7.backend.main.api.dependencies import get_auth_service
+        from pixsim7.backend.main.services.user.auth_service import AuthService
+        from pixsim7.backend.main.services.user.user_service import UserService
         from pixsim7.backend.main.shared.actor import RequestPrincipal
-        auth_service = get_auth_service()
+        auth_service = AuthService(db, UserService(db))
         payload = await auth_service.verify_token_claims(token, update_last_used=False)
         principal = RequestPrincipal.from_jwt_payload(payload)
         return principal.user_id
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "ws_agent_cmd_auth_resolve_failed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         return None
 
 
@@ -60,14 +73,18 @@ class _ResolvedToken:
     profile_id: str | None = None  # agent profile ID from token claims (e.g. "profile-mn4kk11k")
 
 
-async def _resolve_token(token: str | None) -> _ResolvedToken:
-    """Resolve user ID, run_id, and agent_id from JWT token, raising on invalid tokens."""
+async def _resolve_token(token: str | None, db) -> _ResolvedToken:
+    """Resolve user ID, run_id, and agent_id from JWT token, raising on invalid tokens.
+
+    Needs a real session; see ``_resolve_user_id`` for the rationale.
+    """
     if not token:
         return _ResolvedToken()
-    from pixsim7.backend.main.api.dependencies import get_auth_service
+    from pixsim7.backend.main.services.user.auth_service import AuthService
+    from pixsim7.backend.main.services.user.user_service import UserService
     from pixsim7.backend.main.shared.actor import RequestPrincipal
 
-    auth_service = get_auth_service()
+    auth_service = AuthService(db, UserService(db))
     payload = await auth_service.verify_token_claims(token, update_last_used=False)
     principal = RequestPrincipal.from_jwt_payload(payload)
     return _ResolvedToken(user_id=principal.user_id, run_id=principal.run_id, profile_id=principal.profile_id)
@@ -476,10 +493,20 @@ def _sync_cli_sessions_from_pool(
         if messages_sent < 1:
             continue  # No messages yet — skip
 
-        # Infer engine from agent_type, stripping "-cli" suffix
-        engine = agent_type or "agent"
-        if engine.endswith("-cli"):
-            engine = engine.rsplit("-", 1)[0]  # "claude-cli" -> "claude"
+        # Engine: prefer the session's *own* engine (the binary it actually
+        # runs). A multi-engine pool registers under one bridge-level
+        # agent_type ("claude-cli"), so deriving engine from agent_type stamps
+        # every pooled session — including codex ones — as "claude". The
+        # per-session value is authoritative; fall back to agent_type only for
+        # older bridges that don't report it. (normalize_engine handles the
+        # "-cli" suffix and a possible binary path basename.)
+        from pixsim7.backend.main.services.llm.remote_cmd_bridge import (
+            normalize_engine,
+        )
+        raw_engine = (sess.get("engine") or "").strip()
+        if raw_engine:
+            raw_engine = raw_engine.replace("\\", "/").rsplit("/", 1)[-1]
+        engine = normalize_engine(raw_engine) or normalize_engine(agent_type) or "agent"
 
         try:
             from pixsim7.backend.main.api.v1.meta_contracts import _upsert_chat_session
@@ -514,8 +541,10 @@ async def agent_cmd_websocket(
     Without token: shared bridge (debug/local only).
     With token: user-scoped bridge (serves only that user, with shared fallback).
     """
+    from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
     try:
-        resolved = await _resolve_token(token)
+        async with AsyncSessionLocal() as auth_db:
+            resolved = await _resolve_token(token, auth_db)
         user_id = resolved.user_id
         run_id = resolved.run_id
         token_profile_id = resolved.profile_id
