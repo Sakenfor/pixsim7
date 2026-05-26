@@ -48,6 +48,53 @@ DEFAULT_TTL: dict[TokenKind, timedelta] = {
 SKIP_SESSION_TRACKING: set[TokenKind] = {TokenKind.BRIDGE}
 
 
+# Permissions an agent may inherit from the user it acts on behalf of
+# (the "agent can do what the user who spawned it can do" model). This is a
+# deliberately narrow allowlist: agent tokens must NOT silently inherit a
+# user's full grant set. Add a permission here only when an agent is meant to
+# wield it on the user's behalf. ``is_admin`` is never inherited.
+AGENT_INHERITABLE_PERMISSIONS: frozenset[str] = frozenset({"devtools.diagnostics"})
+
+
+def filter_inheritable_permissions(permissions: Optional[list[str]]) -> list[str]:
+    """Narrow a user's permission set to those an agent may inherit.
+
+    Order-preserving and de-duplicated. Used when minting an on-behalf agent
+    token so the agent can wield a capability the spawning user holds (e.g.
+    ``devtools.diagnostics``) without inheriting the rest.
+    """
+    if not permissions:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for perm in permissions:
+        if perm in AGENT_INHERITABLE_PERMISSIONS and perm not in seen:
+            seen.add(perm)
+            out.append(perm)
+    return out
+
+
+async def resolve_inheritable_agent_permissions(db, user_id: Optional[int]) -> list[str]:
+    """Load the on-behalf user's agent-inheritable permissions.
+
+    Returns ``[]`` for headless tokens (no user), unknown users, or on any
+    lookup failure — token minting must never hard-fail on this best-effort
+    inheritance step. ``db`` is an ``AsyncSession`` (duck-typed to avoid an
+    import cycle).
+    """
+    if user_id is None:
+        return []
+    try:
+        from pixsim7.backend.main.domain import User
+
+        user = await db.get(User, int(user_id))
+    except Exception:
+        return []
+    if user is None:
+        return []
+    return filter_inheritable_permissions(getattr(user, "permissions", None))
+
+
 # ═══════════════════════════════════════════════════════════════════
 # Claims builders — one per token kind
 # ═══════════════════════════════════════════════════════════════════
@@ -104,6 +151,7 @@ def _agent_claims(
     agent_type: str = "unknown",
     scopes: list[str] | None = None,
     on_behalf_of: int | None = None,
+    permissions: list[str] | None = None,
     run_id: str | None = None,
     plan_id: str | None = None,
     profile_id: str | None = None,
@@ -120,7 +168,10 @@ def _agent_claims(
         "role": "agent",
         "is_admin": False,
         "is_active": True,
-        "permissions": [],
+        # Permissions inherited from the on-behalf user, narrowed to the
+        # agent-inheritable allowlist by the caller (see
+        # filter_inheritable_permissions). Empty for headless / unscoped agents.
+        "permissions": list(permissions or []),
     }
     if scopes:
         data["scopes"] = scopes

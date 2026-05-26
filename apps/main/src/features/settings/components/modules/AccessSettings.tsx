@@ -21,7 +21,7 @@ import {
   type AdminUserPermissions,
   type BridgeMachine,
 } from '@lib/api';
-import { CODEGEN_PERMISSION, isAdminUser } from '@lib/auth/userRoles';
+import { CODEGEN_PERMISSION, DIAGNOSTICS_PERMISSION, isAdminUser } from '@lib/auth/userRoles';
 import { formatActorLabel } from '@lib/identity/actorDisplay';
 
 import { useAuthStore } from '@/stores/authStore';
@@ -140,6 +140,7 @@ function UserDetailPanel({
   const isSelf = currentUserId === user.id;
   const permissions = normalizePermissions(user.permissions || []);
   const hasCodegen = permissions.includes(CODEGEN_PERMISSION);
+  const hasDiagnostics = permissions.includes(DIAGNOSTICS_PERMISSION);
   const bridgeMachines = user.bridge_machines ?? [];
   const bridgeMachinesTotal = user.bridge_machines_total ?? bridgeMachines.length;
   const bridgeMachinesOnline =
@@ -348,6 +349,23 @@ function UserDetailPanel({
           <Switch
             checked={hasCodegen}
             onCheckedChange={(checked) => void togglePermission(CODEGEN_PERMISSION, checked)}
+            size="sm"
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <span className="text-[11px] text-neutral-700 dark:text-neutral-300">
+              Diagnostics access
+            </span>
+            <p className="mt-0.5 text-[10px] leading-snug text-neutral-500">
+              Run allowlisted tools &amp; scripts via the tracked diagnostics runner. Agents this
+              user spawns inherit this capability (dry-run by default).
+            </p>
+          </div>
+          <Switch
+            checked={hasDiagnostics}
+            onCheckedChange={(checked) => void togglePermission(DIAGNOSTICS_PERMISSION, checked)}
             size="sm"
           />
         </div>

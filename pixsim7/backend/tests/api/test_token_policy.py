@@ -20,11 +20,14 @@ import pytest
 
 try:
     from pixsim7.backend.main.services.user.token_policy import (
+        AGENT_INHERITABLE_PERMISSIONS,
         DEFAULT_TTL,
         SKIP_SESSION_TRACKING,
         TokenKind,
+        filter_inheritable_permissions,
         get_default_ttl,
         mint_token,
+        resolve_inheritable_agent_permissions,
         should_track_session,
     )
     from pixsim7.backend.main.shared.auth import decode_access_token
@@ -299,3 +302,92 @@ class TestParityWithExisting:
         assert payload["agent_type"] == "claude"
         assert payload["on_behalf_of"] == 42
         assert payload["run_id"] == "r1"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Option C — agent inherits on-behalf user's permissions (narrowed)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestInheritablePermissions:
+    """An agent acts on behalf of a user; it inherits that user's grants,
+    but only those on the narrow agent-inheritable allowlist."""
+
+    def test_allowlist_contains_diagnostics(self):
+        assert "devtools.diagnostics" in AGENT_INHERITABLE_PERMISSIONS
+
+    def test_filter_keeps_only_allowlisted(self):
+        # codegen is a USER permission, NOT agent-inheritable — must be dropped.
+        out = filter_inheritable_permissions(
+            ["devtools.diagnostics", "devtools.codegen", "feature.x"]
+        )
+        assert out == ["devtools.diagnostics"]
+
+    def test_filter_dedupes_and_preserves_order(self):
+        out = filter_inheritable_permissions(
+            ["devtools.diagnostics", "devtools.diagnostics"]
+        )
+        assert out == ["devtools.diagnostics"]
+
+    def test_filter_handles_empty_and_none(self):
+        assert filter_inheritable_permissions(None) == []
+        assert filter_inheritable_permissions([]) == []
+
+    def test_agent_token_carries_inherited_permissions(self):
+        payload = decode_access_token(mint_token(
+            TokenKind.AGENT,
+            agent_id="p1",
+            on_behalf_of=42,
+            permissions=["devtools.diagnostics"],
+        ))
+        assert payload["permissions"] == ["devtools.diagnostics"]
+        # Inheriting a permission must NEVER promote the agent to admin.
+        assert payload["is_admin"] is False
+
+    def test_agent_token_defaults_to_empty_permissions(self):
+        payload = decode_access_token(mint_token(TokenKind.AGENT, agent_id="p1"))
+        assert payload["permissions"] == []
+
+
+class TestResolveInheritableAgentPermissions:
+    """resolve_inheritable_agent_permissions loads the on-behalf user and
+    narrows their grants. Best-effort: never raises on a bad lookup."""
+
+    class _FakeUser:
+        def __init__(self, permissions):
+            self.permissions = permissions
+
+    class _FakeDB:
+        def __init__(self, user):
+            self._user = user
+            self.requested = None
+
+        async def get(self, model, user_id):
+            self.requested = user_id
+            return self._user
+
+    @pytest.mark.asyncio
+    async def test_none_user_returns_empty(self):
+        db = self._FakeDB(self._FakeUser(["devtools.diagnostics"]))
+        assert await resolve_inheritable_agent_permissions(db, None) == []
+        assert db.requested is None  # short-circuits before any lookup
+
+    @pytest.mark.asyncio
+    async def test_resolves_and_narrows_user_grants(self):
+        db = self._FakeDB(self._FakeUser(["devtools.diagnostics", "devtools.codegen"]))
+        out = await resolve_inheritable_agent_permissions(db, 42)
+        assert out == ["devtools.diagnostics"]
+        assert db.requested == 42
+
+    @pytest.mark.asyncio
+    async def test_unknown_user_returns_empty(self):
+        db = self._FakeDB(None)
+        assert await resolve_inheritable_agent_permissions(db, 99) == []
+
+    @pytest.mark.asyncio
+    async def test_lookup_failure_returns_empty(self):
+        class _BoomDB:
+            async def get(self, *a):
+                raise RuntimeError("db down")
+
+        assert await resolve_inheritable_agent_permissions(_BoomDB(), 1) == []

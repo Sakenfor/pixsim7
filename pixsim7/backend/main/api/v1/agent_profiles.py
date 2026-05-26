@@ -20,7 +20,11 @@ from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
 from pixsim7.backend.main.domain import UserSession
 from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile, AgentRun
 from pixsim7.backend.main.shared.actor import resolve_effective_user_id
-from pixsim7.backend.main.services.user.token_policy import TokenKind, mint_token
+from pixsim7.backend.main.services.user.token_policy import (
+    TokenKind,
+    mint_token,
+    resolve_inheritable_agent_permissions,
+)
 from pixsim7.backend.main.shared.auth import decode_access_token
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
@@ -693,12 +697,14 @@ async def mint_profile_token(
 
     effective_user_id = _effective_user_id(principal)
     run_id = str(uuid4())
+    inherited_permissions = await resolve_inheritable_agent_permissions(db, effective_user_id)
     token = mint_token(
         TokenKind.AGENT,
         agent_id=profile.id,
         agent_type=profile.agent_type,
         scopes=profile.default_scopes,
         on_behalf_of=effective_user_id,
+        permissions=inherited_permissions,
         run_id=run_id,
         ttl=timedelta(hours=hours),
         scope_key=scope_key,

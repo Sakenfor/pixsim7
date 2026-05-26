@@ -20,7 +20,11 @@ from pixsim7.backend.main.api.dependencies import (
 )
 from pixsim7.backend.main.domain import UserSession
 from pixsim7.backend.main.domain.platform.agent_profile import AgentRun
-from pixsim7.backend.main.services.user.token_policy import TokenKind, mint_token
+from pixsim7.backend.main.services.user.token_policy import (
+    TokenKind,
+    mint_token,
+    resolve_inheritable_agent_permissions,
+)
 from pixsim7.backend.main.shared.auth import decode_access_token
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.actor import RequestPrincipal
@@ -61,12 +65,14 @@ async def mint_agent_token(
     db: AsyncSession = Depends(get_database),
 ):
     """Mint a short-lived agent token. Admin only."""
+    inherited_permissions = await resolve_inheritable_agent_permissions(db, payload.on_behalf_of)
     token = mint_token(
         TokenKind.AGENT,
         agent_id=payload.agent_id,
         agent_type=payload.agent_type,
         scopes=payload.scopes,
         on_behalf_of=payload.on_behalf_of,
+        permissions=inherited_permissions,
         run_id=payload.run_id,
         plan_id=payload.plan_id,
         ttl=timedelta(hours=payload.ttl_hours),
@@ -208,11 +214,13 @@ async def mint_bridge_agent_session_token(
         f"tab:{payload.tab_id}" if payload.tab_id else None
     )
 
+    inherited_permissions = await resolve_inheritable_agent_permissions(db, effective_user_id)
     token = mint_token(
         TokenKind.AGENT,
         agent_id=payload.profile_id,
         agent_type=payload.agent_type,
         on_behalf_of=effective_user_id,
+        permissions=inherited_permissions,
         profile_id=payload.profile_id,
         chat_session_id=payload.chat_session_id,
         scope_key=scope_key,

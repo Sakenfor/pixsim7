@@ -1,6 +1,7 @@
 import type { User } from './types';
 
 export const CODEGEN_PERMISSION = 'devtools.codegen';
+export const DIAGNOSTICS_PERMISSION = 'devtools.diagnostics';
 
 /**
  * Canonical admin role check.
@@ -27,4 +28,8 @@ export function hasPermission(user: User | null | undefined, permission: string)
 
 export function canRunCodegen(user: User | null | undefined): boolean {
   return hasPermission(user, CODEGEN_PERMISSION);
+}
+
+export function canRunDiagnostics(user: User | null | undefined): boolean {
+  return hasPermission(user, DIAGNOSTICS_PERMISSION);
 }
