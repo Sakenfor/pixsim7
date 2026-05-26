@@ -103,6 +103,40 @@ function extractSeedFromParams(params: unknown): number | undefined {
   return parseSeedValue(toParamsRecord(params).seed);
 }
 
+/**
+ * Ensure a regenerate/style-variation param blob carries the source
+ * generation's input assets. canonical_params from generation-context is a
+ * flat provider-param shape and may omit asset references (especially legacy
+ * generations), so we backfill `source_asset_ids` (keeps the operation type
+ * from falling back to text-to-*) and rebuild `composition_assets` when the
+ * operation needs them. Mutates and returns `params`.
+ */
+function ensureSourceAssetParams(
+  params: Record<string, unknown>,
+  operationType: OperationType,
+  sourceAssetIds: number[],
+): Record<string, unknown> {
+  if (sourceAssetIds.length === 0) return params;
+
+  if (
+    !params.source_asset_ids
+    && !params.sourceAssetIds
+    && !params.source_asset_id
+    && !params.sourceAssetId
+  ) {
+    params.source_asset_ids = sourceAssetIds;
+  }
+
+  if (!params.composition_assets) {
+    const built = buildCompositionAssetsFromAssetIds(operationType, sourceAssetIds);
+    if (built) {
+      params.composition_assets = built;
+    }
+  }
+
+  return params;
+}
+
 export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   const {
     inputAsset,
@@ -113,6 +147,11 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     id,
     mediaType,
   } = args;
+
+  // Whether this asset carries a source generation we can re-run / mine for
+  // prompt, seed, or inputs. Gate shared by every regenerate/extend/insert
+  // handler below.
+  const hasSourceContext = !!(data.sourceGenerationId || data.hasGenerationContext);
 
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [isExtending, setIsExtending] = useState(false);
@@ -127,6 +166,27 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   const addOrUpdateGeneration = useGenerationsStore((s) => s.addOrUpdate);
   const setWatchingGeneration = useGenerationsStore((s) => s.setWatchingGeneration);
 
+  // Handlers that load/insert into the active Quick Generate widget need a
+  // widget context to target. Returns the widget when present, otherwise
+  // surfaces the same "not available" notice and returns null so callers can
+  // bail with `const widget = requireWidget(); if (!widget) return;`.
+  const requireWidget = useCallback((): GenerationWidgetContext | null => {
+    if (widgetContext) return widgetContext;
+    useToastStore.getState().addToast({
+      type: 'info',
+      message: 'Quick Generate is not available in this view.',
+      duration: 3000,
+    });
+    return null;
+  }, [widgetContext]);
+
+  // Resolve the generation scope to write into: prefer the widget's own scope,
+  // fall back to this card's scoped store, then the global scope.
+  const resolveScopeId = useCallback(
+    (scopeId?: string | null): string => scopeId ?? scopedScopeId ?? 'global',
+    [scopedScopeId],
+  );
+
   const submitDirectGeneration = useCallback(
     async (options: {
       operationType: OperationType;
@@ -134,8 +194,12 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       prompt: string;
       params: Record<string, unknown>;
       successMessage: string;
+      /** Caller-owned upload phase has already happened (and shown its own
+       *  toast); skip the gate's "Uploading frame to …" interim toast to
+       *  avoid double-flashing for the trailing cache-hit gate call. */
+      skipUploadToast?: boolean;
     }) => {
-      const { operationType: requestedOperationType, providerId, prompt, params, successMessage } = options;
+      const { operationType: requestedOperationType, providerId, prompt, params, successMessage, skipUploadToast } = options;
       const hasAssetInput = hasAssetInputs(params);
       const effectiveOperationType = getFallbackOperation(requestedOperationType, hasAssetInput);
       const run = createGenerationRunDescriptor({
@@ -155,6 +219,25 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
           itemIndex: 0,
           itemTotal: 1,
         }),
+        // Interim feedback while the provider-accept gate uploads the input
+        // image (e.g. an extracted frame). Dismissed when the upload phase
+        // ends — success continues to the "…started" toast below; a
+        // provider rejection throws and surfaces via the caller's catch.
+        ...(skipUploadToast
+          ? {}
+          : {
+              onInputUploadStart: ({ providerId: targetProviderId }) => {
+                const label = targetProviderId
+                  ? targetProviderId.charAt(0).toUpperCase() + targetProviderId.slice(1)
+                  : 'provider';
+                const toastId = useToastStore.getState().addToast({
+                  type: 'info',
+                  message: `Uploading frame to ${label}…`,
+                  duration: 20000,
+                });
+                return () => useToastStore.getState().removeToast(toastId);
+              },
+            }),
       });
 
       const genId = result.job_id;
@@ -188,7 +271,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     try {
       let paramOverrides: GenerateOverrides['paramOverrides'] | undefined;
       if (options?.reuseSourceSeed) {
-        if (!data.sourceGenerationId && !data.hasGenerationContext) {
+        if (!hasSourceContext) {
           useToastStore.getState().addToast({
             type: 'info',
             message: 'No source generation seed is available for this asset.',
@@ -230,8 +313,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     isQuickGenerating,
     widgetContext,
     inputAsset,
-    data.sourceGenerationId,
-    data.hasGenerationContext,
+    hasSourceContext,
     id,
     operationType,
   ]);
@@ -245,13 +327,15 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   }, [executeQuickGenerate]);
 
   const handleLoadToQuickGen = useCallback(async (options?: { withoutSeed?: boolean }) => {
-    if (!loadToQuickGenDescriptor.isVisible(inputAsset) || isLoadingSource || !widgetContext) return;
+    if (!loadToQuickGenDescriptor.isVisible(inputAsset) || isLoadingSource) return;
+    const widget = requireWidget();
+    if (!widget) return;
 
     setIsLoadingSource(true);
     try {
       await loadToQuickGenDescriptor.execute(
         inputAsset,
-        { widget: widgetContext, fallbackOperationType: operationType, scopeId: scopedScopeId },
+        { widget, fallbackOperationType: operationType, scopeId: scopedScopeId },
         { withoutSeed: options?.withoutSeed === true },
       );
     } catch (error) {
@@ -268,23 +352,25 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     inputAsset,
     isLoadingSource,
     operationType,
-    widgetContext,
+    requireWidget,
     scopedScopeId,
   ]);
 
   const handleInsertPromptOnly = useCallback(async () => {
-    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isInsertingPrompt) return;
+    if (!hasSourceContext || isInsertingPrompt) return;
+    const widget = requireWidget();
+    if (!widget) return;
 
     setIsInsertingPrompt(true);
     try {
       const ctx = await getAssetGenerationContext(id);
       const { prompt } = parseGenerationContext(ctx, operationType);
 
-      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+      const scopeId = resolveScopeId(widget.scopeId);
       const sessionStore = getGenerationSessionStore(scopeId).getState();
       sessionStore.setPrompt(prompt);
 
-      widgetContext?.setOpen(true);
+      widget.setOpen(true);
     } catch (error) {
       console.error('Failed to insert prompt:', error);
       useToastStore.getState().addToast({
@@ -297,16 +383,17 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     }
   }, [
     id,
-    data.sourceGenerationId,
-    data.hasGenerationContext,
+    hasSourceContext,
     isInsertingPrompt,
     operationType,
-    scopedScopeId,
-    widgetContext,
+    resolveScopeId,
+    requireWidget,
   ]);
 
   const handleInsertSeedOnly = useCallback(async () => {
-    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isInsertingSeed) return;
+    if (!hasSourceContext || isInsertingSeed) return;
+    const widget = requireWidget();
+    if (!widget) return;
 
     setIsInsertingSeed(true);
     try {
@@ -323,14 +410,14 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
         return;
       }
 
-      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+      const scopeId = resolveScopeId(widget.scopeId);
       const settingsStore = getGenerationSettingsStore(scopeId).getState();
       settingsStore.setDynamicParams((prev: Record<string, unknown>) => ({
         ...prev,
         seed,
       }));
 
-      widgetContext?.setOpen(true);
+      widget.setOpen(true);
     } catch (error) {
       console.error('Failed to insert seed:', error);
       useToastStore.getState().addToast({
@@ -343,19 +430,20 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     }
   }, [
     id,
-    data.sourceGenerationId,
-    data.hasGenerationContext,
+    hasSourceContext,
     isInsertingSeed,
     operationType,
-    scopedScopeId,
-    widgetContext,
+    resolveScopeId,
+    requireWidget,
   ]);
 
   // Replace the active widget's inputs with the source generation's assets.
   // "Load" (not "insert") semantics: it swaps out whatever is currently
   // queued for this operation so the widget mirrors the source generation.
   const handleInsertAssetsOnly = useCallback(async () => {
-    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isInsertingAssets) return;
+    if (!hasSourceContext || isInsertingAssets) return;
+    const widget = requireWidget();
+    if (!widget) return;
 
     setIsInsertingAssets(true);
     try {
@@ -396,12 +484,12 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       // assets so the widget faithfully reproduces the source generation.
       // Resolve the widget's own scope (same as the prompt/seed handlers) —
       // the bare scoped store may not be the one the widget reads from.
-      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+      const scopeId = resolveScopeId(widget.scopeId);
       const inputState = getGenerationInputStore(scopeId).getState();
       inputState.clearInputs(operationType);
       inputState.addInputs({ assets, operationType });
 
-      widgetContext?.setOpen(true);
+      widget.setOpen(true);
     } catch (error) {
       console.error('Failed to load source assets:', error);
       useToastStore.getState().addToast({
@@ -414,18 +502,17 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     }
   }, [
     id,
-    data.sourceGenerationId,
-    data.hasGenerationContext,
+    hasSourceContext,
     isInsertingAssets,
     operationType,
-    scopedScopeId,
-    widgetContext,
+    resolveScopeId,
+    requireWidget,
   ]);
 
   // Handler for extending video with the same prompt
   const handleExtendVideo = useCallback(async (promptSource: 'same' | 'active') => {
     if (isExtending || mediaType !== 'video') return;
-    if (promptSource === 'same' && !data.sourceGenerationId && !data.hasGenerationContext) return;
+    if (promptSource === 'same' && !hasSourceContext) return;
 
     setIsExtending(true);
 
@@ -436,7 +523,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       // Use the active widget prompt or the original generation prompt
       let prompt = originalPrompt;
       if (promptSource === 'active') {
-        const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+        const scopeId = resolveScopeId(widgetContext?.scopeId);
         prompt = getGenerationSessionStore(scopeId).getState().prompt || '';
       }
 
@@ -509,15 +596,14 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       setIsExtending(false);
     }
   }, [
-    data.sourceGenerationId,
-    data.hasGenerationContext,
+    hasSourceContext,
     isExtending,
     mediaType,
     operationType,
     id,
     inputAsset,
     widgetContext?.scopeId,
-    scopedScopeId,
+    resolveScopeId,
     submitDirectGeneration,
   ]);
 
@@ -536,9 +622,17 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     const selector = options.selector ?? { mode: 'last' };
     const promptSource = options.promptSource ?? 'same';
     if (isExtending || mediaType !== 'video') return;
-    if (promptSource === 'same' && !data.sourceGenerationId && !data.hasGenerationContext) return;
+    if (promptSource === 'same' && !hasSourceContext) return;
 
     setIsExtending(true);
+
+    // Selector-aware label, reused by both the success and the error path.
+    const frameLabel =
+      selector.mode === 'last'
+        ? 'last frame'
+        : selector.mode === 'first'
+          ? 'first frame'
+          : `frame at ${selector.seconds.toFixed(2)}s`;
 
     try {
       const ctx = await getAssetGenerationContext(id);
@@ -547,18 +641,50 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       // Resolve prompt from chosen source
       let prompt = originalPrompt;
       if (promptSource === 'active') {
-        const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+        const scopeId = resolveScopeId(widgetContext?.scopeId);
         prompt = getGenerationSessionStore(scopeId).getState().prompt || '';
       }
 
-      const frameRequest =
-        selector.mode === 'last'
+      // Pass `provider_id` so the backend extract-frame endpoint runs its
+      // atomic gate: it creates the frame with searchable=False and only
+      // flips it to True after the provider accepts the upload. A rejected
+      // frame stays hidden — no orphan in the gallery.
+      const frameRequest: Parameters<typeof extractFrame>[0] = {
+        ...(selector.mode === 'last'
           ? { video_asset_id: id, last_frame: true }
           : selector.mode === 'first'
             ? { video_asset_id: id, timestamp: 0 }
-            : { video_asset_id: id, timestamp: selector.seconds };
+            : { video_asset_id: id, timestamp: selector.seconds }),
+        ...(providerId ? { provider_id: providerId } : {}),
+      };
 
-      const frameResponse = await extractFrame(frameRequest);
+      // Interim toast while extract + provider upload run server-side.
+      const uploadToastId = providerId
+        ? useToastStore.getState().addToast({
+            type: 'info',
+            message: `Uploading ${frameLabel} to ${providerId.charAt(0).toUpperCase() + providerId.slice(1)}…`,
+            duration: 30000,
+          })
+        : null;
+      let frameResponse;
+      try {
+        frameResponse = await extractFrame(frameRequest);
+      } finally {
+        if (uploadToastId) useToastStore.getState().removeToast(uploadToastId);
+      }
+
+      // If we asked for a provider upload but the response has no entry for
+      // it, the provider rejected the frame (backend already kept the asset
+      // hidden). Throw so the catch shows the moderation message.
+      if (providerId) {
+        const uploads = frameResponse.provider_uploads as Record<string, unknown> | undefined;
+        if (!uploads || !uploads[providerId]) {
+          throw new Error(
+            `Provider ${providerId} rejected the extracted frame (content filtered / not compliant).`,
+          );
+        }
+      }
+
       const frameAsset = fromAssetResponse(frameResponse);
 
       const baseParams = stripInputParams(originalParams as Record<string, unknown>);
@@ -612,20 +738,17 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
         },
       };
 
-      const successLabel =
-        selector.mode === 'last'
-          ? 'last frame'
-          : selector.mode === 'first'
-            ? 'first frame'
-            : `frame @ ${selector.seconds.toFixed(2)}s`;
-
       const promptLabel = promptSource === 'active' ? ' (active prompt)' : '';
       await submitDirectGeneration({
         operationType: 'image_to_video',
         providerId,
         prompt: buildResult.finalPrompt,
         params: submitParams,
-        successMessage: `Extending video from ${successLabel}${promptLabel}...`,
+        successMessage: `Extending video from ${frameLabel}${promptLabel}...`,
+        // Frame was just uploaded by extract-frame above; the gate inside
+        // generateAsset will be a fast cache-hit — suppress its toast so
+        // we don't double-flash the same message.
+        skipUploadToast: true,
       });
     } catch (error) {
       console.error('Failed to artificially extend video:', error);
@@ -635,9 +758,10 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
         lower.includes('not compliant')
         || lower.includes('content policy')
         || lower.includes('moderation')
-        || lower.includes('content filtered');
+        || lower.includes('content filtered')
+        || lower.includes('rejected');
       const message = isModerationReject
-        ? 'The source video has no reusable last frame (Pixverse filtered the generation). Try a different source, or use native extend instead.'
+        ? `Provider rejected the ${frameLabel} from the source video. The extracted frame was hidden from your library — try a different frame, a different source, or native extend.`
         : `Failed to extend: ${raw}`;
       useToastStore.getState().addToast({
         type: 'error',
@@ -648,14 +772,13 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       setIsExtending(false);
     }
   }, [
-    data.sourceGenerationId,
-    data.hasGenerationContext,
+    hasSourceContext,
     isExtending,
     mediaType,
     operationType,
     id,
     widgetContext?.scopeId,
-    scopedScopeId,
+    resolveScopeId,
     submitDirectGeneration,
   ]);
 
@@ -663,7 +786,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   const executeRegenerate = useCallback(async (
     options?: { reuseSourceSeed?: boolean },
   ) => {
-    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isRegenerating) return;
+    if (!hasSourceContext || isRegenerating) return;
 
     setIsRegenerating(true);
 
@@ -680,28 +803,11 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
 
       const sourceParams = stripSeedFromParams(params as Record<string, unknown>);
 
-      // Ensure source asset references are present in params so the backend
-      // receives the correct operation type (e.g. image_to_video stays i2v
-      // instead of falling back to text_to_video).
-      if (
-        sourceAssetIds.length > 0
-        && !sourceParams.source_asset_ids
-        && !sourceParams.sourceAssetIds
-        && !sourceParams.source_asset_id
-        && !sourceParams.sourceAssetId
-      ) {
-        sourceParams.source_asset_ids = sourceAssetIds;
-      }
-
-      // Ensure composition_assets is present for operations that require it.
-      // The canonical_params from generation-context are flat provider params
-      // and may not include composition_assets (e.g. legacy generations).
-      if (!sourceParams.composition_assets && sourceAssetIds.length > 0) {
-        const built = buildCompositionAssetsFromAssetIds(resolvedOperationType, sourceAssetIds);
-        if (built) {
-          sourceParams.composition_assets = built;
-        }
-      }
+      // Backfill source asset references + composition_assets so the backend
+      // keeps the correct operation type (e.g. image_to_video stays i2v
+      // instead of falling back to text_to_video) for legacy generations
+      // whose canonical_params omit them.
+      ensureSourceAssetParams(sourceParams, resolvedOperationType, sourceAssetIds);
 
       const parsedParams = toParamsRecord(params);
       const shouldRandomizeSeed =
@@ -742,8 +848,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     }
   }, [
     id,
-    data.sourceGenerationId,
-    data.hasGenerationContext,
+    hasSourceContext,
     isRegenerating,
     operationType,
     submitDirectGeneration,
@@ -766,7 +871,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
    */
   const handleGenerateStyleVariations = useCallback(
     async (category = 'aesthetic_preset', blockIds?: string[]) => {
-      if ((!data.sourceGenerationId && !data.hasGenerationContext) || isGeneratingVariations) return;
+      if (!hasSourceContext || isGeneratingVariations) return;
 
       setIsGeneratingVariations(true);
       try {
@@ -781,22 +886,8 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
 
         const sourceParams = stripSeedFromParams(params as Record<string, unknown>);
 
-        // Preserve source asset references (same logic as handleRegenerate)
-        if (
-          sourceAssetIds.length > 0
-          && !sourceParams.source_asset_ids
-          && !sourceParams.sourceAssetIds
-          && !sourceParams.source_asset_id
-          && !sourceParams.sourceAssetId
-        ) {
-          sourceParams.source_asset_ids = sourceAssetIds;
-        }
-        if (!sourceParams.composition_assets && sourceAssetIds.length > 0) {
-          const built = buildCompositionAssetsFromAssetIds(resolvedOperationType, sourceAssetIds);
-          if (built) {
-            sourceParams.composition_assets = built;
-          }
-        }
+        // Preserve source asset references (same logic as handleRegenerate).
+        ensureSourceAssetParams(sourceParams, resolvedOperationType, sourceAssetIds);
 
         // Fetch style primitives for the requested category
         const blocks = await searchBlocks({ category, limit: 20 });
@@ -869,8 +960,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     },
     [
       id,
-      data.sourceGenerationId,
-      data.hasGenerationContext,
+      hasSourceContext,
       isGeneratingVariations,
       operationType,
       addOrUpdateGeneration,
