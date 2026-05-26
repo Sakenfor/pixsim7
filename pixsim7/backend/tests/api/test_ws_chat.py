@@ -989,7 +989,10 @@ class TestWsChatMessage:
         mock_bridge.connected_count = 1
         mock_bridge.get_available_agent.return_value = agent
 
-        async def fake_stream(*args, **kwargs):
+        captured: dict = {}
+
+        async def fake_stream(payload, **kwargs):
+            captured["profile_id"] = payload.get("profile_id")
             yield {
                 "type": "result", "ok": True,
                 "response": "Hello back!",
@@ -1034,6 +1037,7 @@ class TestWsChatMessage:
         mock_resolve_profile.assert_awaited_once_with(mock_db, 7, None, agent_type="claude")
         assert mock_upsert.call_count == 1
         assert mock_upsert.call_args.kwargs["profile_id"] == "assistant:default"
+        assert captured["profile_id"] == "assistant:default"
 
 
 # ── Reconnect ────────────────────────────────────────────────────

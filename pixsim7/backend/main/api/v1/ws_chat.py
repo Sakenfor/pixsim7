@@ -777,6 +777,7 @@ async def _handle_message(
         bridge_session_id=bridge_session_id,
         session_policy=session_policy,
         scope_key=scope_key,
+        profile_id=resolved_profile_id,
     )
 
     # Handle asset images

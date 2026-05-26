@@ -7,7 +7,11 @@ Defines what to ask an agent, not how to deliver it.  Both the bridge
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from pixsim7.common.scope_helpers import derive_scope_key, normalize_scope_value
+from pixsim7.common.scope_helpers import (
+    derive_scope_key,
+    normalize_profile_id,
+    normalize_scope_value,
+)
 
 # ── Task types ───────────────────────────────────────────────────
 
@@ -76,6 +80,7 @@ def build_task_payload(
     bridge_session_id: Optional[str] = None,
     session_policy: Optional[str] = None,
     scope_key: Optional[str] = None,
+    profile_id: Optional[str] = None,
     images: Optional[List] = None,
     image_paths: Optional[List] = None,
 ) -> Dict[str, Any]:
@@ -114,6 +119,9 @@ def build_task_payload(
         payload["session_policy"] = "scoped"
     if scoped_key:
         payload["scope_key"] = scoped_key
+    normalized_profile = normalize_profile_id(profile_id)
+    if normalized_profile:
+        payload["profile_id"] = normalized_profile
     if images:
         payload["images"] = images
     if image_paths:

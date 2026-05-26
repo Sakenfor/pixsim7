@@ -76,6 +76,20 @@ class TestBuildTaskPayload:
         assert "scope_key" not in payload
         assert "session_policy" not in payload
 
+    def test_includes_profile_id_when_present(self):
+        payload = build_task_payload(
+            prompt="hello",
+            profile_id="assistant:codex",
+        )
+        assert payload["profile_id"] == "assistant:codex"
+
+    def test_omits_profile_id_when_unknown_sentinel(self):
+        payload = build_task_payload(
+            prompt="hello",
+            profile_id="unknown",
+        )
+        assert "profile_id" not in payload
+
 
 class TestResolveDefaultModel:
     """Static per-engine fallback used when the bridge model catalog
