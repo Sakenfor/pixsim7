@@ -2,7 +2,7 @@
   "_meta": {
     "description": "Prompt corpus for primitive_projection shadow-mode evaluation",
     "version": "1.0.0",
-    "total_entries": 277,
+    "total_entries": 281,
     "categories": {
       "camera_motion": "Prompts describing camera movement (dolly, pan, zoom, orbit, etc.)",
       "camera_framing": "Prompts describing shots, angles, POV, focus",
@@ -13,7 +13,8 @@
       "ambiguous": "Mixed-signal prompts that could match multiple categories or none",
       "time_of_day": "Prompts naming a diurnal phase (dawn, night, golden hour, etc.)",
       "weather": "Prompts naming an atmospheric condition (rain, fog, snow, etc.)",
-      "composition": "Prompts naming a framing/composition strategy (rule of thirds, symmetry, etc.)"
+      "composition": "Prompts naming a framing/composition strategy (rule of thirds, symmetry, etc.)",
+      "temporal": "Prompts naming a time-remap / playback-rate effect (time-lapse, freeze frame, etc.)"
     }
   },
   "corpus": [
@@ -232,7 +233,7 @@
     {"id": "am37", "text": "Pan.", "category": "ambiguous", "expected_block_prefix": null, "expected_category": null, "notes": "EDGE: single specific word, also cooking vessel"},
     {"id": "am38", "text": "Tilt.", "category": "ambiguous", "expected_block_prefix": null, "expected_category": null, "notes": "EDGE: single specific word"},
     {"id": "am39", "text": "A slow forward movement.", "category": "ambiguous", "expected_block_prefix": null, "expected_category": null, "notes": "Vague motion - could be subject or camera"},
-    {"id": "am40", "text": "Speed ramp from slow to fast as the camera pushes in.", "category": "ambiguous", "expected_block_prefix": null, "expected_category": null, "notes": "Compound camera + editing term"},
+    {"id": "am40", "text": "Speed ramp from slow to fast as the camera pushes in.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.speed_ramp", "expected_category": "camera", "notes": "Compound camera + editing term [relabeled: explicit speed_ramp signal]"},
     {"id": "am41", "text": "The shallow end of the pool.", "category": "ambiguous", "expected_block_prefix": null, "expected_category": null, "notes": "False friend: shallow as pool depth"},
     {"id": "am42", "text": "Hand-held tracking shot through the forest.", "category": "ambiguous", "expected_block_prefix": null, "expected_category": null, "notes": "Camera technique without specific motion type"},
     {"id": "am43", "text": "Warm and soft texture of the cashmere sweater.", "category": "ambiguous", "expected_block_prefix": null, "expected_category": null, "notes": "False friend: warm + soft as fabric descriptor"},
@@ -311,6 +312,11 @@
     {"id": "le01", "text": "Shot on a telephoto lens, compressed background.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.telephoto", "expected_category": "camera", "notes": "Telephoto lens (optics on camera.focus)"},
     {"id": "le02", "text": "A macro lens capturing tiny dewdrops.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.macro", "expected_category": "camera", "notes": "Macro lens"},
     {"id": "le03", "text": "Distorted fisheye view of the skate park.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.fisheye", "expected_category": "camera", "notes": "Fisheye lens"},
-    {"id": "le04", "text": "Anamorphic lens with horizontal flares.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.anamorphic", "expected_category": "camera", "notes": "Anamorphic lens"}
+    {"id": "le04", "text": "Anamorphic lens with horizontal flares.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.anamorphic", "expected_category": "camera", "notes": "Anamorphic lens"},
+
+    {"id": "tm01", "text": "A time-lapse of clouds racing overhead.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.time_lapse", "expected_category": "camera", "notes": "Time-lapse"},
+    {"id": "tm02", "text": "A speed ramp on the action jump.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.speed_ramp", "expected_category": "camera", "notes": "Speed ramp"},
+    {"id": "tm03", "text": "A freeze frame on her mid-air pose.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.freeze_frame", "expected_category": "camera", "notes": "Freeze frame"},
+    {"id": "tm04", "text": "Bullet time orbit around the frozen fighter.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.bullet_time", "expected_category": "camera", "notes": "Bullet time"}
   ]
 }

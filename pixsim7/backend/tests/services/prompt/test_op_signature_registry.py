@@ -324,6 +324,7 @@ _EXPECTED_SIGNATURE_IDS = {
     "camera.angle.v1",
     "camera.composition.v1",
     "camera.focus.v1",
+    "camera.tempo.v1",
     "camera.motion.v1",
     "camera.pov.v1",
     "camera.shot.v1",

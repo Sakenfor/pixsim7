@@ -1,0 +1,17 @@
+id: core-temporal
+title: Core Temporal
+description: Time-remap / playback-rate primitives (slow motion, time-lapse, etc.).
+category: camera
+matrix_presets:
+  - label: Tempo Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_temporal
+      include_empty: true
+  - label: Tempo Tokens
+    query:
+      row_key: tag:tempo
+      col_key: category
+      package_name: core_temporal
+      include_empty: true

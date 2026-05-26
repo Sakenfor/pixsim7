@@ -1,0 +1,77 @@
+version: 1.0.0
+package_name: core_temporal
+defaults:
+  is_public: true
+  source: system
+blocks:
+  - id: tempo
+    block_schema:
+      id_prefix: core.camera.tempo
+      category: camera
+      capabilities:
+        - camera.tempo
+      text_template: 'Temporal token: {variant}.'
+      tags:
+        modifier_family: tempo
+        modality_support: video
+        temporal: dynamic
+      op:
+        op_id: camera.tempo.set
+        signature_id: camera.tempo.v1
+        modalities:
+          - video
+        refs:
+          - key: subject
+            capability: subject
+            required: false
+        params:
+          - key: tempo
+            tag_key: tempo
+            type: enum
+            enum:
+              - real_time
+              - slow_motion
+              - time_lapse
+              - speed_ramp
+              - freeze_frame
+              - bullet_time
+            default: real_time
+        default_args:
+          tempo: real_time
+      variants:
+        - key: time_lapse
+          tags:
+            tempo_synonyms:
+              - timelapse
+              - time-lapse
+              - hyperlapse
+              - accelerated footage
+          op_args:
+            tempo: time_lapse
+        - key: speed_ramp
+          tags:
+            tempo_synonyms:
+              - speed ramp
+              - ramping
+              - time ramp
+              - speed change
+          op_args:
+            tempo: speed_ramp
+        - key: freeze_frame
+          tags:
+            tempo_synonyms:
+              - freeze frame
+              - frozen moment
+              - frozen in time
+              - held frame
+          op_args:
+            tempo: freeze_frame
+        - key: bullet_time
+          tags:
+            tempo_synonyms:
+              - bullet time
+              - matrix-style orbit
+              - frozen orbit
+              - time slice
+          op_args:
+            tempo: bullet_time

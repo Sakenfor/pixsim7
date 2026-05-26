@@ -111,6 +111,13 @@ signatures:
     required_refs: []
     allowed_modalities: [image, video]
 
+  - id: camera.tempo.v1
+    op_namespace: camera.tempo
+    requires_variant_template: false
+    required_params: [tempo]
+    required_refs: []
+    allowed_modalities: [video]
+
   - id: sequence.continuity.v1
     op_namespace: sequence.continuity
     requires_variant_template: false
