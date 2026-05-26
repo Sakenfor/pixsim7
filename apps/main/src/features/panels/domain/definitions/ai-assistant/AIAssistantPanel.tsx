@@ -677,6 +677,9 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const activeProfileIcon = resolveProfileIcon(tab.engine, activeProfile?.icon);
   const profileDisplay = activeProfile?.label || 'General';
   const isAgentProfile = activeProfile && !activeProfile.id.startsWith('assistant:');
+  const hasConversationStarted = sending
+    || !!tab.sessionId
+    || messages.some((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'error');
 
   // Engine-health pill: surface a stale-bridge mismatch before the user sends
   // a turn that would fail with bridge_engine_unavailable. Only meaningful for
@@ -702,6 +705,10 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         return `No "${tab.engine}" engine in any connected bridge${haveSuffix}. Restart your local agent client to re-register engines.`;
       })()
     : null;
+
+  useEffect(() => {
+    if (hasConversationStarted && showProfilePicker) setShowProfilePicker(false);
+  }, [hasConversationStarted, showProfilePicker]);
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -934,160 +941,162 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             <Icon name="plus" size={14} />
           </button>
 
-          {/* Profile picker */}
-          <div className="relative shrink-0" ref={profilePickerRef}>
-            <button
-              disabled={sending}
-              onClick={() => { setShowProfilePicker(!showProfilePicker); setEditingProfile(null); }}
-              className={`h-7 flex items-center gap-1 px-1.5 rounded-lg text-[10px] transition-colors disabled:opacity-40 disabled:pointer-events-none ${
-                showProfilePicker ? 'bg-accent text-accent-text' : 'text-th-secondary hover:bg-surface-secondary'
-              }`}
-              title={engineHealthMessage
-                ? `Profile: ${profileDisplay}\n\n⚠ ${engineHealthMessage}`
-                : `Profile: ${profileDisplay}`}
-            >
-              <EngineProfileIcon
-                engine={tab.engine}
-                icon={resolveProfileIcon(tab.engine, activeProfile?.icon || (isAgentProfile ? 'cpu' : 'messageSquare'))}
-                size={12}
-                // Health overlay on the brand circle: brand color (orange/blue)
-                // already encodes engine identity, so the ring layers a green
-                // (dispatchable) or red (broken) halo without a separate text
-                // chip. Pre-first-poll or non-bridge engines stay default.
-                health={
-                  !isBridgeEngine || !enginesReported
-                    ? 'unknown'
-                    : engineHealthy
-                      ? 'healthy'
-                      : 'unhealthy'
-                }
-              />
-              <span className="max-w-[60px] truncate">{profileDisplay}</span>
-            </button>
+          {/* Profile picker (only for fresh tabs before conversation starts) */}
+          {!hasConversationStarted && (
+            <div className="relative shrink-0" ref={profilePickerRef}>
+              <button
+                disabled={sending}
+                onClick={() => { setShowProfilePicker(!showProfilePicker); setEditingProfile(null); }}
+                className={`h-7 flex items-center gap-1 px-1.5 rounded-lg text-[10px] transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+                  showProfilePicker ? 'bg-accent text-accent-text' : 'text-th-secondary hover:bg-surface-secondary'
+                }`}
+                title={engineHealthMessage
+                  ? `Profile: ${profileDisplay}\n\n⚠ ${engineHealthMessage}`
+                  : `Profile: ${profileDisplay}`}
+              >
+                <EngineProfileIcon
+                  engine={tab.engine}
+                  icon={resolveProfileIcon(tab.engine, activeProfile?.icon || (isAgentProfile ? 'cpu' : 'messageSquare'))}
+                  size={12}
+                  // Health overlay on the brand circle: brand color (orange/blue)
+                  // already encodes engine identity, so the ring layers a green
+                  // (dispatchable) or red (broken) halo without a separate text
+                  // chip. Pre-first-poll or non-bridge engines stay default.
+                  health={
+                    !isBridgeEngine || !enginesReported
+                      ? 'unknown'
+                      : engineHealthy
+                        ? 'healthy'
+                        : 'unhealthy'
+                  }
+                />
+                <span className="max-w-[60px] truncate">{profileDisplay}</span>
+              </button>
 
-            {showProfilePicker && (
-              <div className="absolute bottom-full left-0 mb-1 w-64 max-h-[400px] overflow-y-auto rounded-lg border border-th bg-surface shadow-lg z-20">
-                {/* Editor mode */}
-                {editingProfile != null ? (
-                  <ProfileEditor
-                    profile={editingProfile === 'new' ? null : editingProfile}
-                    onSave={(updated) => {
-                      setEditingProfile(null);
-                      onRefreshProfiles();
-                      onUpdateTab({ profileId: updated.id });
-                      setShowProfilePicker(false);
-                    }}
-                    onCancel={() => setEditingProfile(null)}
-                  />
-                ) : (
-                  <>
-                    {/* Persona toggle (when a profile is selected) */}
-                    {tab.profileId && activeProfile && (
-                      <label className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-th-secondary hover:bg-surface-secondary cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={tab.usePersona}
-                          onChange={(e) => onUpdateTab({ usePersona: e.target.checked })}
-                          className="rounded border-th text-accent focus:ring-accent h-3 w-3"
-                        />
-                        <span>Use persona</span>
-                        <span className="text-[9px] text-th-muted ml-auto truncate max-w-[100px]" title={activeProfile.system_prompt || ''}>
-                          {activeProfile.system_prompt ? activeProfile.system_prompt.slice(0, 30) + '...' : 'none set'}
-                        </span>
-                      </label>
-                    )}
-
-                    {/* Profile list with edit + token + archive buttons */}
-                    {profiles.map((p) => (
-                      <div
-                        key={p.id}
-                        className={`group w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-surface-secondary ${
-                          tab.profileId === p.id ? 'bg-accent-subtle text-accent' : 'text-th-secondary'
-                        }`}
-                      >
-                        <button
-                          onClick={() => {
-                            onUpdateTab({
-                              profileId: p.id,
-                              usePersona: true,
-                              engine: engineFromProfile(p),
-                              sessionId: null,
-                              injectToken: true,
-                            });
-                            setShowProfilePicker(false);
-                          }}
-                          className="flex items-center gap-2 flex-1 min-w-0"
-                        >
-                          <EngineProfileIcon
-                            engine={engineFromProfile(p)}
-                            icon={resolveProfileIcon(engineFromProfile(p), p.icon || (p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu'))}
-                            size={12}
+              {showProfilePicker && (
+                <div className="absolute bottom-full left-0 mb-1 w-64 max-h-[400px] overflow-y-auto rounded-lg border border-th bg-surface shadow-lg z-20">
+                  {/* Editor mode */}
+                  {editingProfile != null ? (
+                    <ProfileEditor
+                      profile={editingProfile === 'new' ? null : editingProfile}
+                      onSave={(updated) => {
+                        setEditingProfile(null);
+                        onRefreshProfiles();
+                        onUpdateTab({ profileId: updated.id });
+                        setShowProfilePicker(false);
+                      }}
+                      onCancel={() => setEditingProfile(null)}
+                    />
+                  ) : (
+                    <>
+                      {/* Persona toggle (when a profile is selected) */}
+                      {tab.profileId && activeProfile && (
+                        <label className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-th-secondary hover:bg-surface-secondary cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={tab.usePersona}
+                            onChange={(e) => onUpdateTab({ usePersona: e.target.checked })}
+                            className="rounded border-th text-accent focus:ring-accent h-3 w-3"
                           />
-                          <span className="truncate">{p.label}</span>
-                          {p.model_id && <span className="text-[9px] text-th-muted truncate max-w-[80px]">{p.model_id}</span>}
-                        </button>
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              const res = await pixsimClient.post<{ access_token: string }>(`/dev/agent-profiles/${p.id}/token`, null, { params: { hours: 24, scope: 'dev' } });
-                              await navigator.clipboard.writeText(res.access_token);
-                              useAssistantChatStore.getState().appendMessage(tab.id, { role: 'system', text: `Token minted for ${p.label} (24h, copied to clipboard)`, timestamp: new Date() });
-                              setShowProfilePicker(false);
-                            } catch {
-                              useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: `Failed to mint token for ${p.label}`, timestamp: new Date() });
-                            }
-                          }}
-                          className="opacity-0 group-hover:opacity-100 text-th-muted hover:text-th transition-opacity shrink-0"
-                          title="Mint token (copies to clipboard)"
-                        >
-                          <Icon name="key" size={10} />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setEditingProfile(p); }}
-                          className="opacity-0 group-hover:opacity-100 text-th-muted hover:text-th transition-opacity shrink-0"
-                          title="Edit profile"
-                        >
-                          <Icon name="edit" size={10} />
-                        </button>
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (!confirm(`Archive "${p.label}"? It will be hidden but plan references are preserved.`)) return;
-                            try {
-                              await pixsimClient.delete(`/dev/agent-profiles/${p.id}`);
-                              // If this profile was selected, pick the first remaining
-                              if (tab.profileId === p.id) {
-                                const remaining = profiles.filter((pr) => pr.id !== p.id);
-                                onUpdateTab({ profileId: remaining[0]?.id ?? null });
-                              }
-                              onRefreshProfiles();
-                            } catch {
-                              useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: `Failed to archive ${p.label}`, timestamp: new Date() });
-                            }
-                          }}
-                          className="opacity-0 group-hover:opacity-100 text-th-muted hover:text-signal-error transition-opacity shrink-0"
-                          title="Archive profile"
-                        >
-                          <Icon name="trash" size={10} />
-                        </button>
-                      </div>
-                    ))}
+                          <span>Use persona</span>
+                          <span className="text-[9px] text-th-muted ml-auto truncate max-w-[100px]" title={activeProfile.system_prompt || ''}>
+                            {activeProfile.system_prompt ? activeProfile.system_prompt.slice(0, 30) + '...' : 'none set'}
+                          </span>
+                        </label>
+                      )}
 
-                    {/* New profile button */}
-                    <div className="border-t border-th-secondary" />
-                    <button
-                      onClick={() => setEditingProfile('new')}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-th-secondary hover:bg-surface-secondary"
-                    >
-                      <Icon name="plus" size={10} className="shrink-0" />
-                      <span>New profile</span>
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+                      {/* Profile list with edit + token + archive buttons */}
+                      {profiles.map((p) => (
+                        <div
+                          key={p.id}
+                          className={`group w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-surface-secondary ${
+                            tab.profileId === p.id ? 'bg-accent-subtle text-accent' : 'text-th-secondary'
+                          }`}
+                        >
+                          <button
+                            onClick={() => {
+                              onUpdateTab({
+                                profileId: p.id,
+                                usePersona: true,
+                                engine: engineFromProfile(p),
+                                sessionId: null,
+                                injectToken: true,
+                              });
+                              setShowProfilePicker(false);
+                            }}
+                            className="flex items-center gap-2 flex-1 min-w-0"
+                          >
+                            <EngineProfileIcon
+                              engine={engineFromProfile(p)}
+                              icon={resolveProfileIcon(engineFromProfile(p), p.icon || (p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu'))}
+                              size={12}
+                            />
+                            <span className="truncate">{p.label}</span>
+                            {p.model_id && <span className="text-[9px] text-th-muted truncate max-w-[80px]">{p.model_id}</span>}
+                          </button>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                const res = await pixsimClient.post<{ access_token: string }>(`/dev/agent-profiles/${p.id}/token`, null, { params: { hours: 24, scope: 'dev' } });
+                                await navigator.clipboard.writeText(res.access_token);
+                                useAssistantChatStore.getState().appendMessage(tab.id, { role: 'system', text: `Token minted for ${p.label} (24h, copied to clipboard)`, timestamp: new Date() });
+                                setShowProfilePicker(false);
+                              } catch {
+                                useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: `Failed to mint token for ${p.label}`, timestamp: new Date() });
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 text-th-muted hover:text-th transition-opacity shrink-0"
+                            title="Mint token (copies to clipboard)"
+                          >
+                            <Icon name="key" size={10} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setEditingProfile(p); }}
+                            className="opacity-0 group-hover:opacity-100 text-th-muted hover:text-th transition-opacity shrink-0"
+                            title="Edit profile"
+                          >
+                            <Icon name="edit" size={10} />
+                          </button>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!confirm(`Archive "${p.label}"? It will be hidden but plan references are preserved.`)) return;
+                              try {
+                                await pixsimClient.delete(`/dev/agent-profiles/${p.id}`);
+                                // If this profile was selected, pick the first remaining
+                                if (tab.profileId === p.id) {
+                                  const remaining = profiles.filter((pr) => pr.id !== p.id);
+                                  onUpdateTab({ profileId: remaining[0]?.id ?? null });
+                                }
+                                onRefreshProfiles();
+                              } catch {
+                                useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: `Failed to archive ${p.label}`, timestamp: new Date() });
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 text-th-muted hover:text-signal-error transition-opacity shrink-0"
+                            title="Archive profile"
+                          >
+                            <Icon name="trash" size={10} />
+                          </button>
+                        </div>
+                      ))}
+
+                      {/* New profile button */}
+                      <div className="border-t border-th-secondary" />
+                      <button
+                        onClick={() => setEditingProfile('new')}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-th-secondary hover:bg-surface-secondary"
+                      >
+                        <Icon name="plus" size={10} className="shrink-0" />
+                        <span>New profile</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Model override — fetched from backend registry or bridge */}
           <ModelSelector

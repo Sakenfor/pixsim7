@@ -3,13 +3,37 @@
  * Chat message rendering pipeline — markdown, thinking blocks, message bubbles.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Icon, type IconName } from '@lib/icons';
 
 import type { AgentPromptType, AgentPromptChoice } from './assistantChatBridge';
 import type { ChatMessage, AgentEngine } from './assistantChatStore';
 import { EngineProfileIcon } from './EngineProfileIcon';
+
+function legacyCopyText(text: string): boolean {
+  if (typeof document === 'undefined') return false;
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.top = '0';
+  textarea.style.left = '0';
+  textarea.style.opacity = '0';
+  textarea.style.pointerEvents = 'none';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  document.body.removeChild(textarea);
+  return ok;
+}
 
 // =============================================================================
 // Timestamp helpers (shared with AIAssistantPanel for the day divider)
@@ -442,10 +466,30 @@ export function MessageBubble({
   engine: AgentEngine;
   profileIcon: IconName;
 }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(msg.text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const copyTimerRef = useRef<number | null>(null);
+  const canHover = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(hover: hover) and (pointer: fine)').matches
+    : true;
+  const canCopy = msg.role === 'assistant' || msg.role === 'user' || msg.role === 'error';
+  const handleCopy = useCallback(async () => {
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(msg.text);
+      } else if (!legacyCopyText(msg.text)) {
+        throw new Error('clipboard_unavailable');
+      }
+      setCopyState('copied');
+    } catch {
+      // Fallback for mobile webviews / non-secure contexts where async clipboard is blocked.
+      setCopyState(legacyCopyText(msg.text) ? 'copied' : 'failed');
+    }
+    if (copyTimerRef.current != null) window.clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = window.setTimeout(() => setCopyState('idle'), 1500);
   }, [msg.text]);
+  useEffect(() => () => {
+    if (copyTimerRef.current != null) window.clearTimeout(copyTimerRef.current);
+  }, []);
   const showAssistantIcon = msg.role === 'assistant' || msg.role === 'error';
 
   const timeLabel = formatMessageTime(msg.timestamp);
@@ -492,10 +536,23 @@ export function MessageBubble({
             </span>
           )}
           {msg.duration_ms != null && <span className="text-[10px] opacity-50">{(msg.duration_ms / 1000).toFixed(1)}s</span>}
-          <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {msg.role === 'assistant' && (
-              <button onClick={handleCopy} className="text-[10px] opacity-60 hover:opacity-100" title="Copy">
-                {copied ? 'Copied!' : <Icon name="copy" size={11} />}
+          <div className={`ml-auto flex items-center gap-1 transition-opacity ${
+            canHover ? 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100' : 'opacity-100'
+          }`}>
+            {canCopy && (
+              <button
+                onClick={handleCopy}
+                className={`h-7 min-w-7 px-1.5 rounded text-[10px] transition-colors opacity-80 hover:opacity-100 focus-visible:opacity-100 ${
+                  copyState === 'failed'
+                    ? 'text-signal-error'
+                    : 'text-th-secondary hover:bg-surface-secondary'
+                }`}
+                title={copyState === 'failed' && !canHover ? 'Clipboard blocked here. Long-press the message text to copy.' : 'Copy message'}
+                aria-label="Copy message"
+              >
+                {!canHover || copyState !== 'idle'
+                  ? (copyState === 'copied' ? 'Copied' : copyState === 'failed' ? (canHover ? 'Failed' : 'Long-press') : 'Copy')
+                  : <Icon name="copy" size={11} />}
               </button>
             )}
             {msg.role === 'error' && onRetry && (
