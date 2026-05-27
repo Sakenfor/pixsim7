@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { getCurrentUserProfile, updateCurrentUserProfile, type UserProfile } from '@lib/api';
+import { CODEGEN_PERMISSION, DIAGNOSTICS_PERMISSION } from '@lib/auth/userRoles';
 import { Icon } from '@lib/icons';
 
 import { useAuthStore } from '@/stores/authStore';
@@ -24,6 +25,35 @@ function initialsOf(name: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Read-only capability row. Granting/revoking is admin-only (Settings → Access);
+// this just shows what the current user — and the agents they spawn — can do.
+function CapabilityRow({
+  label,
+  enabled,
+  note,
+}: {
+  label: string;
+  enabled: boolean;
+  note?: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <span className="text-xs text-neutral-300">{label}</span>
+        {note && <p className="text-[10px] text-neutral-500 mt-0.5 leading-snug">{note}</p>}
+      </div>
+      <span
+        className={`shrink-0 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${
+          enabled ? 'bg-emerald-600/20 text-emerald-300' : 'bg-neutral-800 text-neutral-500'
+        }`}
+      >
+        {enabled && <Icon name="check" size={10} />}
+        {enabled ? 'Enabled' : 'Off'}
+      </span>
+    </div>
+  );
 }
 
 export function AccountView() {
@@ -82,6 +112,15 @@ export function AccountView() {
   }, [profile, username, fullName, authUser, setUser]);
 
   const displayName = (profile?.display_name?.trim() || profile?.username) ?? '';
+
+  // Capabilities are read-only here. Admins pass capability checks implicitly
+  // server-side (is_admin), so an admin counts as enabled even without the
+  // explicit grant in their permission list.
+  const isAdmin = profile?.role === 'admin';
+  const perms = profile?.permissions ?? [];
+  const hasCodegen = isAdmin || perms.includes(CODEGEN_PERMISSION);
+  const hasDiagnostics = isAdmin || perms.includes(DIAGNOSTICS_PERMISSION);
+  const otherPerms = perms.filter((p) => p !== CODEGEN_PERMISSION && p !== DIAGNOSTICS_PERMISSION);
 
   return (
     <div className="p-4 space-y-5 max-w-md">
@@ -175,6 +214,51 @@ export function AccountView() {
               </span>
             )}
           </div>
+
+          {/* Capabilities — read-only. Granting is admin-only (Settings → Access). */}
+          {profile && (
+            <div className="pt-3 border-t border-neutral-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-medium text-neutral-300">Capabilities</h3>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded capitalize ${
+                    isAdmin ? 'bg-purple-600/20 text-purple-300' : 'bg-neutral-800 text-neutral-400'
+                  }`}
+                >
+                  {profile.role}
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-600 leading-snug">
+                What you and the agents you spawn can do.
+              </p>
+
+              <CapabilityRow label="Codegen access" enabled={hasCodegen} />
+              <CapabilityRow
+                label="Diagnostics access"
+                enabled={hasDiagnostics}
+                note="Agents you spawn inherit this capability."
+              />
+
+              {otherPerms.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  {otherPerms.map((p) => (
+                    <code
+                      key={p}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400"
+                    >
+                      {p}
+                    </code>
+                  ))}
+                </div>
+              )}
+
+              {!isAdmin && (!hasCodegen || !hasDiagnostics) && (
+                <p className="text-[11px] text-neutral-600 leading-snug">
+                  Ask an admin to enable a capability in Settings → Access.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Not-yet-wired controls — surfaced so they aren't silently missing */}
           <div className="pt-3 border-t border-neutral-800 space-y-1">
