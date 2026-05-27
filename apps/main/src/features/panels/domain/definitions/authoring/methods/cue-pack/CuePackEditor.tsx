@@ -29,14 +29,14 @@ import {
 } from '@lib/api/promptPacks';
 import { DraftsList } from '@lib/ui/promptPacks';
 
-import type { BlockAuthoringMethodProps } from '../types';
+import type { AuthoringMethodProps } from '../types';
 
+import { findSelectionAnchor, offsetToLineColumn } from './blockMatch';
 import { CueDiagnostics } from './CueDiagnostics';
 import { CuePackOutline } from './CuePackOutline';
-import { VersionsTab } from './VersionsTab';
-import { findSelectionAnchor, offsetToLineColumn } from './blockMatch';
 import { BuilderTab } from './form/BuilderTab';
 import { buildStarterCueSource } from './starterTemplate';
+import { VersionsTab } from './VersionsTab';
 
 type EditorTab = 'source' | 'builder' | 'outline' | 'versions';
 
@@ -79,7 +79,7 @@ function snapshotFromDraft(draft: PromptPackDraft): CompileSnapshot {
   };
 }
 
-export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
+export function CuePackEditor({ context }: AuthoringMethodProps) {
   const [drafts, setDrafts] = useState<PromptPackDraft[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<PromptPackDraft | null>(null);
@@ -282,7 +282,7 @@ export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
     // setting scrollTop in terms of average line height.
     const lineHeight = ta.scrollHeight / Math.max(1, ta.value.split('\n').length);
     ta.scrollTop = Math.max(0, (line - 3) * lineHeight);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [context.selectedBlockId, tab]);
 
   // ── Filter drafts by Block Explorer selection (best-effort) ───────

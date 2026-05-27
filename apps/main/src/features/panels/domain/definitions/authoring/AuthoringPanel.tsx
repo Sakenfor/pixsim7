@@ -1,5 +1,5 @@
 /**
- * BlockAuthoringPanel
+ * AuthoringPanel
  *
  * Generic shell for authoring block primitives. Hosts pluggable
  * "authoring methods" — different ways to author blocks — via the
@@ -15,16 +15,16 @@
  *   "reference" pane. The Explorer reads compiled blocks from the
  *   runtime; the method-side editor authors new ones. Selection from
  *   Explorer is forwarded into the active method as a hint via
- *   BlockAuthoringMethodContext.
+ *   AuthoringMethodContext.
  *
  *   Selection is shared via the `CAP_BLOCK_SELECTION` capability
  *   (registered in features/contextHub). Block Explorer is the
  *   provider; the active method receives the currently-focused
- *   block id through BlockAuthoringMethodContext.
+ *   block id through AuthoringMethodContext.
  *
  * Auth gating:
  *   Methods can opt into a user-availability predicate via
- *   `BlockAuthoringMethod.isAvailable`. The shell filters the
+ *   `AuthoringMethod.isAvailable`. The shell filters the
  *   registry against the current user and falls back to the first
  *   available method if the previously-selected one is gated out.
  *   When zero methods are available, the shell renders a sign-in /
@@ -46,16 +46,16 @@ import './methods/cue-pack';
 
 import { BlockExplorerPanel } from '../block-explorer';
 
-import { listAvailableBlockAuthoringMethods } from './methods/registry';
+import { listAvailableAuthoringMethods } from './methods/registry';
 
 type ExplorerVisibility = 'hidden' | 'side';
 
-export function BlockAuthoringPanel() {
+export function AuthoringPanel() {
   // Re-filter the registry whenever the current user changes — methods
   // with an `isAvailable` predicate may swap in/out on login/logout.
   const currentUser = useAuthStore((s) => s.user);
   const methods = useMemo(
-    () => listAvailableBlockAuthoringMethods(currentUser),
+    () => listAvailableAuthoringMethods(currentUser),
     [currentUser],
   );
   const [methodId, setMethodId] = useState<string>(() => methods[0]?.id ?? '');

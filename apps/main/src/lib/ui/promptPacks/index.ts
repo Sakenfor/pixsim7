@@ -4,7 +4,7 @@
  * Consumed by:
  *   - features/panels/domain/definitions/prompt-library-inspector
  *     (PromptPackAuthoringWorkbench — full drafts/versions/publish UI)
- *   - features/panels/domain/definitions/block-authoring
+ *   - features/panels/domain/definitions/authoring
  *     (CuePackEditor — drafts editor with embedded Versions tab)
  *
  * Each primitive is pure presentation. API calls + state are owned
