@@ -2,7 +2,7 @@
  * StatusBadge — small inline pill for lifecycle states.
  *
  * Variants come from the prompt-pack workflow's natural color
- * coding (matches PromptPackAuthoringWorkbench):
+ * coding:
  *   - neutral   → draft status, generic metadata
  *   - success   → active version, compile_ok
  *   - warning   → submitted, validate-in-progress

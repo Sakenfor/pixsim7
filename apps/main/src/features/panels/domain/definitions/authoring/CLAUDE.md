@@ -1,11 +1,14 @@
 # Authoring panel
 
-## Sibling lifecycle surface
-The same drafts → versions → publish workflow already lives in
-features/panels/domain/definitions/prompt-library-inspector/PromptPackAuthoringWorkbench.tsx.
-Both surfaces consume lib/ui/promptPacks/ (DraftsList, VersionsList,
-VersionDetailPanel, useDraftLifecycle). Change behavior in the
-shared primitive, not in one consumer.
+## Single prompt-pack authoring surface
+This panel is the one place to author prompt packs. The older
+PromptPackAuthoringWorkbench (formerly the inspector's Authoring tab)
+was folded in and removed; the inspector's "Pack Authoring" tab now
+renders this panel. The drafts → versions → publish workflow is built
+from the shared lib/ui/promptPacks/ primitives (DraftsList,
+VersionsList, VersionDetailPanel, useDraftLifecycle), consumed by the
+CUE Pack method's Pack + Versions tabs. Change lifecycle behavior in
+the shared primitive, not in the consumer.
 
 ## Adding a new authoring method
 The method registry only holds methods imported at module load time.
