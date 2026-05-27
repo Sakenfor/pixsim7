@@ -23,6 +23,7 @@ import {
   createPromptPackDraft,
   listPromptPackDrafts,
   replacePromptPackDraftSource,
+  updatePromptPackDraft,
   validatePromptPackDraft,
   type PromptPackCompileResponse,
   type PromptPackDraft,
@@ -38,7 +39,9 @@ import { BuilderTab } from './form/BuilderTab';
 import { buildStarterCueSource } from './starterTemplate';
 import { VersionsTab } from './VersionsTab';
 
-type EditorTab = 'source' | 'builder' | 'outline' | 'versions';
+type EditorTab = 'source' | 'builder' | 'outline' | 'pack' | 'versions';
+
+type ArtifactView = 'schema' | 'manifest' | 'blocks';
 
 interface CompileSnapshot {
   ok: boolean;
@@ -47,6 +50,10 @@ interface CompileSnapshot {
   blocks: Array<Record<string, unknown>>;
   /** Resolved `pack:` expression — feeds the Builder form. */
   pack: Record<string, unknown> | null;
+  /** Raw compiled artifacts — feed the Pack tab's artifact viewer.
+   *  Present after compile; validate may omit them. */
+  packYaml: string | null;
+  manifestYaml: string | null;
   /** The source string that produced this snapshot, for staleness. */
   compiledSource: string | null;
   compiledAt?: string | null;
@@ -62,6 +69,8 @@ function snapshotFromResponse(
     diagnostics: res.diagnostics ?? [],
     blocks: res.blocks_json ?? [],
     pack: res.pack_json ?? null,
+    packYaml: res.pack_yaml ?? null,
+    manifestYaml: res.manifest_yaml ?? null,
     compiledSource,
     compiledAt: res.compiled_at ?? null,
   };
@@ -74,6 +83,8 @@ function snapshotFromDraft(draft: PromptPackDraft): CompileSnapshot {
     diagnostics: draft.last_compile_errors ?? [],
     blocks: [],
     pack: null,
+    packYaml: null,
+    manifestYaml: null,
     compiledSource: null,
     compiledAt: draft.last_compiled_at ?? null,
   };
@@ -90,6 +101,12 @@ export function CuePackEditor({ context }: AuthoringMethodProps) {
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const sourceRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Pack tab: editable identity + raw compiled-artifact viewer.
+  const [namespaceInput, setNamespaceInput] = useState('');
+  const [slugInput, setSlugInput] = useState('');
+  const [savingMeta, setSavingMeta] = useState(false);
+  const [artifactView, setArtifactView] = useState<ArtifactView>('schema');
 
   // ── Load drafts list ──────────────────────────────────────────────
   const reloadDrafts = useCallback(async () => {
@@ -122,6 +139,8 @@ export function CuePackEditor({ context }: AuthoringMethodProps) {
       setSource('');
       setSnapshot(null);
       setDirty(false);
+      setNamespaceInput('');
+      setSlugInput('');
       return;
     }
     const found = drafts.find((d) => d.id === selectedId) ?? null;
@@ -129,6 +148,8 @@ export function CuePackEditor({ context }: AuthoringMethodProps) {
     setSource(found?.cue_source ?? '');
     setSnapshot(found ? snapshotFromDraft(found) : null);
     setDirty(false);
+    setNamespaceInput(found?.namespace ?? '');
+    setSlugInput(found?.pack_slug ?? '');
   }, [selectedId, drafts]);
 
   // ── Actions ───────────────────────────────────────────────────────
@@ -165,6 +186,8 @@ export function CuePackEditor({ context }: AuthoringMethodProps) {
           ...fresh,
           blocks: prev?.blocks ?? fresh.blocks,
           pack: prev?.pack ?? fresh.pack,
+          packYaml: fresh.packYaml ?? prev?.packYaml ?? null,
+          manifestYaml: fresh.manifestYaml ?? prev?.manifestYaml ?? null,
           compiledSource: prev?.compiledSource ?? null,
         };
       });
@@ -240,6 +263,27 @@ export function CuePackEditor({ context }: AuthoringMethodProps) {
       setBusy('idle');
     }
   }, []);
+
+  const saveMetadata = useCallback(async () => {
+    if (!draft) return;
+    setSavingMeta(true);
+    setError(null);
+    try {
+      const updated = await updatePromptPackDraft(draft.id, {
+        namespace: namespaceInput.trim(),
+        pack_slug: slugInput.trim(),
+      });
+      setDrafts((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+      setDraft(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save metadata failed');
+    } finally {
+      setSavingMeta(false);
+    }
+  }, [draft, namespaceInput, slugInput]);
+
+  const metaDirty =
+    !!draft && (namespaceInput !== draft.namespace || slugInput !== draft.pack_slug);
 
   const onSourceChange = useCallback((value: string) => {
     setSource(value);
@@ -375,6 +419,18 @@ export function CuePackEditor({ context }: AuthoringMethodProps) {
               </button>
               <button
                 type="button"
+                onClick={() => setTab('pack')}
+                className={`text-[11px] px-2 py-1 rounded ${
+                  tab === 'pack'
+                    ? 'bg-neutral-800 text-neutral-100'
+                    : 'text-neutral-400 hover:text-neutral-200'
+                }`}
+                title="Pack identity (namespace/slug) and raw compiled artifacts"
+              >
+                Pack
+              </button>
+              <button
+                type="button"
                 onClick={() => setTab('versions')}
                 className={`text-[11px] px-2 py-1 rounded ${
                   tab === 'versions'
@@ -449,6 +505,79 @@ export function CuePackEditor({ context }: AuthoringMethodProps) {
                     blocks={snapshot?.blocks ?? []}
                     highlightId={context.selectedBlockId ?? null}
                   />
+                </div>
+              )}
+              {tab === 'pack' && (
+                <div className="h-full overflow-y-auto p-3 space-y-4 bg-neutral-950">
+                  {/* Pack identity — editable namespace/slug */}
+                  <section className="space-y-2">
+                    <h4 className="text-[10px] uppercase tracking-wider text-neutral-500">
+                      Pack identity
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block text-[11px] text-neutral-400 space-y-1">
+                        <span>Namespace</span>
+                        <input
+                          value={namespaceInput}
+                          onChange={(e) => setNamespaceInput(e.target.value)}
+                          className="w-full rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-[12px] text-neutral-100 outline-none focus:border-neutral-600"
+                        />
+                      </label>
+                      <label className="block text-[11px] text-neutral-400 space-y-1">
+                        <span>Pack slug</span>
+                        <input
+                          value={slugInput}
+                          onChange={(e) => setSlugInput(e.target.value)}
+                          className="w-full rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-[12px] text-neutral-100 outline-none focus:border-neutral-600"
+                        />
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void saveMetadata()}
+                        disabled={!metaDirty || savingMeta}
+                        className="text-[10px] px-2 py-1 rounded border border-neutral-700 text-neutral-300 hover:bg-neutral-800 disabled:opacity-40"
+                      >
+                        {savingMeta ? 'Saving…' : 'Save Metadata'}
+                      </button>
+                      {metaDirty && <span className="text-[10px] text-amber-400/80">unsaved</span>}
+                      <span className="ml-auto text-[10px] text-neutral-600">{draft.status}</span>
+                    </div>
+                  </section>
+
+                  {/* Raw compiled artifacts */}
+                  <section className="space-y-2">
+                    <div className="flex items-center gap-1">
+                      <h4 className="text-[10px] uppercase tracking-wider text-neutral-500 mr-1">
+                        Compiled
+                      </h4>
+                      {(['schema', 'manifest', 'blocks'] as ArtifactView[]).map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setArtifactView(v)}
+                          className={`text-[10px] px-1.5 py-0.5 rounded capitalize ${
+                            artifactView === v
+                              ? 'bg-neutral-800 text-neutral-100'
+                              : 'text-neutral-400 hover:text-neutral-200'
+                          }`}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                    <pre className="text-[11px] font-mono whitespace-pre-wrap rounded border border-neutral-800 bg-neutral-900 p-2 text-neutral-200">
+                      {artifactView === 'schema' &&
+                        (snapshot?.packYaml || '# Compile to see the schema YAML.')}
+                      {artifactView === 'manifest' &&
+                        (snapshot?.manifestYaml || '# Compile to see the manifest YAML.')}
+                      {artifactView === 'blocks' &&
+                        (snapshot && snapshot.blocks.length > 0
+                          ? JSON.stringify(snapshot.blocks, null, 2)
+                          : '// Compile to see the blocks JSON.')}
+                    </pre>
+                  </section>
                 </div>
               )}
               {tab === 'versions' && <VersionsTab draft={draft} />}
