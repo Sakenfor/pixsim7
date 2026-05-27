@@ -95,20 +95,26 @@ export async function createTabOptimistic(
       payload.order_index ??
       (before.length === 0 ? 0 : Math.max(...before.map((t) => t.orderIndex)) + 1),
     planId: payload.plan_id ?? null,
+    engine: payload.engine ?? null,
+    profileId: payload.profile_id ?? null,
     scopeKey: payload.scope_key ?? null,
     pinned: payload.pinned ?? false,
     createdAt: nowIso,
     updatedAt: nowIso,
+    // Mark in-flight so server-side ops (PATCH, plan-claims fetch) gate off
+    // this row until the POST below persists it — otherwise they 404 on a
+    // tab id the server hasn't seen yet.
+    pending: 'creating',
   };
   applyInsertTab(optimistic);
   try {
     const server = await apiCreateChatTab({ ...payload, id });
     // Replace optimistic row with server truth (session_id may have been
-    // server-assigned, createdAt is canonical, etc.).
-    applyUpdateTab(id, server);
-    // A previous create-failed marker for this id (e.g. from a manual retry)
-    // is cleared by the spread in applyUpdateTab carrying the server row's
-    // `pending: undefined`. Surface success to clear the banner too.
+    // server-assigned, createdAt is canonical, etc.). The API response never
+    // carries `pending` and applyUpdateTab is a shallow merge, so clear the
+    // marker explicitly — both the `'creating'` flag set above and any prior
+    // `'create-failed'` (e.g. from a manual retry) — otherwise it sticks.
+    applyUpdateTab(id, { ...server, pending: undefined });
     clearLastError();
     return server;
   } catch (err) {

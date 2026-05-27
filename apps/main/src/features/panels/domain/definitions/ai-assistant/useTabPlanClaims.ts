@@ -24,12 +24,27 @@ export function useTabPlanClaims(
   // Refetch keys — change when the binding the server derives from changes.
   planId: string | null,
   sessionId: string | null,
+  // False while the tab's optimistic-create POST is in flight (or failed) —
+  // the server has no row for this id yet, so a fetch would 404. Flips true
+  // (and the effect re-runs → fetches) once the create is confirmed.
+  persisted = true,
 ): TabPlanClaim[] {
   const [plans, setPlans] = useState<TabPlanClaim[]>([]);
   const inflight = useRef(false);
 
   useEffect(() => {
-    if (!tabId) {
+    // Skip the fetch for an unbound tab (no plan binding and no bound
+    // session). The server's only non-empty paths require either
+    // session-keyed claim rows or a derived primary `plan_id`, so such a tab
+    // can have no claims — return [] without a request.
+    //
+    // Also skip while the tab isn't yet persisted server-side: a new tab is
+    // inserted optimistically with a client-minted id and the panel renders
+    // (firing this hook) before the `POST /chat-tabs` lands, so
+    // `GET /{id}/plan-claims` would 404 on a tab the server hasn't seen yet.
+    // This covers pre-bound tabs (resume / agent self-assign) where the
+    // unbound guard above wouldn't. Plan `unify-tab-plan-categorization`.
+    if (!tabId || !persisted || (!planId && !sessionId)) {
       setPlans([]);
       return;
     }
@@ -57,7 +72,7 @@ export function useTabPlanClaims(
       cancelled = true;
       clearInterval(t);
     };
-  }, [tabId, planId, sessionId]);
+  }, [tabId, planId, sessionId, persisted]);
 
   return plans;
 }

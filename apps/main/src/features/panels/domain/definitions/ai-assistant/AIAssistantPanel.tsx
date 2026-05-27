@@ -185,7 +185,14 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const messages = useAssistantChatStore((s) => s.messagesByTab[tab.id] ?? EMPTY_CHAT_MESSAGES);
   // Multi-plan membership for the header chip set (sidebar still groups
   // this tab once, under its primary). Plan unify-tab-plan-categorization.
-  const tabPlanClaims = useTabPlanClaims(tab.id, tab.planId, tab.sessionId);
+  // `persisted` is false while the tab's optimistic-create POST is in flight
+  // or failed (server has no row yet) so the fetch doesn't 404 on it.
+  const tabPlanClaims = useTabPlanClaims(
+    tab.id,
+    tab.planId,
+    tab.sessionId,
+    !tab.pending,
+  );
   // Hydrate store cache from localStorage on mount (safe in effect, not render)
   useEffect(() => {
     const s = useAssistantChatStore.getState();

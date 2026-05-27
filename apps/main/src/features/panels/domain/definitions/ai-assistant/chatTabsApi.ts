@@ -40,18 +40,28 @@ export interface ServerChatTab {
    * store falls back to `planId`.
    */
   primaryPlanId?: string | null;
+  /**
+   * Session-derived preference hints. Used by clients that do not yet have
+   * local tab-prefs for this tab id (cross-device open).
+   */
+  engine?: string | null;
+  profileId?: string | null;
   scopeKey: string | null;
   pinned: boolean;
   createdAt: string;
   updatedAt: string;
   /**
-   * Client-only flag. Present (`'create-failed'`) when an optimistic insert's
-   * server POST rejected and the row was preserved in the snapshot instead of
-   * being silently rolled back. See plan `chat-tab-server-persistence`
+   * Client-only flag. `'creating'` while an optimistic insert's `POST
+   * /chat-tabs` is in flight (the row exists locally with a client-minted id
+   * but the server hasn't persisted it yet); `'create-failed'` when that POST
+   * rejected and the row was preserved in the snapshot instead of being
+   * silently rolled back. Either value means "the server doesn't know this
+   * tab id yet" — gate server-side ops (PATCH, plan-claims fetch) on its
+   * absence to avoid 404s. See plan `chat-tab-server-persistence`
    * checkpoint F. The server never sends this — `apiCreate*` responses leave
    * it undefined.
    */
-  pending?: 'create-failed';
+  pending?: 'creating' | 'create-failed';
 }
 
 interface ChatTabsListResponse {

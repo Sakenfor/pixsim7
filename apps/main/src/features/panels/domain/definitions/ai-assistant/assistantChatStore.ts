@@ -115,13 +115,14 @@ interface ChatTab {
    */
   draft: string | null;
   /**
-   * Set to `'create-failed'` when the optimistic server insert was rejected
-   * and the row was preserved instead of rolled back. The sidebar `SessionItem`
-   * renders an inline retry/dismiss affordance; the chat view should gate
-   * server-side ops on this until retry succeeds. See plan
-   * `chat-tab-server-persistence` checkpoint F.
+   * `'creating'` while the optimistic insert's server POST is in flight, then
+   * `'create-failed'` if that POST was rejected (row preserved instead of
+   * rolled back). The sidebar `SessionItem` renders an inline retry/dismiss
+   * affordance for `'create-failed'`; the chat view gates server-side ops
+   * (PATCH, plan-claims fetch) on `pending` being absent until the server
+   * confirms the id. See plan `chat-tab-server-persistence` checkpoint F.
    */
-  pending?: 'create-failed';
+  pending?: 'creating' | 'create-failed';
 }
 
 // =============================================================================
@@ -1357,16 +1358,17 @@ export const useAssistantChatStore = hmrSingleton(
           draftsByTab: { ...s.draftsByTab, [tabId]: text },
           draftDirtyByTab: { ...s.draftDirtyByTab, [tabId]: true },
         }));
-        // Server autosave — debounced, silent on failure. Skipped for
-        // create-failed rows (server doesn't know the id yet).
+        // Server autosave — debounced, silent on failure. Skipped while the
+        // row is `pending` (creating or create-failed) — the server doesn't
+        // know the id yet, so PATCH would 404.
         const tab = get().tabs.find((t) => t.id === tabId);
-        const hasServerRow = !!tab && tab.pending !== 'create-failed';
+        const hasServerRow = !!tab && !tab.pending;
         scheduleDraftSync(tabId, text, store, hasServerRow);
       },
 
       flushDraftSync: (tabId) => {
         const tab = get().tabs.find((t) => t.id === tabId);
-        const hasServerRow = !!tab && tab.pending !== 'create-failed';
+        const hasServerRow = !!tab && !tab.pending;
         flushDraftSyncNow(tabId, store, hasServerRow);
       },
 

@@ -83,6 +83,33 @@ describe('useTabPlanClaims', () => {
     expect(api.listTabPlanClaims).not.toHaveBeenCalled();
   });
 
+  it('does not fetch for an unbound tab (no plan + no session) — avoids 404 on new tabs', () => {
+    const { result } = renderHook(() => useTabPlanClaims('tab-new', null, null));
+    expect(result.current).toEqual([]);
+    expect(api.listTabPlanClaims).not.toHaveBeenCalled();
+  });
+
+  it('does not fetch while the tab is not yet persisted, then fetches once it is', async () => {
+    api.listTabPlanClaims.mockResolvedValue({
+      tabId: 'tab-1',
+      sessionId: 's1',
+      primaryPlanId: 'plan-a',
+      plans: [claim({ primary: true })],
+    });
+    const { result, rerender } = renderHook(
+      ({ persisted }: { persisted: boolean }) =>
+        useTabPlanClaims('tab-1', 'plan-a', 's1', persisted),
+      { initialProps: { persisted: false } },
+    );
+    // In-flight create: bound tab, but the server has no row yet → no request.
+    expect(result.current).toEqual([]);
+    expect(api.listTabPlanClaims).not.toHaveBeenCalled();
+    // Create confirmed → fetch fires.
+    rerender({ persisted: true });
+    await waitFor(() => expect(result.current).toHaveLength(1));
+    expect(api.listTabPlanClaims).toHaveBeenCalledWith('tab-1');
+  });
+
   it('fetches and exposes the session claim list', async () => {
     api.listTabPlanClaims.mockResolvedValue({
       tabId: 'tab-1',
@@ -145,9 +172,9 @@ describe('ContextBar plan chips', () => {
     // Primary first in DOM order.
     expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // Primary chip emphasized; secondary dimmed (label's parent = chip span).
-    expect(a.parentElement?.className).toContain('text-emerald-500');
-    expect(a.parentElement?.className).not.toContain('text-emerald-500/60');
-    expect(b.parentElement?.className).toContain('text-emerald-500/60');
+    expect(a.parentElement?.className).toContain('text-signal-success');
+    expect(a.parentElement?.className).not.toContain('text-signal-success/60');
+    expect(b.parentElement?.className).toContain('text-signal-success/60');
   });
 
   it('falls back to a single planId chip when no claims are loaded', () => {
