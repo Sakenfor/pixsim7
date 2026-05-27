@@ -292,8 +292,8 @@ async def create_generation(
 
     Rate limited: 10 requests per 60 seconds per user/IP
     """
-    # Rate limit check
-    identifier = await get_client_identifier(req)
+    # Rate limit check (per-user; agents limited as the delegating user)
+    identifier = await get_client_identifier(req, user)
     await job_create_limiter.check(identifier)
 
     try:
@@ -658,8 +658,8 @@ async def create_simple_image_to_video(
 
   It is primarily intended for tooling like the Chrome extension's Quick Generate.
   """
-  # Rate limit check (reuse same limiter)
-  identifier = await get_client_identifier(req)
+  # Rate limit check (reuse same limiter; per-user, agents as delegating user)
+  identifier = await get_client_identifier(req, user)
   await job_create_limiter.check(identifier)
 
   try:
