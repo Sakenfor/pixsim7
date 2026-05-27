@@ -529,8 +529,17 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   }, []);
 
   useEffect(() => {
-    if (mediaType !== 'video' || !thumbSrc) {
+    if (!thumbSrc) {
       setIntrinsicThumbAspectRatio(null);
+      return;
+    }
+
+    // When the asset carries reliable intrinsic dimensions, the aspect-ratio
+    // memo already prefers them — skip the extra thumbnail decode. This keeps
+    // the common case (dims known) free of an additional image fetch while
+    // still measuring the thumb as a fallback when dims are missing (images
+    // included, so their cards can also reserve height before the lazy decode).
+    if (typeof width === 'number' && typeof height === 'number' && width > 0 && height > 0) {
       return;
     }
 
@@ -551,22 +560,30 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     return () => {
       cancelled = true;
     };
-  }, [mediaType, thumbSrc]);
+  }, [mediaType, thumbSrc, width, height]);
 
-  const videoAspectRatio = useMemo(() => {
-    if (mediaType !== 'video') return null;
-
+  // Aspect ratio used to reserve the media container's height *before* the
+  // (lazy) thumbnail decodes — for both images and videos. Reserving height
+  // up front keeps the masonry layout stable when virtualized cards above the
+  // viewport re-mount during upward scroll, which otherwise triggers the
+  // scroll-anchor "snap" in MasonryGrid (re-measured heights shift everything
+  // below them). Prefer known intrinsic dimensions from asset metadata.
+  const mediaAspectRatio = useMemo(() => {
     if (typeof width === 'number' && typeof height === 'number' && width > 0 && height > 0) {
       return width / height;
     }
 
-    // Do not trust thumbnail image dimensions when a real video source exists.
-    // Placeholder thumbs can have the wrong aspect ratio and break card layout.
-    if (videoSrc) {
-      return intrinsicVideoAspectRatio ?? 16 / 9;
+    if (mediaType === 'video') {
+      // Do not trust thumbnail image dimensions when a real video source exists.
+      // Placeholder thumbs can have the wrong aspect ratio and break card layout.
+      if (videoSrc) {
+        return intrinsicVideoAspectRatio ?? 16 / 9;
+      }
+      return intrinsicVideoAspectRatio ?? intrinsicThumbAspectRatio ?? 16 / 9;
     }
 
-    return intrinsicVideoAspectRatio ?? intrinsicThumbAspectRatio ?? 16 / 9;
+    // Image: fall back to the preloaded thumbnail's intrinsic ratio once known.
+    return intrinsicThumbAspectRatio;
   }, [mediaType, width, height, intrinsicThumbAspectRatio, intrinsicVideoAspectRatio, videoSrc]);
 
   const retryVideo = useCallback(() => {
@@ -1104,8 +1121,8 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
           onDragStart={handleMediaDragStart}
           {...gesture.gestureHandlers}
           style={
-            !layout?.aspectSquare && !layout?.fillHeight && mediaType === 'video' && videoAspectRatio
-              ? { aspectRatio: `${videoAspectRatio}` }
+            !layout?.aspectSquare && !layout?.fillHeight && mediaAspectRatio
+              ? { aspectRatio: `${mediaAspectRatio}` }
               : undefined
           }
         >
@@ -1173,8 +1190,14 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
               <img
                 src={thumbSrc}
                 alt={`Media ${id}`}
+                // Fill the container whenever a height is reserved (fixed
+                // layout or a known aspect ratio) so the container's
+                // aspect-ratio is the single source of truth — otherwise the
+                // image's intrinsic `h-auto` height fights the reserved box and
+                // produces gaps/overlap in the masonry. Fall back to `h-auto`
+                // only when no ratio is known yet so the box can't collapse.
                 className={`w-full object-cover ${
-                  layout?.fillHeight || layout?.aspectSquare ? 'h-full' : 'h-auto'
+                  layout?.fillHeight || layout?.aspectSquare || mediaAspectRatio ? 'h-full' : 'h-auto'
                 }`}
                 loading="lazy"
               />

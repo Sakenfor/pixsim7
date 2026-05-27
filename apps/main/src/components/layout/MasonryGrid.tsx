@@ -250,15 +250,30 @@ export function MasonryGrid({
       }
     }
 
-    // Observe newly mounted elements
-    for (const el of currentMounted) {
-      if (!observedSetRef.current.has(el)) {
-        ro.observe(el);
-        lastHeightsRef.current.set(el, el.offsetHeight);
+    // Observe newly mounted elements. When a card re-mounts after being
+    // virtualized, its height may no longer match what the layout last recorded
+    // in measuredHeightsRef (e.g. its footer/widgets changed while off-screen).
+    // The ResizeObserver baseline we set here would mask that as "no change", so
+    // nothing else would trigger a relayout and the stale position persists
+    // (the occasional overlap / gap). Detect the divergence and bump layout.
+    let staleHeight = false;
+    for (let i = 0; i < itemRefs.current.length; i++) {
+      const el = itemRefs.current[i];
+      if (!el || observedSetRef.current.has(el)) continue;
+      ro.observe(el);
+      lastHeightsRef.current.set(el, el.offsetHeight);
+      const cached = measuredHeightsRef.current.get(i);
+      const measured = Math.ceil(el.getBoundingClientRect().height);
+      if (cached !== undefined && measured > 0 && Math.abs(measured - cached) > 2) {
+        staleHeight = true;
       }
     }
 
     observedSetRef.current = currentMounted;
+
+    if (staleHeight) {
+      setLayoutVersion((v) => v + 1);
+    }
   });
 
   // ── Column calculations ──────────────────────────────────────────────
@@ -301,9 +316,15 @@ export function MasonryGrid({
 
     items.forEach((_, index) => {
       const el = itemRefs.current[index];
-      // Use DOM height for mounted items, fall back to last measured height for virtualized placeholders
+      // Use DOM height for mounted items, fall back to last measured height for
+      // virtualized placeholders. Measure with sub-pixel precision and round UP:
+      // `offsetHeight` rounds to the nearest integer, so an aspect-ratio card
+      // with a fractional height can round down, placing the next card in the
+      // column slightly too high (a few px of overlap, worst on tall portraits).
+      // `Math.ceil(getBoundingClientRect().height)` errs toward a sub-pixel gap
+      // instead.
       const height = el
-        ? el.offsetHeight
+        ? Math.ceil(el.getBoundingClientRect().height)
         : (measuredHeightsRef.current.get(index) ?? 0);
 
       // Store measured height for future virtualized layout passes
