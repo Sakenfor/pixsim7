@@ -1636,6 +1636,7 @@ async def _resolve_round_for_request_dispatch(
 
 async def _run_review_request_via_bridge(
     *,
+    db,
     plan_id: str,
     request_row: PlanRequest,
     prompt: str,
@@ -1652,9 +1653,19 @@ async def _run_review_request_via_bridge(
     agent_type = (request_row.target_agent_type or "").lower()
     engine = "codex" if "codex" in agent_type else "claude"
 
-    # Mint a profile-scoped token so the agent's MCP tools have profile identity
+    # Mint a profile-scoped token so the agent's MCP tools have profile identity.
+    # Inherit the on-behalf user's agent-inheritable permissions (e.g.
+    # devtools.diagnostics) so a task-dispatched agent has the same wiring as
+    # chat/bridge-session agents.
     from pixsim7.backend.main.services.meta.agent_dispatch import mint_task_token
-    agent_token = mint_task_token(target_agent_id, user_id, engine=engine) if target_agent_id and user_id is not None else None
+    from pixsim7.backend.main.services.user.token_policy import resolve_inheritable_agent_permissions
+
+    agent_token = None
+    if target_agent_id and user_id is not None:
+        inherited_permissions = await resolve_inheritable_agent_permissions(db, user_id)
+        agent_token = mint_task_token(
+            target_agent_id, user_id, engine=engine, permissions=inherited_permissions
+        )
 
     task_payload = build_bridge_task_payload(
         prompt=prompt,
@@ -1814,6 +1825,7 @@ async def _execute_plan_request_kind_review(
             else _principal_effective_user_id(principal)
         )
         result = await _run_review_request_via_bridge(
+            db=db,
             plan_id=plan_id,
             request_row=request_row,
             prompt=prompt,

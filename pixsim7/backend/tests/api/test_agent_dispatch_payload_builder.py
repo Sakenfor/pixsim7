@@ -119,3 +119,39 @@ class TestResolveDefaultModel:
         assert resolve_default_model("") is None
         assert resolve_default_model(None) is None
         assert resolve_default_model("   ") is None
+
+
+class TestMintTaskToken:
+    """Task-dispatch tokens must inherit the on-behalf user's agent-inheritable
+    permissions — the gap that left task-dispatched agents without
+    devtools.diagnostics (chat/bridge-session agents already inherited)."""
+
+    def test_inherits_supplied_permissions(self):
+        from pixsim7.backend.main.shared.agent_dispatch import mint_task_token
+        from pixsim7.backend.main.shared.auth import decode_access_token
+
+        token = mint_task_token(
+            "profile-x", 7, engine="claude", permissions=["devtools.diagnostics"]
+        )
+        assert token is not None
+        claims = decode_access_token(token)
+        assert claims["purpose"] == "agent"
+        assert claims["on_behalf_of"] == 7
+        assert claims["permissions"] == ["devtools.diagnostics"]
+        assert claims["is_admin"] is False  # never inherited
+
+    def test_empty_permissions_mints_permissionless_token(self):
+        from pixsim7.backend.main.shared.agent_dispatch import mint_task_token
+        from pixsim7.backend.main.shared.auth import decode_access_token
+
+        token = mint_task_token("profile-x", 7, engine="claude", permissions=[])
+        assert token is not None
+        assert decode_access_token(token)["permissions"] == []
+
+    def test_permissions_is_required_keyword_only(self):
+        from pixsim7.backend.main.shared.agent_dispatch import mint_task_token
+
+        # No silent default: a call site that forgets inheritance fails loudly
+        # rather than quietly minting a permission-less token.
+        with pytest.raises(TypeError):
+            mint_task_token("profile-x", 7)  # type: ignore[call-arg]

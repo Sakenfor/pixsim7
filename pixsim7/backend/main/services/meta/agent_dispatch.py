@@ -150,11 +150,20 @@ def mint_task_token(
     user_id: int,
     engine: str = "claude",
     ttl_hours: int = 24,
+    *,
+    permissions: list[str],
 ) -> Optional[str]:
     """Mint an agent token for task dispatch.
 
-    Returns a JWT with profile identity so MCP tools authenticate
-    under the correct agent profile. Returns None on failure.
+    Returns a JWT with profile identity so MCP tools authenticate under the
+    correct agent profile. Returns None on failure.
+
+    ``permissions`` is the on-behalf user's agent-inheritable permission set
+    (resolve it with ``resolve_inheritable_agent_permissions(db, user_id)`` at
+    the call site, which owns the db session). It is keyword-only and required
+    so a new call site can't silently drop inheritance — the exact gap that let
+    task-dispatched agents lose ``devtools.diagnostics``. Pass ``[]`` to mint a
+    deliberately permission-less token.
     """
     try:
         from datetime import timedelta
@@ -164,6 +173,7 @@ def mint_task_token(
             agent_id=profile_id,
             agent_type=engine,
             on_behalf_of=user_id,
+            permissions=permissions,
             run_id=str(uuid4()),
             ttl=timedelta(hours=ttl_hours),
         )
