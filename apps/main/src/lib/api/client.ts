@@ -34,6 +34,24 @@ export const API_BASE_URL = `${BACKEND_BASE}/api/v1`;
 let isRedirecting = false;
 
 /**
+ * Keep auth UI state in sync when the API client clears tokens on 401.
+ * This avoids "authenticated UI + no token" states where protected pages stay
+ * mounted and every request fails until manual refresh.
+ */
+async function markUnauthorizedInStore(): Promise<void> {
+  try {
+    const { useAuthStore } = await import('@/stores/authStore');
+    useAuthStore.setState({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+    });
+  } catch {
+    // Best-effort only; redirect still handles the fallback.
+  }
+}
+
+/**
  * Pre-configured API client instance for the web app.
  *
  * Features:
@@ -45,6 +63,8 @@ const client = createApiClient({
   baseUrl: BACKEND_BASE,
   tokenProvider: getAuthTokenProvider(),
   onUnauthorized: () => {
+    void markUnauthorizedInStore();
+
     // Token expired or invalid - redirect once (prevent flash loops from parallel requests)
     if (typeof window !== 'undefined') {
       if (!window.location.pathname.startsWith('/login') && !isRedirecting) {

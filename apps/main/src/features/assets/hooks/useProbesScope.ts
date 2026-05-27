@@ -21,7 +21,7 @@ export const useProbesScope = createCachedScopeHook({
   cacheKey: 'viewer:probesAssetsCache',
   cap: 100,
   label: (n) => `Probes (${n})`,
-  bootstrap: () => bootstrapFromFilters({ asset_kind: 'probe', sort: 'new' }, 100),
+  bootstrap: () => bootstrapFromFilters({ asset_kind: 'probe', sort: 'new' }, 15),
   subscribe: ({ prepend, update, remove }) => {
     const unsubCreate = assetEvents.subscribe((response) => {
       const model = fromAssetResponse(response);

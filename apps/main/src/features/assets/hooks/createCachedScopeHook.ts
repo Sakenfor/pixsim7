@@ -22,6 +22,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { listAssets } from '@lib/api/assets';
+import { authService } from '@lib/auth';
 import { hmrSingleton } from '@lib/utils';
 
 import { buildAssetSearchRequest } from '../lib/searchParams';
@@ -180,6 +181,22 @@ export async function bootstrapFromFilters(
   filters: AssetFilters & Record<string, unknown>,
   limit: number,
 ): Promise<ViewerAsset[]> {
-  const data = await listAssets(buildAssetSearchRequest(filters, { limit }));
-  return fromAssetResponses(data.assets).map(toViewerAsset);
+  // App-level scopes mount before route/auth guards settle. Skip bootstrap when
+  // no token is present instead of emitting expected 401 noise.
+  if (!authService.getStoredToken()) {
+    return [];
+  }
+
+  try {
+    const data = await listAssets(buildAssetSearchRequest(filters, { limit }));
+    return fromAssetResponses(data.assets).map(toViewerAsset);
+  } catch (error) {
+    const status = (error as { response?: { status?: number } })?.response?.status;
+    if (status === 401) {
+      // Token was cleared/expired mid-bootstrap; leave scope empty and let the
+      // global unauthorized flow handle navigation/state.
+      return [];
+    }
+    throw error;
+  }
 }

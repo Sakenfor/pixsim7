@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { pixsimClient } from '@lib/api';
 import { updatePreferenceKey } from '@lib/api/userPreferences';
+import { authService } from '@lib/auth';
 
 import { settingsSchemaRegistry, type SettingGroup, type SettingStoreAdapter } from '../core';
 
@@ -45,7 +46,19 @@ let cachedCategories: NotificationCategory[] | null = null;
 let categoriesPromise: Promise<NotificationCategory[]> | null = null;
 
 async function fetchCategories(): Promise<CategoriesResponse> {
-  return pixsimClient.get<CategoriesResponse>('/notifications/categories');
+  if (!authService.getStoredToken()) {
+    return { categories: [] };
+  }
+
+  try {
+    return await pixsimClient.get<CategoriesResponse>('/notifications/categories');
+  } catch (error) {
+    const status = (error as { response?: { status?: number } })?.response?.status;
+    if (status === 401) {
+      return { categories: [] };
+    }
+    throw error;
+  }
 }
 
 function stableSortCategories(categories: NotificationCategory[]): NotificationCategory[] {

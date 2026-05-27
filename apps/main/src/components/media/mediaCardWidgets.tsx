@@ -121,6 +121,9 @@ export interface MediaCardOverlayData {
   // Versioning
   /** Version number within a version family (null = standalone) */
   versionNumber?: number | null;
+  /** User-scoped, include-self count of assets sharing the same roll seed.
+   *  0 when no seed is recorded for this asset. */
+  sameSeedCount?: number;
   /** User-scoped, include-self count of assets sharing the same input-asset set.
    *  0 when the asset had no input assets. Badge hidden below 2. */
   sameInputsCount?: number;
@@ -736,37 +739,45 @@ function createSiblingCountBadge(opts: {
   id: string;
   icon: string;
   priority: number;
+  minVisibleCount?: number;
+  visibility?: OverlayWidget<MediaCardOverlayData>['visibility'];
   /**
    * Resolve which `buildMoreFromVariants` id to open in the mini-gallery, given
    * the card's asset. Must match the grouping the count represents — return
    * null to no-op (the badge shouldn't have been visible in that case).
    */
-  resolveVariantId: (asset: MediaCardResolvedProps['contextMenuAsset']) => string | null;
+  resolveVariantId?: (asset: MediaCardResolvedProps['contextMenuAsset']) => string | null;
   getCount: (data: MediaCardOverlayData) => number;
   tooltip: string;
 }): (props: MediaCardResolvedProps) => OverlayWidget<MediaCardOverlayData> | null {
   return (props: MediaCardResolvedProps) => {
     if (!props.presetCapabilities?.showsSiblingBadges) return null;
+    const onClick = opts.resolveVariantId
+      ? () => {
+          const variantId = opts.resolveVariantId?.(props.contextMenuAsset);
+          if (variantId) openRelatedGallery(props.contextMenuAsset, variantId);
+        }
+      : undefined;
     return createBadgeWidget({
       id: opts.id,
       ...BADGE_SLOT.topLeft,
+      visibility: opts.visibility,
       variant: 'icon-text',
       icon: opts.icon,
       color: 'gray',
       className: SIBLING_BADGE_CLASS,
       priority: opts.priority,
       labelBinding: createBindingFromValue('label', (data) => String(opts.getCount(data) ?? 0)),
-      visibleWhen: (data) => (opts.getCount(data) ?? 0) >= 2,
+      visibleWhen: (data) => (opts.getCount(data) ?? 0) >= (opts.minVisibleCount ?? 2),
       tooltip: opts.tooltip,
-      // Click opens the same mini-gallery the "More from…" context menu uses,
-      // filtered to exactly the assets this count represents. Being interactive
-      // also gives the badge the canonical hover wiggle automatically.
-      onClick: () => {
-        const variantId = opts.resolveVariantId(props.contextMenuAsset);
-        if (variantId) openRelatedGallery(props.contextMenuAsset, variantId);
-      },
+      onClick,
     });
   };
+}
+
+/** Resolve prompt grouping variant ID in one place for all similarity badges. */
+function resolvePromptVariantId(asset: MediaCardResolvedProps['contextMenuAsset']): string | null {
+  return asset?.promptFamilyId ? 'prompt-family' : asset?.promptVersionId ? 'prompt-version' : null;
 }
 
 /** "Same input assets" badge — link icon + count of assets sharing the input set. */
@@ -774,9 +785,21 @@ export const createSameInputsBadge = createSiblingCountBadge({
   id: 'same-inputs',
   icon: 'link',
   priority: BADGE_PRIORITY.background,
+  visibility: { trigger: 'hover-container', touchFallback: 'always' },
   resolveVariantId: () => 'input-assets',
   getCount: (data) => data.sameInputsCount ?? 0,
   tooltip: 'Assets that share these input assets',
+});
+
+/** "Same seed" badge — hash icon + count of assets sharing the generation seed. */
+export const createSameSeedBadge = createSiblingCountBadge({
+  id: 'same-seed',
+  icon: 'hash',
+  priority: BADGE_PRIORITY.background,
+  minVisibleCount: 1,
+  visibility: { trigger: 'hover-container', touchFallback: 'always' },
+  getCount: (data) => data.sameSeedCount ?? 0,
+  tooltip: 'Assets that share this generation seed',
 });
 
 /**
@@ -790,11 +813,181 @@ export const createSamePromptBadge = createSiblingCountBadge({
   icon: 'messageSquare',
   // One below same-inputs so it stacks underneath within badges-tl.
   priority: BADGE_PRIORITY.background - 1,
-  resolveVariantId: (asset) =>
-    asset?.promptFamilyId ? 'prompt-family' : asset?.promptVersionId ? 'prompt-version' : null,
+  visibility: { trigger: 'hover-container', touchFallback: 'always' },
+  resolveVariantId: (asset) => resolvePromptVariantId(asset),
   getCount: (data) => data.samePromptCount ?? 0,
   tooltip: 'Assets that share this prompt',
 });
+
+interface SimilarityGranularityRow {
+  id: 'same-seed' | 'same-inputs' | 'same-prompt';
+  icon: string;
+  label: string;
+  count: number;
+  variantId?: string | null;
+}
+
+function buildSimilarityGranularityRows(
+  data: MediaCardOverlayData,
+  asset: MediaCardResolvedProps['contextMenuAsset'],
+): SimilarityGranularityRow[] {
+  const rows: SimilarityGranularityRow[] = [];
+
+  const sameSeedCount = data.sameSeedCount ?? 0;
+  if (sameSeedCount >= 1) {
+    rows.push({
+      id: 'same-seed',
+      icon: 'hash',
+      label: 'Same seed',
+      count: sameSeedCount,
+      variantId:
+        typeof asset?.rollSeed === 'number' && Number.isFinite(asset.rollSeed)
+          ? 'roll-seed'
+          : null,
+    });
+  }
+
+  const sameInputsCount = data.sameInputsCount ?? 0;
+  if (sameInputsCount >= 2) {
+    rows.push({
+      id: 'same-inputs',
+      icon: 'link',
+      label: 'Same input assets',
+      count: sameInputsCount,
+      variantId: asset?.inputAssetsKey ? 'input-assets' : null,
+    });
+  }
+
+  const samePromptCount = data.samePromptCount ?? 0;
+  if (samePromptCount >= 2) {
+    rows.push({
+      id: 'same-prompt',
+      icon: 'messageSquare',
+      label: 'Same prompt',
+      count: samePromptCount,
+      variantId: resolvePromptVariantId(asset),
+    });
+  }
+
+  return rows;
+}
+
+function SimilarityGranularityBadgeContent({
+  data,
+  asset,
+}: {
+  data: MediaCardOverlayData;
+  asset: MediaCardResolvedProps['contextMenuAsset'];
+}) {
+  const { isExpanded, handlers } = useHoverExpand({ expandDelay: 120, collapseDelay: 180 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const rows = useMemo(() => buildSimilarityGranularityRows(data, asset), [data, asset]);
+
+  if (rows.length === 0) return null;
+
+  const primary = rows[0];
+  const extraCount = rows.length - 1;
+  const title =
+    extraCount > 0
+      ? `${primary.label}: ${primary.count} (hover for ${extraCount} more)`
+      : `${primary.label}: ${primary.count}`;
+  const canPrimaryOpen = Boolean(primary.variantId);
+
+  return (
+    <div className="relative" {...handlers}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={`cq-badge inline-flex items-center gap-1 rounded-full bg-black/65 text-white text-[10px] font-medium backdrop-blur-sm shadow-sm px-1.5 py-0.5 hover:animate-hover-pop ${
+          canPrimaryOpen ? 'cursor-pointer' : 'cursor-default'
+        }`}
+        title={title}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (!primary.variantId) return;
+          openRelatedGallery(asset, primary.variantId);
+        }}
+      >
+        <Icon name={primary.icon} size={10} className="text-white" color="#fff" />
+        <span className="leading-none">{primary.count}</span>
+        {extraCount > 0 && (
+          <span className="leading-none text-[9px] text-white/85">+{extraCount}</span>
+        )}
+      </button>
+
+      {isExpanded && (
+        <PortalFloat
+          anchor={triggerRef.current}
+          placement="bottom"
+          align="start"
+          offset={4}
+          onMouseEnter={handlers.onMouseEnter}
+          onMouseLeave={handlers.onMouseLeave}
+        >
+          <div className="min-w-[190px] rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-xl py-1 ring-1 ring-white/10">
+            {rows.map((row) => {
+              const rowContent = (
+                <>
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-neutral-900/80 ring-2 ring-white/35">
+                    <Icon name={row.icon} size={11} className="text-white" color="#fff" />
+                  </span>
+                  <span className="text-[11px] text-white/90">{row.label}</span>
+                  <span className="ml-auto text-[11px] font-semibold text-white">{row.count}</span>
+                </>
+              );
+
+              if (row.variantId) {
+                return (
+                  <button
+                    key={row.id}
+                    type="button"
+                    className="w-full flex items-center gap-2 px-2 py-1 text-left hover:bg-white/10 transition-colors"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openRelatedGallery(asset, row.variantId!);
+                    }}
+                    title={`Open mini gallery: ${row.label.toLowerCase()}`}
+                  >
+                    {rowContent}
+                  </button>
+                );
+              }
+
+              return (
+                <div key={row.id} className="flex items-center gap-2 px-2 py-1">
+                  {rowContent}
+                </div>
+              );
+            })}
+          </div>
+        </PortalFloat>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Similarity granularity badge (top-left):
+ * always-on collapsed chip + hover breakdown rows for each active cohort.
+ */
+export function createSimilarityGranularityWidget(
+  props: MediaCardResolvedProps,
+): OverlayWidget<MediaCardOverlayData> | null {
+  if (!props.presetCapabilities?.showsSiblingBadges) return null;
+  return {
+    id: 'similarity-granularity',
+    type: 'custom',
+    ...BADGE_SLOT.topLeft,
+    visibility: { trigger: 'always' },
+    priority: BADGE_PRIORITY.background,
+    stackGroup: 'badges-tl',
+    interactive: true,
+    handlesOwnInteraction: true,
+    render: (data: MediaCardOverlayData) => (
+      <SimilarityGranularityBadgeContent data={data} asset={props.contextMenuAsset} />
+    ),
+  };
+}
 
 /** Ring color per indicator severity. `info` is non-warning provenance (e.g. recovered). */
 function indicatorRingClass(severity: AssetWarning['severity']): string {
@@ -1513,7 +1706,6 @@ export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): Ov
     createQuickAddButton,
     createVersionBadge,
     createWarningsBadge,
-    createSameInputsBadge,
-    createSamePromptBadge,
+    createSimilarityGranularityWidget,
   });
 }

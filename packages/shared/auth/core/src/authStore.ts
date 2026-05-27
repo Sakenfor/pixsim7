@@ -56,6 +56,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (authService.isAuthenticated()) {
         const user = await authService.getCurrentUser();
         set({ user, isAuthenticated: true });
+      } else {
+        // Keep store state consistent with storage when no token is present.
+        set({ user: null, isAuthenticated: false });
       }
     } catch (error) {
       console.error('Failed to initialize auth:', error);
