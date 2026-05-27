@@ -65,6 +65,9 @@ export const stopAllServices = (graceful = true) =>
 export interface ToolOption {
   name: string
   description?: string
+  short_name?: string
+  method?: string
+  write?: boolean
 }
 
 export interface OptionGroup {
@@ -119,6 +122,9 @@ export const updateServiceSettings = (key: string, values: Record<string, unknow
     return data
   })
 
+// `mcpAllowed` only governs whether agents can reach the MCP server through
+// Claude Code's permission layer. Per-tool MCP *approval* is enforced in the
+// MCP server itself (cross-engine, reads mcp_approval_tools live), not here.
 export const applyHookConfig = (hookTools: string[], mcpAllowed: boolean = true) =>
   request<{ ok: boolean; path: string; message: string }>('/services/ai-client/apply-hook-config', {
     method: 'POST',

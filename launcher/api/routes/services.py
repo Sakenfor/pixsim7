@@ -37,7 +37,12 @@ def _enrich_mcp_tool_options(schema: list[dict]) -> list[dict]:
         if not mcp_file.exists():
             return schema
         port = int(mcp_file.read_text().strip())
-    except Exception:
+    except Exception as e:
+        get_logger().debug(
+            "mcp_tool_enrich_port_unavailable",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return schema
 
     try:
@@ -45,32 +50,69 @@ def _enrich_mcp_tool_options(schema: list[dict]) -> list[dict]:
         resp = urllib.request.urlopen(f"http://127.0.0.1:{port}/tools", timeout=3)
         data = _json.loads(resp.read())
         raw_tools = data.get("tools", [])
-    except Exception:
+    except Exception as e:
+        get_logger().debug(
+            "mcp_tool_enrich_fetch_failed",
+            port=port,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return schema
 
     if not raw_tools:
         return schema
 
-    # Filter out built-in tools that aren't meaningful for approval
-    skip = {"register_session", "log_work", "call_api"}
+    # Skip control-plane / plumbing tools that aren't meaningful to gate for
+    # approval (session bookkeeping, the escape hatch, tab identity).
+    skip = {"register_session", "log_work", "call_api", "set_tab_identity", "ask_user"}
 
-    # Build grouped structure: [{group, label, tools: [{name, short_name, description}]}]
+    # Build UI groups. A tool that exposes sub-operations (a grouped contract)
+    # becomes its own group whose items are: an "⚠ all write ops" toggle (value =
+    # bare tool name → in-server gate prompts on this group's writes only) plus
+    # one toggle per operation (value = "tool::endpoint_id" → op-pin gating that
+    # exact op, any method). Tools WITHOUT sub-operations (fine-grained mode, or
+    # the odd atomic tool) are bundled by their own `group` field rather than
+    # each spawning a pointless single-item category.
     from collections import OrderedDict
-    groups: OrderedDict[str, list[dict]] = OrderedDict()
-    for t in raw_tools:
-        if t["short_name"] in skip:
-            continue
-        group = t.get("group", "other")
-        groups.setdefault(group, []).append({
-            "name": t["short_name"],
-            "description": t.get("description", ""),
-        })
+    groups: "OrderedDict[str, dict]" = OrderedDict()
+    flat_options: list[str] = []
 
-    option_groups = [
-        {"group": g, "label": g.replace("_", " ").title(), "tools": tools}
-        for g, tools in groups.items()
-    ]
-    flat_options = [t["short_name"] for t in raw_tools if t["short_name"] not in skip]
+    def _group_tools(gid: str, label: str) -> list:
+        if gid not in groups:
+            groups[gid] = {"group": gid, "label": label, "tools": []}
+        return groups[gid]["tools"]
+
+    for t in raw_tools:
+        name = t["name"]
+        short = t["short_name"]
+        if short in skip:
+            continue
+        endpoints = t.get("endpoints") or []
+        if endpoints:
+            tools_list = _group_tools(name, short.replace("_", " ").title())
+            tools_list.append({
+                "name": name,
+                "short_name": "⚠ all write ops",
+                "description": "Require approval for every create/update/delete in this group",
+            })
+            flat_options.append(name)
+            for ep in endpoints:
+                val = f"{name}::{ep['id']}"
+                tools_list.append({
+                    "name": val,
+                    "short_name": ep["id"],
+                    "method": ep.get("method"),
+                    "write": bool(ep.get("write")),
+                    "description": ep.get("summary", ""),
+                })
+                flat_options.append(val)
+        else:
+            gid = t.get("group") or "other"
+            tools_list = _group_tools(gid, gid.replace("_", " ").title())
+            tools_list.append({"name": name, "short_name": short, "description": t.get("description", "")})
+            flat_options.append(name)
+
+    option_groups = list(groups.values())
 
     # Enrich the field with both flat options (for value storage) and grouped options (for UI)
     return [
@@ -100,8 +142,12 @@ def _read_ai_client_extras() -> dict | None:
             # Extract MCP port from bridge status
             if bridge_status.get("mcp_http_port"):
                 extras["mcp_port"] = bridge_status["mcp_http_port"]
-    except Exception:
-        pass
+    except Exception as e:
+        get_logger().debug(
+            "ai_client_extras_hook_status_failed",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
 
     # Fallback: read MCP port from file if not in bridge status
     if "mcp_port" not in extras:
@@ -109,8 +155,12 @@ def _read_ai_client_extras() -> dict | None:
             mcp_file = _Path.home() / ".pixsim" / "mcp_port"
             if mcp_file.exists():
                 extras["mcp_port"] = int(mcp_file.read_text().strip())
-        except Exception:
-            pass
+        except Exception as e:
+            get_logger().debug(
+                "ai_client_extras_mcp_port_fallback_failed",
+                error_type=type(e).__name__,
+                error=str(e),
+            )
 
     return extras or None
 
@@ -455,7 +505,12 @@ async def start_all_services(
         from launcher.core.service_settings import load_persisted
         platform = load_persisted("_platform")
         skip_db = bool(platform.get("use_local_datastores", False))
-    except Exception:
+    except Exception as e:
+        get_logger().debug(
+            "start_all_platform_settings_load_failed",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         skip_db = False
     started = 0
     failed = []
@@ -604,7 +659,15 @@ from pydantic import BaseModel as _BaseModel
 
 class ApplyHookConfigRequest(_BaseModel):
     hook_tools: List[str] = ["Bash", "Write", "Edit"]
-    mcp_allowed: bool = True  # Whether to grant MCP tool permissions
+    # Whether agents may reach the PixSim MCP server through Claude Code's
+    # permission layer. Per-tool MCP *approval* is enforced inside the MCP
+    # server itself (mcp_server.handle_call_tool) — the only cross-engine gate,
+    # since Codex never reads .claude/ — so this stays all-or-nothing:
+    #   True  → allow-list every live MCP tool + add an mcp__pixsim__.* catch-all
+    #           matcher so a tool registered after this apply still reaches the
+    #           server (its in-server gate prompts if it requires approval).
+    #   False → allow-list none (hard-disable MCP for agents at the CC layer).
+    mcp_allowed: bool = True
 
 
 class ApplyHookConfigResponse(_BaseModel):
@@ -641,7 +704,12 @@ def _fetch_mcp_tool_names() -> List[str]:
         if not mcp_file.exists():
             return tools
         port = int(mcp_file.read_text().strip())
-    except Exception:
+    except Exception as e:
+        get_logger().debug(
+            "mcp_tool_names_port_read_failed",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return tools
 
     try:
@@ -652,8 +720,13 @@ def _fetch_mcp_tool_names() -> List[str]:
             name = t.get("name", "")
             if name and name not in ("register_session", "log_work", "call_api", "ask_user"):
                 tools.append(f"{_MCP_PERMISSION_PREFIX}{name}")
-    except Exception:
-        pass
+    except Exception as e:
+        get_logger().debug(
+            "mcp_tool_names_fetch_failed",
+            port=port,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
 
     return tools
 
@@ -686,7 +759,13 @@ async def apply_hook_config(
     if project_settings_path.exists():
         try:
             project_settings = _json.loads(project_settings_path.read_text(encoding="utf-8"))
-        except Exception:
+        except Exception as e:
+            get_logger().warning(
+                "project_hook_settings_parse_failed",
+                path=str(project_settings_path),
+                error_type=type(e).__name__,
+                error=str(e),
+            )
             project_settings = {}
 
     # Merge into hooks.PreToolUse — replace any existing pixsim hook, keep others
@@ -719,6 +798,17 @@ async def apply_hook_config(
     # Remove any existing pixsim hook entries first (in either shape)
     pre_tool = [h for h in pre_tool if not _points_to_pixsim_hook(h)]
 
+    # ── MCP permission strategy (Claude Code layer only) ──
+    # We deliberately DON'T gate individual MCP tools here. Per-tool approval
+    # lives in the MCP server (mcp_server.handle_call_tool → _get_mcp_approval_set),
+    # which is the only cross-engine gate and reads mcp_approval_tools live.
+    # Claude Code's job is just to let MCP calls reach that server: allow-list
+    # every live tool, and add a catch-all matcher so a tool registered after
+    # this apply still reaches the server (the hook auto-allows mcp__* — see
+    # hook_pretool — deferring the real decision to the in-server gate).
+    live_mcp_tools = _fetch_mcp_tool_names()  # full names, e.g. mcp__pixsim__plans_management
+    mcp_allowlist = live_mcp_tools if body.mcp_allowed else []
+
     # Always intercept AskUserQuestion — it's UI routing (not a gate), and
     # without it the built-in AUQ tool silently returns "Answer questions?"
     # in headless subprocess mode. Combine with user-selected gating tools
@@ -726,6 +816,11 @@ async def apply_hook_config(
     matcher_tools = list(body.hook_tools)
     if "AskUserQuestion" not in matcher_tools:
         matcher_tools.append("AskUserQuestion")
+    if body.mcp_allowed:
+        # Catch-all so MCP tools registered after this apply (not yet in the
+        # allow-list) still route through the hook instead of being silently
+        # denied. The hook auto-allows mcp__* and lets the in-server gate decide.
+        matcher_tools.append(rf"{_MCP_PERMISSION_PREFIX}.*")
     matcher = "|".join(matcher_tools)
     pre_tool.append({
         "matcher": matcher,
@@ -783,8 +878,14 @@ async def apply_hook_config(
                 if len(cleaned) != len(global_hooks):
                     global_settings.setdefault("hooks", {})["PreToolUse"] = cleaned
                     global_settings_path.write_text(_json.dumps(global_settings, indent=2), encoding="utf-8")
-        except Exception:
-            pass  # non-critical cleanup
+        except Exception as e:
+            # Non-critical cleanup; keep request successful but record failure context.
+            get_logger().debug(
+                "global_hook_cleanup_failed",
+                path=str(global_settings_path),
+                error_type=type(e).__name__,
+                error=str(e),
+            )
 
     # ── 2. Manage MCP permissions in project settings.local.json ──
     #
@@ -797,7 +898,13 @@ async def apply_hook_config(
     if project_local_settings_path.exists():
         try:
             local = _json.loads(project_local_settings_path.read_text(encoding="utf-8"))
-        except Exception:
+        except Exception as e:
+            get_logger().warning(
+                "project_local_settings_parse_failed",
+                path=str(project_local_settings_path),
+                error_type=type(e).__name__,
+                error=str(e),
+            )
             local = {}
 
     permissions = local.setdefault("permissions", {})
@@ -811,10 +918,10 @@ async def apply_hook_config(
         if not isinstance(entry, str) or not entry.startswith(_MCP_PERMISSION_PREFIX)
     ]
 
-    if body.mcp_allowed:
-        # Fetch live tool names from the MCP server
-        mcp_tool_names = _fetch_mcp_tool_names()
-        allow_list.extend(mcp_tool_names)
+    # Allow-list every live MCP tool (resolved above) so Claude Code lets them
+    # reach the server, where the per-tool gate lives. Tools registered later
+    # won't be here yet — the PreToolUse catch-all carries them through instead.
+    allow_list.extend(mcp_allowlist)
 
     permissions["allow"] = allow_list
     local["permissions"] = permissions
@@ -826,7 +933,10 @@ async def apply_hook_config(
         raise HTTPException(status_code=500, detail=f"Failed to write {project_local_settings_path}: {e}")
 
     hook_msg = f"hook ({','.join(body.hook_tools)})" if body.hook_tools else "no hooks"
-    mcp_status = "granted" if body.mcp_allowed else "revoked"
+    mcp_status = (
+        f"{len(mcp_allowlist)} tools reachable (per-tool approval enforced in-server)"
+        if body.mcp_allowed else "blocked at Claude Code layer"
+    )
     return ApplyHookConfigResponse(
         ok=True,
         path=str(project_root / ".claude"),
@@ -837,6 +947,8 @@ async def apply_hook_config(
 class HookConfigState(_BaseModel):
     """Current state of hook config (read from launcher service settings)."""
     hook_tools: List[str] = []
+    mcp_approval_tools: List[str] = []
+    # Retained for back-compat: True iff any MCP tool is gated.
     mcp_allowed: bool = False
     hook_configured: bool = False
 
@@ -854,10 +966,12 @@ async def get_hook_config(service_key: str = Path(...)):
     if not isinstance(hook_tools, list):
         hook_tools = []
     mcp_tools = settings.get("mcp_approval_tools", [])
-    mcp_allowed = isinstance(mcp_tools, list) and len(mcp_tools) > 0
+    if not isinstance(mcp_tools, list):
+        mcp_tools = []
 
     return HookConfigState(
         hook_tools=hook_tools,
-        mcp_allowed=mcp_allowed,
+        mcp_approval_tools=mcp_tools,
+        mcp_allowed=len(mcp_tools) > 0,
         hook_configured=len(hook_tools) > 0,
     )

@@ -244,15 +244,17 @@ function SvcInfoRow({ label, value, mono }: { label: string; value: string; mono
 function HookConfigOutput({ values, hookPort }: { values: Record<string, unknown>; hookPort?: number }) {
   const [copied, setCopied] = useState(false)
   const [saved, setSaved] = useState<'idle' | 'saved' | 'error'>('idle')
-  const [mcpAllowed, setMcpAllowed] = useState(true)
   const hookTools = (values.hook_tools as string[] | undefined) ?? ['Bash', 'Write', 'Edit']
+  const mcpApprovalTools = (values.mcp_approval_tools as string[] | undefined) ?? []
 
   // Mirror the backend's apply_hook_config behaviour: AskUserQuestion is
   // always intercepted (UI routing, not a gate) so the preview must include
-  // it in the matcher even when the user has selected no other tools.
+  // it in the matcher even when the user has selected no other tools. The
+  // backend also appends an `mcp__pixsim__.*` catch-all so gated and
+  // newly-registered MCP tools route to the ConfirmationCard.
   const matcherTools = hookTools.includes('AskUserQuestion')
-    ? hookTools
-    : [...hookTools, 'AskUserQuestion']
+    ? [...hookTools, 'mcp__pixsim__.*']
+    : [...hookTools, 'AskUserQuestion', 'mcp__pixsim__.*']
   const matcher = matcherTools.join('|')
   const hookConfig = JSON.stringify({
     hooks: {
@@ -272,7 +274,9 @@ function HookConfigOutput({ values, hookPort }: { values: Record<string, unknown
 
   const saveToClaudeSettings = () => {
     setSaved('idle')
-    applyHookConfig(hookTools, mcpAllowed)
+    // MCP is always allowed through Claude Code's layer; per-tool approval is
+    // enforced in-server from `mcp_approval_tools` (shown in the readout below).
+    applyHookConfig(hookTools, true)
       .then((res) => {
         setSaved('saved')
         setTimeout(() => setSaved('idle'), 3000)
@@ -298,16 +302,14 @@ function HookConfigOutput({ values, hookPort }: { values: Record<string, unknown
           {hookConfig}
         </pre>
       )}
+      <div className="text-[9px] text-gray-500 leading-relaxed">
+        MCP per-tool approval (enforced in-server, applies to Claude & Codex):{' '}
+        {mcpApprovalTools.length > 0
+          ? <span className="text-gray-400">{mcpApprovalTools.length} tool{mcpApprovalTools.length === 1 ? '' : 's'} require approval — {mcpApprovalTools.join(', ')}</span>
+          : <span className="text-gray-400">none gated (all MCP tools run without prompting)</span>}
+        {' '}· edit in the <code className="text-gray-500">MCP tools — require approval</code> setting above.
+      </div>
       <div className="flex items-center gap-2 flex-wrap">
-        <label className="flex items-center gap-1.5 text-[9px] text-gray-400 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={mcpAllowed}
-            onChange={(e) => setMcpAllowed(e.target.checked)}
-            className="w-3 h-3 rounded border-gray-600 accent-cyan-500"
-          />
-          Allow MCP tools
-        </label>
         {hookConfig && (
           <button
             onClick={copyConfig}

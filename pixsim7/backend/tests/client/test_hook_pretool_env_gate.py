@@ -108,6 +108,39 @@ def test_bridge_managed_session_proceeds_to_dispatch(monkeypatch):
     assert captured[0]["cli_session_id"] == "claude-cli-uuid"
 
 
+def test_bridge_managed_mcp_tool_auto_allows_without_double_gating(monkeypatch):
+    """mcp__* tools are gated by the MCP server itself (the cross-engine
+    in-server gate). The launcher's catch-all matcher routes them through this
+    hook only so newly-registered tools aren't silently denied — so the hook
+    must auto-allow (exit 0) without firing its own ConfirmationCard, otherwise
+    a gated MCP call would pop two prompts.
+    """
+    monkeypatch.setenv("PIXSIM_BRIDGE_MANAGED", "1")
+
+    stdin_payload = {
+        "session_id": "claude-cli-uuid",
+        "tool_name": "mcp__pixsim__assets_management",
+        "tool_input": {"endpoint": "delete_asset"},
+    }
+    monkeypatch.setattr(sys, "stdin", _payload_stdin(stdin_payload))
+
+    approvals: list = []
+    monkeypatch.setattr(hook_pretool, "_handle_approval", lambda *a, **k: approvals.append(a))
+    posts: list = []
+    monkeypatch.setattr(
+        hook_pretool, "_post_confirm",
+        lambda payload: posts.append(payload) or {"approved": True},
+        raising=False,
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        hook_pretool.main()
+
+    assert exc.value.code == 0       # auto-allowed
+    assert approvals == []           # did NOT gate via the hook
+    assert posts == []               # no /confirm prompt from the hook
+
+
 def test_bridge_managed_routes_askuserquestion_to_question_handler(monkeypatch):
     """The dispatch by tool_name still works after the env-gate runs."""
     monkeypatch.setenv("PIXSIM_BRIDGE_MANAGED", "1")

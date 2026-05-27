@@ -87,6 +87,16 @@ def main() -> None:
         _handle_ask_user_question(tool_input, cli_session_id=cli_session_id)
         return
 
+    # MCP tools (mcp__*) are gated by the MCP server itself
+    # (mcp_server.handle_call_tool → _request_mcp_tool_approval) — the only
+    # cross-engine gate, since Codex never reads .claude/. The launcher's
+    # catch-all matcher (mcp__pixsim__.*) routes them here ONLY so a tool
+    # registered after the last apply-hook-config isn't silently denied by
+    # Claude Code. Auto-allow and let the in-server gate decide; prompting here
+    # too would pop a second ConfirmationCard for the same call.
+    if tool_name.startswith("mcp__"):
+        sys.exit(0)
+
     _handle_approval(tool_name, tool_input, cli_session_id=cli_session_id)
 
 

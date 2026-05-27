@@ -157,6 +157,11 @@ def get_hook_config() -> Optional[dict]:
 def apply_hook_config(hook_tools: list[str], mcp_allowed: bool = True) -> Optional[dict]:
     """Write hook config via the launcher.
 
+    ``mcp_allowed`` only governs whether agents can reach the MCP server through
+    Claude Code's permission layer (True = allow-list every live tool). Per-tool
+    MCP *approval* is enforced inside the MCP server itself (cross-engine, reads
+    ``mcp_approval_tools`` live), not here.
+
     Returns response dict ``{"ok": bool, "path": str, "message": str}``
     or ``None`` if the launcher is unreachable.
     """

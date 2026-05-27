@@ -958,6 +958,14 @@ export function WorkSummaryBadge({ sessionId, messageCount, sending }: { session
 // Bridge Settings Popover — schema-driven from launcher service settings
 // =============================================================================
 
+interface ToolOptionSchema {
+  name: string;
+  short_name?: string;
+  description?: string;
+  method?: string;
+  write?: boolean;
+}
+
 interface SettingFieldSchema {
   key: string;
   type: string;
@@ -965,7 +973,7 @@ interface SettingFieldSchema {
   description?: string;
   default?: unknown;
   options?: string[];
-  option_groups?: { group: string; options: string[] }[];
+  option_groups?: { group: string; label: string; tools: ToolOptionSchema[] }[];
 }
 
 interface BridgeSettingsData {
@@ -1212,29 +1220,58 @@ function BridgeSettingField({ field, value, onChange }: {
       {field.description && (
         <div className="text-[9px] text-th-muted leading-relaxed">{field.description}</div>
       )}
-      {field.type === 'multi_select' && (
-        <div className="flex flex-wrap gap-1">
-          {(field.options ?? []).map((opt) => {
-            const active = Array.isArray(value) && value.includes(opt);
-            return (
-              <button
-                key={opt}
-                onClick={() => {
-                  const arr = Array.isArray(value) ? value as string[] : [];
-                  onChange(active ? arr.filter((v) => v !== opt) : [...arr, opt]);
-                }}
-                className={`px-1.5 py-0.5 text-[9px] rounded border transition-colors ${
-                  active
-                    ? 'bg-accent/10 border-accent/30 text-accent'
-                    : 'border-th text-th-muted hover:border-th-secondary'
-                }`}
-              >
-                {opt}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {field.type === 'multi_select' && (() => {
+        const selected = Array.isArray(value) ? (value as string[]) : [];
+        const toggle = (opt: string) =>
+          onChange(selected.includes(opt) ? selected.filter((v) => v !== opt) : [...selected, opt]);
+        // type=button + preventDefault keeps focus out of the portaled popover
+        // (overlay-button-focus-scroll rule).
+        const Chip = (opt: string, label: string, method?: string, write?: boolean, desc?: string) => {
+          const active = selected.includes(opt);
+          return (
+            <button
+              key={opt}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggle(opt)}
+              title={desc || opt}
+              className={`px-1.5 py-0.5 text-[9px] rounded border transition-colors inline-flex items-center gap-1 ${
+                active
+                  ? 'bg-accent/10 border-accent/30 text-accent'
+                  : 'border-th text-th-muted hover:border-th-secondary'
+              }`}
+            >
+              <span className="truncate max-w-[120px]">{label}</span>
+              {method && (
+                <span className={`text-[8px] font-mono px-0.5 rounded ${
+                  write ? 'bg-amber-500/20 text-amber-500' : 'bg-th-muted/10 text-th-muted'
+                }`}>
+                  {method}
+                </span>
+              )}
+            </button>
+          );
+        };
+        if (field.option_groups && field.option_groups.length > 0) {
+          return (
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              {field.option_groups.map((g) => (
+                <div key={g.group} className="space-y-1">
+                  <div className="text-[9px] font-semibold text-th-secondary">{g.label}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {g.tools.map((t) => Chip(t.name, t.short_name ?? t.name, t.method, t.write, t.description))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        return (
+          <div className="flex flex-wrap gap-1">
+            {(field.options ?? []).map((opt) => Chip(opt, opt))}
+          </div>
+        );
+      })()}
       {field.type === 'number' && (
         <input
           type="number"

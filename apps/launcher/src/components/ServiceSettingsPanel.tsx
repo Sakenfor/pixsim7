@@ -369,6 +369,7 @@ function GroupedMultiSelectControl({ value, groups, onChange }: { value: string[
                 <button
                   key={tool.name}
                   onClick={() => toggle(tool.name)}
+                  title={tool.description || tool.name}
                   className={`w-full text-left px-2 py-1 rounded text-[10px] transition-colors flex items-center gap-2 ${
                     active
                       ? 'bg-cyan-900/20 text-cyan-300'
@@ -380,7 +381,14 @@ function GroupedMultiSelectControl({ value, groups, onChange }: { value: string[
                   }`}>
                     {active && <span className="text-white text-[7px]">✓</span>}
                   </span>
-                  <span className="font-mono truncate">{tool.name}</span>
+                  <span className="font-mono truncate">{tool.short_name ?? tool.name}</span>
+                  {tool.method && (
+                    <span className={`ml-auto shrink-0 text-[8px] font-mono px-1 rounded ${
+                      tool.write ? 'bg-amber-900/40 text-amber-400' : 'bg-gray-800 text-gray-500'
+                    }`}>
+                      {tool.method}
+                    </span>
+                  )}
                 </button>
               )
             })}

@@ -1713,13 +1713,63 @@ async def _auto_register_if_needed() -> None:
         pass  # Non-fatal — tool call proceeds regardless
 
 
-def _tool_needs_approval(tool_name: str, approval_set: set[str]) -> bool:
-    """Check if a tool matches the approval set (full name or short suffix)."""
-    if tool_name in approval_set:
+_WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _resolve_operation(name: str, arguments: dict) -> tuple[str | None, str | None]:
+    """Resolve ``(http_method, endpoint_id)`` for a tool call, for approval gating.
+
+    ``endpoint_id`` is None for non-grouped / escape-hatch tools. ``method`` is
+    None when it can't be resolved — callers treat that as a write (fail safe).
+    """
+    if name == "call_api":
+        return (str(arguments.get("method", "GET")).upper(), None)
+    if _dynamic_routes.get(f"_grouped::{name}"):
+        endpoint_id = arguments.get("endpoint")
+        route = _dynamic_routes.get(f"{name}::{endpoint_id}") if endpoint_id else None
+        method = route.get("method") if isinstance(route, dict) else None
+        return (str(method).upper() if method else None, endpoint_id)
+    resolved = _tool_aliases.get(name, name)
+    route = _dynamic_routes.get(resolved)
+    method = route.get("method") if isinstance(route, dict) else None
+    endpoint_id = resolved.split("::", 1)[1] if "::" in resolved else None
+    return (str(method).upper() if method else None, endpoint_id)
+
+
+def _tool_needs_approval(
+    tool_name: str,
+    approval_set: set[str],
+    *,
+    method: str | None = None,
+    endpoint_id: str | None = None,
+) -> bool:
+    """Decide whether a resolved tool call requires user approval.
+
+    Operation-aware matching:
+      * An explicit operation pin (``group::endpoint_id``, ``tool::endpoint_id``,
+        or a bare ``endpoint_id``) gates exactly that operation, any method.
+      * A group / tool-name entry (``assets_management`` or its legacy
+        ``group__short`` form) gates only that group's WRITE operations
+        (POST/PUT/PATCH/DELETE); reads pass silently. When the method can't be
+        resolved we fail safe and treat the call as a write.
+    """
+    short = tool_name.split("__", 1)[-1] if "__" in tool_name else tool_name
+
+    # 1. Explicit per-operation pins — surgical, any method.
+    if endpoint_id:
+        if approval_set & {f"{tool_name}::{endpoint_id}", f"{short}::{endpoint_id}", endpoint_id}:
+            return True
+
+    # 2. A fine-grained tool name ("group__operation") IS a single operation,
+    #    so ticking it gates that operation regardless of method (like a pin).
+    if "__" in tool_name and tool_name in approval_set:
         return True
-    # Check short form: "species_create" matches "blocks_discovery__species_create"
-    suffix = tool_name.split("__", 1)[-1] if "__" in tool_name else ""
-    return suffix in approval_set if suffix else False
+
+    # 3. A bare group name → gate writes only; reads pass silently.
+    if tool_name in approval_set or (short and short in approval_set):
+        return method is None or method in _WRITE_METHODS
+
+    return False
 
 
 def _get_mcp_approval_set() -> set[str]:
@@ -1766,11 +1816,24 @@ def _get_hook_port() -> int | None:
     return None
 
 
-async def _request_mcp_tool_approval(tool_name: str, arguments: dict) -> bool:
+async def _request_mcp_tool_approval(
+    tool_name: str,
+    arguments: dict,
+    *,
+    method: str | None = None,
+    endpoint_id: str | None = None,
+) -> bool:
     """Ask the bridge hook server for user approval. Returns True if approved."""
     port = _get_hook_port()
     if not port:
         return True  # no hook server — auto-approve (fail-open)
+
+    # Name the concrete operation on the card so the user knows what they're
+    # approving (e.g. "assets_management → delete_asset [DELETE]"), not just the group.
+    if endpoint_id:
+        op_label = f"{tool_name} → {endpoint_id}" + (f" [{method}]" if method else "")
+    else:
+        op_label = tool_name + (f" [{method}]" if method else "")
 
     try:
         client = httpx.AsyncClient(timeout=130)
@@ -1779,8 +1842,8 @@ async def _request_mcp_tool_approval(tool_name: str, arguments: dict) -> bool:
             json={
                 "tool_name": tool_name,
                 "tool_input": arguments,
-                "title": f"MCP Tool: {tool_name}",
-                "description": f"The agent wants to call {tool_name}",
+                "title": f"MCP Tool: {op_label}",
+                "description": f"The agent wants to call {op_label}",
                 "timeout_s": 120,
             },
         )
@@ -1804,12 +1867,18 @@ async def handle_call_tool(
     asyncio.ensure_future(_signal_tool_activity(name))
 
     # MCP tool approval gate — check if this tool requires user confirmation.
-    # Matches full name (blocks_discovery__species_create) or short suffix (species_create).
+    # Operation-aware: a gated group prompts only on its WRITE operations
+    # (resolved from the endpoint's HTTP method); reads pass silently. Specific
+    # operations can be pinned via "group::endpoint_id". See _tool_needs_approval.
     approval_set = _get_mcp_approval_set()
-    if approval_set and _tool_needs_approval(name, approval_set):
-        approved = await _request_mcp_tool_approval(name, arguments)
-        if not approved:
-            return [types.TextContent(type="text", text=f"Tool call denied by user: {name}")]
+    if approval_set:
+        op_method, op_endpoint = _resolve_operation(name, arguments)
+        if _tool_needs_approval(name, approval_set, method=op_method, endpoint_id=op_endpoint):
+            approved = await _request_mcp_tool_approval(
+                name, arguments, method=op_method, endpoint_id=op_endpoint
+            )
+            if not approved:
+                return [types.TextContent(type="text", text=f"Tool call denied by user: {name}")]
 
     # Built-in tools
     if name == "register_session":
@@ -2173,12 +2242,32 @@ def _build_http_app(mcp_path: str = "/mcp") -> Any:
                 group, short_name = full_name.split("__", 1)
             else:
                 group, short_name = "built_in", full_name
-            tools.append({
+            entry = {
                 "name": full_name,
                 "short_name": short_name,
                 "group": group,
                 "description": t.description or "",
-            })
+            }
+            # For grouped tools, expose sub-operations so callers (e.g. the
+            # approval-settings UI) can gate individual endpoints, not just the
+            # whole group. Each op carries its HTTP method + a write flag.
+            if _dynamic_routes.get(f"_grouped::{full_name}"):
+                prefix = f"{full_name}::"
+                eps = []
+                for key, route in _dynamic_routes.items():
+                    if not key.startswith(prefix) or not isinstance(route, dict):
+                        continue
+                    if not route.get("path_template"):
+                        continue
+                    method = str(route.get("method", "GET")).upper()
+                    eps.append({
+                        "id": key[len(prefix):],
+                        "method": method,
+                        "summary": route.get("summary", ""),
+                        "write": method in _WRITE_METHODS,
+                    })
+                entry["endpoints"] = sorted(eps, key=lambda e: (not e["write"], e["id"]))
+            tools.append(entry)
         return JSONResponse({"tools": tools, "total": len(tools)})
 
     app = Starlette(
