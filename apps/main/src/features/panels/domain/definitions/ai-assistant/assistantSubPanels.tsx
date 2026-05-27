@@ -1052,6 +1052,21 @@ export function BridgeSettingsPopover() {
               onChange={(v) => updateField(field.key, v)}
             />
           ))}
+
+          {/* Agent capabilities — discoverability pointer. The agent acts on
+              your behalf and inherits your devtools.* grants; the live state +
+              management live elsewhere, so just point there rather than
+              duplicate it here. */}
+          <div className="pt-2 border-t border-th/60 space-y-1">
+            <div className="text-[10px] font-semibold text-th-secondary uppercase tracking-wide">
+              Agent capabilities
+            </div>
+            <div className="text-[9px] text-th-muted leading-relaxed">
+              Agents act on your behalf and inherit your capabilities (e.g. Diagnostics access).
+              See them under <span className="text-th-secondary">Community → Account → Capabilities</span>;
+              admins grant them in <span className="text-th-secondary">Settings → Access</span>.
+            </div>
+          </div>
         </div>
       </Popover>
     </>
