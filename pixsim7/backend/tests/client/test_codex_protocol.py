@@ -254,6 +254,98 @@ class TestInactivityTimeoutMessage:
         assert "stalled" in msg
         assert "ls foo" in msg
 
+
+class TestReasoningGapDoesNotKillHealthyTurn:
+    """The model going quiet *after* a tool result — extended thinking, slow
+    first token on a big resumed context — is NOT a hang. The no-tool reasoning
+    gap must re-arm in pulse slices (like a running tool) up to the generous
+    AGENT_IDLE_GAP budget instead of single-shot killing the turn. Guards the
+    ced3c3d5 incident (healthy turn killed mid-reasoning by the old tight gap).
+    """
+
+    @staticmethod
+    def _tool_use(command: str) -> dict:
+        return {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": command}}]},
+        }
+
+    @staticmethod
+    def _tool_result() -> dict:
+        return {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}}
+
+    def test_post_tool_reasoning_gap_pulses_thinking_and_survives(self):
+        async def _run():
+            s = AgentCmdSession("test-session", command="claude")
+            s._process = _FakeProc()
+            # Generous cap, fast pulse → exercise multiple re-arms quickly.
+            s.AGENT_IDLE_GAP_SECONDS = 5
+            s.AGENT_PULSE_SLICE_SECONDS = 0.3
+
+            progress: list[tuple[str, str]] = []
+
+            def on_progress(evt: str, detail: str) -> None:
+                progress.append((evt, detail))
+
+            async def feed():
+                await asyncio.sleep(0.05)
+                await s._response_queue.put(self._tool_use("ls foo"))
+                await asyncio.sleep(0.05)
+                await s._response_queue.put(self._tool_result())
+                # Model is quiet for ~1s (thinking) — longer than the pulse
+                # cadence but well under the 5s reasoning budget — then replies.
+                await asyncio.sleep(1.0)
+                await s._response_queue.put({"type": "result", "result": "done"})
+
+            feeder = asyncio.create_task(feed())
+            result = await s.send_message("go", timeout=10, on_progress=on_progress)
+            await feeder
+            return result, progress
+
+        result, progress = asyncio.run(_run())
+        # Turn survived the reasoning gap instead of timing out.
+        assert result == "done"
+        # The quiet gap pulsed "thinking" heartbeats (not "tool_running" — no
+        # tool was outstanding) with an elapsed stamp.
+        thinking = [d for evt, d in progress if evt == "thinking"]
+        assert thinking, f"expected a 'thinking' pulse during the gap, got {progress}"
+        assert any("s)" in d for d in thinking)
+
+    def test_reasoning_gap_still_fails_when_budget_exhausted(self):
+        """A real stall (quiet past the reasoning budget) must still fail —
+        pulsed re-arm makes the gap generous, not infinite."""
+        async def _run():
+            s = AgentCmdSession("test-session", command="claude")
+            s._process = _FakeProc()
+            s.AGENT_IDLE_GAP_SECONDS = 0.6
+            s.AGENT_PULSE_SLICE_SECONDS = 0.2
+
+            async def feed():
+                await asyncio.sleep(0.05)
+                await s._response_queue.put(self._tool_use("ls foo"))
+                await asyncio.sleep(0.05)
+                await s._response_queue.put(self._tool_result())
+                # ...silence forever.
+
+            feeder = asyncio.create_task(feed())
+            err: str | None = None
+            started = time.monotonic()
+            try:
+                await s.send_message("go", timeout=10)
+            except RuntimeError as e:
+                err = str(e)
+            elapsed = time.monotonic() - started
+            feeder.cancel()
+            return err, elapsed
+
+        msg, elapsed = asyncio.run(_run())
+        assert msg is not None, "expected a RuntimeError when the budget is exhausted"
+        # Reports the reasoning-gap budget, decoupled from the 10s turn timeout.
+        assert "No response within 0.6s" in msg
+        assert "10s" not in msg
+        assert "stalled" in msg
+        assert elapsed < 5, f"should fail near the gap, took {elapsed:.1f}s"
+
     @staticmethod
     def _text(text: str) -> dict:
         return {"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}}

@@ -95,16 +95,27 @@ class AgentCmdSession:
     (Claude Code, Codex, etc.). The process stays alive between messages.
     """
 
-    # Max silence (seconds) tolerated when NO tool is outstanding. A healthy
-    # turn streams tokens/thinking every few seconds, so a gap longer than this
-    # with no tool to wait on is a stalled model/CLI stream (the upstream API
-    # delivered partial output then went silent, never closing the stream).
-    # Fail fast and free the slot instead of starving the full per-turn
-    # ``timeout`` (often 900s). Engine-agnostic: pure stdout-gap timing in our
-    # own reader loop — no reliance on per-CLI stream-resume/keepalive support.
-    # See plan ``launcher-health-probe-stability`` ›
-    # ``agent-idle-midstream-token-stall``.
-    AGENT_IDLE_GAP_SECONDS = 150
+    # Max silence (seconds) tolerated when NO tool is outstanding — the model is
+    # reasoning between stdout lines (post-tool-result thinking, pre-first-token
+    # latency on a big resumed context, or extended thinking). This is NOT dead
+    # time: Opus-class think gaps after a tool result are legitimately minutes,
+    # so the budget is generous and we re-arm it in <=30s pulse slices (like a
+    # running tool) so the thinking bubble + bridge keepalive stay alive instead
+    # of going dark until the kill. It exists only to catch a genuinely wedged
+    # model/CLI stream (partial output then silence, stream never closing), not
+    # to police normal think time — the earlier tight 150s value was killing
+    # healthy turns mid-reasoning. Still decoupled from (and well under) the full
+    # per-turn ``timeout`` so a true hang frees the slot. Engine-agnostic: pure
+    # stdout-gap timing in our own reader loop. See plan
+    # ``launcher-health-probe-stability`` › ``agent-idle-midstream-token-stall``.
+    AGENT_IDLE_GAP_SECONDS = 420
+
+    # Re-arm cadence (seconds) for the silent-gap wait. Every slice we re-check
+    # process liveness and pulse a heartbeat (``tool_running`` / ``thinking``)
+    # so the UI + bridge keepalive stay alive during a long tool or a long
+    # reasoning gap. Bounded below by the turn ``timeout``. Class attr so tests
+    # can shrink it to exercise re-arm without real-time waits.
+    AGENT_PULSE_SLICE_SECONDS = 30
 
     def __init__(
         self,
@@ -737,18 +748,31 @@ class AgentCmdSession:
         # killing the turn (mirrors the backend heartbeat-extend in
         # remote_cmd_bridge.dispatch_task_streaming).
         tool_inflight = False
-        # Wall-clock when the in-flight tool began emitting silence, so the
-        # re-arm heartbeat below can report elapsed seconds.
-        tool_started_at: Optional[datetime] = None
-        # No-tool silence budget. When a tool IS outstanding we re-arm in <=30s
-        # slices for the full turn (legit long tools / blocking MCP / human on
-        # mobile). When NOTHING is outstanding, cap the silence far tighter:
-        # past this gap the model/CLI stream has stalled (see AGENT_IDLE_GAP_*).
+        # Start of the current silent window (no fresh stdout line yet); reset on
+        # every line. Both regimes (a running tool, or the model reasoning
+        # between lines) re-arm in <=30s pulse slices off this marker.
+        silent_since: Optional[datetime] = None
+        # Reasoning-gap budget: how long we tolerate quiet when NO tool is
+        # outstanding (model thinking after a tool result / before first token).
+        # Generous on purpose — see AGENT_IDLE_GAP_SECONDS. A running tool is
+        # bounded only by the process staying alive (long Bash/subagent/blocking
+        # MCP), so its cap is effectively unbounded within the turn.
         idle_gap = min(timeout, self.AGENT_IDLE_GAP_SECONDS)
         try:
             while True:
                 while True:
-                    slice_to = min(timeout, 30) if tool_inflight else idle_gap
+                    now = datetime.now(timezone.utc)
+                    if silent_since is None:
+                        silent_since = now
+                    silent_elapsed = (now - silent_since).total_seconds()
+                    # Cap: unbounded (process-liveness only) while a tool runs;
+                    # the generous reasoning gap otherwise.
+                    silence_cap = float("inf") if tool_inflight else float(idle_gap)
+                    # Pulse cadence (and <= turn ``timeout``), but never wait
+                    # past the remaining budget so tight caps (tests / small
+                    # timeouts) still fail fast.
+                    pulse = min(float(self.AGENT_PULSE_SLICE_SECONDS), float(timeout))
+                    slice_to = max(0.05, min(pulse, silence_cap - silent_elapsed))
                     try:
                         event_raw = await asyncio.wait_for(
                             self._response_queue.get(),
@@ -756,41 +780,49 @@ class AgentCmdSession:
                         )
                         break
                     except asyncio.TimeoutError:
-                        if tool_inflight and self.is_alive:
-                            elapsed_s = (
-                                int((datetime.now(timezone.utc) - tool_started_at).total_seconds())
-                                if tool_started_at is not None
-                                else None
-                            )
+                        # Budget exhausted or process dead → give up; the outer
+                        # handler classifies tool_inflight vs agent_idle.
+                        if not self.is_alive or silent_elapsed + slice_to >= silence_cap:
+                            raise
+                        # Alive and within budget → pulse + re-arm. Pulsing the
+                        # thinking bubble (with an elapsed stamp) lets the user
+                        # tell a healthy long wait from a hang and keeps the
+                        # bridge keepalive / backend heartbeat-gap fed. A running
+                        # tool reads as "still working"; a quiet reasoning gap
+                        # (post-tool-result thinking, slow first token) reads as
+                        # "thinking" — both legitimate, neither a hang.
+                        elapsed_s = int(silent_elapsed + slice_to)
+                        if tool_inflight:
+                            event_name = "tool_running"
                             self._log.info(
                                 "session_tool_inflight_extend",
                                 last_action=self._busy_last_action,
                                 last_detail=self._busy_last_detail,
                                 elapsed_s=elapsed_s,
                             )
-                            # Pulse the thinking bubble so a long-running tool
-                            # (Bash script, blocking MCP call, subagent) reads
-                            # as "still working" instead of a frozen last line.
-                            # The elapsed stamp lets the user tell a healthy
-                            # long wait from a hang. Cadence follows the re-arm
-                            # slice (<=30s), complementing the bridge keepalive.
-                            if on_progress:
-                                detail = self._busy_last_detail or self._busy_last_action or "Working..."
-                                if elapsed_s is not None:
-                                    detail = f"{detail} ({elapsed_s}s)"
-                                try:
-                                    on_progress("tool_running", detail)
-                                except Exception:
-                                    self._log.debug("tool_inflight_progress_failed", exc_info=True)
-                            continue
-                        raise
+                        else:
+                            event_name = "thinking"
+                            self._log.info(
+                                "session_reasoning_extend",
+                                last_action=self._busy_last_action,
+                                last_detail=self._busy_last_detail,
+                                elapsed_s=elapsed_s,
+                            )
+                        if on_progress:
+                            detail = self._busy_last_detail or self._busy_last_action or "Working..."
+                            detail = f"{detail} ({elapsed_s}s)"
+                            try:
+                                on_progress(event_name, detail)
+                            except Exception:
+                                self._log.debug("inflight_progress_failed", exc_info=True)
+                        continue
 
                 parsed = self._protocol.parse_event(event_raw)
                 # Any fresh stdout line ends the silent window. A tool_use
                 # block re-opens it (the tool is about to run); every other
                 # event means the agent is streaming again.
                 tool_inflight = False
-                tool_started_at = None
+                silent_since = None
 
                 if parsed.kind == "init":
                     if parsed.session_id:
@@ -950,7 +982,6 @@ class AgentCmdSession:
                         # Tool is about to run → reopen the silent-gap window so
                         # the inactivity timeout extends until its result lands.
                         tool_inflight = True
-                        tool_started_at = datetime.now(timezone.utc)
 
                     # ── Tool gate: pause stdout reader until user approves ──
                     if tool_gate and _block_type == "tool_use" and isinstance(_first_block, dict):
@@ -989,14 +1020,15 @@ class AgentCmdSession:
             last_action = self._busy_last_action
             last_detail = self._busy_last_detail
             # Two regimes collapse to this timeout: a tool was still running
-            # (long/blocking tool), vs. the agent went silent *after* its last
-            # tool result — a stalled model/CLI step with no tool to blame. The
-            # latter is invisible to the tool-inflight extend logic, so make it
-            # explicit here for triage (these read identically to the user
-            # otherwise, and recur for upstream CLI/API hangs).
+            # (long/blocking tool, bounded only by process liveness), vs. the
+            # agent went silent *after* its last tool result and stayed quiet
+            # past the (generous, pulsed) reasoning budget — a genuinely wedged
+            # model/CLI stream with no tool to blame. Both re-arm with pulses up
+            # to their cap; reaching here means the cap was actually exhausted,
+            # so flag which regime for triage (they read identically otherwise).
             stall_kind = "tool_inflight" if tool_inflight else "agent_idle"
-            # Report the budget that actually elapsed for this regime: the
-            # tighter idle gap when no tool was outstanding, else the full turn.
+            # Report the budget that elapsed for this regime: the reasoning gap
+            # when no tool was outstanding, else the full turn.
             budget_s = timeout if tool_inflight else idle_gap
             self._log.warning(
                 "session_inactivity_timeout",
