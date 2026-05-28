@@ -96,8 +96,26 @@ def _client(app: FastAPI):
 
 
 def _fake_diagnostic():
-    # spec.params empty -> _coerce_params returns {} for any body.params
-    return SimpleNamespace(spec=SimpleNamespace(id="shell-script", params=[]))
+    # spec.params empty -> _coerce_params returns {} for any body.params.
+    # get_spec() mirrors the real Diagnostic interface — coercion reads it so
+    # dynamically-built specs (e.g. ShellScriptDiagnostic) stay in sync.
+    spec = SimpleNamespace(id="shell-script", params=[])
+    return SimpleNamespace(spec=spec, get_spec=lambda: spec)
+
+
+def _select_diagnostic():
+    # A diagnostic whose get_spec() carries a select with a fixed option set —
+    # stands in for ShellScriptDiagnostic's dynamic script options. Coercion
+    # must validate the chosen value against get_spec() (the dynamic source).
+    param = SimpleNamespace(
+        name="script",
+        kind="select",
+        default="tools/a.py",
+        options=["tools/a.py", "tools/b.py"],
+        required=True,
+    )
+    spec = SimpleNamespace(id="shell-script", params=[param])
+    return SimpleNamespace(spec=spec, get_spec=lambda: spec)
 
 
 class TestDiagnosticsRunEndpoint:
@@ -148,3 +166,58 @@ class TestDiagnosticsRunEndpoint:
                 json={"params": {}},
             )
         assert resp.status_code == 401
+
+
+class TestParamCoercionAgainstDynamicSpec:
+    """Coercion validates select values against get_spec() — the dynamic source.
+    Guards the regression where switching from .spec to .get_spec() in
+    _coerce_params would silently reject (or accept) the wrong options."""
+
+    @pytest.mark.asyncio
+    async def test_unknown_select_option_is_rejected(self):
+        agent = RequestPrincipal(
+            principal_type="agent", profile_id="p", permissions=[DIAGNOSTICS_PERMISSION]
+        )
+        app = _app(agent)
+        with patch(
+            "pixsim7.backend.main.api.v1.dev_testing_diagnostics.diagnostic_registry.get_or_none",
+            return_value=_select_diagnostic(),
+        ):
+            async with _client(app) as c:
+                resp = await c.post(
+                    "/api/v1/dev/testing/diagnostics/shell-script/run",
+                    json={"params": {"script": "tools/NOT_REAL.py"}},
+                )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_known_select_option_passes_through_coerced(self):
+        agent = RequestPrincipal(
+            principal_type="agent", profile_id="p", permissions=[DIAGNOSTICS_PERMISSION]
+        )
+        app = _app(agent)
+        fake_run = SimpleNamespace(
+            run_id="run-2",
+            diagnostic_id="shell-script",
+            started_at=datetime.now(timezone.utc),
+            started_by="agent:p",
+        )
+        start_mock = AsyncMock(return_value=fake_run)
+        with (
+            patch(
+                "pixsim7.backend.main.api.v1.dev_testing_diagnostics.diagnostic_registry.get_or_none",
+                return_value=_select_diagnostic(),
+            ),
+            patch(
+                "pixsim7.backend.main.api.v1.dev_testing_diagnostics.diagnostic_run_manager.start",
+                start_mock,
+            ),
+        ):
+            async with _client(app) as c:
+                resp = await c.post(
+                    "/api/v1/dev/testing/diagnostics/shell-script/run",
+                    json={"params": {"script": "tools/b.py"}},
+                )
+        assert resp.status_code == 200
+        # The coerced params (start's 2nd positional arg) carry the valid choice.
+        assert start_mock.await_args.args[1]["script"] == "tools/b.py"
