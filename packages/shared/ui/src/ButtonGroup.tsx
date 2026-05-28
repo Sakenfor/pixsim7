@@ -472,6 +472,27 @@ export function ButtonGroup({
 }
 
 // ============================================================================
+// Coarse-pointer (touch) detection
+// ============================================================================
+
+/**
+ * True on touch / coarse-pointer devices, where hover events never fire.
+ * Expandable items fall back to tap-to-toggle on these devices.
+ */
+function useIsCoarsePointer(): boolean {
+  const [coarse, setCoarse] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(pointer: coarse)');
+    const update = () => setCoarse(mq.matches);
+    update();
+    mq.addEventListener?.('change', update);
+    return () => mq.removeEventListener?.('change', update);
+  }, []);
+  return coarse;
+}
+
+// ============================================================================
 // Expandable Item
 // ============================================================================
 
@@ -503,6 +524,40 @@ function ExpandableItem({
     collapseDelay: item.collapseDelay,
   });
   const containerRef = useRef<HTMLDivElement>(null);
+  const expandRef = useRef<HTMLDivElement>(null);
+
+  // Touch devices have no hover, so the submenu would be unreachable. Fall back
+  // to tap-to-toggle: the first tap opens the submenu (which always contains the
+  // button's primary action), a tap outside dismisses it.
+  const isCoarse = useIsCoarsePointer();
+  const [tapOpen, setTapOpen] = useState(false);
+  const open = isCoarse ? tapOpen : isExpanded;
+
+  // Dismiss the tap-opened submenu when the user taps outside it. The submenu
+  // may be portaled to <body>, so test the portal content (expandRef) too.
+  useEffect(() => {
+    if (!isCoarse || !tapOpen) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (containerRef.current?.contains(target)) return;
+      if (expandRef.current?.contains(target)) return;
+      setTapOpen(false);
+    };
+    document.addEventListener('pointerdown', onDocPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown, true);
+  }, [isCoarse, tapOpen]);
+
+  const handleButtonClick = useCallback((e: React.MouseEvent) => {
+    if (isCoarse) {
+      // On touch, the trigger toggles the submenu rather than firing the
+      // primary action directly (the primary lives inside the submenu).
+      e.preventDefault();
+      e.stopPropagation();
+      setTapOpen((v) => !v);
+      return;
+    }
+    item.onClick?.(e);
+  }, [isCoarse, item]);
 
   // Inline (non-portal) expand position styles
   const INLINE_EXPAND: Record<AnchorPlacement, React.CSSProperties> = {
@@ -516,10 +571,10 @@ function ExpandableItem({
     <div
       ref={containerRef}
       className="relative"
-      {...handlers}
+      {...(isCoarse ? {} : handlers)}
     >
       <button
-        onClick={item.onClick}
+        onClick={handleButtonClick}
         onAuxClick={item.onAuxClick}
         onContextMenu={item.onContextMenu}
         disabled={item.disabled}
@@ -541,19 +596,23 @@ function ExpandableItem({
       </button>
       {item.badge}
 
-      {isExpanded && item.expandContent && (
+      {open && item.expandContent && (
         portal ? (
           <PortalFloat
             anchor={containerRef.current}
             placement={config.expandDirection}
             offset={expandOffset}
-            onMouseEnter={handlers.onMouseEnter}
-            onMouseLeave={handlers.onMouseLeave}
+            onMouseEnter={isCoarse ? undefined : handlers.onMouseEnter}
+            onMouseLeave={isCoarse ? undefined : handlers.onMouseLeave}
           >
-            {item.expandContent}
+            <div ref={expandRef}>{item.expandContent}</div>
           </PortalFloat>
         ) : (
-          <div className="absolute z-dropdown" style={INLINE_EXPAND[config.expandDirection]}>
+          <div
+            ref={expandRef}
+            className="absolute z-dropdown"
+            style={INLINE_EXPAND[config.expandDirection]}
+          >
             {item.expandContent}
           </div>
         )

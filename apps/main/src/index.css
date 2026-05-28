@@ -35,16 +35,21 @@
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
-  min-height: 100dvh;
-  overflow-x: hidden;
+  /* Lock the document to the viewport so inner regions scroll, never the page.
+     `min-height` here let edge insets (App.tsx) push the shell past the viewport
+     and the body became the scroller — pushing tabs / gallery filters out of
+     view. A fixed height + overflow:hidden keeps the page itself unscrollable. */
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 #root {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* React Mosaic theme customization */

@@ -10,6 +10,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 import { useViewerGestures, GestureOverlay, GestureCancelOverlay, type ViewerGestureContext } from '@lib/gestures';
 import { EdgeInsetsScope } from '@lib/layout/edgeInsets';
+import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 import { OverlayContainer } from '@lib/ui/overlay';
 
 import { useAssetViewerStore } from '@features/assets';
@@ -80,6 +81,13 @@ function MediaPanelInner({ context }: MediaPanelProps) {
 
   const [isDragging, setIsDragging] = useState(false);
   const [mediaDimensions, setMediaDimensions] = useState<{ width: number; height: number } | undefined>();
+
+  // Touch tap-to-reveal for the viewer's hover-gated overlays (generation
+  // button group, badges). The viewer has no hover, so without this the group
+  // is unreachable on mobile. Tapping the media toggles it; taps on the group
+  // itself are stopped in GenerationButtonGroupContent so they don't re-toggle.
+  const isCoarsePointer = useIsCoarsePointer();
+  const [overlayRevealed, setOverlayRevealed] = useState(false);
 
   // Refs for reading latest state in event handlers (avoid stale closures)
   const zoomRef = useRef(zoom);
@@ -534,12 +542,22 @@ function MediaPanelInner({ context }: MediaPanelProps) {
             onPointerMove: handlePointerMove,
             onPointerUp: handlePointerUp,
           } : {})}
+          onClick={
+            isCoarsePointer && hasViewerOverlay && effectiveOverlayMode === 'none' && !isZoomed
+              ? () => setOverlayRevealed((v) => !v)
+              : undefined
+          }
         >
           {hasViewerOverlay ? (
+            // `cq-scale` defines the --cq-btn-*/--cq-icon-* custom properties
+            // the badge widgets size against (see index.css:302). Without it,
+            // viewer badges fall back to icon-intrinsic ~16px instead of the
+            // gallery's 24px and the heart/quick-tag/status icons look "off".
             <OverlayContainer
               configuration={viewerOverlay.overlayConfig}
               data={viewerOverlay.overlayData}
-              className="flex-1 min-h-0 relative flex flex-col"
+              className="cq-scale flex-1 min-h-0 relative flex flex-col"
+              forceHovered={isCoarsePointer && overlayRevealed}
               validate={false}
             >
               {ActiveMain && (
