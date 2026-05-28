@@ -59,6 +59,8 @@ if str(_REPO_ROOT) not in sys.path:
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
 
+from pixsim7.backend.main.services.diagnostics.applied_ledger import record_backfill_applied
+
 _VIDEO_OPS = ("text_to_video", "image_to_video", "video_extend", "fusion")
 
 
@@ -267,6 +269,8 @@ async def main() -> None:
             print(f"  {k}: {v}")
         if args.dry_run:
             print("\nDry run: no DB writes committed.  Re-run with --apply to persist.")
+        if args.apply:
+            await record_backfill_applied(__file__, rows_affected=results["written"])
 
 
 if __name__ == "__main__":

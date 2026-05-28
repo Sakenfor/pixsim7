@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Optional
 
-from .base import Diagnostic, DiagnosticEvent
+from .base import RUN_ACTOR_PARAM, Diagnostic, DiagnosticEvent
 
 logger = logging.getLogger(__name__)
 
@@ -138,8 +138,11 @@ class DiagnosticRunManager:
         return run
 
     async def _execute(self, run: DiagnosticRun, diagnostic: Diagnostic) -> None:
+        # Hand the diagnostic the run's actor without polluting the persisted
+        # params (which are mirrored to ``diagnostic_runs`` as the user contract).
+        run_params = {**run.params, RUN_ACTOR_PARAM: run.started_by}
         try:
-            async for event in diagnostic.run(run.params, run.cancel_event):
+            async for event in diagnostic.run(run_params, run.cancel_event):
                 payload = (
                     event.to_dict()
                     if isinstance(event, DiagnosticEvent)

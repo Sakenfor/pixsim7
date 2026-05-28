@@ -28,6 +28,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
+from pixsim7.backend.main.services.diagnostics.applied_ledger import record_backfill_applied
+
 
 def _get_database_url() -> str:
     # Resolve via the app's own settings so this tool connects to exactly the
@@ -72,6 +74,7 @@ async def backfill(apply: bool) -> None:
             result = await session.execute(update_sql)
             await session.commit()
             print(f"Updated {result.rowcount} rows.")
+            await record_backfill_applied(__file__, rows_affected=result.rowcount)
         elif not apply and count > 0:
             print("Dry run — pass --apply to perform the update.")
         else:

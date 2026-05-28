@@ -49,18 +49,20 @@ def test_parse_script_path_tolerates_bare_path_and_junk() -> None:
 
 def test_discovery_indexes_are_consistent() -> None:
     # Every discovered script is keyed by its path and produces one option.
-    assert set(ss._ALLOWED) == {m.path for m in ss._SCRIPTS}
-    assert set(ss._META_BY_PATH) == set(ss._ALLOWED)
-    assert len(ss._OPTIONS) == len(ss._SCRIPTS)
+    disc = ss.get_discovery()
+    assert set(disc.allowed) == {m.path for m in disc.scripts}
+    assert set(disc.by_path) == set(disc.allowed)
+    assert len(disc.options) == len(disc.scripts)
     # Each option's leading token resolves to an allowlisted path.
-    for opt in ss._OPTIONS:
-        assert ss._parse_script_path(opt) in ss._ALLOWED
+    for opt in disc.options:
+        assert ss._parse_script_path(opt) in disc.allowed
 
 
 def test_backfill_scripts_detected_as_apply_capable() -> None:
     # Real repo scripts: the backfill_* family declares --apply (dry-run default).
-    apply_capable = {m.path for m in ss._SCRIPTS if m.has_apply}
-    backfills = {m.path for m in ss._SCRIPTS if m.path.startswith("tools/backfill_")}
+    disc = ss.get_discovery()
+    apply_capable = {m.path for m in disc.scripts if m.has_apply}
+    backfills = {m.path for m in disc.scripts if m.path.startswith("tools/backfill_")}
     assert backfills, "expected some tools/backfill_*.py to be discovered"
     # Not asserting every single one, but the bulk should support --apply.
     assert backfills & apply_capable == backfills

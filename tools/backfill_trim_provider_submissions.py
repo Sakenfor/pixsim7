@@ -48,6 +48,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
+from pixsim7.backend.main.services.diagnostics.applied_ledger import record_backfill_applied
+
 
 def _get_database_url() -> str:
     from pixsim7.backend.main.shared.config import settings
@@ -252,6 +254,7 @@ async def run(apply: bool, threshold: int, keep_first: int, keep_last: int) -> N
                     f"NOTE: {issues} generations still exceed threshold "
                     "(may be expected if successes/provider_job_ids inflate keep set)."
                 )
+            await record_backfill_applied(__file__, rows_affected=deleted)
         else:
             print("  Dry run — pass --apply to commit.")
     finally:

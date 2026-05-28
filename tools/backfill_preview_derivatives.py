@@ -49,6 +49,8 @@ if str(_REPO_ROOT) not in sys.path:
 
 from sqlalchemy import select
 
+from pixsim7.backend.main.services.diagnostics.applied_ledger import record_backfill_applied
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
@@ -196,6 +198,7 @@ async def main() -> None:
                 if i % 50 == 0:
                     print(f"  enqueued {i}/{total}")
             print(f"Done. Watch ARQ worker logs (process_ingestion) for progress.")
+            await record_backfill_applied(__file__, rows_affected=total)
 
 
 if __name__ == "__main__":

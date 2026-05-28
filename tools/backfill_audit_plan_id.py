@@ -28,6 +28,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
+from pixsim7.backend.main.services.diagnostics.applied_ledger import record_backfill_applied
+
 
 SCHEMA = "dev_meta"
 
@@ -106,6 +108,7 @@ async def backfill(apply: bool) -> None:
         if apply:
             await session.commit()
             print(f"\nDone. {total_updated} rows updated total.")
+            await record_backfill_applied(__file__, rows_affected=total_updated)
         else:
             print(f"\nDry run complete. Use --apply to execute updates.")
 

@@ -45,6 +45,7 @@ from sqlalchemy.orm import sessionmaker
 
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.assets.tag import Tag, AssetTag
+from pixsim7.backend.main.services.diagnostics.applied_ledger import record_backfill_applied
 
 DEFAULT_TOKENS = ("null", "(null)", "undefined", "(undefined)")
 _REMOVE = object()
@@ -299,6 +300,9 @@ async def _backfill(*, apply: bool, user_id: int | None, tokens: set[str]) -> Ba
 
             if not apply:
                 await session.rollback()
+
+    if apply:
+        await record_backfill_applied(__file__)
 
     await engine.dispose()
     return stats

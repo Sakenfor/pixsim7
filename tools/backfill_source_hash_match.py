@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
 from pixsim7.backend.main.domain import Asset, Generation, OperationType
+from pixsim7.backend.main.services.diagnostics.applied_ledger import record_backfill_applied
 from pixsim7.backend.main.services.asset.dedup import resolve_existing_asset_by_url_hash
 from pixsim7.backend.main.services.asset.asset_factory import create_lineage_links_with_metadata
 from pixsim7.backend.main.services.generation.context import (
@@ -146,6 +147,12 @@ async def backfill(apply: bool, limit: int | None) -> None:
     print(
         f"\nDone of {len(asset_ids)} candidates: "
         + " ".join(f"{k}={v}" for k, v in counts.items())
+    )
+
+    await record_backfill_applied(
+        __file__,
+        rows_affected=counts["resolved"],
+        notes=" ".join(f"{k}={v}" for k, v in counts.items()),
     )
 
 

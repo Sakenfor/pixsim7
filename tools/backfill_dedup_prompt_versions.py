@@ -44,6 +44,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
+from pixsim7.backend.main.services.diagnostics.applied_ledger import record_backfill_applied
+
 
 def _get_database_url() -> str:
     """Resolve the DB URL using the same path as the backend Settings loader.
@@ -264,6 +266,11 @@ async def dedup(apply: bool) -> None:
                 f"Post-apply verify failed: {issues} issues remaining "
                 f"(see output above)."
             )
+        await record_backfill_applied(
+            __file__,
+            rows_affected=stats.get("deleted", 0),
+            notes=f"losers_identified={stats.get('losers_identified', 0)}",
+        )
 
     await engine.dispose()
 

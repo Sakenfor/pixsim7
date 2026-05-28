@@ -38,6 +38,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
+from pixsim7.backend.main.services.diagnostics.applied_ledger import record_backfill_applied
 from pixsim7.backend.main.services.generation.context import (
     compute_input_assets_key,
     extract_source_asset_ids,
@@ -103,6 +104,7 @@ async def backfill(apply: bool) -> None:
         if apply:
             await session.commit()
             print(f"Updated {updated} rows.")
+            await record_backfill_applied(__file__, rows_affected=updated)
         elif updated:
             print(f"Dry run — would update {updated} rows. Pass --apply to perform.")
         else:

@@ -27,6 +27,14 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, ClassVar, Literal, Optional
 
 
+# Reserved param key the run manager injects into the dict passed to
+# ``Diagnostic.run`` (NOT into the persisted ``run.params``) carrying the run's
+# resolved actor (``principal.source``). Diagnostics that spawn work on behalf
+# of the principal — e.g. ShellScriptDiagnostic handing it to a backfill via
+# env — read it; everything else ignores the unknown key.
+RUN_ACTOR_PARAM = "__run_started_by__"
+
+
 # Event type vocabulary — kept small and stable so the frontend can switch on
 # `type` without coordinating schema bumps.  Add entries here only when a new
 # kind is genuinely distinct from the existing ones.
@@ -117,6 +125,13 @@ class Diagnostic(ABC):
     """
 
     spec: ClassVar[DiagnosticSpec]
+
+    def get_spec(self) -> DiagnosticSpec:
+        """The spec to serve to clients. Defaults to the static class ``spec``;
+        override when a diagnostic's params are computed dynamically (e.g. a
+        select whose options track the filesystem) so the listing reflects
+        current state without a restart."""
+        return self.spec
 
     @abstractmethod
     def run(

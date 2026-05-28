@@ -49,6 +49,9 @@ from pixsim7.backend.main.services.diagnostics import (  # noqa: F401  (registra
     diagnostic_run_manager,
 )
 from pixsim7.backend.main.services.diagnostics import registrations as _diagnostic_registrations  # noqa: F401
+from pixsim7.backend.main.services.diagnostics.applied_ledger import list_backfill_status
+from pixsim7.backend.main.infrastructure.database.session import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +81,7 @@ def _coerce_params(diagnostic: Diagnostic, raw: dict[str, Any]) -> dict[str, Any
     Required-but-missing params raise 422.
     """
     out: dict[str, Any] = {}
-    for spec in diagnostic.spec.params:
+    for spec in diagnostic.get_spec().params:
         if spec.name in raw:
             value = raw[spec.name]
         elif spec.default is not None:
@@ -128,9 +131,21 @@ def _coerce_one(spec: DiagnosticParam, value: Any) -> Any:
 
 @router.get("", summary="List registered diagnostics")
 async def list_diagnostics(_: CurrentDiagnosticsUser) -> dict[str, Any]:
-    items = [d.spec.to_dict() for d in diagnostic_registry.values()]
+    items = [d.get_spec().to_dict() for d in diagnostic_registry.values()]
     items.sort(key=lambda s: s["label"])
     return {"diagnostics": items, "total": len(items)}
+
+
+@router.get("/backfills/applied", summary="Per-script backfill applied-state (ledger)")
+async def list_backfills_applied(
+    _: CurrentDiagnosticsUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Applied-state of every discovered ``--apply`` script, from the
+    ``backfill_applied`` ledger: 'never applied' vs 'last applied <when> by
+    <actor>, N rows', plus whether the *current* script version was applied."""
+    items = await list_backfill_status(db)
+    return {"backfills": items, "total": len(items)}
 
 
 @router.post(

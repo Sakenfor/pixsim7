@@ -19,6 +19,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import json
+import os
 import shlex
 import sys
 from dataclasses import dataclass
@@ -27,7 +28,9 @@ from typing import Any, AsyncIterator, Optional
 
 from pixsim7.backend.main.shared.path_registry import get_path_registry
 
+from .applied_ledger import ACTOR_ENV_VAR
 from .base import (
+    RUN_ACTOR_PARAM,
     Diagnostic,
     DiagnosticEvent,
     DiagnosticParam,
@@ -109,14 +112,67 @@ def _parse_script_path(value: Any) -> str:
     return tokens[0] if tokens else ""
 
 
-_SCRIPTS: tuple[_ScriptMeta, ...] = _discover_scripts()
-_META_BY_PATH: dict[str, _ScriptMeta] = {m.path: m for m in _SCRIPTS}
-_ALLOWED: frozenset[str] = frozenset(_META_BY_PATH)
-_OPTIONS: list[str] = [_option_label(m) for m in _SCRIPTS]
+@dataclass(frozen=True)
+class _Discovery:
+    """A discovery snapshot: scripts + the derived lookups the runner needs."""
+
+    scripts: tuple[_ScriptMeta, ...]
+    by_path: dict[str, _ScriptMeta]
+    allowed: frozenset[str]
+    options: tuple[str, ...]
 
 
-class ShellScriptDiagnostic(Diagnostic):
-    spec = DiagnosticSpec(
+def _scan_signature() -> tuple[tuple[str, int, int], ...]:
+    """Cheap fingerprint of the scanned dirs: (name, mtime_ns, size) per file.
+
+    Stat-only (no file reads) so the steady-state "nothing changed" path stays
+    fast; only a fingerprint change triggers a full ``_discover_scripts`` re-scan
+    (which reads file bodies for docstring/``--apply`` detection)."""
+    root = get_path_registry().repo_root
+    sig: list[tuple[str, int, int]] = []
+    for sub in _SCAN_DIRS:
+        d = root / sub
+        if not d.exists():
+            continue
+        for p in sorted(d.glob("*.py")):
+            if p.name.startswith("_") or p.name.startswith("."):
+                continue
+            try:
+                st = p.stat()
+                sig.append((p.name, st.st_mtime_ns, st.st_size))
+            except OSError:
+                sig.append((p.name, 0, 0))
+    return tuple(sig)
+
+
+_discovery_cache: Optional[_Discovery] = None
+_discovery_sig: Optional[tuple[tuple[str, int, int], ...]] = None
+
+
+def get_discovery() -> _Discovery:
+    """Current script discovery, re-scanning only when the dir fingerprint
+    changes. This is what lets a newly-added ``tools/``/``scripts/`` file show
+    up (and become runnable) without a backend restart — both the listed select
+    options and the run-time allowlist read through here."""
+    global _discovery_cache, _discovery_sig
+    sig = _scan_signature()
+    if _discovery_cache is None or sig != _discovery_sig:
+        scripts = _discover_scripts()
+        by_path = {m.path: m for m in scripts}
+        _discovery_cache = _Discovery(
+            scripts=scripts,
+            by_path=by_path,
+            allowed=frozenset(by_path),
+            options=tuple(_option_label(m) for m in scripts),
+        )
+        _discovery_sig = sig
+    return _discovery_cache
+
+
+def _build_spec(options: tuple[str, ...]) -> DiagnosticSpec:
+    """Build the shell-script spec from a discovery snapshot. Called fresh by
+    ``get_spec`` per list request so the ``script`` options track the filesystem."""
+    return DiagnosticSpec(
         id="shell-script",
         label="Run shell script",
         description=(
@@ -131,8 +187,8 @@ class ShellScriptDiagnostic(Diagnostic):
                 name="script",
                 kind="select",
                 label="Script",
-                default=(_OPTIONS[0] if _OPTIONS else ""),
-                options=list(_OPTIONS),
+                default=(options[0] if options else ""),
+                options=list(options),
                 required=True,
                 description=(
                     "Allowlisted from tools/ and scripts/. Label shows the "
@@ -168,6 +224,16 @@ class ShellScriptDiagnostic(Diagnostic):
         ),
     )
 
+
+class ShellScriptDiagnostic(Diagnostic):
+    # Static class attr keeps ``spec.id`` available for registration/keying.
+    # ``get_spec`` (below) rebuilds the options from fresh discovery per list
+    # request, so a restart isn't needed to surface a newly-added script.
+    spec = _build_spec(get_discovery().options)
+
+    def get_spec(self) -> DiagnosticSpec:
+        return _build_spec(get_discovery().options)
+
     async def run(
         self,
         params: dict[str, Any],
@@ -184,7 +250,8 @@ class ShellScriptDiagnostic(Diagnostic):
         apply = bool(params.get("apply"))
         grace = max(0.0, parse_select_float(params.get("kill_grace_s"), 5.0))
 
-        if script not in _ALLOWED:
+        disc = get_discovery()
+        if script not in disc.allowed:
             yield DiagnosticEvent(
                 now(),
                 "error",
@@ -214,7 +281,7 @@ class ShellScriptDiagnostic(Diagnostic):
 
         # Translate the dry-run/apply toggle into a flag, but only for scripts
         # that actually declare --apply, and never duplicate a hand-typed one.
-        meta = _META_BY_PATH.get(script)
+        meta = disc.by_path.get(script)
         if apply:
             if meta is not None and not meta.has_apply:
                 yield DiagnosticEvent(
@@ -244,6 +311,14 @@ class ShellScriptDiagnostic(Diagnostic):
             },
         )
 
+        # Hand the run's actor to the child so a backfill's record_backfill_applied
+        # attributes the apply to the principal that launched the run (agent/user),
+        # not just cli:<os-user>. The child reads ACTOR_ENV_VAR; absent it falls back.
+        child_env = dict(os.environ)
+        actor = params.get(RUN_ACTOR_PARAM)
+        if actor:
+            child_env[ACTOR_ENV_VAR] = str(actor)
+
         try:
             proc = await asyncio.create_subprocess_exec(
                 sys.executable,
@@ -253,6 +328,7 @@ class ShellScriptDiagnostic(Diagnostic):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(repo_root),
+                env=child_env,
             )
         except Exception as exc:  # noqa: BLE001 — surface spawn failure
             yield DiagnosticEvent(

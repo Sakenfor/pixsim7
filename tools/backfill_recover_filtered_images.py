@@ -48,6 +48,8 @@ if str(_REPO_ROOT) not in sys.path:
 
 from datetime import datetime, timezone
 
+from pixsim7.backend.main.services.diagnostics.applied_ledger import record_backfill_applied
+
 # DB query + CDN probe + re-arm live in the shared service module so this
 # CLI and any maintenance endpoint run identical recovery logic. The tool
 # owns only argparse, the --apply progress cursor, and console output.
@@ -246,6 +248,11 @@ async def main() -> None:
                     "window. Raise --since-days to go further back, or "
                     "--reset-cursor to rescan from newest."
                 )
+            await record_backfill_applied(
+                __file__,
+                rows_affected=rearmed,
+                notes=f"recoverable={recoverable} skipped={skipped}",
+            )
 
 
 if __name__ == "__main__":
