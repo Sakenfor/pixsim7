@@ -88,6 +88,15 @@ class SessionStats:
     cost_usd: float = 0.0             # cumulative cost
 
 
+# Sentinel pushed onto a session's response queue when its subprocess stdout
+# reaches EOF (process exited) or the reader crashes. It wakes the send_message
+# wait loop immediately so the turn fails with the real exit reason, instead of
+# stalling until the next ~30s liveness poll and mislabelling a dead process as
+# "a tool was still running". Deliberate stops (stop()/cancellation) do NOT push
+# it. Identity-compared with `is`, so it must never look like a protocol event.
+_EOF_SENTINEL = object()
+
+
 class AgentCmdSession:
     """Manages a single agent process with stream-json I/O.
 
@@ -167,6 +176,10 @@ class AgentCmdSession:
         self.state = SessionState.IDLE
         self.stats = SessionStats()
         self._last_error: Optional[str] = None
+        # Rolling tail of the subprocess's stderr, retained regardless of how
+        # many results we received so a mid-turn process exit can report WHY it
+        # died (the logs showed last_error=null on every such kill).
+        self._stderr_tail: list[str] = []
         self.cli_session_id: Optional[str] = None   # conversation UUID from init event
         # Panel-facing conversation handle this subprocess is currently bound
         # to. Distinct from cli_session_id (Claude's internal resume UUID):
@@ -758,6 +771,12 @@ class AgentCmdSession:
         # bounded only by the process staying alive (long Bash/subagent/blocking
         # MCP), so its cap is effectively unbounded within the turn.
         idle_gap = min(timeout, self.AGENT_IDLE_GAP_SECONDS)
+        # Absolute turn budget. Now that the pool stuck-busy watchdog no longer
+        # restarts in-flight turns (it gates on `_inflight_turns`), send_message
+        # is the SINGLE place a turn is bounded. A tool that runs — or wedges —
+        # for the whole turn is capped here at `timeout`, in every regime; the
+        # reasoning `idle_gap` just trips sooner when no tool is outstanding.
+        turn_started = self._busy_started_at or datetime.now(timezone.utc)
         try:
             while True:
                 while True:
@@ -765,14 +784,15 @@ class AgentCmdSession:
                     if silent_since is None:
                         silent_since = now
                     silent_elapsed = (now - silent_since).total_seconds()
-                    # Cap: unbounded (process-liveness only) while a tool runs;
-                    # the generous reasoning gap otherwise.
+                    turn_remaining = float(timeout) - (now - turn_started).total_seconds()
+                    # Cap: while a tool runs, gaps don't kill it — only the
+                    # absolute turn budget does (below). Otherwise the reasoning gap.
                     silence_cap = float("inf") if tool_inflight else float(idle_gap)
-                    # Pulse cadence (and <= turn ``timeout``), but never wait
-                    # past the remaining budget so tight caps (tests / small
-                    # timeouts) still fail fast.
+                    # Pulse cadence, but never wait past the gap cap OR the
+                    # remaining turn budget (so tight caps / the turn deadline
+                    # still fail fast).
                     pulse = min(float(self.AGENT_PULSE_SLICE_SECONDS), float(timeout))
-                    slice_to = max(0.05, min(pulse, silence_cap - silent_elapsed))
+                    slice_to = max(0.05, min(pulse, silence_cap - silent_elapsed, turn_remaining))
                     try:
                         event_raw = await asyncio.wait_for(
                             self._response_queue.get(),
@@ -780,9 +800,14 @@ class AgentCmdSession:
                         )
                         break
                     except asyncio.TimeoutError:
-                        # Budget exhausted or process dead → give up; the outer
-                        # handler classifies tool_inflight vs agent_idle.
-                        if not self.is_alive or silent_elapsed + slice_to >= silence_cap:
+                        # Process dead, reasoning-gap cap hit, or the absolute
+                        # turn budget exhausted → give up; the outer handler
+                        # classifies the stall (tool_inflight vs agent_idle).
+                        if (
+                            not self.is_alive
+                            or silent_elapsed + slice_to >= silence_cap
+                            or turn_remaining - slice_to <= 0
+                        ):
                             raise
                         # Alive and within budget → pulse + re-arm. Pulsing the
                         # thinking bubble (with an elapsed stamp) lets the user
@@ -817,12 +842,39 @@ class AgentCmdSession:
                                 self._log.debug("inflight_progress_failed", exc_info=True)
                         continue
 
+                # Subprocess exited / stdout closed mid-turn. The reader pushes
+                # this sentinel on EOF so we fail NOW with the real exit reason,
+                # rather than waiting up to a full pulse slice for the is_alive
+                # poll and then blaming a tool that already finished.
+                if event_raw is _EOF_SENTINEL:
+                    self.stats.errors += 1
+                    self._log.warning(
+                        "session_process_exited_midturn",
+                        returncode=self._process.returncode if self._process else None,
+                        last_action=self._busy_last_action,
+                        last_detail=self._busy_last_detail,
+                        partial_result_len=len(result_text),
+                        cli_session=self.cli_session_id,
+                    )
+                    self._mark_ready()
+                    raise RuntimeError(self._build_process_exit_error())
+
                 parsed = self._protocol.parse_event(event_raw)
                 # Any fresh stdout line ends the silent window. A tool_use
                 # block re-opens it (the tool is about to run); every other
                 # event means the agent is streaming again.
                 tool_inflight = False
                 silent_since = None
+                # Record real agent output as activity. The pool's stuck-busy
+                # watchdog (agent_pool._maybe_recover_stuck_busy) restarts a
+                # session when now - stats.last_activity > STUCK_BUSY_SECONDS;
+                # without bumping it here, last_activity froze at turn-start and
+                # a long turn that was actively streaming tool calls looked
+                # "stuck" and got killed mid-flight (the stuck_secs=609 kill).
+                # Only REAL events count — not the synthetic keepalive pulses —
+                # so the watchdog can still catch a genuinely silent-but-alive
+                # session.
+                self.stats.last_activity = datetime.now(timezone.utc)
 
                 if parsed.kind == "init":
                     if parsed.session_id:
@@ -1097,8 +1149,29 @@ class AgentCmdSession:
                 self.stats.input_tokens = info.get("input_tokens", self.stats.input_tokens)
                 self.stats.output_tokens = info.get("output_tokens", self.stats.output_tokens)
 
+    def _build_process_exit_error(self) -> str:
+        """Human-readable reason for a subprocess that exited mid-turn.
+
+        Pulls the exit code and the stderr tail so the failed turn says
+        *why* it died instead of the old misleading "a tool was still
+        running" — the logs showed ``last_error=null`` on every such kill.
+        """
+        code = self._process.returncode if self._process else None
+        code_str = f"code {code}" if code is not None else "no exit code yet"
+        tail = " | ".join(self._stderr_tail[-5:]).strip()
+        if not tail and self._last_error:
+            tail = str(self._last_error)
+        base = f"Agent process exited ({code_str}) before finishing the turn"
+        return f"{base}: {tail}" if tail else base
+
     async def _read_stdout(self) -> None:
-        """Read stdout, parse JSON events into the response queue."""
+        """Read stdout, parse JSON events into the response queue.
+
+        On EOF (process exit) or an unexpected reader crash — but NOT on
+        deliberate cancellation (stop()) — push ``_EOF_SENTINEL`` so a turn
+        blocked on the queue wakes immediately and fails with the real reason
+        rather than stalling until the next liveness poll.
+        """
         if not self._process or not self._process.stdout:
             return
         try:
@@ -1121,10 +1194,16 @@ class AgentCmdSession:
                 except json.JSONDecodeError:
                     self._log.debug("session_stdout", text=text)
         except asyncio.CancelledError:
-            return
+            return  # deliberate stop — leave the queue untouched
         except Exception as exc:
             self._log.error("session_reader_crashed", error=str(exc))
             self._last_error = f"stdout reader crashed: {exc}"
+        # EOF or reader crash: wake any in-flight waiter so the turn fails now.
+        # Unbounded queue → put_nowait can't realistically fail; guard anyway.
+        try:
+            self._response_queue.put_nowait(_EOF_SENTINEL)
+        except asyncio.QueueFull:
+            pass
 
     async def _read_stderr(self) -> None:
         """Read stderr for debug/error output.
@@ -1146,6 +1225,10 @@ class AgentCmdSession:
                     recent_lines.append(text)
                     if len(recent_lines) > 10:
                         recent_lines.pop(0)
+                    # Keep the live tail visible to _build_process_exit_error
+                    # regardless of received-count, so a mid-turn exit can name
+                    # its cause even on a session that answered earlier turns.
+                    self._stderr_tail = list(recent_lines[-5:])
             # Process exited — store tail of stderr as last_error for diagnostics
             if recent_lines and self.stats.messages_received == 0:
                 self._last_error = " | ".join(recent_lines[-5:])

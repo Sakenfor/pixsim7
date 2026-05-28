@@ -21,7 +21,7 @@ import pytest
 
 try:
     from pixsim7.client.protocols import CodexAppServerProtocol
-    from pixsim7.client.session import AgentCmdSession
+    from pixsim7.client.session import AgentCmdSession, _EOF_SENTINEL
 
     IMPORTS_AVAILABLE = True
 except ImportError:
@@ -172,6 +172,10 @@ class TestToolInflightHeartbeat:
         async def _run():
             s = AgentCmdSession("test-session", command="claude")
             s._process = _FakeProc()
+            # Fast pulse so a re-arm fires quickly; keep the turn budget
+            # generous (timeout=10) since `timeout` is now an ABSOLUTE turn cap
+            # — shrinking it to drive the pulse cadence would also cut the turn.
+            s.AGENT_PULSE_SLICE_SECONDS = 0.3
 
             progress: list[tuple[str, str]] = []
 
@@ -182,15 +186,13 @@ class TestToolInflightHeartbeat:
                 await asyncio.sleep(0.05)
                 # Tool starts → opens the silent window (tool_inflight=True).
                 await s._response_queue.put(self._tool_use("pytest -q"))
-                # Stay silent long enough for one re-arm (slice = min(timeout,30)
-                # = 1s here), then finish the turn.
-                await asyncio.sleep(1.35)
+                # Stay silent past the pulse cadence (≥2 re-arms), well under
+                # the 10s turn budget, then finish the turn.
+                await asyncio.sleep(0.7)
                 await s._response_queue.put({"type": "result", "result": "done"})
 
             feeder = asyncio.create_task(feed())
-            # timeout=1 → the in-flight re-arm slice is 1s, so the heartbeat
-            # fires once before the result lands.
-            result = await s.send_message("go", timeout=1, on_progress=on_progress)
+            result = await s.send_message("go", timeout=10, on_progress=on_progress)
             await feeder
             return result, progress
 
@@ -253,6 +255,113 @@ class TestInactivityTimeoutMessage:
         # agent_idle hint, naming the last surfaced action.
         assert "stalled" in msg
         assert "ls foo" in msg
+
+
+class TestProcessExitMidTurn:
+    """The dominant real-world disconnect: the agent subprocess exits mid-turn
+    (the bridge logs showed 179/180 stops at exit_code=1, ~half with
+    received=0). The stdout reader hits EOF and pushes ``_EOF_SENTINEL`` so the
+    turn fails immediately with the real exit reason — instead of stalling
+    until the next ~30s liveness poll and mislabelling the dead process as
+    "a tool was still running". See session.py _read_stdout /
+    _build_process_exit_error.
+    """
+
+    @staticmethod
+    def _tool_use(command: str) -> dict:
+        return {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": command}}]},
+        }
+
+    def test_eof_sentinel_fails_turn_fast_with_exit_reason(self):
+        async def _run():
+            s = AgentCmdSession("test-session", command="claude")
+            s._process = _FakeProc()
+            s._stderr_tail = ["fatal: connection reset by peer"]
+
+            async def feed():
+                await asyncio.sleep(0.05)
+                # A tool is "running" (tool_inflight=True) — the exact regime
+                # that used to mislabel the exit as "a tool was still running".
+                await s._response_queue.put(self._tool_use("pnpm tsc -b"))
+                await asyncio.sleep(0.05)
+                # Process dies: reader hits EOF → sentinel. Flip returncode so
+                # is_alive goes False and the error can name the exit code.
+                s._process.returncode = 1
+                await s._response_queue.put(_EOF_SENTINEL)
+
+            feeder = asyncio.create_task(feed())
+            started = time.monotonic()
+            err: str | None = None
+            try:
+                # Generous turn budget — the point is we fail in ~0.1s, not 30s.
+                await s.send_message("go", timeout=30)
+            except RuntimeError as e:
+                err = str(e)
+            elapsed = time.monotonic() - started
+            await feeder
+            return err, elapsed
+
+        msg, elapsed = asyncio.run(_run())
+        assert msg is not None, "expected a RuntimeError on subprocess exit"
+        # Honest, specific message — not the old "a tool was still running".
+        assert "Agent process exited" in msg
+        assert "code 1" in msg
+        assert "connection reset" in msg
+        assert "tool was still running" not in msg
+        # Failed promptly off the sentinel, nowhere near the 30s budget.
+        assert elapsed < 5, f"expected fast failure, took {elapsed:.1f}s"
+
+
+class TestActivityTrackingForStuckBusyWatchdog:
+    """The pool's stuck-busy watchdog (agent_pool._maybe_recover_stuck_busy)
+    force-restarts a session when ``now - stats.last_activity`` exceeds
+    STUCK_BUSY_SECONDS. last_activity used to be stamped only at turn-start and
+    final-result, so a long turn actively streaming tool calls froze it and got
+    killed mid-flight (the real stuck_secs=609 kill on session e5ab1e11). Every
+    real mid-turn event must refresh it. See session.py send_message.
+    """
+
+    @staticmethod
+    def _tool_use(command: str) -> dict:
+        return {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": command}}]},
+        }
+
+    def test_midturn_tool_event_refreshes_last_activity(self):
+        from datetime import datetime, timezone
+
+        async def _run():
+            s = AgentCmdSession("test-session", command="claude")
+            s._process = _FakeProc()
+            captured: dict = {}
+            marker: list = []
+
+            def on_progress(evt: str, detail: str) -> None:
+                if evt == "progress" and "git grep" in detail:
+                    captured["at_tool"] = s.stats.last_activity
+
+            async def feed():
+                await asyncio.sleep(0.1)  # let turn-start stamp last_activity first
+                marker.append(datetime.now(timezone.utc))
+                await s._response_queue.put(self._tool_use("git grep -nE rollSeed"))
+                await asyncio.sleep(0.05)
+                await s._response_queue.put({"type": "result", "result": "done"})
+
+            feeder = asyncio.create_task(feed())
+            result = await s.send_message("go", timeout=5, on_progress=on_progress)
+            await feeder
+            return result, captured, marker
+
+        result, captured, marker = asyncio.run(_run())
+        assert result == "done"
+        assert captured.get("at_tool") is not None, "expected a git grep progress event"
+        # last_activity advanced to at least the moment the tool event landed —
+        # so a streaming turn keeps reading as "alive" to the stuck-busy watchdog
+        # instead of looking frozen at turn-start.
+        assert captured["at_tool"] >= marker[0]
 
 
 class TestReasoningGapDoesNotKillHealthyTurn:
@@ -391,3 +500,95 @@ class TestReasoningGapDoesNotKillHealthyTurn:
         # Partial output was seen → the "started replying then went silent" wording.
         assert "stalled" in msg
         assert "had started replying" in msg
+
+
+class TestTurnBudgetBoundsToolInflight:
+    """Consolidation: with the pool stuck-busy watchdog no longer restarting
+    in-flight turns, `send_message` is the single place a turn is bounded. A
+    tool that never returns (process still alive) must be cut at the absolute
+    turn `timeout` — previously the `tool_inflight` regime was unbounded and
+    only the 600s watchdog (which killed healthy turns) stopped it.
+    """
+
+    @staticmethod
+    def _tool_use(command: str) -> dict:
+        return {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": command}}]},
+        }
+
+    def test_never_returning_tool_is_cut_at_turn_timeout(self):
+        async def _run():
+            s = AgentCmdSession("test-session", command="claude")
+            s._process = _FakeProc()  # stays alive (returncode stays None)
+
+            async def feed():
+                await asyncio.sleep(0.05)
+                # Tool starts and never produces a result; process stays alive.
+                await s._response_queue.put(self._tool_use("sleep 999999"))
+
+            feeder = asyncio.create_task(feed())
+            started = time.monotonic()
+            err: str | None = None
+            try:
+                await s.send_message("go", timeout=1)
+            except RuntimeError as e:
+                err = str(e)
+            elapsed = time.monotonic() - started
+            feeder.cancel()
+            return err, elapsed
+
+        msg, elapsed = asyncio.run(_run())
+        assert msg is not None, "a never-returning tool must be cut at the turn budget"
+        assert "No response within 1s" in msg
+        # tool_inflight regime → honest "tool was still running" message, now
+        # truthful because the turn really did run its full budget.
+        assert "tool was still running" in msg
+        # Bounded near the 1s budget — not unbounded (would hang the test).
+        assert 0.8 <= elapsed < 5, f"expected ~1s cap, got {elapsed:.1f}s"
+
+
+class TestStuckBusyWatchdogGate:
+    """The pool stuck-busy watchdog must skip a session whose turn is still
+    in-flight (send_message owns it) and only recover a genuinely orphaned BUSY
+    session. The old time-only check force-restarted live turns mid-flight (the
+    stuck_secs=609 kill on e5ab1e11). See agent_pool._maybe_recover_stuck_busy.
+    """
+
+    def test_skips_inflight_turn_but_recovers_orphan(self):
+        from datetime import datetime, timezone, timedelta
+        from pixsim7.client.agent_pool import AgentPool, STUCK_BUSY_SECONDS
+        from pixsim7.client.session import SessionState
+
+        async def _run():
+            pool = AgentPool(pool_size=1, engines=["claude"])
+            pool._update_index = lambda sess: None  # isolate watchdog logic
+
+            s = AgentCmdSession("sess-1", command="claude")
+            s.state = SessionState.BUSY
+            # last_activity stale well past the watchdog threshold.
+            s.stats.last_activity = (
+                datetime.now(timezone.utc) - timedelta(seconds=STUCK_BUSY_SECONDS + 60)
+            )
+            restarts: list[bool] = []
+
+            async def fake_restart():
+                restarts.append(True)
+                return True
+
+            s.restart = fake_restart
+            pool._sessions[s.session_id] = s
+
+            # Turn in-flight → must NOT restart despite stale last_activity.
+            pool._inflight_turns[s.session_id] = 1
+            r_inflight = await pool._maybe_recover_stuck_busy(s)
+
+            # Orphaned BUSY (no in-flight turn) → watchdog recovers it.
+            pool._inflight_turns.pop(s.session_id, None)
+            r_orphan = await pool._maybe_recover_stuck_busy(s)
+            return r_inflight, r_orphan, restarts
+
+        r_inflight, r_orphan, restarts = asyncio.run(_run())
+        assert r_inflight is False, "watchdog must not restart a session with an in-flight turn"
+        assert r_orphan is True, "watchdog must recover an orphaned BUSY session"
+        assert len(restarts) == 1, "exactly one restart — only the orphan case"

@@ -228,15 +228,25 @@ class ClaudeProtocol(AgentProtocol):
 
     def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, model=None, reasoning_effort=None, extra_args=None):
         cmd = [command, "--print", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose", "--include-hook-events"]
-        if model:
-            cmd.extend(["--model", model])
-        if reasoning_effort:
-            cmd.extend(["--effort", reasoning_effort])
         if resume_session_id:
+            # A resume needs ONLY the session id. The conversation already has
+            # its model, reasoning effort, and system prompt baked into history;
+            # re-asserting any of them makes the headless stream-json resume
+            # replay the stored assistant thinking blocks under a changed config,
+            # which the API rejects with 400 "thinking blocks ... cannot be
+            # modified". Plain interactive `claude --resume <id>` passes none of
+            # these — which is why the bug never surfaces in a cmd terminal. The
+            # --append-system-prompt guard learned this first; --model/--effort
+            # get the same treatment. (Explicit model/effort *changes* already
+            # route to a fresh _spawn_session, so nothing is lost here.)
             cmd.extend(["--resume", resume_session_id])
-        # Don't append system prompt on resume — it's already in conversation history
-        if system_prompt and not resume_session_id:
-            cmd.extend(["--append-system-prompt", system_prompt])
+        else:
+            if model:
+                cmd.extend(["--model", model])
+            if reasoning_effort:
+                cmd.extend(["--effort", reasoning_effort])
+            if system_prompt:
+                cmd.extend(["--append-system-prompt", system_prompt])
         if mcp_config_path:
             cmd.extend(["--mcp-config", mcp_config_path])
         cmd.extend(self.translate_args(extra_args))

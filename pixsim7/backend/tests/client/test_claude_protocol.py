@@ -110,3 +110,42 @@ class TestClaudeErrorResult:
         parsed = p.parse_event(evt)
         assert parsed.kind == "error"
         assert "rate limited" in parsed.text
+
+
+class TestClaudeResumeOnlyPassesSessionId:
+    """A `--resume` must carry ONLY the session id. Re-asserting the
+    conversation's model / reasoning effort / system prompt on resume makes the
+    headless stream-json replay the stored assistant thinking blocks under a
+    changed config, which the API rejects with 400 "thinking blocks ... cannot
+    be modified" — a failure that never appears in interactive `claude --resume`
+    (which passes none of these). Mirrors the long-standing --append-system-prompt
+    guard. See protocols.py ClaudeProtocol.build_start_cmd.
+    """
+
+    def test_fresh_session_includes_model_effort_and_system_prompt(self):
+        p = ClaudeProtocol()
+        cmd = p.build_start_cmd(
+            "claude", model="opus", reasoning_effort="high", system_prompt="be terse",
+        )
+        assert "--model" in cmd and "opus" in cmd
+        assert "--effort" in cmd and "high" in cmd
+        assert "--append-system-prompt" in cmd
+        assert "--resume" not in cmd
+
+    def test_resume_passes_only_session_id_not_conversation_params(self):
+        p = ClaudeProtocol()
+        cmd = p.build_start_cmd(
+            "claude",
+            resume_session_id="conv-abc",
+            model="opus",
+            reasoning_effort="high",
+            system_prompt="be terse",
+            mcp_config_path="/tmp/mcp.json",
+        )
+        assert "--resume" in cmd and "conv-abc" in cmd
+        # None of the conversation-establishing flags ride along on resume.
+        assert "--model" not in cmd
+        assert "--effort" not in cmd
+        assert "--append-system-prompt" not in cmd
+        # Operational flags the resumed turn still needs are kept.
+        assert "--mcp-config" in cmd and "/tmp/mcp.json" in cmd

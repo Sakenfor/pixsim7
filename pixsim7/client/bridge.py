@@ -1496,7 +1496,11 @@ class Bridge:
                 timeout = int(msg.get("timeout", 120))
             except (TypeError, ValueError):
                 timeout = 120
-            timeout = max(10, min(timeout, 900))
+            # Honor the backend's clamp (ws_chat.py clamps to 10..1800). A
+            # lower cap here silently halved the caller's turn budget before it
+            # reached session.send_message — which now enforces the budget as
+            # the single absolute turn bound, so the two must agree.
+            timeout = max(10, min(timeout, 1800))
 
             # Images: either pre-encoded base64 or local file paths to read
             images = msg.get("images")  # [{media_type, data}] — already base64

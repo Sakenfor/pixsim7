@@ -178,6 +178,15 @@ class AgentPool:
         # Survives session eviction so resume uses the correct ID
         self._cli_id_map: Dict[str, str] = {}
         self._next_dynamic_id = 0
+        # Per-session count of `send_message` calls actively awaiting a turn.
+        # The stuck-busy watchdog (`_maybe_recover_stuck_busy`) keys off this:
+        # while a turn is in-flight, `send_message` owns the session's lifecycle
+        # (it pulses keepalives and enforces the turn timeout), so the watchdog
+        # must NOT restart it. The watchdog only recovers a BUSY session that is
+        # NOT in-flight — a genuinely orphaned turn that outlived its awaiter.
+        # A counter (not a bool) so it's robust to any overlap; cleared in the
+        # `send_message` finally.
+        self._inflight_turns: Dict[str, int] = {}
 
     @property
     def sessions(self) -> List[AgentCmdSession]:
@@ -821,6 +830,11 @@ class AgentPool:
         if bridge_session_id:
             session.bridge_session_id = bridge_session_id
 
+        # Mark this session as having an actively-awaited turn so the stuck-busy
+        # watchdog leaves it alone (see `_inflight_turns` + `_turn_inflight`).
+        # Cleared in the finally below, covering normal return, cancel, and error.
+        sid = session.session_id
+        self._inflight_turns[sid] = self._inflight_turns.get(sid, 0) + 1
         try:
             # Pre-flight: ensure session process is alive (may have died since routing)
             if not session.is_alive and not ephemeral:
@@ -912,6 +926,13 @@ class AgentPool:
                 session.state = SessionState.READY
             raise
         finally:
+            # Turn is no longer in-flight — the watchdog may treat the session
+            # as orphaned from here if it stays BUSY.
+            n = self._inflight_turns.get(sid, 0) - 1
+            if n > 0:
+                self._inflight_turns[sid] = n
+            else:
+                self._inflight_turns.pop(sid, None)
             if ephemeral:
                 try:
                     await session.stop()
@@ -962,22 +983,37 @@ class AgentPool:
         except asyncio.CancelledError:
             return
 
-    async def _maybe_recover_stuck_busy(self, session) -> bool:
-        """Restart a session stuck BUSY while still alive.
+    def _turn_inflight(self, session_id: str) -> bool:
+        """True while a ``send_message`` call is actively awaiting this session's
+        turn (see ``_inflight_turns``)."""
+        return self._inflight_turns.get(session_id, 0) > 0
 
-        A prior turn never settled back to READY — Claude still streaming
-        after an apparent "done", a hung tool call, or a cancel that never
-        landed. ``send_message``'s own except/finally only covers turns it is
-        actively awaiting; an outlived task is invisible to it, so without
-        this the session stays BUSY forever and every subsequent message to
-        the conversation gets a false ``conversation_session_busy`` (the
-        real-UUID flow that ``45b0582f8``'s derived-id fix explicitly
-        no-ops). ``STUCK_BUSY_SECONDS`` is generous so a legitimately long
-        single turn is never killed mid-flight.
+    async def _maybe_recover_stuck_busy(self, session) -> bool:
+        """Restart a session that is BUSY-but-orphaned while still alive.
+
+        This recovers ONLY a turn that outlived its awaiter: ``send_message``
+        already returned/raised (so its except/finally can't reset the state)
+        yet the session is still BUSY — left that way it stays BUSY forever and
+        every subsequent message gets a false ``conversation_session_busy`` (the
+        real-UUID flow that ``45b0582f8``'s derived-id fix explicitly no-ops).
+
+        It must NOT touch a turn that is still in-flight. While ``send_message``
+        is awaiting, IT owns the session's lifecycle — it pulses keepalives and
+        enforces the turn timeout (``session.py``). The old time-only check
+        (``now - last_activity > STUCK_BUSY_SECONDS``) had no way to tell an
+        actively-streaming long turn from an orphan, so it force-restarted live
+        turns mid-flight (e.g. session ``e5ab1e11`` killed at ``stuck_secs=609``
+        while a tool was running). The ``_turn_inflight`` guard is the fix; the
+        ``STUCK_BUSY_SECONDS`` threshold now only paces how soon we reclaim a
+        genuinely orphaned BUSY session.
 
         Returns True if the session was restarted.
         """
         from datetime import datetime, timezone
+
+        # Live turn — send_message owns it; never restart underneath it.
+        if self._turn_inflight(session.session_id):
+            return False
 
         last = session.stats.last_activity
         if last is None:
