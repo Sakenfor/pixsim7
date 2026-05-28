@@ -74,13 +74,20 @@ export function PromptHighlightedSpans({
         const hex = getPromptRoleHex(candidate.role, roleColors);
         const isHovered = hoveredSpanIdx === idx;
         const baseOpacity = confidenceOpacity(candidate.confidence);
-        // Legend emphasis: when a role is pinned/hovered in the legend,
-        // candidates of any other role fade so the chosen role pops.
+        // Legend / panel emphasis: when a role is pinned or hovered, candidates
+        // of any other role fade hard so the chosen role clearly pops, and the
+        // matching spans get a ring so the pin obviously "did something".
         const isDimmed =
           emphasizedRole != null && candidate.role !== emphasizedRole;
-        const dimFactor = isDimmed ? 0.3 : 1;
+        const isEmphasized =
+          emphasizedRole != null && candidate.role === emphasizedRole;
+        const dimFactor = isDimmed ? 0.15 : 1;
         const opacity =
-          (isHovered ? Math.max(baseOpacity, 0.9) : baseOpacity) * dimFactor;
+          mode === 'backdrop'
+            ? (isHovered ? Math.max(baseOpacity, 0.9) : baseOpacity) * dimFactor
+            : isDimmed
+              ? 0.15
+              : 1;
 
         const style: CSSProperties = {
           opacity,
@@ -96,6 +103,9 @@ export function PromptHighlightedSpans({
           mode === 'backdrop' ? 'text-transparent' : 'cursor-pointer transition-colors',
           mode === 'visible' && hover,
           isHovered && 'ring-1 ring-current',
+          // Pinned/hovered role: outline its spans so emphasis reads as a
+          // deliberate highlight, not just "everything else dimmed".
+          isEmphasized && !isHovered && 'ring-1 ring-current ring-offset-0',
         );
 
         const handlers =

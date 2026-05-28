@@ -7,7 +7,7 @@
  */
 import { DisclosureSection, useUiCollapsed } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -34,6 +34,17 @@ export interface ShadowSidePanelProps {
    * state so the panel follows whatever dock/float renders it.
    */
   surfaceId: string;
+  /**
+   * Currently pinned role (already guarded against absent candidates by the
+   * caller). The matching role section renders active + auto-expands +
+   * scrolls into view, and the editor dims every other role. Same state the
+   * legend chips drive — panel headers and chips are two handles on it.
+   */
+  pinnedRole?: string | null;
+  /** Toggle the pin for a role (panel header pin button / legend chip click). */
+  onRoleClick?: (role: string) => void;
+  /** Ephemeral hover preview — emit the role on enter, null on leave. */
+  onRoleHover?: (role: string | null) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,7 +54,11 @@ export interface ShadowSidePanelProps {
 function CandidateItem({ candidate }: { candidate: PromptBlockCandidate }) {
   return (
     <div
-      className="px-1.5 py-1 rounded text-[10px] leading-tight text-neutral-600 dark:text-neutral-400 bg-white/60 dark:bg-neutral-800/40 line-clamp-2"
+      // Long candidates used to clip at 2 lines. Keep the block compact but let
+      // it scroll its own overflow so the full text is reachable without
+      // ballooning the panel. break-words avoids horizontal overflow on long
+      // unbroken tokens.
+      className="px-1.5 py-1 rounded text-[10px] leading-tight text-neutral-600 dark:text-neutral-400 bg-white/60 dark:bg-neutral-800/40 max-h-16 overflow-y-auto thin-scrollbar whitespace-pre-wrap break-words"
       title={candidate.text}
     >
       {candidate.text}
@@ -203,9 +218,36 @@ function getSequenceRoleLabel(role: string): string {
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ShadowSidePanel({ analysis, surfaceId }: ShadowSidePanelProps) {
+export function ShadowSidePanel({
+  analysis,
+  surfaceId,
+  pinnedRole = null,
+  onRoleClick,
+  onRoleHover,
+}: ShadowSidePanelProps) {
   const { result, loading, refresh } = analysis;
   const promptRoleColors = usePromptSettingsStore((s) => s.promptRoleColors);
+  const interactive = !!(onRoleClick || onRoleHover);
+
+  // Scroll the pinned role section into view within the panel's own scroll
+  // container only — never scrollIntoView(), which would scroll every ancestor
+  // (incl. the document body) when the panel is partially clipped.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const activeRoleRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pinnedRole) return;
+    const container = scrollRef.current;
+    const target = activeRoleRef.current;
+    if (!container || !target) return;
+    const cRect = container.getBoundingClientRect();
+    const tRect = target.getBoundingClientRect();
+    if (tRect.top < cRect.top || tRect.bottom > cRect.bottom) {
+      container.scrollTo({
+        top: container.scrollTop + (tRect.top - cRect.top) - 8,
+        behavior: 'smooth',
+      });
+    }
+  }, [pinnedRole]);
   // Persist collapsed state per-surface so prompt-box and composer remember
   // independently across reloads / dock moves. Backed by the shared
   // useUiCollapsed primitive — keys follow the `<domain>:<surface>:<element>`
@@ -330,8 +372,38 @@ export function ShadowSidePanel({ analysis, surfaceId }: ShadowSidePanelProps) {
         </button>
       </div>
 
+      {/* Focus bar — one active role at a time. Its own full-width row (rather
+          than a chip in the header) so it reads as a single filter state, not
+          one of several pinnable chips. */}
+      {pinnedRole && (
+        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-violet-200/60 dark:border-violet-700/40 bg-violet-50/70 dark:bg-violet-900/15 text-[10px] shrink-0">
+          <Icon name="target" size={11} className="text-violet-500 flex-shrink-0" />
+          <span className="text-neutral-500 dark:text-neutral-400 flex-shrink-0">Focused</span>
+          <span
+            className={clsx(
+              'w-1.5 h-1.5 rounded-full flex-shrink-0',
+              getPromptRoleBadgeClass(pinnedRole, promptRoleColors),
+            )}
+          />
+          <span className="font-medium text-neutral-700 dark:text-neutral-200 truncate">
+            {getPromptRoleLabel(pinnedRole)}
+          </span>
+          <button
+            type="button"
+            onClick={() => onRoleClick?.(pinnedRole)}
+            title="Clear focus"
+            className="ml-auto p-0.5 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-violet-100 dark:hover:bg-violet-800/40 transition-colors flex-shrink-0"
+          >
+            <Icon name="x" size={10} />
+          </button>
+        </div>
+      )}
+
       {/* Scrollable content */}
-      <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar p-1.5 space-y-1">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto thin-scrollbar p-1.5 space-y-1"
+      >
         {!hasContent && (
           <div className="text-[10px] text-neutral-400 dark:text-neutral-500 px-1 py-4 text-center">
             Type to analyze
@@ -357,29 +429,67 @@ export function ShadowSidePanel({ analysis, surfaceId }: ShadowSidePanelProps) {
           </div>
         )}
 
-        {/* Role groups */}
-        {Object.entries(grouped).map(([role, roleCandidates]) => (
-          <DisclosureSection
-            key={role}
-            persistKey={`${keyPrefix}:role:${role}`}
-            label={
-              <SectionLabel
-                dotClass={getPromptRoleBadgeClass(role, promptRoleColors)}
-                label={getPromptRoleLabel(role)}
-                count={roleCandidates.length}
-              />
-            }
-            defaultOpen
-            size="sm"
-            bordered
-          >
-            <div className="space-y-0.5">
-              {roleCandidates.map((c, idx) => (
-                <CandidateItem key={idx} candidate={c} />
-              ))}
+        {/* Role groups — each header is a handle on the pin/emphasis state the
+            legend chips also drive. Header click still toggles the disclosure;
+            the dedicated pin button (in `actions`) toggles emphasis so the two
+            intents never collide. A pinned role is force-open + ring-accented. */}
+        {Object.entries(grouped).map(([role, roleCandidates]) => {
+          const isPinned = pinnedRole === role;
+          return (
+            <div
+              key={role}
+              ref={isPinned ? activeRoleRef : undefined}
+              className={clsx(
+                'rounded transition-colors',
+                isPinned &&
+                  'ring-1 ring-violet-300 dark:ring-violet-600/60 bg-violet-50/50 dark:bg-violet-900/10',
+              )}
+            >
+              <DisclosureSection
+                persistKey={`${keyPrefix}:role:${role}`}
+                isOpen={isPinned ? true : undefined}
+                label={
+                  <span
+                    onMouseEnter={interactive ? () => onRoleHover?.(role) : undefined}
+                    onMouseLeave={interactive ? () => onRoleHover?.(null) : undefined}
+                  >
+                    <SectionLabel
+                      dotClass={getPromptRoleBadgeClass(role, promptRoleColors)}
+                      label={getPromptRoleLabel(role)}
+                      count={roleCandidates.length}
+                    />
+                  </span>
+                }
+                actions={
+                  interactive ? (
+                    <button
+                      type="button"
+                      onClick={() => onRoleClick?.(role)}
+                      title={`${isPinned ? 'Unpin' : 'Pin'} ${getPromptRoleLabel(role)} — emphasize its spans`}
+                      className={clsx(
+                        'p-0.5 rounded transition-colors',
+                        isPinned
+                          ? 'text-violet-500 dark:text-violet-400'
+                          : 'text-neutral-300 dark:text-neutral-600 hover:text-neutral-500 dark:hover:text-neutral-400',
+                      )}
+                    >
+                      <Icon name="pin" size={11} />
+                    </button>
+                  ) : undefined
+                }
+                defaultOpen
+                size="sm"
+                bordered
+              >
+                <div className="space-y-0.5">
+                  {roleCandidates.map((c, idx) => (
+                    <CandidateItem key={idx} candidate={c} />
+                  ))}
+                </div>
+              </DisclosureSection>
             </div>
-          </DisclosureSection>
-        ))}
+          );
+        })}
 
         {/* Primitive matches */}
         {primitiveMatches.length > 0 && (

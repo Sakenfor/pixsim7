@@ -133,6 +133,14 @@ interface PromptVersionRecord {
   version_number: number;
 }
 
+interface PromptSelectionSnapshot {
+  engine: 'codemirror' | 'textarea';
+  anchor: number;
+  head: number;
+  focused: boolean;
+  scrollTop?: number;
+}
+
 const QUICKGEN_HISTORY_FAMILY_CACHE_KEY = 'quickgen_history_prompt_family_id_v1';
 const QUICKGEN_HISTORY_FAMILY_TITLE = 'QuickGen History';
 const QUICKGEN_HISTORY_FAMILY_SLUG = 'quickgen-history';
@@ -879,6 +887,86 @@ export function PromptComposer({
     history.snapshot(valueRef.current);
   }, [history]);
 
+  const capturePromptSelection = useCallback((): PromptSelectionSnapshot | null => {
+    const view = promptEditorRef.current;
+    if (view) {
+      const selection = view.state.selection.main;
+      return {
+        engine: 'codemirror',
+        anchor: selection.anchor,
+        head: selection.head,
+        focused: view.hasFocus,
+      };
+    }
+
+    const textarea =
+      promptTextareaRef.current ??
+      (document.activeElement instanceof HTMLTextAreaElement ? document.activeElement : null);
+    if (!textarea) return null;
+
+    const rawStart =
+      typeof textarea.selectionStart === 'number' ? textarea.selectionStart : textarea.value.length;
+    const rawEnd =
+      typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : rawStart;
+    const max = textarea.value.length;
+    const from = Math.max(0, Math.min(rawStart, max));
+    const to = Math.max(0, Math.min(rawEnd, max));
+    return {
+      engine: 'textarea',
+      anchor: from,
+      head: to,
+      focused: document.activeElement === textarea,
+      scrollTop: textarea.scrollTop,
+    };
+  }, []);
+
+  const restorePromptSelection = useCallback((snapshot: PromptSelectionSnapshot | null) => {
+    if (!snapshot) return;
+
+    requestAnimationFrame(() => {
+      if (snapshot.engine === 'codemirror') {
+        const view = promptEditorRef.current;
+        if (!view) return;
+        const max = view.state.doc.length;
+        const anchor = Math.max(0, Math.min(snapshot.anchor, max));
+        const head = Math.max(0, Math.min(snapshot.head, max));
+        view.dispatch({ selection: { anchor, head }, scrollIntoView: snapshot.focused });
+        if (snapshot.focused) view.focus();
+        return;
+      }
+
+      const textarea =
+        promptTextareaRef.current ??
+        (document.activeElement instanceof HTMLTextAreaElement ? document.activeElement : null);
+      if (!textarea) return;
+      const max = textarea.value.length;
+      const start = Math.max(0, Math.min(snapshot.anchor, max));
+      const end = Math.max(0, Math.min(snapshot.head, max));
+      if (snapshot.focused) {
+        textarea.focus();
+      }
+      try {
+        textarea.setSelectionRange(start, end);
+        if (typeof snapshot.scrollTop === 'number') {
+          textarea.scrollTop = snapshot.scrollTop;
+        }
+      } catch {
+        // Best-effort selection restoration.
+      }
+    });
+  }, []);
+
+  const applyHistoryValue = useCallback(
+    (nextValue: string, previousValue: string, stepDistance: number) => {
+      const selectionSnapshot = capturePromptSelection();
+      undoingRef.current = true;
+      onChangeRef.current(nextValue);
+      showGhostFor(previousValue, stepDistance);
+      restorePromptSelection(selectionSnapshot);
+    },
+    [capturePromptSelection, restorePromptSelection, showGhostFor],
+  );
+
   const insertTextAtPromptSelection = useCallback((text: string): boolean => {
     if (!text) return false;
 
@@ -1011,9 +1099,7 @@ export function PromptComposer({
         flushSnapshot();
         const prev = history.undo();
         if (prev !== null) {
-          undoingRef.current = true;
-          onChangeRef.current(prev);
-          showGhostFor(beforeUndo, 1);
+          applyHistoryValue(prev, beforeUndo, 1);
         }
       } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
         e.preventDefault();
@@ -1021,13 +1107,11 @@ export function PromptComposer({
         const beforeRedo = valueRef.current;
         const next = history.redo();
         if (next !== null) {
-          undoingRef.current = true;
-          onChangeRef.current(next);
-          showGhostFor(beforeRedo, 1);
+          applyHistoryValue(next, beforeRedo, 1);
         }
       }
     },
-    [flushSnapshot, history, showGhostFor],
+    [applyHistoryValue, flushSnapshot, history],
   );
 
   // --- Context menu data for prompt-text right-click ---
@@ -1043,23 +1127,19 @@ export function PromptComposer({
       flushSnapshot();
       const prev = history.undo();
       if (prev !== null) {
-        undoingRef.current = true;
-        onChangeRef.current(prev);
-        showGhostFor(beforeUndo, 1);
+        applyHistoryValue(prev, beforeUndo, 1);
       }
     },
     redo: () => {
       const beforeRedo = valueRef.current;
       const next = history.redo();
       if (next !== null) {
-        undoingRef.current = true;
-        onChangeRef.current(next);
-        showGhostFor(beforeRedo, 1);
+        applyHistoryValue(next, beforeRedo, 1);
       }
     },
     canUndo: history.canUndo(),
     canRedo: history.canRedo(),
-  }, [value, onChange, insertTextAtPromptSelection, getSelectedPromptText, flushSnapshot, history, showGhostFor]);
+  }, [value, onChange, insertTextAtPromptSelection, getSelectedPromptText, flushSnapshot, history, applyHistoryValue]);
 
   // --- History popover ---
   const historyTimeline = showHistory
@@ -1126,14 +1206,12 @@ export function PromptComposer({
       const prevIndex = timeline.currentIndex;
       const restored = history.jumpTo(index);
       if (restored !== null) {
-        undoingRef.current = true;
-        onChangeRef.current(restored);
         const distance = Math.abs(index - prevIndex);
-        showGhostFor(beforeJump, Math.max(1, distance));
+        applyHistoryValue(restored, beforeJump, Math.max(1, distance));
       }
       setShowHistory(false);
     },
-    [history, showGhostFor],
+    [history, applyHistoryValue],
   );
   const handleHistoryTogglePin = useCallback(
     (index: number) => {
@@ -1962,14 +2040,13 @@ export function PromptComposer({
         useCodemirror ? (
           // CM editor — always wrapped in PromptAnalysisLayout so the
           // legend's hover/pin emphasis can dim non-matching candidates.
-          // Side panel toggles with the shadow setting; legend is hidden
-          // here because the side panel + per-span hover tooltips already
-          // give richer surfaces than a chip row would.
+          // Side panel toggles with the shadow setting; the layout shows the
+          // legend chip-row only as the panel's collapsed fallback, so this
+          // matches the inspector exactly (expanded panel ↔ collapsed chips).
           <div className="flex-1 min-h-0">
             <PromptAnalysisLayout
               analysis={shadowAnalysis}
               layout="side-by-side"
-              showLegend={false}
               showSidePanel={showShadow && autoAnalyze}
               surfaceId="composer"
               renderEditor={({ emphasizedRole }) => (
@@ -2077,7 +2154,6 @@ export function PromptComposer({
             <PromptAnalysisLayout
               analysis={shadowAnalysis}
               layout="side-by-side"
-              showLegend={false}
               surfaceId="composer"
               renderEditor={({ emphasizedRole }) => (
                 <ShadowTextarea

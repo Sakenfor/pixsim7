@@ -19,6 +19,7 @@
  * PromptComposer — it doesn't belong in a read-only inspector and would
  * couple the layout primitive to too much.
  */
+import { useUiCollapsed } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useCallback, useState, type ReactNode } from 'react';
 
@@ -76,6 +77,16 @@ export function PromptAnalysisLayout({
   const pinnedRolePresent = pinnedRole != null && candidates.some((c) => c.role === pinnedRole);
   const emphasizedRole = hoveredRole ?? (pinnedRolePresent ? pinnedRole : null);
 
+  // The legend chip-row and the side panel are two views of the same role
+  // data, so only one should be visible at a time. The side panel is the
+  // canonical (expanded) view; the chip row is its collapsed fallback. Read
+  // the panel's collapse flag from the same useUiCollapsed key it owns so the
+  // two stay in lockstep. → both surfaces behave identically: expanded shows
+  // the panel (whose headers are the pin control), collapsed shows the chips.
+  const { collapsed: sidePanelCollapsed } = useUiCollapsed(`shadow:${surfaceId}`, false);
+  const effectiveShowLegend =
+    showLegend && (!showSidePanel || sidePanelCollapsed) && candidates.length > 0;
+
   const handleRoleHover = useCallback((role: string | null) => {
     setHoveredRole(role);
   }, []);
@@ -96,10 +107,16 @@ export function PromptAnalysisLayout({
         </div>
         {showSidePanel && (
           <div className="flex-shrink-0 max-h-[40%] overflow-auto border-t border-neutral-200 dark:border-neutral-800">
-            <ShadowSidePanel analysis={analysis} surfaceId={surfaceId} />
+            <ShadowSidePanel
+              analysis={analysis}
+              surfaceId={surfaceId}
+              pinnedRole={pinnedRolePresent ? pinnedRole : null}
+              onRoleHover={handleRoleHover}
+              onRoleClick={handleRoleClick}
+            />
           </div>
         )}
-        {showLegend && (
+        {effectiveShowLegend && (
           <PromptRoleLegend
             candidates={candidates}
             pinnedRole={pinnedRole}
@@ -118,7 +135,7 @@ export function PromptAnalysisLayout({
       <div className="flex-1 min-h-0 flex">
         <div className="flex-1 min-w-0 flex flex-col">
           <div className="flex-1 min-h-0">{renderEditor({ emphasizedRole })}</div>
-          {showLegend && (
+          {effectiveShowLegend && (
             <PromptRoleLegend
               candidates={candidates}
               pinnedRole={pinnedRole}
@@ -128,7 +145,15 @@ export function PromptAnalysisLayout({
             />
           )}
         </div>
-        {showSidePanel && <ShadowSidePanel analysis={analysis} surfaceId={surfaceId} />}
+        {showSidePanel && (
+          <ShadowSidePanel
+            analysis={analysis}
+            surfaceId={surfaceId}
+            pinnedRole={pinnedRolePresent ? pinnedRole : null}
+            onRoleHover={handleRoleHover}
+            onRoleClick={handleRoleClick}
+          />
+        )}
       </div>
     </div>
   );
