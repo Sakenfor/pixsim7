@@ -485,6 +485,89 @@ def remove_session_game_objects(
 
 
 # ---------------------------------------------------------------------------
+# NPC component helpers
+# ---------------------------------------------------------------------------
+#
+# Single-component get/set/remove on the canonical npc GameObject. Used by
+# ecs_helpers (narrative component) and apply_stat_deltas (stats:<def_id>
+# components) so both share one upsert-preserving-other-fields path.
+
+
+def _npc_ref(npc_id: Any) -> str:
+    if isinstance(npc_id, str):
+        return npc_id if npc_id.startswith("npc:") else f"npc:{npc_id}"
+    return f"npc:{npc_id}"
+
+
+def get_npc_component(
+    session_flags: Dict[str, Any],
+    world_id: Any,
+    npc_id: Any,
+    component_type: str,
+) -> Optional[Dict[str, Any]]:
+    """Return the single component matching ``component_type`` on the canonical
+    npc (with hydration), or ``None`` when absent."""
+    obj = get_session_game_object(session_flags, world_id, _npc_ref(npc_id))
+    if not obj:
+        return None
+    for comp in obj.get("components") or []:
+        if isinstance(comp, dict) and comp.get("type") == component_type:
+            return comp
+    return None
+
+
+def set_npc_component(
+    session_flags: Dict[str, Any],
+    world_id: Any,
+    npc_id: Any,
+    component_type: str,
+    data: Dict[str, Any],
+    enabled: bool = True,
+) -> Dict[str, Any]:
+    """Upsert a single component onto the canonical npc, preserving all other
+    components and hydrated fields (transform, npcData, capabilities, tags, ...).
+
+    Creates a minimal npc object if none exists yet."""
+    obj = get_session_game_object(session_flags, world_id, _npc_ref(npc_id))
+    current = list(obj.get("components") or []) if obj else []
+    components = [c for c in current if c.get("type") != component_type]
+    components.append({"type": component_type, "enabled": enabled, "data": dict(data)})
+    if obj is None:
+        normalized_id = npc_id
+        if isinstance(npc_id, str) and npc_id.startswith("npc:"):
+            try:
+                normalized_id = int(npc_id[4:])
+            except (TypeError, ValueError):
+                normalized_id = npc_id[4:]
+        payload: Dict[str, Any] = {
+            "kind": "npc",
+            "id": normalized_id,
+            "name": f"NPC {normalized_id}",
+            "components": components,
+        }
+    else:
+        payload = {**obj, "components": components}
+    return upsert_session_game_objects(session_flags, world_id, [payload])
+
+
+def remove_npc_component(
+    session_flags: Dict[str, Any],
+    world_id: Any,
+    npc_id: Any,
+    component_type: str,
+) -> Dict[str, Any]:
+    """Remove a component from the canonical npc by type (no-op when absent)."""
+    obj = get_session_game_object(session_flags, world_id, _npc_ref(npc_id))
+    if not obj:
+        return session_flags
+    current = obj.get("components") or []
+    if not any(c.get("type") == component_type for c in current):
+        return session_flags
+    payload = {**obj, "components": [c for c in current if c.get("type") != component_type]}
+    return upsert_session_game_objects(session_flags, world_id, [payload])
+
+
+# ---------------------------------------------------------------------------
 # Convenience accessors (item / npc / component)
 # ---------------------------------------------------------------------------
 

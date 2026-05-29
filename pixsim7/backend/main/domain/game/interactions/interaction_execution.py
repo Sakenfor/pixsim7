@@ -18,6 +18,7 @@ import time
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.models import GameSession, GameWorld
+from pixsim7.backend.main.services.game.game_object_store import set_npc_component
 from pixsim7.backend.main.services.game.inventory import InventoryService
 from .interactions import (
     InteractionDefinition,
@@ -197,6 +198,22 @@ async def apply_stat_deltas(
 
     # Persist back to session
     session.stats[definition_id][entity_key] = entity_stats
+
+    # Mirror npc-scoped stats onto the canonical npc GameObject component
+    # ``stats:<definition_id>``. Session/world scopes have no canonical entity,
+    # so they remain only in session.stats. Reader migration to the canonical
+    # location is a separate follow-up; for now the legacy session.stats path
+    # stays populated so existing brain/derivation consumers keep working.
+    if entity_key.startswith("npc:"):
+        raw_id = entity_key[4:]
+        npc_id: Any = int(raw_id) if raw_id.lstrip("-").isdigit() else raw_id
+        set_npc_component(
+            session.flags,
+            session.world_id,
+            npc_id,
+            f"stats:{definition_id}",
+            entity_stats,
+        )
 
     # TODO: Optionally normalize (compute tiers/levels) here
     # For now, we just apply and clamp. Normalization can be done separately

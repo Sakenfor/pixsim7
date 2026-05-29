@@ -1,12 +1,18 @@
 """
-Narrative Runtime ECS Helpers
+Narrative Runtime ECS Helpers (canonical GameObject store).
 
-Provides helper functions for managing narrative runtime state in the ECS component system.
-Narrative state is stored at: session.flags.npcs["npc:<id>"].components.narrative
+Narrative state lives as a ``{"type": "narrative", "data": {...}}`` entry in
+the canonical npc GameObject's ``components`` array, persisted at
+``session.flags["gameObjects"]["objects"]["npc:<id>"].components``.
+
+The legacy location ``session.flags.npcs[<key>].components.narrative`` is no
+longer written or read (this module was its sole writer; no users / no data per
+plan ``backend-canonical-gameobject-adoption``). Reads and writes route through
+``services.game.game_object_store``.
 """
 
 from __future__ import annotations
-from typing import Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 import time
 
 from pixsim7.backend.main.domain.game.core.models import GameSession
@@ -18,100 +24,61 @@ from pixsim7.backend.main.domain.narrative.schema import (
     HistoryEntry,
     ErrorState,
 )
+from pixsim7.backend.main.services.game.game_object_store import (
+    get_npc_component,
+    remove_npc_component,
+    set_npc_component,
+)
 
 
 # ============================================================================
-# ECS Component Access Helpers
+# Canonical npc-component Access
 # ============================================================================
 
-def _ensure_npc_components(session: GameSession, npc_id: int) -> Dict[str, Any]:
-    """
-    Ensure NPC components structure exists in session flags.
-
-    Returns the components dict for the given NPC.
-    """
-    if "npcs" not in session.flags:
-        session.flags["npcs"] = {}
-
-    npc_key = f"npc:{npc_id}"
-    if npc_key not in session.flags["npcs"]:
-        session.flags["npcs"][npc_key] = {"components": {}}
-
-    if "components" not in session.flags["npcs"][npc_key]:
-        session.flags["npcs"][npc_key]["components"] = {}
-
-    return session.flags["npcs"][npc_key]["components"]
+NARRATIVE_COMPONENT_TYPE = "narrative"
 
 
-def get_narrative_state(
-    session: GameSession,
-    npc_id: int
-) -> NarrativeRuntimeState:
-    """
-    Get narrative runtime state for an NPC.
+def _empty_narrative_state() -> NarrativeRuntimeState:
+    return NarrativeRuntimeState(
+        active_program_id=None,
+        active_node_id=None,
+        stack=[],
+        history=[],
+        variables={},
+        last_step_at=None,
+        paused=False,
+        error=None,
+    )
 
-    If no state exists, returns a fresh/empty state.
 
-    Args:
-        session: Game session
-        npc_id: NPC ID
-
-    Returns:
-        NarrativeRuntimeState
-    """
-    components = _ensure_npc_components(session, npc_id)
-
-    if "narrative" not in components:
-        # Return fresh state
-        return NarrativeRuntimeState(
-            active_program_id=None,
-            active_node_id=None,
-            stack=[],
-            history=[],
-            variables={},
-            last_step_at=None,
-            paused=False,
-            error=None
-        )
-
-    # Parse from dict
-    return NarrativeRuntimeState(**components["narrative"])
+def get_narrative_state(session: GameSession, npc_id: int) -> NarrativeRuntimeState:
+    """Get narrative runtime state for an NPC, or a fresh/empty state."""
+    comp = get_npc_component(
+        session.flags, session.world_id, npc_id, NARRATIVE_COMPONENT_TYPE
+    )
+    if comp is not None and isinstance(comp.get("data"), dict):
+        return NarrativeRuntimeState(**comp["data"])
+    return _empty_narrative_state()
 
 
 def set_narrative_state(
-    session: GameSession,
-    npc_id: int,
-    state: NarrativeRuntimeState
+    session: GameSession, npc_id: int, state: NarrativeRuntimeState
 ) -> None:
-    """
-    Set narrative runtime state for an NPC.
-
-    Args:
-        session: Game session
-        npc_id: NPC ID
-        state: New narrative state
-    """
-    components = _ensure_npc_components(session, npc_id)
-
-    # Store as dict (Pydantic model_dump)
-    components["narrative"] = state.model_dump(mode="json")
+    """Write narrative state to the canonical npc's ``narrative`` component."""
+    set_npc_component(
+        session.flags,
+        session.world_id,
+        npc_id,
+        NARRATIVE_COMPONENT_TYPE,
+        state.model_dump(mode="json"),
+    )
 
 
-def clear_narrative_state(
-    session: GameSession,
-    npc_id: int
-) -> None:
-    """
-    Clear narrative runtime state for an NPC.
-
-    Args:
-        session: Game session
-        npc_id: NPC ID
-    """
-    components = _ensure_npc_components(session, npc_id)
-
-    if "narrative" in components:
-        del components["narrative"]
+def clear_narrative_state(session: GameSession, npc_id: int) -> None:
+    """Remove the narrative component from the canonical npc (no-op when absent)."""
+    remove_npc_component(
+        session.flags, session.world_id, npc_id, NARRATIVE_COMPONENT_TYPE
+    )
 
 
 # ============================================================================
