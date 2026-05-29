@@ -15,6 +15,11 @@ import {
   updateArcStage,
   updateQuestStatus,
 } from '../index';
+import {
+  addInventoryItem as addItemMutable,
+  removeInventoryItem as removeItemMutable,
+  getInventoryItems,
+} from '../session/helpers';
 
 function createTestSession(): GameSessionDTO {
   return {
@@ -100,6 +105,61 @@ describe('core session helpers', () => {
     const session = createTestSession();
     triggerEvent(session, 'power_outage_city', 1234.5);
     expect(isEventActive(session, 'power_outage_city')).toBe(true);
+  });
+});
+
+describe('canonical inventory (flags.gameObjects is source of truth)', () => {
+  it('immutable addInventoryItem writes a canonical item object', () => {
+    let session = createTestSession();
+    session = addInventoryItem(session, 'flower', 3);
+
+    const obj = (session.flags as any).gameObjects?.objects?.['item:flower'];
+    expect(obj).toBeDefined();
+    expect(obj.kind).toBe('item');
+    expect(obj.itemData.quantity).toBe(3);
+  });
+
+  it('keeps the flags.inventory mirror in sync for the backend bridge', () => {
+    let session = createTestSession();
+    session = addInventoryItem(session, 'flower', 2);
+
+    const mirror = (session.flags as any).inventory?.items ?? [];
+    const flowerMirror = mirror.find((i: any) => i.id === 'flower');
+    expect(flowerMirror).toBeDefined();
+    expect(flowerMirror.quantity).toBe(2);
+  });
+
+  it('removeInventoryItem to zero deletes the canonical object and clears the mirror', () => {
+    let session = createTestSession();
+    session = addInventoryItem(session, 'flower', 1);
+    session = removeInventoryItem(session, 'flower', 1) ?? session;
+
+    expect((session.flags as any).gameObjects?.objects?.['item:flower']).toBeUndefined();
+    const mirror = (session.flags as any).inventory?.items ?? [];
+    expect(mirror.find((i: any) => i.id === 'flower')).toBeUndefined();
+  });
+
+  it('mutable helpers path also lands canonical objects', () => {
+    const session = createTestSession();
+    addItemMutable(session, 'gem', 5);
+
+    expect((session.flags as any).gameObjects?.objects?.['item:gem']?.itemData.quantity).toBe(5);
+    expect(getInventoryItems(session).find((i) => i.id === 'gem')?.qty).toBe(5);
+
+    removeItemMutable(session, 'gem', 2);
+    expect((session.flags as any).gameObjects.objects['item:gem'].itemData.quantity).toBe(3);
+  });
+
+  it('canonical write merges with a legacy-only inventory entry without double counting', () => {
+    let session = createTestSession();
+    // Seed a legacy-only inventory entry (no canonical store yet).
+    session.flags = { inventory: { items: [{ id: 'flower', qty: 1 }] } } as any;
+
+    session = addInventoryItem(session, 'flower', 2);
+
+    expect(hasInventoryItem(session, 'flower', 3)).toBe(true);
+    expect(hasInventoryItem(session, 'flower', 4)).toBe(false);
+    expect((session.flags as any).gameObjects.objects['item:flower'].itemData.quantity).toBe(3);
   });
 });
 

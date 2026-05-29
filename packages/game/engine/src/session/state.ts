@@ -22,6 +22,13 @@
 import type { GameSessionDTO, RelationshipValues } from '@pixsim7/shared.types';
 import type { NpcRelationshipState } from '../core/types';
 import { extractRelationshipData } from '../relationships/computation';
+import {
+  buildInventoryItemObject,
+  listSessionGameObjects,
+  removeSessionGameObjects,
+  upsertSessionGameObjects,
+} from '../runtime/gameObjectStore';
+import { itemObjectToInventoryItem } from './inventoryMapping';
 
 // ===== Immutability Helpers =====
 
@@ -225,104 +232,6 @@ export function setQuestState(
 
 // ===== Inventory Helpers =====
 
-function getInventoryItemId(item: Record<string, any>): string | null {
-  const id = item.id ?? item.itemId;
-  return typeof id === 'string' && id.length > 0 ? id : null;
-}
-
-function getInventoryItemQty(item: Record<string, any>): number {
-  const raw = item.qty ?? item.quantity ?? 0;
-  return Number.isFinite(raw) ? Number(raw) : 0;
-}
-
-function normalizeInventoryItem(raw: unknown): InventoryItem | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const item = raw as Record<string, any>;
-  const id = getInventoryItemId(item);
-  if (!id) return null;
-  const qty = Math.max(0, getInventoryItemQty(item));
-  return {
-    ...item,
-    id,
-    itemId: id,
-    qty,
-    quantity: qty,
-  };
-}
-
-function getInventoryItemsFromGameObjects(flags: Record<string, any>): InventoryItem[] {
-  const rawStore = flags.gameObjects;
-  if (!rawStore || typeof rawStore !== 'object') return [];
-  const rawObjects = (rawStore as Record<string, unknown>).objects;
-  if (!rawObjects || typeof rawObjects !== 'object') return [];
-
-  const rawItems = Object.values(rawObjects as Record<string, unknown>)
-    .filter((rawObject) => rawObject && typeof rawObject === 'object')
-    .map((rawObject) => {
-      const object = rawObject as Record<string, unknown>;
-      if (object.kind !== 'item') return null;
-      const id = object.id;
-      const itemId = typeof id === 'string' && id.length > 0 ? id : null;
-      if (!itemId) return null;
-      const itemData =
-        object.itemData && typeof object.itemData === 'object'
-          ? (object.itemData as Record<string, unknown>)
-          : null;
-      const qtyRaw = itemData?.quantity ?? 1;
-      const qty = Number.isFinite(Number(qtyRaw)) ? Math.max(0, Number(qtyRaw)) : 1;
-      return {
-        id: itemId,
-        itemId,
-        qty,
-        quantity: qty,
-      };
-    })
-    .filter((item) => item !== null);
-
-  return rawItems
-    .map(normalizeInventoryItem)
-    .filter((item): item is InventoryItem => item !== null);
-}
-
-function getInventoryItemsFromFlags(flags: Record<string, any>): InventoryItem[] {
-  const rawInventory = flags.inventory;
-  if (!rawInventory) {
-    return getInventoryItemsFromGameObjects(flags);
-  }
-
-  let rawItems: unknown[] = [];
-  if (Array.isArray(rawInventory)) {
-    rawItems = rawInventory;
-  } else if (typeof rawInventory === 'object') {
-    if (Array.isArray(rawInventory.items)) {
-      rawItems = rawInventory.items;
-    } else {
-      // Legacy map format: inventory = { itemId: qty }
-      rawItems = Object.entries(rawInventory)
-        .filter(([key, value]) => key !== 'items' && typeof value === 'number' && Number.isFinite(value))
-        .map(([itemId, qty]) => ({ id: itemId, qty: Number(qty) }));
-    }
-  }
-
-  return rawItems.map(normalizeInventoryItem).filter((item): item is InventoryItem => item !== null);
-}
-
-function writeInventoryItems(flags: Record<string, any>, items: InventoryItem[]): void {
-  flags.inventory = {
-    items: items.map((item) => {
-      const id = getInventoryItemId(item as Record<string, any>) ?? item.id;
-      const qty = Math.max(0, getInventoryItemQty(item as Record<string, any>));
-      return {
-        ...item,
-        id,
-        itemId: id,
-        qty,
-        quantity: qty,
-      };
-    }),
-  };
-}
-
 /**
  * Get all inventory items from session
  *
@@ -330,7 +239,9 @@ function writeInventoryItems(flags: Record<string, any>, items: InventoryItem[])
  * @returns Array of inventory items (empty if none)
  */
 export function getInventory(session: GameSessionDTO): InventoryItem[] {
-  return getInventoryItemsFromFlags(session.flags as any);
+  return listSessionGameObjects(session, { kind: 'item' })
+    .map(itemObjectToInventoryItem)
+    .filter((item): item is InventoryItem => item !== null);
 }
 
 /**
@@ -353,21 +264,14 @@ export function addInventoryItem(
     return cloneSession(session);
   }
 
-  const newSession = cloneSession(session);
-  const flags = newSession.flags as any;
-  const items = getInventoryItemsFromFlags(flags);
-  const existing = items.find((item: InventoryItem) => item.id === itemId || item.itemId === itemId);
+  const existing = getInventory(session).find(
+    (item) => item.id === itemId || item.itemId === itemId
+  );
+  const newQty = (existing?.qty ?? 0) + qty;
 
-  if (existing) {
-    existing.qty += qty;
-    existing.quantity = existing.qty;
-    existing.itemId = itemId;
-  } else {
-    items.push({ id: itemId, itemId, qty, quantity: qty });
-  }
-
-  writeInventoryItems(flags, items);
-  return newSession;
+  return upsertSessionGameObjects(session, [
+    buildInventoryItemObject(session, itemId, newQty),
+  ]);
 }
 
 /**
@@ -398,28 +302,16 @@ export function removeInventoryItem(
     return null; // Not enough quantity
   }
 
-  const newSession = cloneSession(session);
-  const flags = newSession.flags as any;
-  const newItems = getInventoryItemsFromFlags(flags);
-  const targetItem = newItems.find((item: InventoryItem) => item.id === itemId || item.itemId === itemId);
+  const newQty = existing.qty - qty;
+  const id = String(existing.id ?? existing.itemId ?? itemId);
 
-  if (!targetItem) {
-    return null;
+  if (newQty === 0) {
+    return removeSessionGameObjects(session, [`item:${id}`]);
   }
 
-  targetItem.qty -= qty;
-  targetItem.quantity = targetItem.qty;
-
-  if (targetItem.qty === 0) {
-    writeInventoryItems(
-      flags,
-      newItems.filter((item: InventoryItem) => item.id !== itemId && item.itemId !== itemId)
-    );
-    return newSession;
-  }
-
-  writeInventoryItems(flags, newItems);
-  return newSession;
+  return upsertSessionGameObjects(session, [
+    buildInventoryItemObject(session, id, newQty),
+  ]);
 }
 
 // ===== Event Helpers =====

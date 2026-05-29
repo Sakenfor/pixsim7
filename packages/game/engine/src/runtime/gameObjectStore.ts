@@ -11,7 +11,6 @@ import type {
   GameSessionDTO,
   Transform,
 } from '@pixsim7/shared.types';
-import { getInventory } from '../session/state';
 import { GameObjectEntity } from './GameObjectEntity';
 
 export const GAME_OBJECT_STORE_SCHEMA_VERSION = 1;
@@ -225,11 +224,83 @@ function hydrateLegacyNpcObjects(
   return objects;
 }
 
+/**
+ * Read raw legacy inventory items straight from `flags.inventory` (array,
+ * `{items:[]}`, or legacy `{itemId: qty}` map). This is the legacy-edge reader
+ * used only by hydration — it must NOT go through `getInventory` (which now
+ * reads the canonical store), or hydration would become self-referential.
+ */
+function readLegacyInventoryItemsRaw(
+  flags: Record<string, unknown>
+): Array<Record<string, unknown>> {
+  const rawInventory = flags.inventory;
+  if (!rawInventory) return [];
+  if (Array.isArray(rawInventory)) {
+    return rawInventory.filter(
+      (entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object'
+    );
+  }
+  if (typeof rawInventory === 'object') {
+    const container = rawInventory as Record<string, unknown>;
+    if (Array.isArray(container.items)) {
+      return container.items.filter(
+        (entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object'
+      );
+    }
+    // Legacy map format: { itemId: qty }
+    return Object.entries(container)
+      .filter(([key, value]) => key !== 'items' && typeof value === 'number' && Number.isFinite(value))
+      .map(([itemId, qty]) => ({ id: itemId, qty: Number(qty) }));
+  }
+  return [];
+}
+
+/**
+ * Build a canonical item-kind `GameObject` for an inventory item. Mirrors the
+ * shape produced by legacy hydration so the two paths are interchangeable.
+ */
+export function buildInventoryItemObject(
+  session: Pick<GameSessionDTO, 'world_id'>,
+  itemId: string,
+  quantity: number,
+  metadata?: Record<string, unknown>
+): GameObject {
+  const id = itemId.trim();
+  const qty = Number.isFinite(Number(quantity)) ? Math.max(0, Number(quantity)) : 0;
+  const meta = asRecord(metadata) ?? {};
+  const name =
+    typeof meta.name === 'string' && meta.name.trim().length > 0 ? meta.name : id;
+  const extraItemData = asRecord(meta.itemData) ?? {};
+  const reservedMetaKeys = new Set(['name', 'itemData', 'id', 'itemId', 'qty', 'quantity']);
+  const restMeta: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(meta)) {
+    if (!reservedMetaKeys.has(key)) restMeta[key] = value;
+  }
+  return {
+    kind: 'item',
+    id,
+    ref: `item:${id}`,
+    name,
+    runtimeKind: 'item',
+    transform: createFallbackTransform(session),
+    capabilities: [{ id: 'inventory_item', enabled: true }],
+    itemData: {
+      ...restMeta,
+      ...extraItemData,
+      itemDefId: id,
+      quantity: qty,
+    },
+    meta: {
+      source: 'canonical.inventory',
+    },
+  };
+}
+
 function hydrateLegacyInventoryObjects(
   session: Pick<GameSessionDTO, 'world_id' | 'flags'>
 ): Record<string, GameObject> {
   const objects: Record<string, GameObject> = {};
-  const inventory = getInventory(session as GameSessionDTO);
+  const inventory = readLegacyInventoryItemsRaw(asRecord(session.flags) ?? {});
   for (const rawItem of inventory) {
     const itemIdRaw = rawItem.id ?? rawItem.itemId;
     if (typeof itemIdRaw !== 'string' || itemIdRaw.trim().length === 0) continue;
@@ -399,6 +470,59 @@ export function getSessionGameObjectEntity(
   return pojo ? GameObjectEntity.fromPOJO(pojo) : null;
 }
 
+/**
+ * Write a merged object set back into the session as the canonical
+ * `flags.gameObjects` store, and rebuild the TEMPORARY `flags.inventory.items`
+ * mirror from the canonical item objects.
+ *
+ * The mirror is the frontend<->backend bridge that keeps the still-flags-based
+ * backend (InventoryService / REST / narrative runtime) in sync until
+ * `backend-canonical-gameobject-adoption` lands. It is rebuilt from canonical on
+ * every write so the two never drift. Removal is gated on that backend cutover.
+ */
+function writeStoreObjects(
+  session: GameSessionDTO,
+  mergedObjects: Record<string, GameObject>,
+  baseStore: GameObjectStore
+): GameSessionDTO {
+  const currentFlags = asRecord(session.flags) ?? {};
+  const nextStore: GameObjectStore = {
+    schemaVersion: GAME_OBJECT_STORE_SCHEMA_VERSION,
+    objects: mergedObjects,
+    meta: {
+      ...(asRecord(baseStore.meta) ?? {}),
+      updatedAt: new Date().toISOString(),
+    },
+  };
+
+  const mirrorInventoryItems = Object.values(mergedObjects)
+    .filter((object) => object.kind === 'item')
+    .map((object) => {
+      const rawQuantity = ('itemData' in object ? object.itemData?.quantity : undefined) ?? 1;
+      const quantity = Number.isFinite(Number(rawQuantity))
+        ? Math.max(0, Number(rawQuantity))
+        : 1;
+      const itemId = typeof object.id === 'string' ? object.id : String(object.id);
+      return { id: itemId, qty: quantity, itemId, quantity };
+    })
+    .filter((entry) => entry.id.length > 0);
+
+  const currentInventory = asRecord(currentFlags.inventory) ?? {};
+  const nextFlags: Record<string, unknown> = {
+    ...currentFlags,
+    gameObjects: nextStore,
+    inventory: {
+      ...currentInventory,
+      items: mirrorInventoryItems,
+    },
+  };
+
+  return {
+    ...session,
+    flags: nextFlags,
+  };
+}
+
 export function upsertSessionGameObjects(
   session: GameSessionDTO,
   objects: GameObject[]
@@ -417,51 +541,35 @@ export function upsertSessionGameObjects(
     mergedObjects[key] = normalized;
   }
 
-  const currentFlags = asRecord(session.flags) ?? {};
-  const nextStore: GameObjectStore = {
-    schemaVersion: GAME_OBJECT_STORE_SCHEMA_VERSION,
-    objects: mergedObjects,
-    meta: {
-      ...(asRecord(baseStore.meta) ?? {}),
-      updatedAt: new Date().toISOString(),
-    },
-  };
+  return writeStoreObjects(session, mergedObjects, baseStore);
+}
 
-  const mirrorInventoryItems = Object.values(mergedObjects)
-    .filter((object) => object.kind === 'item')
-    .map((object) => {
-      const fallbackQuantity = 1;
-      const rawQuantity =
-        object.kind === 'item'
-          ? object.itemData?.quantity
-          : fallbackQuantity;
-      const quantity = Number.isFinite(Number(rawQuantity))
-        ? Math.max(0, Number(rawQuantity))
-        : fallbackQuantity;
-      const itemId = typeof object.id === 'string' ? object.id : String(object.id);
-      return {
-        id: itemId,
-        qty: quantity,
-        itemId,
-        quantity,
-      };
-    })
-    .filter((entry) => entry.id.length > 0);
-
-  const currentInventory = asRecord(currentFlags.inventory) ?? {};
-  const nextFlags: Record<string, unknown> = {
-    ...currentFlags,
-    gameObjects: nextStore,
-  };
-  if (mirrorInventoryItems.length > 0 || objects.some((object) => object.kind === 'item')) {
-    nextFlags.inventory = {
-      ...currentInventory,
-      items: mirrorInventoryItems,
-    };
+/**
+ * Remove canonical game objects by ref. Operates on the hydrated store, so an
+ * item that exists only via legacy inventory hydration is also removed (and the
+ * rebuilt mirror reflects the removal).
+ */
+export function removeSessionGameObjects(
+  session: GameSessionDTO,
+  refs: string[]
+): GameSessionDTO {
+  if (!Array.isArray(refs) || refs.length === 0) {
+    return session;
   }
 
-  return {
-    ...session,
-    flags: nextFlags,
-  };
+  const baseStore = getSessionGameObjectStore(session);
+  const mergedObjects: Record<string, GameObject> = { ...baseStore.objects };
+  let changed = false;
+  for (const ref of refs) {
+    if (ref in mergedObjects) {
+      delete mergedObjects[ref];
+      changed = true;
+    }
+  }
+
+  if (!changed) {
+    return session;
+  }
+
+  return writeStoreObjects(session, mergedObjects, baseStore);
 }
