@@ -6,6 +6,7 @@ from typing import List
 from fastapi import HTTPException
 
 from pixsim7.backend.main.api.dependencies import DatabaseSession
+from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
@@ -80,6 +81,8 @@ async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetRes
     asset_counts = counts.get(asset.id, {})
     ar.same_inputs_count = asset_counts.get("same_inputs", 0)
     ar.same_prompt_count = asset_counts.get("same_prompt", 0)
+    ar.same_seed_count = asset_counts.get("same_seed", 0)
+    ar.gen_seed = asset.gen_seed
 
     return ar
 
@@ -116,6 +119,8 @@ async def build_asset_responses_with_tags(assets, db: DatabaseSession) -> List[A
         asset_counts = sibling_counts.get(asset.id, {})
         ar.same_inputs_count = asset_counts.get("same_inputs", 0)
         ar.same_prompt_count = asset_counts.get("same_prompt", 0)
+        ar.same_seed_count = asset_counts.get("same_seed", 0)
+        ar.gen_seed = asset.gen_seed
         responses.append(ar)
 
     return responses

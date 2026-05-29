@@ -26,6 +26,7 @@ interface MediaCardRuntimeWidgetFactories {
   createWarningsBadge: () => OverlayWidget<MediaCardOverlayData>;
   createSameInputsBadge: MediaCardWidgetFactory;
   createSamePromptBadge: MediaCardWidgetFactory;
+  createSameSeedBadge: MediaCardWidgetFactory;
 }
 
 /**
@@ -55,6 +56,7 @@ export function buildMediaCardRuntimeWidgets(
     createWarningsBadge,
     createSameInputsBadge,
     createSamePromptBadge,
+    createSameSeedBadge,
   } = factories;
 
   const widgets = [
@@ -76,6 +78,7 @@ export function buildMediaCardRuntimeWidgets(
     createWarningsBadge(),
     createSameInputsBadge(props),
     createSamePromptBadge(props),
+    createSameSeedBadge(props),
   ];
 
   let result = widgets

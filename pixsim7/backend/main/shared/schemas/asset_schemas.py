@@ -175,6 +175,9 @@ class AssetResponse(BaseModel):
     prompt_version_id: Optional[str] = None
     # Prompt family (denormalized) — cohort key for "same prompt (all versions)".
     prompt_family_id: Optional[str] = None
+    # Provider generation seed (denormalized Asset.gen_seed). Null when the
+    # asset has no meaningful seed (uploads, seedless or random-seed generations).
+    gen_seed: Optional[int] = None
 
     # Storage keys (source of truth for file locations)
     stored_key: Optional[str] = None
@@ -252,10 +255,12 @@ class AssetResponse(BaseModel):
     # Sibling counts (computed at response build time, user-scoped, include-self).
     # same_inputs_count: assets sharing this asset's input-asset set (Asset.input_assets_key).
     # same_prompt_count: assets sharing this asset's prompt family (PromptVersion.family_id).
+    # same_seed_count: assets sharing this asset's generation seed (Asset.gen_seed).
     # 0 when not applicable (no inputs / no prompt linkage). Frontend hides the
     # badge below 2. See plan media-card-sibling-badges.
     same_inputs_count: int = 0
     same_prompt_count: int = 0
+    same_seed_count: int = 0
 
     # Artificial-extend lineage (computed from media_metadata.generation_context.artificial_extend)
     # When present, asset was produced via the "extend via last-frame i2v" flow.

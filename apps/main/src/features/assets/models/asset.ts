@@ -78,6 +78,9 @@ export interface AssetModel {
    *  (PromptVersion.family_id; falls back to exact version for one-off prompts).
    *  0 when the asset has no prompt linkage. */
   samePromptCount?: number;
+  /** User-scoped, include-self count of assets sharing the same generation
+   *  seed (Asset.gen_seed). 0 when no meaningful seed is recorded. */
+  sameSeedCount?: number;
   /** True when this image was CDN-salvaged from a Pixverse false-filter / stuck-processing state */
   recovered?: boolean;
   storedKey?: string | null;
@@ -101,6 +104,8 @@ export interface AssetModel {
   promptVersionId?: string | null;
   /** Prompt family (denormalized) — cohort key for "same prompt (all versions)". */
   promptFamilyId?: string | null;
+  /** Provider generation seed for this asset (null when unavailable). */
+  genSeed?: number | null;
 
   /** When present, asset was produced via the "artificial extend" flow
    *  (extract a frame → image-to-video). Carries lineage back to the
@@ -209,6 +214,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     hasChildren: (response as any).has_children ?? false,
     sameInputsCount: (response as any).same_inputs_count ?? 0,
     samePromptCount: (response as any).same_prompt_count ?? 0,
+    sameSeedCount: (response as any).same_seed_count ?? 0,
     recovered: response.recovered ?? false,
     storedKey: response.stored_key,
     syncStatus: response.sync_status,
@@ -234,6 +240,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     inputAssetsKey: (response as any).input_assets_key ?? null,
     promptVersionId: (response as any).prompt_version_id ?? null,
     promptFamilyId: (response as any).prompt_family_id ?? null,
+    genSeed: (response as any).gen_seed ?? null,
     artificialExtend: (response as any).artificial_extend ?? null,
 
     // Versioning fields

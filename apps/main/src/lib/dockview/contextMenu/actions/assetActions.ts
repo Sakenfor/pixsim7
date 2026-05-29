@@ -15,22 +15,30 @@
 import { resolveMediaType } from '@pixsim7/shared.assets.core';
 import { useToastStore } from '@pixsim7/shared.ui';
 
-import type { AssetModel } from '@features/assets';
-import { assetEvents, getAssetDisplayUrls, toViewerAsset, toViewerAssets, toSelectedAsset, useMediaSettingsStore } from '@features/assets';
-import { applyQuickTag, useQuickTagStore } from '@features/assets';
 import {
   loadToQuickGenDescriptor,
   patchAssetDescriptor,
   type AssetActionDescriptor,
 } from '@features/assets/actions';
 import { archiveAsset } from '@features/assets/lib/api';
+import { assetEvents } from '@features/assets/lib/assetEvents';
 import { assertBackendAssetId } from '@features/assets/lib/backendAssetId';
+import { applyQuickTag } from '@features/assets/lib/quickTag';
+import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
+import {
+  getAssetDisplayUrls,
+  toViewerAsset,
+  toViewerAssets,
+  toSelectedAsset,
+  type AssetModel,
+} from '@features/assets/models/asset';
 import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import { useAssetSetStore, type ManualAssetSet } from '@features/assets/stores/assetSetStore';
 import { useAssetViewerStore } from '@features/assets/stores/assetViewerStore';
 import { useDeleteModalStore } from '@features/assets/stores/deleteModalStore';
 import { useGalleryApplyTargetStore } from '@features/assets/stores/galleryApplyTargetStore';
+import { useMediaSettingsStore } from '@features/assets/stores/mediaSettingsStore';
 import {
   CAP_ASSET,
   CAP_GENERATION_WIDGET,
@@ -41,7 +49,6 @@ import {
 import { useGenerationInputStore } from '@features/generation';
 import { upgradeModelForAsset } from '@features/generation/lib/assetGenerationActions';
 import { useSettingsUiStore } from '@features/settings/stores/settingsUiStore';
-import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 
 import { enrichAsset } from '@/lib/api/assets';
@@ -770,7 +777,9 @@ const debugFixAction: MenuAction = {
         requiredCapabilities: [CAP_ASSET],
         execute: () => {
           useSettingsUiStore.getState().setActiveTabId('library');
-          useWorkspaceStore.getState().openFloatingPanel('settings');
+          void import('@features/workspace/stores/workspaceStore').then(({ useWorkspaceStore }) => {
+            useWorkspaceStore.getState().openFloatingPanel('settings');
+          });
         },
       },
     ];
@@ -925,6 +934,9 @@ function buildMoreFromVariants(asset: AssetModel): { id: string; label: string; 
   if (asset.sourceGenerationId) {
     variants.push({ id: 'generation', label: 'Same generation', icon: 'sparkles', filters: { source_generation_id: asset.sourceGenerationId } });
   }
+  if (typeof asset.genSeed === 'number' && Number.isFinite(asset.genSeed)) {
+    variants.push({ id: 'gen-seed', label: `Same seed: ${asset.genSeed}`, icon: 'hash', filters: { gen_seed: asset.genSeed } });
+  }
   if (asset.inputAssetsKey) {
     variants.push({ id: 'input-assets', label: 'Same input assets', icon: 'link', filters: { input_assets_key: asset.inputAssetsKey } });
   }
@@ -971,16 +983,18 @@ export function openRelatedGallery(asset: AssetModel, variantId: string) {
   const active = variants.find((v) => v.id === variantId);
   if (!active) return;
 
-  useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
-    context: {
-      initialFilters: active.filters,
-      syncInitialFilters: true,
-      sourceLabel: active.label,
-      suppressHoverActions: true,
-      variants,
-      activeVariantId: variantId,
-      panelId: 'mini-gallery',
-    },
+  void import('@features/workspace/stores/workspaceStore').then(({ useWorkspaceStore }) => {
+    useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+      context: {
+        initialFilters: active.filters,
+        syncInitialFilters: true,
+        sourceLabel: active.label,
+        suppressHoverActions: true,
+        variants,
+        activeVariantId: variantId,
+        panelId: 'mini-gallery',
+      },
+    });
   });
 }
 

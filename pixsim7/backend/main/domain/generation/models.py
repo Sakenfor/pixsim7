@@ -21,6 +21,10 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from pydantic import field_validator
 import hashlib
 import json
+import logging
+import time
+
+_logger = logging.getLogger(__name__)
 
 from pixsim7.backend.main.domain.enums import (
     OperationType,
@@ -318,19 +322,53 @@ class Generation(SQLModel, table=True):
 
         Ensures dict key order does not affect the hash by dumping with sort_keys.
         Set include_seed=False to derive seed-agnostic sibling grouping hashes.
+
+        Instrumented with both wall-clock and CPU timing so we can distinguish
+        between intrinsic CPU cost vs queue/GIL contention when this fires from
+        a thread pool. A `compute_hash_internal_slow` warning is emitted when
+        wall time exceeds ~25ms.
         """
-        data = {
-            "canonical_params": Generation._normalize_for_hash(
-                canonical_params,
-                include_seed=include_seed,
-            ),
-            "inputs": Generation._normalize_for_hash(
-                inputs,
-                include_seed=include_seed,
-            ),
-        }
+        _t_wall0 = time.perf_counter()
+        _t_cpu0 = time.process_time()
+
+        if include_seed:
+            # When include_seed=True, _normalize_for_hash is an identity-rebuild
+            # over the entire structure — pure waste. Hash the originals directly.
+            data: Dict[str, Any] = {
+                "canonical_params": canonical_params,
+                "inputs": inputs,
+            }
+        else:
+            data = {
+                "canonical_params": Generation._normalize_for_hash(
+                    canonical_params,
+                    include_seed=False,
+                ),
+                "inputs": Generation._normalize_for_hash(
+                    inputs,
+                    include_seed=False,
+                ),
+            }
         raw = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        return hashlib.sha256(raw).hexdigest()
+        digest = hashlib.sha256(raw).hexdigest()
+
+        _wall_ms = (time.perf_counter() - _t_wall0) * 1000
+        _cpu_ms = (time.process_time() - _t_cpu0) * 1000
+        if _wall_ms > 25:
+            # cpu_ms ≈ wall_ms → real CPU cost (need orjson / process pool / smaller payload).
+            # cpu_ms << wall_ms → queue/GIL contention (the hash itself is fine).
+            _logger.warning(
+                "compute_hash_internal_slow",
+                extra={
+                    "wall_ms": round(_wall_ms, 1),
+                    "cpu_ms": round(_cpu_ms, 1),
+                    "size_bytes": len(raw),
+                    "include_seed": include_seed,
+                    "inputs_count": len(inputs) if inputs else 0,
+                },
+            )
+
+        return digest
 
 
 class GenerationBatchItemManifest(SQLModel, table=True):

@@ -327,6 +327,20 @@ class Asset(SQLModel, table=True):
             "prompts not in a family and for non-generated assets."
         ),
     )
+    gen_seed: Optional[int] = Field(
+        default=None,
+        # Denormalized provider generation seed (canonical_params.seed) so
+        # "same seed" grouping/counts/filtering need no join. BigInteger because
+        # provider seeds can exceed int32. Access is user-scoped → composite
+        # partial index idx_asset_user_gen_seed below. Null for uploads, for
+        # generations without a seed, and for sentinel seeds (<= 0).
+        sa_column=Column(BigInteger, nullable=True),
+        description=(
+            "Provider generation seed (denormalized from Generation.canonical_params). "
+            "Groups outputs that share the same generation seed. Null when no "
+            "meaningful seed was recorded."
+        ),
+    )
 
     # ===== VERSIONING =====
     # Git-like versioning for asset iterations (fix anatomy, improve lighting, etc.)
@@ -391,6 +405,13 @@ class Asset(SQLModel, table=True):
             "user_id",
             "prompt_family_id",
             postgresql_where="prompt_family_id IS NOT NULL",
+        ),
+        # User-scoped "same seed" sibling-count grouping + filter
+        Index(
+            "idx_asset_user_gen_seed",
+            "user_id",
+            "gen_seed",
+            postgresql_where="gen_seed IS NOT NULL",
         ),
     )
 

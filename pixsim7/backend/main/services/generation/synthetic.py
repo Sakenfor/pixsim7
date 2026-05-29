@@ -154,6 +154,7 @@ class SyntheticGenerationService:
             build_generation_context,
             extract_source_asset_ids,
             compute_input_assets_key,
+            extract_gen_seed,
         )
         source_asset_ids = extract_source_asset_ids(gen_data["inputs"])
         gen_ctx = build_generation_context(
@@ -173,6 +174,7 @@ class SyntheticGenerationService:
         # Denormalize "same input assets" grouping key (parity with normal
         # generation→asset path; synthetic path historically left this null).
         asset.input_assets_key = compute_input_assets_key(source_asset_ids)
+        asset.gen_seed = extract_gen_seed(gen_data["canonical_params"])
 
         # Explicit commit - FastAPI dependency doesn't auto-commit
         await self.db.commit()
@@ -233,6 +235,7 @@ class SyntheticGenerationService:
             build_generation_context,
             extract_source_asset_ids,
             compute_input_assets_key,
+            extract_gen_seed,
         )
         source_asset_ids = extract_source_asset_ids(gen_data["inputs"])
         gen_ctx = build_generation_context(
@@ -252,6 +255,7 @@ class SyntheticGenerationService:
         # Denormalize "same input assets" grouping key (parity with normal
         # generation→asset path; synthetic path historically left this null).
         asset.input_assets_key = compute_input_assets_key(source_asset_ids)
+        asset.gen_seed = extract_gen_seed(gen_data["canonical_params"])
 
         self.db.add(generation)
         await self.db.commit()

@@ -298,6 +298,20 @@ class AssetSearchMixin:
         if source_generation_id is not None:
             query = query.where(Asset.source_generation_id == source_generation_id)
 
+        # Same-seed filter on the denormalized provider seed (Asset.gen_seed).
+        # Passed as dynamic registry filter: filters.gen_seed. Rides
+        # idx_asset_user_gen_seed.
+        gen_seed_filter: int | None = None
+        if isinstance(filters, dict):
+            raw_gen_seed = filters.get("gen_seed")
+            if raw_gen_seed is not None and raw_gen_seed != "":
+                try:
+                    gen_seed_filter = int(raw_gen_seed)
+                except (TypeError, ValueError):
+                    gen_seed_filter = None
+        if gen_seed_filter is not None:
+            query = query.where(Asset.gen_seed == gen_seed_filter)
+
         # SHA-256 filter
         if sha256:
             query = query.where(Asset.sha256 == sha256)

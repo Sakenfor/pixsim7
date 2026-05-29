@@ -92,6 +92,26 @@ def extract_flat_provider_params(canonical_params: dict) -> dict:
     return flat
 
 
+def extract_gen_seed(canonical_params: Optional[dict]) -> Optional[int]:
+    """Denormalized "same seed" grouping value: the provider generation seed.
+
+    Reads ``seed`` out of the flattened provider params. Returns None when no
+    seed is present, when it can't be coerced to an int, or when it's a sentinel
+    value (<= 0) — providers use 0 / -1 to mean "pick a random seed", so those
+    aren't meaningful for grouping and would otherwise lump unrelated assets.
+    """
+    if not isinstance(canonical_params, dict):
+        return None
+    raw = extract_flat_provider_params(canonical_params).get("seed")
+    if raw is None:
+        return None
+    try:
+        seed = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return seed if seed > 0 else None
+
+
 def extract_source_asset_ids(inputs: list) -> List[int]:
     """
     Pull integer asset IDs from "asset:123" refs in Generation.inputs.
