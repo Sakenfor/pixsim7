@@ -178,12 +178,15 @@ export function useOverlayWidgetsForAsset({
     };
 
     const tagSlugs = asset.tags?.map((t) => t.slug) ?? [];
+    const tagSummaries =
+      asset.tags?.map((t) => ({ slug: t.slug, displayName: t.displayName, source: t.source })) ?? [];
     const overlayData: MediaCardOverlayData = {
       id: asset.id,
       mediaType: baseProps.mediaType,
       providerId: asset.providerId,
       status: baseProps.providerStatus,
       tags: tagSlugs,
+      tagSummaries,
       description: asset.description ?? undefined,
       createdAt: asset.createdAt,
       uploadState: 'idle',

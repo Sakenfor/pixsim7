@@ -16,6 +16,13 @@ from pixsim7.backend.main.services.tag import TagAssignment
 from pixsim7.backend.main.domain.assets.tag import AssetTag
 
 
+def _tag_summary_with_source(tag, source: str | None) -> TagSummary:
+    """Build a TagSummary carrying the per-assignment provenance source."""
+    summary = TagSummary.model_validate(tag)
+    summary.source = source
+    return summary
+
+
 def get_effective_owner_user_id(user) -> int:
     """Resolve the request's effective owner user ID or fail with 403."""
     owner_user_id = resolve_effective_user_id(user)
@@ -69,12 +76,12 @@ async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetRes
         AssetResponse with tags populated
     """
     asset_tags = TagAssignment(db, AssetTag, "asset_id")
-    tags = await asset_tags.get_tags(asset.id)
+    tags = await asset_tags.get_tags_with_source(asset.id)
 
     ar = AssetResponse.model_validate(asset)
     ar.provider_status = _compute_provider_status(asset)
     ar.recovered = _compute_recovered(asset)
-    ar.tags = [TagSummary.model_validate(tag) for tag in tags]
+    ar.tags = [_tag_summary_with_source(tag, source) for tag, source in tags]
     has_children_map = await AssetLineageService(db).has_children_map([asset.id])
     ar.has_children = has_children_map.get(asset.id, False)
     counts = await AssetSiblingCountService(db).counts_map([asset], asset.user_id)
@@ -96,7 +103,7 @@ async def build_asset_responses_with_tags(assets, db: DatabaseSession) -> List[A
 
     asset_tags = TagAssignment(db, AssetTag, "asset_id")
     ids = [a.id for a in assets]
-    tags_map = await asset_tags.get_tags_batch(ids)
+    tags_map = await asset_tags.get_tags_batch_with_source(ids)
     has_children_map = await AssetLineageService(db).has_children_map(ids)
 
     # Sibling counts are user-scoped; group by owner so a mixed-owner list
@@ -114,7 +121,10 @@ async def build_asset_responses_with_tags(assets, db: DatabaseSession) -> List[A
         ar = AssetResponse.model_validate(asset)
         ar.provider_status = _compute_provider_status(asset)
         ar.recovered = _compute_recovered(asset)
-        ar.tags = [TagSummary.model_validate(tag) for tag in tags_map.get(asset.id, [])]
+        ar.tags = [
+            _tag_summary_with_source(tag, source)
+            for tag, source in tags_map.get(asset.id, [])
+        ]
         ar.has_children = has_children_map.get(asset.id, False)
         asset_counts = sibling_counts.get(asset.id, {})
         ar.same_inputs_count = asset_counts.get("same_inputs", 0)

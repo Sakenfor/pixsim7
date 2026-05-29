@@ -30,6 +30,7 @@ import type { AssetWarning } from '@features/assets/lib/assetWarnings';
 import { assertBackendAssetId } from '@features/assets/lib/backendAssetId';
 import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
+import { getTagSourceMeta } from '@features/assets/lib/tagSource';
 import { useTagAutocomplete, TAG_NAMESPACES } from '@features/assets/lib/useTagAutocomplete';
 import { PROVIDER_BRANDS } from '@features/generation/components/generationSettingsPanel/constants';
 import { providerCapabilityRegistry, useModelBadgeStore } from '@features/providers';
@@ -74,6 +75,9 @@ export interface MediaCardOverlayData {
   providerId: string;
   status?: MediaCardResolvedProps['providerStatus'];
   tags: string[];
+  /** Tags with provenance, for the info popover. Parallel to `tags` (which
+      stays a bare slug list for badges/quick-tag). */
+  tagSummaries?: { slug: string; displayName?: string | null; source?: string | null }[];
   description?: string;
   createdAt: string;
   uploadState: MediaCardResolvedProps['uploadState'] | 'idle';
@@ -988,9 +992,12 @@ function InfoPopoverContent({ data }: { data: MediaCardOverlayData }) {
   // Dimensions string
   const dims = data.width && data.height ? `${data.width}\u00d7${data.height}` : undefined;
 
-  // Split tags into user vs system
-  const userTags = (data.tags || []).filter((t: string) => t.startsWith('user:'));
-  const systemTags = (data.tags || []).filter((t: string) => !t.startsWith('user:'));
+  // Tags with provenance (source-based). Fall back to bare slugs (treated as
+  // manual) when summaries aren't available.
+  const tagEntries =
+    data.tagSummaries && data.tagSummaries.length > 0
+      ? data.tagSummaries
+      : (data.tags || []).map((slug) => ({ slug, displayName: null, source: null }));
 
   return (
     <div className="min-w-[220px]" onClick={(e) => e.stopPropagation()}>
@@ -1071,36 +1078,30 @@ function InfoPopoverContent({ data }: { data: MediaCardOverlayData }) {
         </div>
       )}
 
-      {/* Tags tab */}
+      {/* Tags tab — leading glyph + tooltip name the provenance; chip tone is
+          accent for tags you added, neutral for anything generated. */}
       {tab === 'tags' && (
         <div className="space-y-2 text-xs">
-          {data.tags && data.tags.length > 0 ? (
-            <>
-              {userTags.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {userTags.map((tag: string) => (
-                    <span
-                      key={tag}
-                      className="inline-block px-1.5 py-0.5 rounded bg-accent/15 text-accent text-[11px]"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {systemTags.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {systemTags.map((tag: string) => (
-                    <span
-                      key={tag}
-                      className="inline-block px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 text-[11px]"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </>
+          {tagEntries.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {tagEntries.map((tag) => {
+                const meta = getTagSourceMeta(tag.source);
+                return (
+                  <span
+                    key={tag.slug}
+                    title={meta.label}
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] ${
+                      meta.isManual
+                        ? 'bg-accent/15 text-accent'
+                        : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
+                    }`}
+                  >
+                    <Icon name={meta.icon} size={10} className={meta.iconClass} />
+                    {tag.displayName || tag.slug}
+                  </span>
+                );
+              })}
+            </div>
           ) : (
             <p className="text-neutral-400 italic">No tags</p>
           )}

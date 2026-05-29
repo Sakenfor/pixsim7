@@ -36,6 +36,8 @@ export interface TagSummary {
   namespace: string;
   slug: string;
   displayName?: string | null;
+  /** Provenance of this tag on the asset: 'manual' | 'analysis' | 'derived' | 'ai' | 'auto'. */
+  source?: string | null;
 }
 
 /**
@@ -224,6 +226,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
       namespace: tag.namespace,
       slug: tag.slug,
       displayName: tag.display_name,
+      source: (tag as { source?: string | null }).source ?? null,
     })),
     thumbnailKey: response.thumbnail_key,
     thumbnailUrl: response.thumbnail_url,

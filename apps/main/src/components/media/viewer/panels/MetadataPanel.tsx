@@ -5,6 +5,10 @@
  * Shows description, tags, size, dates, path, duration.
  */
 
+import { Icon } from '@lib/icons';
+
+import { getTagSourceMeta } from '@features/assets/lib/tagSource';
+
 import type { ViewerPanelContext } from '../types';
 
 import { useViewerContext } from './hooks';
@@ -36,6 +40,14 @@ export function MetadataPanel({ context }: MetadataPanelProps) {
     );
   }
 
+  // Prefer the full model's tags (with provenance source); fall back to bare
+  // metadata tag names for sources that don't carry the model (e.g. local).
+  const modelTags = asset._assetModel?.tags;
+  const tagEntries =
+    modelTags && modelTags.length > 0
+      ? modelTags.map((t) => ({ key: String(t.id), label: t.displayName || t.slug, source: t.source }))
+      : (metadata.tags ?? []).map((name, i) => ({ key: `${i}-${name}`, label: name, source: null as string | null }));
+
   return (
     <div className="h-full overflow-y-auto p-3 space-y-3 text-sm">
       {/* Description */}
@@ -50,21 +62,33 @@ export function MetadataPanel({ context }: MetadataPanelProps) {
         </div>
       )}
 
-      {/* Tags */}
-      {metadata.tags && metadata.tags.length > 0 && (
+      {/* Tags — prefer the full model's tags (which carry provenance); fall
+          back to bare metadata tag names (e.g. local assets). Chip tone is
+          accent for tags you added, neutral for generated; the leading glyph
+          + tooltip name the exact source. */}
+      {tagEntries.length > 0 && (
         <div>
           <span className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
             Tags
           </span>
           <div className="flex flex-wrap gap-1 mt-1">
-            {metadata.tags.map((tag, i) => (
-              <span
-                key={i}
-                className="px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-xs"
-              >
-                {tag}
-              </span>
-            ))}
+            {tagEntries.map((tag) => {
+              const meta = getTagSourceMeta(tag.source);
+              return (
+                <span
+                  key={tag.key}
+                  title={meta.label}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs ${
+                    meta.isManual
+                      ? 'bg-accent/15 text-accent'
+                      : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
+                  }`}
+                >
+                  <Icon name={meta.icon} size={11} className={meta.iconClass} />
+                  {tag.label}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}

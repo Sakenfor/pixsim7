@@ -17,6 +17,11 @@ class TagSummary(BaseModel):
     namespace: str
     name: str
     display_name: Optional[str] = None
+    # Provenance of this tag on the entity it's attached to (e.g. 'manual',
+    # 'analysis', 'derived', 'ai', 'auto'). Populated from the per-assignment
+    # join row when available; None for contexts that don't carry it (e.g.
+    # bare tag lists not tied to a single entity).
+    source: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -147,6 +147,48 @@ class TagAssignment:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_tags_with_source(self, entity_id: Any) -> List[tuple[Tag, str | None]]:
+        """Get all tags for an entity paired with each assignment's source.
+
+        Source is None when the join model has no ``source`` column.
+        """
+        source_col = getattr(self.join_model, "source", None)
+        if source_col is None:
+            return [(tag, None) for tag in await self.get_tags(entity_id)]
+
+        stmt = (
+            select(Tag, source_col)
+            .join(self.join_model, self.join_model.tag_id == Tag.id)
+            .where(self._entity_col == entity_id)
+            .order_by(Tag.namespace, Tag.name)
+        )
+        result = await self.db.execute(stmt)
+        return [(tag, source) for tag, source in result.all()]
+
+    async def get_tags_batch_with_source(
+        self, entity_ids: List[Any]
+    ) -> dict[Any, List[tuple[Tag, str | None]]]:
+        """Batch variant of ``get_tags_with_source``."""
+        if not entity_ids:
+            return {}
+
+        source_col = getattr(self.join_model, "source", None)
+        if source_col is None:
+            plain = await self.get_tags_batch(entity_ids)
+            return {eid: [(tag, None) for tag in tags] for eid, tags in plain.items()}
+
+        stmt = (
+            select(self._entity_col.label("entity_id"), Tag, source_col.label("tag_source"))
+            .join(Tag, self.join_model.tag_id == Tag.id)
+            .where(self._entity_col.in_(entity_ids))
+            .order_by(self._entity_col, Tag.namespace, Tag.name)
+        )
+        result = await self.db.execute(stmt)
+        tags_map: dict[Any, List[tuple[Tag, str | None]]] = {eid: [] for eid in entity_ids}
+        for entity_id, tag, source in result.all():
+            tags_map[entity_id].append((tag, source))
+        return tags_map
+
     async def get_tags_batch(self, entity_ids: List[Any]) -> dict[Any, List[Tag]]:
         """
         Batch-load tags for multiple entities in a single query.
