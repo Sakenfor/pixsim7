@@ -552,6 +552,44 @@ def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str,
     phrases = frozenset(_iter_tag_phrases(tags)) | block_id_phrases
     context_synonyms = frozenset(_iter_context_synonym_tokens(tags))
 
+    # Structural leaf tokens drive the compound gate: drop only true stop words,
+    # but KEEP low-signal nouns ("motion") and directionals ("up") so leaves like
+    # "slow_motion" and "close_up_single" read as multi-token compounds whose
+    # parts must both be present (otherwise `_LOW_SIGNAL_OVERLAP_TOKENS` /
+    # `_DIRECTIONAL_TOKENS` strip them and a lone "slow"/"close" solo-credits).
+    # `leaf_content_tokens` (computed in `_score_entry`) keeps the stricter
+    # low-signal/directional filter for the existing specific-evidence gate.
+    leaf_struct_tokens = frozenset(
+        token
+        for token in leaf_tokens
+        if token not in _INDEX_STOP_TOKENS
+    )
+    # Primary vs flavor: a leaf token is PRIMARY (allowed to solo-credit a
+    # compound) iff it is also a declared domain-signal synonym (e.g. "backlit"
+    # in core_light's light_context_synonyms) — those carry the block's identity
+    # on their own. Generic/collision tokens ("wide", "slow", "over", "rim",
+    # "dramatic") are NOT synonyms, so they stay flavor and need a phrase or a
+    # second leaf token. A CUE override (projection_hints.primary_token(s)) can
+    # force-declare a primary when a pack ships no synonyms (hybrid escape hatch).
+    primary_override: set[str] = set()
+    require_phrase = False
+    projection_hints_raw = block.get("projection_hints")
+    if isinstance(projection_hints_raw, Mapping):
+        raw_primary = projection_hints_raw.get("primary_token")
+        if raw_primary is None:
+            raw_primary = projection_hints_raw.get("primary_tokens")
+        if isinstance(raw_primary, str):
+            primary_override.update(_tokenize(raw_primary))
+        elif isinstance(raw_primary, (list, tuple)):
+            for item in raw_primary:
+                if isinstance(item, str):
+                    primary_override.update(_tokenize(item))
+        require_phrase = bool(projection_hints_raw.get("require_phrase"))
+    if primary_override:
+        primary_leaf_tokens = frozenset(leaf_struct_tokens & primary_override)
+    else:
+        primary_leaf_tokens = frozenset(leaf_struct_tokens & context_synonyms)
+
     op_id_for_domain = _as_text(op_payload.get("op_id")) or ""
     _is_gated_domain = any(
         op_id_for_domain.startswith(prefix)
@@ -561,7 +599,6 @@ def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str,
     if context_synonyms and not _is_gated_domain:
         tokens.update(context_synonyms)
 
-    projection_hints_raw = block.get("projection_hints")
     projection_boost: float | None = None
     if isinstance(projection_hints_raw, Mapping):
         raw_boost = projection_hints_raw.get("boost")
@@ -596,6 +633,9 @@ def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str,
         "tokens": frozenset(filtered_tokens),
         "block_tokens": frozenset(block_tokens),
         "leaf_tokens": frozenset(leaf_tokens),
+        "leaf_struct_tokens": leaf_struct_tokens,
+        "primary_leaf_tokens": primary_leaf_tokens,
+        "require_phrase": require_phrase,
         "block_id_phrases": block_id_phrases,
         "op_id": op_id,
         "signature_id": signature_id,
@@ -918,15 +958,30 @@ def _score_entry(
         and token not in _LOW_SIGNAL_OVERLAP_TOKENS
         and token not in _DIRECTIONAL_TOKENS
     }
-    is_compound_block_id = len(leaf_content_tokens) >= 2
+    # Compound detection runs over the structural leaf (keeps low-signal nouns
+    # like "motion"), so "slow_motion" is a 2-token compound and a lone "slow"
+    # cannot solo-credit it.
+    leaf_struct_tokens = set(entry.get("leaf_struct_tokens") or leaf_content_tokens)
+    primary_leaf_tokens = set(entry.get("primary_leaf_tokens") or set())
+    require_phrase = bool(entry.get("require_phrase"))
+    is_compound_block_id = len(leaf_struct_tokens) >= 2
     block_id_phrases = entry.get("block_id_phrases") or frozenset()
     matched_block_id_phrase = any(
         phrase in matched_phrases for phrase in block_id_phrases
     )
+    leaf_struct_overlap = probe_tokens & leaf_struct_tokens
+    # A single PRIMARY leaf token (a declared domain-signal synonym, e.g.
+    # "backlit") is enough to credit the compound on its own; a single flavor
+    # token ("wide", "slow", "over") is not — it needs the phrase or a 2nd leaf
+    # token. With require_phrase, only the phrase counts.
+    primary_overlap = leaf_struct_overlap & primary_leaf_tokens
     weak_compound_partial = (
         is_compound_block_id
-        and len(probe_tokens & leaf_content_tokens) < 2
         and not matched_block_id_phrase
+        and (
+            require_phrase
+            or (len(leaf_struct_overlap) < 2 and not primary_overlap)
+        )
     )
     block_id_bonus = (
         0.0 if weak_compound_partial else min(0.24, 0.12 * len(block_id_overlap))
@@ -1172,6 +1227,17 @@ def _score_entry(
         for token in overlap_all
         if not (weak_compound_partial and token in leaf_content_tokens)
     ]
+    # Keyword rescue must not re-admit a weak compound-partial's flavor leaf
+    # token through the back door: a bare "wide"/"slow" arriving as a matched
+    # keyword would otherwise resurrect wide_angle/slow_motion that the gate just
+    # suppressed. A PRIMARY leaf token never reaches here weak (it would have
+    # cleared weak_compound_partial), so excluding weak leaf tokens keeps
+    # backlit_silhouette (rescued by its primary "backlit") alive.
+    specific_keywords = [
+        token
+        for token in overlap_keywords
+        if not (weak_compound_partial and token in leaf_content_tokens)
+    ]
     has_specific_evidence = (
         len(specific_overlap) >= 2
         or any(
@@ -1180,7 +1246,7 @@ def _score_entry(
         )
         or any(
             token not in _LOW_SIGNAL_OVERLAP_TOKENS and token not in _DIRECTIONAL_TOKENS
-            for token in overlap_keywords
+            for token in specific_keywords
         )
         or bool(overlap_distinguishing and not weak_compound_partial)
     )

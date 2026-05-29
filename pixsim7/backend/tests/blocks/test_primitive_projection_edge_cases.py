@@ -1775,3 +1775,159 @@ class TestIntegrationParsePipeline:
         )
         candidates = result.get("candidates", [])
         assert len(candidates) >= 2  # Should split into multiple sentences
+
+
+# ---------------------------------------------------------------------------
+# Compound primary-vs-flavor gate (checkpoint: compound-gate-primary-flavor)
+# ---------------------------------------------------------------------------
+
+from pixsim7.backend.main.services.prompt.parser.primitive_projection import (
+    refresh_primitive_projection_cache,
+    _build_index_entry,
+)
+
+
+def _best_block_id(text: str):
+    """Run the real parser+projection and return the best matched block_id."""
+    result = asyncio.run(
+        parse_prompt_to_candidates(
+            text, parser_config={"primitive_projection_mode": "shadow"}
+        )
+    )
+    best = None
+    for c in result.get("candidates", []):
+        proj = c.get("primitive_projection") or {}
+        if proj.get("status") != "matched":
+            continue
+        hyps = proj.get("hypotheses") or []
+        idx = proj.get("selected_index")
+        if not isinstance(idx, int) or idx < 0 or idx >= len(hyps):
+            continue
+        h = hyps[idx]
+        if (h.get("score") or 0) >= 0.45 and (best is None or h["score"] > best["score"]):
+            best = h
+    return best.get("block_id") if best else None
+
+
+class TestCompoundPrimaryFlavorGate:
+    """A compound block-id's flavor token (wide/slow) must not solo-credit it,
+    while its phrase (or a primary domain-signal token) does."""
+
+    def setup_method(self):
+        refresh_primitive_projection_cache()
+
+    def teardown_method(self):
+        refresh_primitive_projection_cache()
+
+    def test_wide_angle_phrase_credits_focal_length(self):
+        assert (_best_block_id("Shot with a wide-angle lens for the cramped interior.") or "").startswith(
+            "core.camera.focus.wide_angle"
+        )
+
+    def test_bare_wide_stays_a_shot_not_the_lens(self):
+        got = _best_block_id("A wide single shot of the empty room.") or ""
+        assert got.startswith("core.camera.shot.wide")
+        assert not got.startswith("core.camera.focus.wide_angle")
+
+    def test_slow_motion_phrase_credits_tempo(self):
+        assert (_best_block_id("Everything drops into slow motion as she leaps.") or "").startswith(
+            "core.camera.tempo.slow_motion"
+        )
+
+    def test_bare_slow_stays_a_camera_move_not_tempo(self):
+        got = _best_block_id("A slow dolly push down the corridor.") or ""
+        assert got.startswith("core.camera.motion.dolly")
+        assert not got.startswith("core.camera.tempo.slow_motion")
+
+    def test_backlit_silhouette_two_leaf_tokens_credit(self):
+        # lt05: both leaf tokens present ("backlit" + "silhouette") -> not weak.
+        assert (_best_block_id("Backlit silhouette against the window.") or "").startswith(
+            "core.light.state.backlit_silhouette"
+        )
+
+    def test_rim_dramatic_two_leaf_tokens_credit(self):
+        # lt04: both leaf tokens present ("rim" + "dramatic") -> not weak.
+        assert (_best_block_id("Dramatic rim lighting from behind.") or "").startswith(
+            "core.light.state.rim_dramatic"
+        )
+
+
+class TestPrimaryDerivationAndOverride:
+    """Unit-level checks on how primary_leaf_tokens are derived/declared."""
+
+    def test_primary_derived_from_context_synonyms(self):
+        entry = _build_index_entry(
+            block={
+                "block_id": "core.light.state.backlit_silhouette",
+                "category": "light",
+                "tags": {"light_context_synonyms": ["backlit", "glow"]},
+                "block_metadata": {"op": {"op_id": "light.state.set"}},
+            },
+            pack_name="core_light",
+        )
+        # "backlit" is a leaf token AND a declared synonym -> primary;
+        # "silhouette" is a leaf token but not a synonym -> flavor.
+        assert "backlit" in entry["primary_leaf_tokens"]
+        assert "silhouette" not in entry["primary_leaf_tokens"]
+
+    def test_cue_primary_token_override_wins(self):
+        entry = _build_index_entry(
+            block={
+                "block_id": "core.demo.foo.alpha_beta",
+                "category": "demo",
+                "tags": {},
+                "projection_hints": {"primary_token": "beta"},
+                "block_metadata": {"op": {"op_id": "demo.foo.set"}},
+            },
+            pack_name="demo",
+        )
+        assert entry["primary_leaf_tokens"] == frozenset({"beta"})
+
+    def test_require_phrase_flag_propagates(self):
+        entry = _build_index_entry(
+            block={
+                "block_id": "core.demo.foo.alpha_beta",
+                "category": "demo",
+                "tags": {},
+                "projection_hints": {"require_phrase": True},
+                "block_metadata": {"op": {"op_id": "demo.foo.set"}},
+            },
+            pack_name="demo",
+        )
+        assert entry["require_phrase"] is True
+
+    def test_primary_token_survives_keyword_rescue(self):
+        # A compound whose ONLY overlap is its primary token, arriving solely as
+        # a matched keyword (no co-leaf token), must still score — this is the
+        # path that keeps a "backlit"-style primary alive after the rescue close.
+        entry = _build_index_entry(
+            block={
+                "block_id": "core.light.state.backlit_silhouette",
+                "category": "light",
+                "tags": {"light_context_synonyms": ["backlit"]},
+                "block_metadata": {"op": {"op_id": "light.state.set"}},
+            },
+            pack_name="core_light",
+        )
+        evidence = _extract_candidate_evidence(
+            {"text": "the", "role": None, "matched_keywords": ["backlit"]}
+        )
+        assert _score_entry(evidence=evidence, entry=entry) is not None
+
+    def test_flavor_keyword_cannot_rescue_weak_compound(self):
+        # The mirror case: a bare flavor leaf token ("wide") arriving as a
+        # keyword must NOT rescue the weak compound — this is the leak that used
+        # to let "wide" resurrect the wide_angle lens.
+        entry = _build_index_entry(
+            block={
+                "block_id": "core.camera.focus.wide_angle",
+                "category": "camera",
+                "tags": {},
+                "block_metadata": {"op": {"op_id": "camera.focus.set"}},
+            },
+            pack_name="core_focus",
+        )
+        evidence = _extract_candidate_evidence(
+            {"text": "the", "role": None, "matched_keywords": ["wide"]}
+        )
+        assert _score_entry(evidence=evidence, entry=entry) is None

@@ -64,7 +64,7 @@ import "list"
 #TimeOfDayValues: ["dawn", "morning", "midday", "golden_hour", "dusk", "night", "blue_hour"]
 #WeatherValues: ["sunny", "overcast", "rain", "snow", "fog", "storm", "wind"]
 #CompositionValues: ["centered", "rule_of_thirds", "symmetrical", "off_center", "leading_lines", "negative_space"]
-#FocalLengthValues: ["normal", "telephoto", "macro", "fisheye", "anamorphic"]
+#FocalLengthValues: ["normal", "wide_angle", "telephoto", "macro", "fisheye", "anamorphic"]
 #TempoValues: ["real_time", "slow_motion", "time_lapse", "speed_ramp", "freeze_frame", "bullet_time"]
 #HandsGestureValues: ["neutral", "open", "fist", "point", "reach", "hold_object"]
 #LevelValues: ["low", "medium", "high"]

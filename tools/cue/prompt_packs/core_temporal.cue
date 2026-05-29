@@ -44,15 +44,20 @@ pack: #PromptBlockPackV1 & {
 						tempo: "real_time"
 					}
 				}
-				// Time-remap / playback-rate primitives (video only). Canonical
-				// tokens are all distinctive (time_lapse/speed_ramp/freeze_frame/
-				// bullet_time). `real_time` stays the default enum value but has
-				// no variant (it's the null effect). `slow_motion` is kept in the
-				// enum but has NO variant yet: its generic "slow" token leaks via
-				// leaf + op-arg + synonyms + keyword-rescue and OUT-scores the
-				// correct camera move on "slow dolly" — deferred to the
-				// compound-gate primary-vs-flavor checkpoint (with wide_angle).
+				// Time-remap / playback-rate primitives (video only). Most tokens
+				// are distinctive (time_lapse/speed_ramp/freeze_frame/bullet_time).
+				// `real_time` stays the default enum value but has no variant (the
+				// null effect). `slow_motion`'s generic "slow" token used to leak
+				// via leaf + op-arg + keyword-rescue and out-score camera moves on
+				// "slow dolly"; the compound primary-vs-flavor gate in
+				// primitive_projection.py now requires the "slow motion" phrase (or
+				// both leaf tokens), so a bare "slow" no longer credits it.
 				variants: [
+					{
+						key: "slow_motion"
+						op_args: tempo: "slow_motion"
+						tags: tempo_synonyms: ["slow motion", "slow-mo", "slowmo"]
+					},
 					{
 						key: "time_lapse"
 						op_args: tempo: "time_lapse"

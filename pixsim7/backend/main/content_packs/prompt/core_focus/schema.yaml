@@ -51,6 +51,7 @@ blocks:
             type: enum
             enum:
               - normal
+              - wide_angle
               - telephoto
               - macro
               - fisheye
@@ -96,6 +97,17 @@ blocks:
             focus_target: target
             depth_of_field: shallow
             rack: true
+        - key: wide_angle
+          tags:
+            focal_synonyms:
+              - wide-angle lens
+              - wide angle
+              - ultra-wide angle
+          op_args:
+            focus_target: subject
+            depth_of_field: deep
+            rack: false
+            focal_length: wide_angle
         - key: telephoto
           tags:
             focal_synonyms:

@@ -129,10 +129,22 @@ pack: #PromptBlockPackV1 & {
 						}
 					},
 					// Lens / focal-length variants (optics intent, folded into
-					// the camera.focus op rather than a separate pack). Canonical
-					// tokens are all distinctive (telephoto/macro/fisheye/
-					// anamorphic) — no collision-prone "wide" member, which would
-					// false-match a wide SHOT (that stays core_shot's job).
+					// the camera.focus op rather than a separate pack). Most tokens
+					// are distinctive (telephoto/macro/fisheye/anamorphic). The
+					// collision-prone "wide_angle" member is gated by the compound
+					// primary-vs-flavor rule in primitive_projection.py: a bare
+					// "wide" stays a wide SHOT (core_shot's job), while the
+					// "wide angle" phrase / "wide-angle lens" credits this lens.
+					{
+						key: "wide_angle"
+						op_args: {
+							focus_target:   "subject"
+							depth_of_field: "deep"
+							rack:           false
+							focal_length:   "wide_angle"
+						}
+						tags: focal_synonyms: ["wide-angle lens", "wide angle", "ultra-wide angle"]
+					},
 					{
 						key: "telephoto"
 						op_args: {

@@ -39,6 +39,14 @@ blocks:
         default_args:
           tempo: real_time
       variants:
+        - key: slow_motion
+          tags:
+            tempo_synonyms:
+              - slow motion
+              - slow-mo
+              - slowmo
+          op_args:
+            tempo: slow_motion
         - key: time_lapse
           tags:
             tempo_synonyms:

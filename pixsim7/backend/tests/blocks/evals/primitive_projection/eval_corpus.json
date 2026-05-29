@@ -2,7 +2,7 @@
   "_meta": {
     "description": "Prompt corpus for primitive_projection shadow-mode evaluation",
     "version": "1.0.0",
-    "total_entries": 281,
+    "total_entries": 286,
     "categories": {
       "camera_motion": "Prompts describing camera movement (dolly, pan, zoom, orbit, etc.)",
       "camera_framing": "Prompts describing shots, angles, POV, focus",
@@ -313,10 +313,14 @@
     {"id": "le02", "text": "A macro lens capturing tiny dewdrops.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.macro", "expected_category": "camera", "notes": "Macro lens"},
     {"id": "le03", "text": "Distorted fisheye view of the skate park.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.fisheye", "expected_category": "camera", "notes": "Fisheye lens"},
     {"id": "le04", "text": "Anamorphic lens with horizontal flares.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.anamorphic", "expected_category": "camera", "notes": "Anamorphic lens"},
+    {"id": "le05", "text": "Shot with a wide-angle lens for the cramped interior.", "category": "camera_framing", "expected_block_prefix": "core.camera.focus.wide_angle", "expected_category": "camera", "notes": "Wide-angle lens (optics on camera.focus); phrase credits focal length"},
+    {"id": "le06", "text": "A wide single shot of the empty room.", "category": "camera_framing", "expected_block_prefix": "core.camera.shot.wide", "expected_category": "camera", "notes": "Collision guard: bare 'wide' stays a wide SHOT, not the wide_angle lens"},
 
     {"id": "tm01", "text": "A time-lapse of clouds racing overhead.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.time_lapse", "expected_category": "camera", "notes": "Time-lapse"},
     {"id": "tm02", "text": "A speed ramp on the action jump.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.speed_ramp", "expected_category": "camera", "notes": "Speed ramp"},
     {"id": "tm03", "text": "A freeze frame on her mid-air pose.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.freeze_frame", "expected_category": "camera", "notes": "Freeze frame"},
-    {"id": "tm04", "text": "Bullet time orbit around the frozen fighter.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.bullet_time", "expected_category": "camera", "notes": "Bullet time"}
+    {"id": "tm04", "text": "Bullet time orbit around the frozen fighter.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.bullet_time", "expected_category": "camera", "notes": "Bullet time"},
+    {"id": "tm05", "text": "Everything drops into slow motion as she leaps.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.slow_motion", "expected_category": "camera", "notes": "Slow motion phrase credits tempo"},
+    {"id": "tm06", "text": "A slow dolly push down the corridor.", "category": "camera_motion", "expected_block_prefix": "core.camera.motion.dolly", "expected_category": "camera", "notes": "Collision guard: bare 'slow' stays a camera move, not slow_motion tempo"}
   ]
 }
