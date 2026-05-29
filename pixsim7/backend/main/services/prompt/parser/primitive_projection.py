@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Sequence, Tuple
 
 from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
@@ -737,11 +738,60 @@ def _annotate_family_variant_tokens(entries: List[Dict[str, Any]]) -> None:
             entry["family_distinguishing_tokens"] = family_distinguishing
 
 
+# Foundation primitives (content_packs/primitives/*_foundation) live in a
+# sibling directory of the prompt packs. They are op-less (text + tags only)
+# and are read here directly from their YAML so projection can surface
+# style/genre/mood/creature primitives from prose. We deliberately read the
+# files (not the block_primitives DB) to mirror how the prompt index is built
+# and to keep this lru_cache builder synchronous + DB-free.
+_FOUNDATION_PRIMITIVES_DIRNAME = "primitives"
+
+
+def _discover_foundation_packs() -> List[Tuple[str, Path]]:
+    """Discover non-hidden foundation pack dirs under content_packs/primitives."""
+    primitives_root = CONTENT_PACKS_DIR.parent / _FOUNDATION_PRIMITIVES_DIRNAME
+    if not primitives_root.exists():
+        return []
+    packs: List[Tuple[str, Path]] = []
+    for entry in sorted(primitives_root.iterdir()):
+        if not entry.is_dir() or entry.name.startswith((".", "_")):
+            continue
+        packs.append((entry.name, entry))
+    return packs
+
+
+def _read_foundation_blocks(pack_dir: Path) -> List[Dict[str, Any]]:
+    """Read raw block dicts from a foundation pack's blocks.yaml / blocks/*.yaml."""
+    import yaml
+
+    sources: List[Path] = []
+    single = pack_dir / "blocks.yaml"
+    if single.exists():
+        sources.append(single)
+    blocks_dir = pack_dir / "blocks"
+    if blocks_dir.is_dir():
+        sources.extend(sorted(blocks_dir.glob("*.yaml")))
+        sources.extend(sorted(blocks_dir.glob("*.yml")))
+
+    blocks: List[Dict[str, Any]] = []
+    for source in sources:
+        try:
+            data = yaml.safe_load(source.read_text(encoding="utf-8")) or {}
+        except Exception:
+            logger.exception("Failed reading foundation pack file %s", source)
+            continue
+        for block in data.get("blocks") or []:
+            if isinstance(block, dict) and block.get("block_id"):
+                blocks.append(block)
+    return blocks
+
+
 @lru_cache(maxsize=1)
 def _get_primitive_index() -> Tuple[Dict[str, Any], ...]:
-    """Build and cache primitive index from prompt content packs."""
+    """Build and cache primitive index from prompt content packs + foundation packs."""
     entries: List[Dict[str, Any]] = []
-    for pack_name in discover_content_packs():
+    prompt_pack_names = set(discover_content_packs())
+    for pack_name in prompt_pack_names:
         content_dir = CONTENT_PACKS_DIR / pack_name
         try:
             blocks = parse_blocks(content_dir)
@@ -763,6 +813,18 @@ def _get_primitive_index() -> Tuple[Dict[str, Any], ...]:
             entry = _build_index_entry(block=block, pack_name=pack_name)
             if entry:
                 entries.append(entry)
+
+    # Foundation primitives (style/genre_tone/creature/...): op-less text blocks.
+    # Skip any pack already covered by the prompt index (e.g. a demo pack that
+    # ships in both prompt/ and primitives/) to avoid duplicate block_ids.
+    for pack_name, pack_dir in _discover_foundation_packs():
+        if pack_name in prompt_pack_names:
+            continue
+        for block in _read_foundation_blocks(pack_dir):
+            entry = _build_index_entry(block=block, pack_name=pack_name)
+            if entry:
+                entries.append(entry)
+
     _annotate_category_distinguishing_tokens(entries)
     _annotate_family_variant_tokens(entries)
     return tuple(entries)

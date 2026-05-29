@@ -1931,3 +1931,55 @@ class TestPrimaryDerivationAndOverride:
             {"text": "the", "role": None, "matched_keywords": ["wide"]}
         )
         assert _score_entry(evidence=evidence, entry=entry) is None
+
+
+# ---------------------------------------------------------------------------
+# Foundation-pack projection (checkpoint: foundation-layer-projection-wiring)
+# ---------------------------------------------------------------------------
+
+from pixsim7.backend.main.services.prompt.parser.primitive_projection import (
+    _get_primitive_index,
+    _discover_foundation_packs,
+)
+
+
+class TestFoundationProjection:
+    """Op-less foundation primitives (style/genre/creature) are read from
+    content_packs/primitives and surfaced by projection."""
+
+    def setup_method(self):
+        refresh_primitive_projection_cache()
+
+    def teardown_method(self):
+        refresh_primitive_projection_cache()
+
+    def test_foundation_blocks_in_live_index(self):
+        ids = {e["block_id"] for e in _get_primitive_index()}
+        assert any(i.startswith("style.") for i in ids)
+        assert any(i.startswith("anatomy.") for i in ids)
+
+    def test_foundation_entries_are_op_less(self):
+        for e in _get_primitive_index():
+            if e["block_id"].startswith(("style.", "genre.", "anatomy.")):
+                assert e.get("op_id") is None
+
+    def test_demo_pack_not_double_indexed(self):
+        # bananza_boat_demo ships in both prompt/ and primitives/; the primitives
+        # copy must be skipped so block_ids are not duplicated in the index.
+        index = _get_primitive_index()
+        ids = [e["block_id"] for e in index]
+        assert len(ids) == len(set(ids)), "duplicate block_id in projection index"
+
+    def test_style_prose_surfaces_style_primitive(self):
+        assert (_best_block_id("Steampunk aesthetic with brass machinery and Victorian gears.") or "").startswith(
+            "style.aesthetic.steampunk"
+        )
+
+    def test_creature_prose_surfaces_anatomy_primitive(self):
+        assert (_best_block_id("An octopus walking upright on two rear tentacles.") or "").startswith(
+            "anatomy.cephalopod_bipedal"
+        )
+
+    def test_social_prose_does_not_surface_foundation(self):
+        got = _best_block_id("Two friends share coffee at the corner cafe.") or ""
+        assert not got.startswith(("style.", "genre.", "anatomy."))

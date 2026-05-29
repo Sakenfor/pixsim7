@@ -2,7 +2,7 @@
   "_meta": {
     "description": "Prompt corpus for primitive_projection shadow-mode evaluation",
     "version": "1.0.0",
-    "total_entries": 286,
+    "total_entries": 297,
     "categories": {
       "camera_motion": "Prompts describing camera movement (dolly, pan, zoom, orbit, etc.)",
       "camera_framing": "Prompts describing shots, angles, POV, focus",
@@ -321,6 +321,18 @@
     {"id": "tm03", "text": "A freeze frame on her mid-air pose.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.freeze_frame", "expected_category": "camera", "notes": "Freeze frame"},
     {"id": "tm04", "text": "Bullet time orbit around the frozen fighter.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.bullet_time", "expected_category": "camera", "notes": "Bullet time"},
     {"id": "tm05", "text": "Everything drops into slow motion as she leaps.", "category": "temporal", "expected_block_prefix": "core.camera.tempo.slow_motion", "expected_category": "camera", "notes": "Slow motion phrase credits tempo"},
-    {"id": "tm06", "text": "A slow dolly push down the corridor.", "category": "camera_motion", "expected_block_prefix": "core.camera.motion.dolly", "expected_category": "camera", "notes": "Collision guard: bare 'slow' stays a camera move, not slow_motion tempo"}
+    {"id": "tm06", "text": "A slow dolly push down the corridor.", "category": "camera_motion", "expected_block_prefix": "core.camera.motion.dolly", "expected_category": "camera", "notes": "Collision guard: bare 'slow' stays a camera move, not slow_motion tempo"},
+
+    {"id": "fd01", "text": "Steampunk aesthetic with brass machinery and Victorian gears.", "category": "style", "expected_block_prefix": "style.aesthetic.steampunk", "expected_category": "aesthetic_preset", "notes": "Foundation: steampunk style"},
+    {"id": "fd02", "text": "Art deco geometric symmetry and metallic ornament.", "category": "style", "expected_block_prefix": "style.aesthetic.art_deco", "expected_category": "aesthetic_preset", "notes": "Foundation: art deco style"},
+    {"id": "fd03", "text": "Gothic noir with dramatic shadow architecture and dark materials.", "category": "style", "expected_block_prefix": "style.aesthetic.gothic_noir", "expected_category": "aesthetic_preset", "notes": "Foundation: gothic noir style"},
+    {"id": "fd04", "text": "Rendered as a soft watercolor wash with pigment bleeding.", "category": "style", "expected_block_prefix": "style.rendering.watercolor_wash", "expected_category": "rendering_technique", "notes": "Foundation: watercolor rendering"},
+    {"id": "fd05", "text": "Cel-shaded flat color with clean contour lines.", "category": "style", "expected_block_prefix": "style.rendering.cel_shaded_flat", "expected_category": "rendering_technique", "notes": "Foundation: cel-shaded rendering"},
+    {"id": "fd06", "text": "Thick oil impasto with directional paint strokes.", "category": "style", "expected_block_prefix": "style.rendering.oil_impasto", "expected_category": "rendering_technique", "notes": "Foundation: oil impasto rendering"},
+    {"id": "fd07", "text": "Chibi proportions with compact limbs and an oversized head.", "category": "style", "expected_block_prefix": "style.form.chibi_proportions", "expected_category": "form_language", "notes": "Foundation: chibi form"},
+    {"id": "fd08", "text": "Slapstick comedic flirtation with mischievous teasing.", "category": "genre", "expected_block_prefix": "genre.comedy.mood.slapstick_flirt", "expected_category": "mood", "notes": "Foundation: slapstick comedy mood"},
+    {"id": "fd09", "text": "An octopus walking upright on two rear tentacles.", "category": "creature", "expected_block_prefix": "anatomy.cephalopod_bipedal", "expected_category": "anatomy", "notes": "Foundation: bipedal cephalopod anatomy"},
+    {"id": "fd10", "text": "Cuttlefish chromatophore skin shifting color patterns.", "category": "creature", "expected_block_prefix": "anatomy.chromatophore_display_controlled", "expected_category": "anatomy", "notes": "Foundation: chromatophore display anatomy"},
+    {"id": "fd11", "text": "Two friends share coffee at the corner cafe.", "category": "unrelated", "expected_block_prefix": null, "expected_category": null, "notes": "Foundation negative: social prose must not match style/genre/creature"}
   ]
 }
