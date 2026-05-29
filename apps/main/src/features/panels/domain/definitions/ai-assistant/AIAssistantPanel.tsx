@@ -73,6 +73,7 @@ import { clearLastError } from './chatTabsPoll';
 import { ContextBar } from './ContextBar';
 import { EngineProfileIcon, resolveProfileIcon, engineFromProfile } from './EngineProfileIcon';
 import { SessionItem } from './SessionItem';
+import { SessionManagedProcesses } from './SessionManagedProcesses';
 import {
   dismissFailedCreate,
   retryFailedCreate,
@@ -911,6 +912,9 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           onRetry={responseLost ? retryLast : undefined}
         />
 
+        {/* Live list of subagents / background tasks the agent launched this turn */}
+        <SessionManagedProcesses processes={bridgeReq?.managedProcesses} active={sending} />
+
         {/* Textarea — above the toolbar for more space */}
         <div className="group/input mb-1.5">
           <div className="flex gap-1.5 items-end">
@@ -1531,7 +1535,7 @@ export function AIAssistantPanel() {
 
           {/* Sidebar footer: actions + status */}
           <div className="shrink-0 border-t border-th px-2 py-1.5 flex items-center gap-1.5">
-            <button onClick={() => createTab()} className="text-th-muted hover:text-th" title="New chat">
+            <button onClick={() => createTab()} className="tap-target text-th-muted hover:text-th" title="New chat">
               <Icon name="plus" size={13} />
             </button>
             <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label, resumeProfileId, lastPlanId) => {

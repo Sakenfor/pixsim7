@@ -777,6 +777,10 @@ class AgentCmdSession:
         # for the whole turn is capped here at `timeout`, in every regime; the
         # reasoning `idle_gap` just trips sooner when no tool is outstanding.
         turn_started = self._busy_started_at or datetime.now(timezone.utc)
+        # Managed-process tracking for this turn: short tool_use id -> kind
+        # ("subagent" | "background_task"). Feeds the panel's per-session
+        # "managed processes" list via typed `managed_proc_*` heartbeats.
+        managed_started: dict[str, str] = {}
         try:
             while True:
                 while True:
@@ -1035,6 +1039,38 @@ class AgentCmdSession:
                         # the inactivity timeout extends until its result lands.
                         tool_inflight = True
 
+                    # ── Managed-process detection (subagents / background tasks) ──
+                    # Scan ALL content blocks, not just block 0, so a tool_use
+                    # preceded by text/thinking in the same assistant message is
+                    # still caught. Emits a typed heartbeat the panel folds into a
+                    # per-session "managed processes" list. Claude assistant events
+                    # only (Codex tool-call shape differs); no-op when _content empty.
+                    if on_progress and isinstance(_content, list):
+                        for _blk in _content:
+                            if not isinstance(_blk, dict) or _blk.get("type") != "tool_use":
+                                continue
+                            _name = _blk.get("name", "")
+                            _inp = _blk.get("input") if isinstance(_blk.get("input"), dict) else {}
+                            if _name in ("Task", "Agent"):
+                                _kind = "subagent"
+                            elif _name == "Bash" and _inp.get("run_in_background"):
+                                _kind = "background_task"
+                            else:
+                                continue
+                            _tuid = str(_blk.get("id") or "")[:8]
+                            if not _tuid or _tuid in managed_started:
+                                continue
+                            managed_started[_tuid] = _kind
+                            if _kind == "subagent":
+                                _label = str(_inp.get("description") or _inp.get("subagent_type") or "subagent")
+                            else:
+                                _label = str(_inp.get("command") or "background task")
+                            _label = _label.replace("\t", " ").replace("\n", " ").strip()[:80]
+                            try:
+                                on_progress("managed_proc_started", f"{_kind}\t{_tuid}\t{_label}")
+                            except Exception:
+                                self._log.debug("managed_proc_emit_failed", exc_info=True)
+
                     # ── Tool gate: pause stdout reader until user approves ──
                     if tool_gate and _block_type == "tool_use" and isinstance(_first_block, dict):
                         gate_name = _first_block.get("name", "")
@@ -1060,6 +1096,26 @@ class AgentCmdSession:
                 else:
                     # "other" events — still capture usage/context info
                     self._capture_usage(parsed.raw or {})
+                    # Managed-process completion: a tool_result (Claude emits
+                    # these as type="user" events, which fall through to here)
+                    # carrying a tracked tool_use_id ends a SUBAGENT. Background
+                    # tasks ack their tool_result immediately while still running,
+                    # so they are NOT closed here — they clear at turn end.
+                    if on_progress and managed_started:
+                        _raw = parsed.raw or {}
+                        if _raw.get("type") == "user":
+                            _uc = _raw.get("message", {}).get("content", [])
+                            if isinstance(_uc, list):
+                                for _b in _uc:
+                                    if not isinstance(_b, dict) or _b.get("type") != "tool_result":
+                                        continue
+                                    _rid = str(_b.get("tool_use_id") or "")[:8]
+                                    if managed_started.get(_rid) == "subagent":
+                                        managed_started.pop(_rid, None)
+                                        try:
+                                            on_progress("managed_proc_done", _rid)
+                                        except Exception:
+                                            self._log.debug("managed_proc_done_emit_failed", exc_info=True)
 
         except asyncio.TimeoutError:
             self.stats.errors += 1

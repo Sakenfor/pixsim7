@@ -592,3 +592,119 @@ class TestStuckBusyWatchdogGate:
         assert r_inflight is False, "watchdog must not restart a session with an in-flight turn"
         assert r_orphan is True, "watchdog must recover an orphaned BUSY session"
         assert len(restarts) == 1, "exactly one restart — only the orphan case"
+
+
+class TestManagedProcessDetection:
+    """The session surfaces agent-managed sub-processes (subagents via the
+    Task/Agent tool, background `Bash run_in_background`) as typed
+    `managed_proc_started` / `managed_proc_done` heartbeats so the AI Assistant
+    panel can show a per-session list. Detection scans ALL content blocks (not
+    just block 0), so a tool_use preceded by text/thinking is still caught.
+    See session.py send_message.
+    """
+
+    @staticmethod
+    def _assistant(blocks):
+        return {"type": "assistant", "message": {"content": blocks}}
+
+    @staticmethod
+    def _tool_result(tuid):
+        return {"type": "user", "message": {"role": "user",
+                "content": [{"type": "tool_result", "tool_use_id": tuid, "content": "ok"}]}}
+
+    def test_subagent_after_text_block_emits_started_then_done(self):
+        async def _run():
+            s = AgentCmdSession("test-session", command="claude")
+            s._process = _FakeProc()
+            progress: list[tuple[str, str]] = []
+
+            def on_progress(evt: str, detail: str) -> None:
+                progress.append((evt, detail))
+
+            async def feed():
+                await asyncio.sleep(0.05)
+                # tool_use is block[1], after a text block — the old block-0-only
+                # scan would have missed it.
+                await s._response_queue.put(self._assistant([
+                    {"type": "text", "text": "Let me delegate this"},
+                    {"type": "tool_use", "id": "toolu_ABC12345xyz", "name": "Task",
+                     "input": {"description": "reviewing primitives", "subagent_type": "Explore"}},
+                ]))
+                await asyncio.sleep(0.05)
+                await s._response_queue.put(self._tool_result("toolu_ABC12345xyz"))
+                await asyncio.sleep(0.05)
+                await s._response_queue.put({"type": "result", "result": "done"})
+
+            feeder = asyncio.create_task(feed())
+            result = await s.send_message("go", timeout=10, on_progress=on_progress)
+            await feeder
+            return result, progress
+
+        result, progress = asyncio.run(_run())
+        assert result == "done"
+        started = [d for e, d in progress if e == "managed_proc_started"]
+        done = [d for e, d in progress if e == "managed_proc_done"]
+        # short_id = first 8 chars of the tool_use id
+        assert any(d.startswith("subagent\ttoolu_AB\t") and "reviewing primitives" in d for d in started), started
+        assert done == ["toolu_AB"], done
+
+    def test_background_bash_started_and_not_closed_by_launch_ack(self):
+        async def _run():
+            s = AgentCmdSession("test-session", command="claude")
+            s._process = _FakeProc()
+            progress: list[tuple[str, str]] = []
+
+            def on_progress(evt: str, detail: str) -> None:
+                progress.append((evt, detail))
+
+            async def feed():
+                await asyncio.sleep(0.05)
+                await s._response_queue.put(self._assistant([
+                    {"type": "tool_use", "id": "toolu_BG999999", "name": "Bash",
+                     "input": {"command": "pytest -q", "run_in_background": True}},
+                ]))
+                await asyncio.sleep(0.05)
+                # background bash acks its tool_result immediately while still
+                # running — must NOT be marked done here.
+                await s._response_queue.put(self._tool_result("toolu_BG999999"))
+                await asyncio.sleep(0.05)
+                await s._response_queue.put({"type": "result", "result": "done"})
+
+            feeder = asyncio.create_task(feed())
+            result = await s.send_message("go", timeout=10, on_progress=on_progress)
+            await feeder
+            return result, progress
+
+        result, progress = asyncio.run(_run())
+        assert result == "done"
+        started = [d for e, d in progress if e == "managed_proc_started"]
+        done = [d for e, d in progress if e == "managed_proc_done"]
+        assert any(d.startswith("background_task\ttoolu_BG\t") and "pytest -q" in d for d in started), started
+        assert done == [], f"background task must not be closed by its launch ack: {done}"
+
+    def test_plain_bash_is_not_a_managed_process(self):
+        async def _run():
+            s = AgentCmdSession("test-session", command="claude")
+            s._process = _FakeProc()
+            progress: list[tuple[str, str]] = []
+
+            def on_progress(evt: str, detail: str) -> None:
+                progress.append((evt, detail))
+
+            async def feed():
+                await asyncio.sleep(0.05)
+                await s._response_queue.put(self._assistant([
+                    {"type": "tool_use", "id": "toolu_PLAIN1", "name": "Bash",
+                     "input": {"command": "ls"}},
+                ]))
+                await asyncio.sleep(0.05)
+                await s._response_queue.put({"type": "result", "result": "done"})
+
+            feeder = asyncio.create_task(feed())
+            result = await s.send_message("go", timeout=10, on_progress=on_progress)
+            await feeder
+            return result, progress
+
+        result, progress = asyncio.run(_run())
+        assert result == "done"
+        assert not [e for e, _ in progress if e.startswith("managed_proc")], progress

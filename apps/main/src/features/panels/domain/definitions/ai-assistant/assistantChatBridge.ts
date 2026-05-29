@@ -42,6 +42,19 @@ export interface ConfirmationRequest {
   placeholder?: string;
 }
 
+/**
+ * A sub-process the agent launched and is managing during a turn — a subagent
+ * (Task/Agent tool) or a background shell task (Bash run_in_background). Folded
+ * from `managed_proc_*` heartbeats; keyed by the short tool_use id.
+ */
+export interface ManagedProcess {
+  id: string;
+  kind: 'subagent' | 'background_task';
+  label: string;
+  status: 'running' | 'done';
+  startedAt: number;
+}
+
 export interface BridgeRequest {
   tabId: string;
   status: 'pending' | 'streaming' | 'completed' | 'error';
@@ -66,6 +79,12 @@ export interface BridgeRequest {
   _consumed?: boolean;
   /** Non-null when the agent is blocked waiting for user approval */
   pendingConfirmation?: ConfirmationRequest | null;
+  /**
+   * Live "managed processes" the agent launched this turn — subagents and
+   * background shell tasks — folded from `managed_proc_*` heartbeats. Keyed by
+   * short tool_use id. Per-turn scope: the panel shows it while the turn runs.
+   */
+  managedProcesses?: Record<string, ManagedProcess>;
 }
 
 export interface ResumeFailure {
@@ -149,6 +168,30 @@ function appendHeartbeat(log: ThinkingEntry[], action: string, detail: string): 
   } else if (text.length > lastText.length) {
     last.detail = detail;
     last.action = action;
+  }
+}
+
+// ── Managed-process fold ──
+// Turns the bridge's typed `managed_proc_*` heartbeats into a per-request map
+// the panel renders as a live "managed processes" list.
+//   started detail: "<kind>\t<shortId>\t<label>"   done detail: "<shortId>"
+function applyManagedProc(request: BridgeRequest, action: string, detail: string): void {
+  if (action === 'managed_proc_started') {
+    const [kind, id, ...rest] = detail.split('\t');
+    if (!id || (kind !== 'subagent' && kind !== 'background_task')) return;
+    if (!request.managedProcesses) request.managedProcesses = {};
+    if (request.managedProcesses[id]) return; // already tracked
+    request.managedProcesses[id] = {
+      id,
+      kind,
+      label: rest.join(' ').trim() || kind,
+      status: 'running',
+      startedAt: Date.now(),
+    };
+  } else if (action === 'managed_proc_done') {
+    const id = detail.trim();
+    const proc = request.managedProcesses?.[id];
+    if (proc) proc.status = 'done';
   }
 }
 
@@ -561,6 +604,14 @@ class AssistantChatBridge {
         this._notify();
         return;
       }
+      // Managed-process lifecycle — fold into the per-session list rather than
+      // the generic thinking log (so it doesn't double-show as a thinking line).
+      if (action === 'managed_proc_started' || action === 'managed_proc_done') {
+        request.status = 'streaming';
+        applyManagedProc(request, action, detail);
+        this._notify();
+        return;
+      }
       request.status = 'streaming';
       request.activity = detail || (action && action !== 'thinking' && action !== 'active' ? action : null) || 'Working...';
       appendHeartbeat(request.thinkingLog, action, detail);
@@ -754,6 +805,12 @@ class AssistantChatBridge {
             const action = (event.action as string) || '';
             const detail = (event.detail as string) || '';
             request._lastActivity = Date.now();
+            if (action === 'managed_proc_started' || action === 'managed_proc_done') {
+              request.status = 'streaming';
+              applyManagedProc(request, action, detail);
+              this._notify();
+              continue;
+            }
             request.activity = detail || (action && action !== 'thinking' && action !== 'active' ? action : null) || 'Working...';
             appendHeartbeat(request.thinkingLog, action, detail);
             this._notify();
