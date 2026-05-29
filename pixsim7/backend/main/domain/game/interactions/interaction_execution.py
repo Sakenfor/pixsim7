@@ -18,6 +18,7 @@ import time
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.models import GameSession, GameWorld
+from pixsim7.backend.main.services.game.inventory import InventoryService
 from .interactions import (
     InteractionDefinition,
     InteractionParticipant,
@@ -290,57 +291,16 @@ async def apply_inventory_changes(
     changes: InventoryChanges
 ) -> InventoryChangeSummary:
     """
-    Apply inventory changes to session.
+    Apply inventory changes to session via the canonical GameObject store.
 
-    Args:
-        session: Game session to update
-        changes: Inventory changes to apply
-
-    Returns:
-        Summary of changes (added/removed item IDs)
+    Backed by InventoryService -> game_object_store: adds and removes route
+    through canonical item GameObjects in flags.gameObjects, with the temporary
+    flags.inventory mirror kept in sync by the store. Returns the same summary
+    shape as before (lists of added/removed item ids, or None when empty).
     """
-    raw_inventory = session.flags.get("inventory")
-    raw_items: List[Dict[str, Any]] = []
+    added: List[str] = []
+    removed: List[str] = []
 
-    if isinstance(raw_inventory, dict):
-        if isinstance(raw_inventory.get("items"), list):
-            raw_items = [item for item in raw_inventory["items"] if isinstance(item, dict)]
-        else:
-            # Legacy map format: {"item_id": quantity, ...}
-            for key, value in raw_inventory.items():
-                if key == "items":
-                    continue
-                if isinstance(value, (int, float)):
-                    qty = max(0, int(value))
-                    raw_items.append({
-                        "id": key,
-                        "itemId": key,
-                        "quantity": qty,
-                        "qty": qty,
-                    })
-    elif isinstance(raw_inventory, list):
-        raw_items = [item for item in raw_inventory if isinstance(item, dict)]
-
-    inventory: List[Dict[str, Any]] = []
-    for item in raw_items:
-        item_id = item.get("id") or item.get("itemId")
-        if not isinstance(item_id, str) or not item_id:
-            continue
-
-        quantity_raw = item.get("quantity", item.get("qty", 1))
-        quantity = int(quantity_raw) if isinstance(quantity_raw, (int, float)) else 1
-        quantity = max(0, quantity)
-
-        normalized = dict(item)
-        normalized["id"] = item_id
-        normalized["itemId"] = item_id
-        normalized["quantity"] = quantity
-        normalized["qty"] = quantity
-        inventory.append(normalized)
-    added = []
-    removed = []
-
-    # Add items
     if changes.add:
         for change in changes.add:
             item_id = change.item_id
@@ -348,35 +308,21 @@ async def apply_inventory_changes(
             if quantity <= 0:
                 continue
 
-            # Find existing item
-            existing = next(
-                (
-                    item for item in inventory
-                    if item.get("itemId") == item_id or item.get("id") == item_id
-                ),
-                None
+            # Tag only first-time acquisitions with acquiredAt (parity with prior behavior).
+            existing = InventoryService.get_item(
+                session.flags, item_id, world_id=session.world_id
             )
+            metadata = None if existing else {"acquiredAt": int(time.time())}
 
-            if existing:
-                current_qty_raw = existing.get("quantity", existing.get("qty", 1))
-                current_qty = int(current_qty_raw) if isinstance(current_qty_raw, (int, float)) else 1
-                new_qty = max(0, current_qty + quantity)
-                existing["quantity"] = new_qty
-                existing["qty"] = new_qty
-                existing["itemId"] = item_id
-                existing["id"] = item_id
-            else:
-                inventory.append({
-                    "id": item_id,
-                    "itemId": item_id,
-                    "quantity": quantity,
-                    "qty": quantity,
-                    "acquiredAt": int(time.time())
-                })
-
+            InventoryService.add_item(
+                session.flags,
+                item_id,
+                quantity=quantity,
+                metadata=metadata,
+                world_id=session.world_id,
+            )
             added.append(item_id)
 
-    # Remove items
     if changes.remove:
         for change in changes.remove:
             item_id = change.item_id
@@ -384,36 +330,21 @@ async def apply_inventory_changes(
             if quantity <= 0:
                 continue
 
-            # Find existing item
-            existing = next(
-                (
-                    item for item in inventory
-                    if item.get("itemId") == item_id or item.get("id") == item_id
-                ),
-                None
-            )
-
-            if existing:
-                current_qty_raw = existing.get("quantity", existing.get("qty", 1))
-                current_qty = int(current_qty_raw) if isinstance(current_qty_raw, (int, float)) else 1
-                new_qty = current_qty - quantity
-
-                if new_qty <= 0:
-                    inventory.remove(existing)
-                else:
-                    existing["quantity"] = new_qty
-                    existing["qty"] = new_qty
-                    existing["itemId"] = item_id
-                    existing["id"] = item_id
-
+            try:
+                InventoryService.remove_item(
+                    session.flags,
+                    item_id,
+                    quantity=quantity,
+                    world_id=session.world_id,
+                )
                 removed.append(item_id)
-
-    # Canonical write shape
-    session.flags["inventory"] = {"items": inventory}
+            except ValueError:
+                # Silent skip when the item is absent (parity with prior behavior).
+                pass
 
     return InventoryChangeSummary(
         added=added if added else None,
-        removed=removed if removed else None
+        removed=removed if removed else None,
     )
 
 

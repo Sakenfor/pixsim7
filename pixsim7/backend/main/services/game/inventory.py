@@ -1,25 +1,46 @@
 """
-Inventory service for managing player inventory and items.
+Inventory service backed by the canonical GameObject store.
 
-Compatibility:
-- Canonical shape: flags["inventory"]["items"] = [{id, name, quantity, metadata}, ...]
-- Legacy accepted:
-  - flags["inventory"] = [{itemId|id, quantity|qty, ...}, ...]
-  - flags["inventory"] = {"item_id": quantity, ...}
+Reads project item-kind GameObjects from ``session.flags["gameObjects"]``
+(legacy ``flags.inventory`` is transparently hydrated). Writes go through
+``upsert_session_game_objects`` / ``remove_session_game_objects`` on the store,
+which keeps the TEMPORARY ``flags.inventory.items`` mirror in sync until the
+cutover removes it on both sides
+(plan ``backend-canonical-gameobject-adoption`` checkpoint
+``cutover-drop-legacy``).
 
-Writes are normalized back to canonical shape.
+REST contract preserved: methods accept the same ``session_flags`` dict and
+return the same ``InventoryItem`` shape ``{id, name, quantity, metadata}``.
+
+The optional ``world_id`` argument is forwarded to the store's transform
+fallback. Inventory items have no spatial transform of their own, so callers
+that don't have a world handy can omit it (defaults to 0).
 """
+from typing import Any, Dict, List, Optional
 
-from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
+
+from pixsim7.backend.main.services.game.game_object_store import (
+    build_inventory_item_object,
+    get_session_game_object,
+    list_session_game_objects,
+    remove_session_game_objects,
+    upsert_session_game_objects,
+)
 
 
 class InventoryItem(BaseModel):
-    """A single item in the player's inventory"""
+    """A single item in the player's inventory (REST contract)."""
+
     id: str
     name: str
     quantity: int = 1
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+# Keys reserved by the canonical itemData payload — everything else folded into
+# itemData is treated as caller metadata and round-trips through the REST view.
+_RESERVED_ITEM_DATA_KEYS = {"itemDefId", "quantity"}
 
 
 def _coerce_quantity(value: Any, default: int = 1) -> int:
@@ -30,90 +51,50 @@ def _coerce_quantity(value: Any, default: int = 1) -> int:
     return default
 
 
-def _normalize_item(raw: Any) -> Optional[Dict[str, Any]]:
-    if not isinstance(raw, dict):
-        return None
-
-    item_id_raw = raw.get("id", raw.get("itemId"))
-    if not isinstance(item_id_raw, str) or not item_id_raw.strip():
-        return None
-    item_id = item_id_raw.strip()
-
-    quantity = _coerce_quantity(raw.get("quantity", raw.get("qty")), default=1)
-    name_raw = raw.get("name")
-    name = name_raw.strip() if isinstance(name_raw, str) and name_raw.strip() else item_id
-
-    metadata_raw = raw.get("metadata")
-    metadata = metadata_raw if isinstance(metadata_raw, dict) else {}
-
-    return {
-        "id": item_id,
-        "name": name,
-        "quantity": quantity,
-        "metadata": metadata,
-    }
+def _split_item_data(item_data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not isinstance(item_data, dict):
+        return {}
+    return {k: v for k, v in item_data.items() if k not in _RESERVED_ITEM_DATA_KEYS}
 
 
-def _extract_items(session_flags: Dict[str, Any]) -> List[Dict[str, Any]]:
-    inventory = session_flags.get("inventory")
-    raw_items: List[Any] = []
-
-    if isinstance(inventory, dict):
-        if isinstance(inventory.get("items"), list):
-            raw_items = inventory["items"]
-        else:
-            # Legacy map shape: {"apple": 2, "bread": 1}
-            for key, value in inventory.items():
-                if key == "items":
-                    continue
-                if isinstance(value, (int, float)):
-                    raw_items.append({"id": key, "quantity": value})
-    elif isinstance(inventory, list):
-        raw_items = inventory
-
-    normalized: List[Dict[str, Any]] = []
-    for raw in raw_items:
-        item = _normalize_item(raw)
-        if item is not None:
-            normalized.append(item)
-    return normalized
+def _item_to_inventory_item(obj: Dict[str, Any]) -> InventoryItem:
+    item_data = obj.get("itemData") or {}
+    quantity = _coerce_quantity(item_data.get("quantity", 1), default=1)
+    metadata = _split_item_data(item_data)
+    return InventoryItem(
+        id=str(obj.get("id") or ""),
+        name=obj.get("name") or str(obj.get("id") or ""),
+        quantity=quantity,
+        metadata=metadata,
+    )
 
 
-def _write_items(session_flags: Dict[str, Any], items: List[Dict[str, Any]]) -> Dict[str, Any]:
-    # Keep compatibility aliases to avoid breaking legacy consumers.
-    canonical_items = []
-    for item in items:
-        canonical_items.append(
-            {
-                "id": item["id"],
-                "itemId": item["id"],
-                "name": item["name"],
-                "quantity": item["quantity"],
-                "qty": item["quantity"],
-                "metadata": item.get("metadata", {}),
-            }
-        )
+def _list_items(session_flags: Dict[str, Any], world_id: Optional[int]) -> List[Dict[str, Any]]:
+    return list_session_game_objects(session_flags, world_id, kind="item")
 
-    session_flags["inventory"] = {"items": canonical_items}
-    return session_flags
+
+def _item_ref(item_id: str) -> str:
+    return f"item:{item_id}"
 
 
 class InventoryService:
-    """Service for managing player inventory"""
+    """Static facade over the canonical GameObject inventory."""
 
     @staticmethod
-    def get_inventory(session_flags: Dict[str, Any]) -> List[InventoryItem]:
-        """Get all items from inventory"""
-        items_data = _extract_items(session_flags)
-        return [InventoryItem(**item_data) for item_data in items_data]
+    def get_inventory(
+        session_flags: Dict[str, Any], world_id: Optional[int] = None
+    ) -> List[InventoryItem]:
+        """List all canonical item objects as REST inventory items."""
+        return [_item_to_inventory_item(obj) for obj in _list_items(session_flags, world_id)]
 
     @staticmethod
-    def get_item(session_flags: Dict[str, Any], item_id: str) -> Optional[InventoryItem]:
-        """Get a specific item from inventory"""
-        for item_data in _extract_items(session_flags):
-            if item_data.get("id") == item_id:
-                return InventoryItem(**item_data)
-        return None
+    def get_item(
+        session_flags: Dict[str, Any],
+        item_id: str,
+        world_id: Optional[int] = None,
+    ) -> Optional[InventoryItem]:
+        obj = get_session_game_object(session_flags, world_id, _item_ref(item_id))
+        return _item_to_inventory_item(obj) if obj else None
 
     @staticmethod
     def add_item(
@@ -121,57 +102,76 @@ class InventoryService:
         item_id: str,
         name: Optional[str] = None,
         quantity: int = 1,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        world_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Add an item to inventory or increase quantity if it exists."""
-        items = _extract_items(session_flags)
+        """Add an item, or increase quantity if it already exists.
+
+        Metadata is merged into the existing item's metadata (new keys win, like
+        the prior dict-update behaviour). Name is updated when a non-empty value
+        is provided.
+        """
         delta = max(0, _coerce_quantity(quantity, default=1))
+        existing = get_session_game_object(session_flags, world_id, _item_ref(item_id))
 
-        for item in items:
-            if item.get("id") == item_id:
-                item["quantity"] = max(0, item.get("quantity", 0) + delta)
-                if name:
-                    item["name"] = name
-                if metadata:
-                    current_meta = item.get("metadata", {})
-                    if not isinstance(current_meta, dict):
-                        current_meta = {}
-                    current_meta.update(metadata)
-                    item["metadata"] = current_meta
-                return _write_items(session_flags, items)
+        if existing:
+            existing_data = existing.get("itemData") or {}
+            current_qty = _coerce_quantity(existing_data.get("quantity"), default=0)
+            new_qty = max(0, current_qty + delta)
+            merged_meta = _split_item_data(existing_data)
+            if metadata:
+                merged_meta.update(metadata)
+            resolved_name = name if (isinstance(name, str) and name.strip()) else (existing.get("name") or item_id)
+        else:
+            new_qty = delta
+            merged_meta = dict(metadata) if isinstance(metadata, dict) else {}
+            resolved_name = name if (isinstance(name, str) and name.strip()) else item_id
 
-        items.append(
-            {
-                "id": item_id,
-                "name": name or item_id,
-                "quantity": delta,
-                "metadata": metadata or {},
-            }
+        return upsert_session_game_objects(
+            session_flags,
+            world_id,
+            [
+                build_inventory_item_object(
+                    world_id,
+                    item_id,
+                    new_qty,
+                    {"name": resolved_name, **merged_meta},
+                )
+            ],
         )
-        return _write_items(session_flags, items)
 
     @staticmethod
     def remove_item(
         session_flags: Dict[str, Any],
         item_id: str,
-        quantity: int = 1
+        quantity: int = 1,
+        world_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Remove quantity of an item from inventory."""
-        items = _extract_items(session_flags)
+        """Remove quantity of an item. Raises ``ValueError`` when absent."""
         delta = max(0, _coerce_quantity(quantity, default=1))
+        existing = get_session_game_object(session_flags, world_id, _item_ref(item_id))
+        if not existing:
+            raise ValueError(f"Item {item_id} not found in inventory")
 
-        for idx, item in enumerate(items):
-            if item.get("id") != item_id:
-                continue
+        existing_data = existing.get("itemData") or {}
+        current_qty = _coerce_quantity(existing_data.get("quantity"), default=0)
 
-            current_quantity = max(0, _coerce_quantity(item.get("quantity"), default=0))
-            if delta >= current_quantity:
-                items.pop(idx)
-            else:
-                item["quantity"] = current_quantity - delta
-            return _write_items(session_flags, items)
+        if delta >= current_qty:
+            return remove_session_game_objects(session_flags, world_id, [_item_ref(item_id)])
 
-        raise ValueError(f"Item {item_id} not found in inventory")
+        preserved_meta = _split_item_data(existing_data)
+        return upsert_session_game_objects(
+            session_flags,
+            world_id,
+            [
+                build_inventory_item_object(
+                    world_id,
+                    item_id,
+                    current_qty - delta,
+                    {"name": existing.get("name") or item_id, **preserved_meta},
+                )
+            ],
+        )
 
     @staticmethod
     def update_item(
@@ -179,36 +179,59 @@ class InventoryService:
         item_id: str,
         name: Optional[str] = None,
         quantity: Optional[int] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        world_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Update item properties."""
-        items = _extract_items(session_flags)
-        for item in items:
-            if item.get("id") != item_id:
-                continue
+        """Update fields on an existing item. Raises ``ValueError`` when absent."""
+        existing = get_session_game_object(session_flags, world_id, _item_ref(item_id))
+        if not existing:
+            raise ValueError(f"Item {item_id} not found in inventory")
 
-            if name is not None:
-                item["name"] = name
-            if quantity is not None:
-                item["quantity"] = max(0, _coerce_quantity(quantity, default=0))
-            if metadata is not None:
-                item["metadata"] = metadata
+        existing_data = existing.get("itemData") or {}
+        current_qty = _coerce_quantity(existing_data.get("quantity"), default=0)
+        current_meta = _split_item_data(existing_data)
 
-            return _write_items(session_flags, items)
+        new_qty = (
+            max(0, _coerce_quantity(quantity, default=0)) if quantity is not None else current_qty
+        )
+        resolved_name = name if name is not None else (existing.get("name") or item_id)
+        resolved_meta = metadata if metadata is not None else current_meta
 
-        raise ValueError(f"Item {item_id} not found in inventory")
+        return upsert_session_game_objects(
+            session_flags,
+            world_id,
+            [
+                build_inventory_item_object(
+                    world_id,
+                    item_id,
+                    new_qty,
+                    {"name": resolved_name, **resolved_meta},
+                )
+            ],
+        )
 
     @staticmethod
-    def clear_inventory(session_flags: Dict[str, Any]) -> Dict[str, Any]:
-        """Clear all items from inventory."""
-        return _write_items(session_flags, [])
+    def clear_inventory(
+        session_flags: Dict[str, Any], world_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        items = _list_items(session_flags, world_id)
+        refs = [obj.get("ref") or _item_ref(str(obj.get("id"))) for obj in items]
+        if not refs:
+            # Still ensure the mirror is consistent (no-op if no items existed).
+            return session_flags
+        return remove_session_game_objects(session_flags, world_id, refs)
 
     @staticmethod
-    def get_item_count(session_flags: Dict[str, Any]) -> int:
-        """Get total number of unique items."""
-        return len(_extract_items(session_flags))
+    def get_item_count(
+        session_flags: Dict[str, Any], world_id: Optional[int] = None
+    ) -> int:
+        return len(_list_items(session_flags, world_id))
 
     @staticmethod
-    def get_total_quantity(session_flags: Dict[str, Any]) -> int:
-        """Get total quantity of all items combined."""
-        return sum(item.get("quantity", 0) for item in _extract_items(session_flags))
+    def get_total_quantity(
+        session_flags: Dict[str, Any], world_id: Optional[int] = None
+    ) -> int:
+        return sum(
+            _coerce_quantity((obj.get("itemData") or {}).get("quantity", 0), default=0)
+            for obj in _list_items(session_flags, world_id)
+        )
