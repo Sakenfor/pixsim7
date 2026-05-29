@@ -17,6 +17,7 @@ import { useSetSlotViewStore } from '../stores/setSlotViewStore';
 
 import { AssetPanelGrid } from './AssetPanelGrid';
 import { AssetPanelHeader } from './AssetPanelHeader';
+import { CarouselMobileNavBar } from './CarouselMobileNavBar';
 import { MaskPreviewOverlay } from './MaskPreviewOverlay';
 import { MiniGalleryPopover } from './MiniGalleryPopover';
 import type { QuickGenPanelProps } from './quickGenPanelTypes';
@@ -205,6 +206,24 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const currentAsset = state.currentInput?.asset ?? state.displayAssets[0];
   const singleNeedsUpload = !state.isOnVirtualSlot && needsUploadToProvider(currentAsset, state.effectiveProviderId) && !state.uploadedAssetIds.has(currentAsset.id);
 
+  const queueConfig = {
+    currentIndex: state.operationInputIndex,
+    totalCount: state.carouselTotalCount,
+    items: queueItems,
+    onPrev: handleCarouselPrev,
+    onNext: handleCarouselNext,
+    onSelect: (idx: number) => state.setOperationInputIndex(idx + 1),
+  };
+
+  // Carousel consolidates the slot stepper + time/prompt nav into one bottom
+  // bar (desktop + mobile alike). Shown on both the asset MediaCard branch and
+  // the empty (virtual) slot — so the stepper label looks identical either way
+  // — but NOT in the set-grid branch (which renders its own controls). On the
+  // virtual slot there's no asset, so the bar drops the cohort badge.
+  const inSetGridBranch =
+    !state.isOnVirtualSlot && !!state.currentInput?.assetSetRef && carouselViewMode === 'grid';
+  const showNavBar = !inSetGridBranch && (state.isOnVirtualSlot || !!state.currentInputId);
+
   return (
     <>
       <div className="h-full w-full flex flex-col">
@@ -221,26 +240,8 @@ export function AssetPanel(props: QuickGenPanelProps) {
                 <div className="text-xs text-neutral-500 italic text-center">
                   + Add asset
                 </div>
-                {/* Nav pill for virtual slot */}
-                {state.carouselTotalCount > 1 && (
-                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-0 bg-black/70 backdrop-blur-sm rounded-full px-1.5 py-0.5 z-20">
-                    <button
-                      onClick={handleCarouselPrev}
-                      className="text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
-                      title="Previous"
-                    >
-                      {state.operationInputIndex}
-                    </button>
-                    <span className="text-white/60 text-[10px]">/</span>
-                    <button
-                      onClick={handleCarouselNext}
-                      className="text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
-                      title="Next"
-                    >
-                      {state.carouselTotalCount}
-                    </button>
-                  </div>
-                )}
+                {/* Slot stepper comes from the shared CarouselMobileNavBar
+                    rendered below (consistent with the asset slots). */}
               </div>
             ) : state.currentInput?.assetSetRef && carouselViewMode === 'grid' ? (
               // Set-linked carousel slot in grid view: replace MediaCard with
@@ -257,7 +258,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
                 <MediaCard
                   asset={currentAsset}
                   onToggleFavorite={() => toggleFavoriteTag(currentAsset)}
-                  customWidgets={state.buildSlotExtraWidgets(state.currentInput ?? null, currentSlotIndex ?? 0)}
+                  customWidgets={state.buildSlotExtraWidgets(state.currentInput ?? null, currentSlotIndex ?? 0, { suppressTimeNav: true })}
                   layout={{
                     density: 'compact',
                     hideFooter: true,
@@ -270,7 +271,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
                         {(state.currentInput?.maskLayers?.length || state.currentInput?.maskUrl) && (
                           <MaskPreviewOverlay maskLayers={state.currentInput?.maskLayers} maskUrl={state.currentInput?.maskUrl} />
                         )}
-                        {state.currentInput && state.buildFusionRoleOverlay(state.currentInput, currentSlotIndex ?? 0)}
+                        {state.currentInput && state.buildFusionRoleOverlay(state.currentInput, currentSlotIndex ?? 0, 'tc')}
                       </>
                     ),
                     className: isCurrentClamped ? '!border-amber-500/70' : '',
@@ -291,14 +292,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     onToggleSkip: state.currentInputId
                       ? () => state.toggleSkip(state.operationType, state.currentInputId!)
                       : undefined,
-                    queue: {
-                      currentIndex: state.operationInputIndex,
-                      totalCount: state.carouselTotalCount,
-                      items: queueItems,
-                      onPrev: handleCarouselPrev,
-                      onNext: handleCarouselNext,
-                      onSelect: (idx) => state.setOperationInputIndex(idx + 1),
-                    },
+                    queue: showNavBar ? undefined : queueConfig,
                     ...(singleNeedsUpload
                       ? {
                           onUploadToProvider: () => state.handleUploadToProvider(currentAsset.id),
@@ -316,6 +310,15 @@ export function AssetPanel(props: QuickGenPanelProps) {
                   }}
                 />
               </div>
+            )}
+            {showNavBar && (
+              <CarouselMobileNavBar
+                asset={state.isOnVirtualSlot ? null : currentAsset}
+                inputId={state.isOnVirtualSlot ? undefined : state.currentInputId}
+                operationType={state.operationType}
+                assetSetRef={state.isOnVirtualSlot ? undefined : state.currentInput?.assetSetRef}
+                queue={queueConfig}
+              />
             )}
           </div>
         </div>

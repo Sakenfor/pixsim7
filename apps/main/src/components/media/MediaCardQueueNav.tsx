@@ -24,7 +24,26 @@ function QueueThumbnail({ url, alt }: { url: string; alt: string }) {
   return <img src={mediaSrc} alt={alt} className="w-full h-full object-cover" />;
 }
 
-export function MediaCardQueueNav({ queue }: { queue: MediaCardQueueConfig }) {
+export function MediaCardQueueNav({
+  queue,
+  embedded = false,
+  variant = 'arrows',
+}: {
+  queue: MediaCardQueueConfig;
+  /**
+   * Render just the stepper buttons without the absolute bottom-center
+   * positioning / pill background, for embedding inside a parent bar (e.g.
+   * the mobile CarouselMobileNavBar). The parent supplies the background.
+   */
+  embedded?: boolean;
+  /**
+   * 'arrows' (default): the index/total numbers double as prev/next buttons.
+   * 'counter': render only the "current/total" label (which opens the grid
+   * popup) — for the two-row mobile bar where the parent supplies the
+   * dedicated ‹/› chevrons.
+   */
+  variant?: 'arrows' | 'counter';
+}) {
   const { currentIndex, totalCount, items, onPrev, onNext, onSelect } = queue;
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [showGrid, setShowGrid] = useState(false);
@@ -63,37 +82,68 @@ export function MediaCardQueueNav({ queue }: { queue: MediaCardQueueConfig }) {
 
   const hasGrid = !!items && items.length > 1 && !!onSelect;
 
+  const wrapperClass = embedded
+    ? 'flex items-center gap-0'
+    : 'cq-scale-down absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-0 bg-black/70 backdrop-blur-sm rounded-full px-1.5 py-0.5 z-20';
+
+  const counterLabel = (
+    <>
+      {currentIndex}
+      <span className="text-white/50 mx-px">/</span>
+      {totalCount}
+    </>
+  );
+
   return (
     <>
-      <div className="cq-scale-down absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-0 bg-black/70 backdrop-blur-sm rounded-full px-1.5 py-0.5 z-20">
-        <button
-          onClick={(e) => { e.stopPropagation(); onPrev?.(); }}
-          className="text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
-          title="Previous"
-        >
-          {currentIndex}
-        </button>
-
-        {hasGrid ? (
-          <button
-            ref={triggerRef}
-            onClick={handleToggleGrid}
-            className="w-4 h-4 rounded-full bg-white/20 hover:bg-white/40 transition-colors flex items-center justify-center"
-            title={`View all ${items!.length} assets`}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
-          </button>
+      <div className={wrapperClass}>
+        {variant === 'counter' ? (
+          hasGrid ? (
+            <button
+              ref={triggerRef}
+              onClick={handleToggleGrid}
+              className="flex items-center text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
+              title={`View all ${items!.length} assets`}
+            >
+              {counterLabel}
+            </button>
+          ) : (
+            <span className="flex items-center text-white/90 text-[11px] font-medium px-1">
+              {counterLabel}
+            </span>
+          )
         ) : (
-          <span className="text-white/60 text-[10px]">/</span>
-        )}
+          <>
+            <button
+              onClick={(e) => { e.stopPropagation(); onPrev?.(); }}
+              className="text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
+              title="Previous"
+            >
+              {currentIndex}
+            </button>
 
-        <button
-          onClick={(e) => { e.stopPropagation(); onNext?.(); }}
-          className="text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
-          title="Next"
-        >
-          {totalCount}
-        </button>
+            {hasGrid ? (
+              <button
+                ref={triggerRef}
+                onClick={handleToggleGrid}
+                className="w-4 h-4 rounded-full bg-white/20 hover:bg-white/40 transition-colors flex items-center justify-center"
+                title={`View all ${items!.length} assets`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+              </button>
+            ) : (
+              <span className="text-white/60 text-[10px]">/</span>
+            )}
+
+            <button
+              onClick={(e) => { e.stopPropagation(); onNext?.(); }}
+              className="text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
+              title="Next"
+            >
+              {totalCount}
+            </button>
+          </>
+        )}
       </div>
 
       {showGrid && popupPos && hasGrid && createPortal(

@@ -20,9 +20,11 @@ import { useSetSlotViewStore } from '@features/generation/stores/setSlotViewStor
 
 export interface ViewModePillProps {
   inputId: string;
+  /** Drop the pill background/padding so it can sit inside a parent bar. */
+  bare?: boolean;
 }
 
-export function ViewModePill({ inputId }: ViewModePillProps) {
+export function ViewModePill({ inputId, bare = false }: ViewModePillProps) {
   const viewMode = useSetSlotViewStore(
     (s) => s.viewByInputId[inputId] ?? 'single',
   );
@@ -38,19 +40,28 @@ export function ViewModePill({ inputId }: ViewModePillProps) {
     [inputId, isGrid, setView],
   );
 
+  const className = bare
+    ? `
+      flex items-center gap-1
+      text-white/90 text-[10px] font-medium
+      hover:text-white
+      transition-colors
+    `
+    : `
+      flex items-center gap-1
+      h-6 px-2 rounded-full
+      bg-black/55 text-white/90 text-[10px] font-medium
+      backdrop-blur-sm shadow-md
+      hover:bg-black/75 hover:text-white
+      transition-colors
+    `;
+
   return (
     <button
       type="button"
       onMouseDown={(e) => e.preventDefault()}
       onClick={toggle}
-      className="
-        flex items-center gap-1
-        h-6 px-2 rounded-full
-        bg-black/55 text-white/90 text-[10px] font-medium
-        backdrop-blur-sm shadow-md
-        hover:bg-black/75 hover:text-white
-        transition-colors
-      "
+      className={className}
       title={
         isGrid
           ? 'Showing set as grid · click to switch to single card'

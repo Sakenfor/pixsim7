@@ -644,8 +644,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     || operationType === 'video_transition';
 
   const buildFusionRoleOverlay = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    (item: InputItem, slotIdx: number) => {
+    (item: InputItem, slotIdx: number, placement: 'br' | 'tc' = 'br') => {
       if (!supportsCompositionRoleOverlay) return undefined;
       const currentRole = item.roleOverride;
       const isCharacter = currentRole === 'main_character';
@@ -657,8 +656,14 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
         ? `Clear role override (auto can still infer ${activeCharacterLabel})`
         : 'Clear role override (use auto inference)';
 
+      // Carousel moves these to top-center ('tc') so the bottom-center nav bar
+      // owns the bottom edge; grid/strip keep them bottom-right ('br').
+      const posClass = placement === 'tc'
+        ? 'top-1 left-1/2 -translate-x-1/2'
+        : 'cq-inset-br';
+
       return (
-        <div className="cq-inset-br absolute flex items-center gap-1 pointer-events-auto">
+        <div className={`${posClass} absolute flex items-center gap-1 pointer-events-auto`}>
           <button
             type="button"
             className={`cq-badge-xs rounded-full transition-colors ${
@@ -958,7 +963,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   // Unified widget assembly for any slot.
   // Combines static badges (module-level) + interactive badges (callbacks above).
   const buildSlotExtraWidgets = useCallback(
-    (item: InputItem | null, slotIdx: number, opts?: { includeSlotIndex?: boolean }) => {
+    (item: InputItem | null, slotIdx: number, opts?: { includeSlotIndex?: boolean; suppressTimeNav?: boolean }) => {
       if (!item) return [];
       const isClamped = clampedSlotIndices.has(slotIdx);
       const widgets = [];
@@ -992,14 +997,19 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
       //   carousel on i2v where the per-op limit is 1, slot 0 had chevrons
       //   and slots 1+ silently lost them with no visible context).
       // Plan: `media-card-input-time-nav`.
-      widgets.push(
-        ...createInputTimeNavWidgets({
-          asset: item.asset,
-          inputId: item.id,
-          operationType,
-          assetSetRef: item.assetSetRef,
-        }),
-      );
+      // On mobile the carousel relocates these into CarouselMobileNavBar
+      // (a single always-visible bottom bar), so the edge/top overlay
+      // widgets are suppressed to avoid a redundant duplicate set.
+      if (!opts?.suppressTimeNav) {
+        widgets.push(
+          ...createInputTimeNavWidgets({
+            asset: item.asset,
+            inputId: item.id,
+            operationType,
+            assetSetRef: item.assetSetRef,
+          }),
+        );
+      }
       return widgets;
     },
     [clampedSlotIndices, maxAssetItems, operationType, buildSetBadgeWidget, buildSetLinkWidget, handleMaskVersionSwitch],

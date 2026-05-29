@@ -20,21 +20,28 @@ import { fromAssetResponses, type AssetModel } from '../models/asset';
 
 import { createCohortScope } from './createCohortScope';
 
-/** Cohort cap — a single prompt rarely yields more than a few hundred assets. */
-const MAX_COHORT = 300;
+/**
+ * Cohort cap — backend `AssetSearchRequest.limit` is `le=100` (Pydantic
+ * validator → 422 if exceeded). A single prompt version rarely yields more
+ * than ~dozens of assets, so the cap is generous in practice.
+ */
+const MAX_COHORT = 100;
 
 async function fetchSamePrompt(pivot: AssetModel): Promise<AssetModel[]> {
   const promptVersionId = pivot.promptVersionId;
   if (!promptVersionId) return [];
+  // Fetch newest-first so the cap clips the *oldest* tail (likely older than
+  // the pivot anyway) rather than dropping recent assets — which would
+  // exclude the pivot itself from the cohort and disable the chevrons.
+  // Then reverse client-side so the scope reads oldest → newest, matching
+  // how chevrons/swipe walk a scope list.
   const res = await listAssets({
     prompt_version_id: promptVersionId,
     sort_by: 'created_at' as const,
-    sort_dir: 'asc' as const,
+    sort_dir: 'desc' as const,
     limit: MAX_COHORT,
   });
-  // Ascending by created_at already; the pivot is part of the cohort (shares
-  // its own prompt_version_id) so no manual insertion is needed.
-  return fromAssetResponses(res.assets);
+  return fromAssetResponses(res.assets).reverse();
 }
 
 export const useSamePromptScope = createCohortScope({
