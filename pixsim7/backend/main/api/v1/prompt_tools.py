@@ -10,9 +10,11 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, DatabaseSession
+from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.domain.enums import ReviewStatus
 from pixsim7.backend.main.domain.prompt import PromptToolPreset
 from pixsim7.backend.main.services.ownership.user_owned import resolve_user_owner
+from pixsim7.backend.main.services.prompt.latin_enhancer import fetch_latin_pool
 from pixsim7.backend.main.services.prompt.tools import (
     approve_prompt_tool_preset,
     assert_can_execute_prompt_tool,
@@ -49,6 +51,7 @@ class PromptToolPresetResponse(BaseModel):
     enabled: bool
     requires: List[str] = Field(default_factory=list)
     defaults: Dict[str, Any] = Field(default_factory=dict)
+    param_schema: List[Dict[str, Any]] = Field(default_factory=list)
     owner_user_id: Optional[int] = None
     owner_ref: Optional[str] = None
     owner_username: Optional[str] = None
@@ -132,9 +135,16 @@ async def list_prompt_tool_catalog_route(
         current_user=current_user,
         db=db,
     )
+    dynamic_param_schemas = await _resolve_dynamic_param_schema_overrides(presets)
     return PromptToolCatalogResponse(
         scope=scope.value,
-        presets=[_build_preset_response(preset) for preset in presets],
+        presets=[
+            _build_preset_response(
+                preset,
+                param_schema_override=dynamic_param_schemas.get(preset.id),
+            )
+            for preset in presets
+        ],
     )
 
 
@@ -344,7 +354,7 @@ async def execute_prompt_tool(
         current_user=current_user,
     )
 
-    raw_result = dispatch_prompt_tool_execution(
+    raw_result = await dispatch_prompt_tool_execution(
         preset=preset,
         prompt_text=request.prompt_text,
         params=request.params,
@@ -358,10 +368,69 @@ async def execute_prompt_tool(
     return PromptToolExecuteResponse.model_validate(normalized)
 
 
-def _build_preset_response(preset: PromptToolPresetRecord) -> PromptToolPresetResponse:
+async def _list_latin_domain_param_options() -> list[dict[str, str]]:
+    try:
+        async with get_async_blocks_session() as blocks_db:
+            pool = await fetch_latin_pool(blocks_db, register="mixed", domains=None)
+    except Exception:
+        return []
+
+    domains = sorted({domain for variant in pool for domain in variant.domains if domain})
+    return [
+        {
+            "value": domain,
+            "label": domain.replace("_", " "),
+        }
+        for domain in domains
+    ]
+
+
+def _merge_dynamic_options_into_param_schema(
+    param_schema: list[dict[str, Any]],
+    *,
+    latin_domain_options: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    for field in param_schema:
+        item = dict(field)
+        if item.get("key") == "domains" and item.get("option_source") == "latin.domains":
+            item["options"] = [dict(option) for option in latin_domain_options]
+        merged.append(item)
+    return merged
+
+
+async def _resolve_dynamic_param_schema_overrides(
+    presets: list[PromptToolPresetRecord],
+) -> dict[str, list[dict[str, Any]]]:
+    latin_preset = next((p for p in presets if p.id == "compose/latin-enhancer"), None)
+    if latin_preset is None or not latin_preset.param_schema:
+        return {}
+
+    latin_domains = await _list_latin_domain_param_options()
+    if not latin_domains:
+        return {}
+
+    return {
+        latin_preset.id: _merge_dynamic_options_into_param_schema(
+            [dict(field) for field in latin_preset.param_schema],
+            latin_domain_options=latin_domains,
+        )
+    }
+
+
+def _build_preset_response(
+    preset: PromptToolPresetRecord,
+    *,
+    param_schema_override: Optional[list[dict[str, Any]]] = None,
+) -> PromptToolPresetResponse:
     owner = resolve_user_owner(
         model_owner_user_id=preset.owner_user_id,
         owner_payload=preset.owner_payload,
+    )
+    param_schema = (
+        [dict(field) for field in param_schema_override]
+        if isinstance(param_schema_override, list)
+        else [dict(field) for field in preset.param_schema]
     )
     return PromptToolPresetResponse(
         id=preset.id,
@@ -372,6 +441,7 @@ def _build_preset_response(preset: PromptToolPresetRecord) -> PromptToolPresetRe
         enabled=preset.enabled,
         requires=list(preset.requires),
         defaults=dict(preset.defaults),
+        param_schema=param_schema,
         owner_user_id=owner.get("owner_user_id"),
         owner_ref=owner.get("owner_ref"),
         owner_username=owner.get("owner_username"),

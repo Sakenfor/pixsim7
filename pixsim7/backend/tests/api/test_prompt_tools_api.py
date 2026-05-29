@@ -89,6 +89,7 @@ async def test_catalog_scope_builtin_lists_builtin_presets() -> None:
     )
 
     preset_ids = {preset.id for preset in result.presets}
+    assert "compose/latin-enhancer" in preset_ids
     assert "rewrite/style-shift" in preset_ids
     assert "compose/reference-merge" in preset_ids
     assert "edit/masked-transform" in preset_ids
@@ -96,6 +97,9 @@ async def test_catalog_scope_builtin_lists_builtin_presets() -> None:
     assert "edit/fix-anatomy" in preset_ids
     assert "edit/remove-object" in preset_ids
     assert result.scope == "builtin"
+    latin = next((preset for preset in result.presets if preset.id == "compose/latin-enhancer"), None)
+    assert latin is not None
+    assert any((field.get("key") if isinstance(field, dict) else None) == "length" for field in latin.param_schema)
 
 
 @pytest.mark.asyncio
@@ -160,13 +164,16 @@ async def test_execute_invalid_preset_returns_404(monkeypatch: pytest.MonkeyPatc
 async def test_execute_normalizes_prompt_text_when_handler_omits_field(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    async def _dispatch_stub(**kwargs):
+        return {
+            "warnings": ["handler omitted prompt text"],
+            "provenance": {"model_id": "custom/model"},
+        }
+
     monkeypatch.setattr(
         prompt_tools_module,
         "dispatch_prompt_tool_execution",
-        lambda **kwargs: {
-            "warnings": ["handler omitted prompt text"],
-            "provenance": {"model_id": "custom/model"},
-        },
+        _dispatch_stub,
     )
 
     result = await execute_prompt_tool(
@@ -262,7 +269,7 @@ async def test_execute_rejects_foreign_user_owned_preset(
     async def _resolve_stub(**kwargs):
         return preset
 
-    def _dispatch_stub(**kwargs):
+    async def _dispatch_stub(**kwargs):
         dispatch_called["value"] = True
         return {"prompt_text": "should not execute"}
 
@@ -302,15 +309,14 @@ async def test_execute_allows_owner_for_user_owned_preset(
     async def _resolve_stub(**kwargs):
         return preset
 
-    monkeypatch.setattr(prompt_tools_module, "resolve_prompt_tool_preset", _resolve_stub)
-    monkeypatch.setattr(
-        prompt_tools_module,
-        "dispatch_prompt_tool_execution",
-        lambda **kwargs: {
+    async def _dispatch_stub(**kwargs):
+        return {
             "prompt_text": "owner execution result",
             "provenance": {},
-        },
-    )
+        }
+
+    monkeypatch.setattr(prompt_tools_module, "resolve_prompt_tool_preset", _resolve_stub)
+    monkeypatch.setattr(prompt_tools_module, "dispatch_prompt_tool_execution", _dispatch_stub)
 
     result = await execute_prompt_tool(
         request=PromptToolExecuteRequest(

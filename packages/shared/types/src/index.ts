@@ -221,6 +221,12 @@ export * from './composition-roles.generated'
 export * from './prompt-roles.generated'
 
 // ===================
+// Latin Enhancer Domains (Generated)
+// ===================
+
+export * from './latin-enhancer-domains.generated'
+
+// ===================
 // Composition Packages
 // ===================
 

@@ -140,6 +140,7 @@ def _map_row_to_record(
         enabled=bool(row.enabled),
         requires=tuple(value for value in (row.requires or []) if isinstance(value, str)),
         defaults=dict(row.defaults or {}),
+        param_schema=[],
         owner_user_id=row.owner_user_id,
         owner_payload=owner_payload,
     )
@@ -509,7 +510,7 @@ def assert_can_execute_prompt_tool(
     )
 
 
-def dispatch_prompt_tool_execution(
+async def dispatch_prompt_tool_execution(
     *,
     preset: PromptToolPresetRecord,
     prompt_text: str,
@@ -518,7 +519,7 @@ def dispatch_prompt_tool_execution(
 ) -> Mapping[str, Any]:
     """Dispatch prompt tool execution to preset handler implementation."""
     if preset.source == "builtin":
-        return execute_builtin_prompt_tool(
+        return await execute_builtin_prompt_tool(
             preset,
             prompt_text=prompt_text,
             params=params,

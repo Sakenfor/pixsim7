@@ -1,8 +1,14 @@
 """Builtin prompt tool preset registry and handlers."""
 from __future__ import annotations
 
+import inspect
 from typing import Any, Mapping
 
+from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
+from pixsim7.backend.main.services.prompt.latin_enhancer import (
+    ComposeRequest,
+    compose as compose_latin_enhancer,
+)
 from .types import PromptToolPresetRecord
 
 
@@ -37,6 +43,38 @@ def _coerce_bool(value: Any, *, default: bool) -> bool:
             return True
         if normalized in {"0", "false", "no", "n", "off"}:
             return False
+    return default
+
+
+def _coerce_optional_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    values: list[str] = []
+    if isinstance(value, str):
+        values = [part.strip() for part in value.split(",")]
+    elif isinstance(value, (list, tuple, set)):
+        for item in value:
+            if isinstance(item, str):
+                values.append(item.strip())
+    return [item for item in values if item]
+
+
+def _coerce_choice(
+    value: Any,
+    *,
+    allowed: set[str],
+    default: str,
+) -> str:
+    text = _normalize_text(value).lower()
+    if text in allowed:
+        return text
     return default
 
 
@@ -467,7 +505,169 @@ def _remove_object_handler(
     )
 
 
+async def _latin_enhancer_handler(
+    prompt_text: str,
+    params: Mapping[str, Any],
+    run_context: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    del run_context
+    length = _coerce_choice(
+        params.get("length"),
+        allowed={"brief", "short", "medium", "long"},
+        default="short",
+    )
+    register = _coerce_choice(
+        params.get("register"),
+        allowed={"technical", "poetic", "mixed"},
+        default="mixed",
+    )
+    intensity = _coerce_choice(
+        params.get("intensity"),
+        allowed={"subtle", "moderate", "firm", "absolute", "escalating"},
+        default="moderate",
+    )
+    include_connectors = _coerce_bool(params.get("include_connectors"), default=False)
+    seed = _coerce_optional_int(params.get("seed"))
+    domains = _coerce_string_list(params.get("domains"))
+    req = ComposeRequest(
+        length=length,
+        register=register,
+        intensity=intensity,
+        domains=tuple(domains) if domains else None,
+        seed=seed,
+        include_connectors=include_connectors,
+    )
+    async with get_async_blocks_session() as blocks_db:
+        composed = await compose_latin_enhancer(blocks_db, req)
+
+    base_prompt = _normalize_text(prompt_text)
+    latin_text = composed.text.strip()
+    merged_prompt = base_prompt
+    warnings: list[str] = []
+    if latin_text:
+        merged_prompt = latin_text if not base_prompt else f"{base_prompt}\n\n{latin_text}"
+    else:
+        warnings.append("Latin enhancer returned no variants for the requested filters.")
+
+    block_overlay = [
+        {
+            "role": "latin_enhancer",
+            "text": variant.text,
+            "block_id": variant.block_id,
+            "register": variant.register,
+            "intensity": variant.intensity,
+            "motion_type": variant.motion_type,
+            "applies_to": variant.applies_to,
+            "latin_form": variant.latin_form,
+            "domains": list(variant.domains),
+            "connector_type": variant.connector_type,
+            "attaches": variant.attaches,
+            "primitive_tags": ["latin.enhancer"],
+        }
+        for variant in composed.variants
+    ]
+
+    return {
+        "prompt_text": merged_prompt,
+        "block_overlay": block_overlay,
+        "guidance_patch": {
+            "latin_enhancer": {
+                "pool_size": composed.pool_size,
+                "intensity_curve": list(composed.intensity_curve),
+                "params": {
+                    "length": length,
+                    "register": register,
+                    "intensity": intensity,
+                    "include_connectors": include_connectors,
+                    "seed": seed,
+                    "domains": domains,
+                },
+            }
+        },
+        "warnings": warnings,
+        "provenance": {"model_id": "builtin/latin-enhancer-v1"},
+    }
+
+
 _BUILTIN_PRESETS: dict[str, PromptToolPresetRecord] = {
+    "compose/latin-enhancer": PromptToolPresetRecord(
+        id="compose/latin-enhancer",
+        label="Latin Enhancer",
+        description="Append length-controlled Latin enhancer clauses from block primitives.",
+        source="builtin",
+        category="compose",
+        enabled=True,
+        requires=("text",),
+        defaults={
+            "length": "short",
+            "register": "mixed",
+            "intensity": "moderate",
+            "domains": [],
+            "include_connectors": False,
+        },
+        param_schema=[
+            {
+                "key": "length",
+                "label": "Length",
+                "type": "select",
+                "required": False,
+                "options": [
+                    {"value": "brief", "label": "Brief"},
+                    {"value": "short", "label": "Short"},
+                    {"value": "medium", "label": "Medium"},
+                    {"value": "long", "label": "Long"},
+                ],
+            },
+            {
+                "key": "register",
+                "label": "Register",
+                "type": "select",
+                "required": False,
+                "options": [
+                    {"value": "mixed", "label": "Mixed"},
+                    {"value": "technical", "label": "Technical"},
+                    {"value": "poetic", "label": "Poetic"},
+                ],
+            },
+            {
+                "key": "intensity",
+                "label": "Intensity",
+                "type": "select",
+                "required": False,
+                "options": [
+                    {"value": "subtle", "label": "Subtle"},
+                    {"value": "moderate", "label": "Moderate"},
+                    {"value": "firm", "label": "Firm"},
+                    {"value": "absolute", "label": "Absolute"},
+                    {"value": "escalating", "label": "Escalating"},
+                ],
+            },
+            {
+                "key": "domains",
+                "label": "Domains",
+                "type": "multiselect",
+                "required": False,
+                "options": [],
+                "option_source": "latin.domains",
+            },
+            {
+                "key": "include_connectors",
+                "label": "Interleave connectors",
+                "type": "boolean",
+                "required": False,
+            },
+            {
+                "key": "seed",
+                "label": "Seed",
+                "type": "number",
+                "required": False,
+                "min": 0,
+                "step": 1,
+            },
+        ],
+        owner_payload={"name": "PixSim Builtins"},
+        handler=_latin_enhancer_handler,
+    ),
     "rewrite/style-shift": PromptToolPresetRecord(
         id="rewrite/style-shift",
         label="Style Shift",
@@ -477,6 +677,11 @@ _BUILTIN_PRESETS: dict[str, PromptToolPresetRecord] = {
         enabled=True,
         requires=("text",),
         defaults={"style": "cinematic", "tone": "clear", "strength": 6},
+        param_schema=[
+            {"key": "style", "label": "Style", "type": "text", "required": False},
+            {"key": "tone", "label": "Tone", "type": "text", "required": False},
+            {"key": "strength", "label": "Strength", "type": "number", "required": False, "min": 1, "max": 10, "step": 1},
+        ],
         owner_payload={"name": "PixSim Builtins"},
         handler=_style_shift_handler,
     ),
@@ -489,6 +694,7 @@ _BUILTIN_PRESETS: dict[str, PromptToolPresetRecord] = {
         enabled=True,
         requires=("text", "composition_assets"),
         defaults={},
+        param_schema=[],
         owner_payload={"name": "PixSim Builtins"},
         handler=_reference_merge_handler,
     ),
@@ -506,6 +712,12 @@ _BUILTIN_PRESETS: dict[str, PromptToolPresetRecord] = {
             "preserve_identity": True,
             "preserve_background": True,
         },
+        param_schema=[
+            {"key": "instruction", "label": "Instruction", "type": "text", "required": False},
+            {"key": "strength", "label": "Strength", "type": "number", "required": False, "min": 1, "max": 10, "step": 1},
+            {"key": "preserve_identity", "label": "Preserve identity", "type": "boolean", "required": False},
+            {"key": "preserve_background", "label": "Preserve background", "type": "boolean", "required": False},
+        ],
         owner_payload={"name": "PixSim Builtins"},
         handler=_masked_transform_handler,
     ),
@@ -526,6 +738,15 @@ _BUILTIN_PRESETS: dict[str, PromptToolPresetRecord] = {
             "preserve_identity": True,
             "preserve_background": True,
         },
+        param_schema=[
+            {"key": "target_garment", "label": "Target garment", "type": "text", "required": False},
+            {"key": "new_clothes", "label": "New clothes", "type": "text", "required": False},
+            {"key": "material", "label": "Material", "type": "text", "required": False},
+            {"key": "color", "label": "Color", "type": "text", "required": False},
+            {"key": "strength", "label": "Strength", "type": "number", "required": False, "min": 1, "max": 10, "step": 1},
+            {"key": "preserve_identity", "label": "Preserve identity", "type": "boolean", "required": False},
+            {"key": "preserve_background", "label": "Preserve background", "type": "boolean", "required": False},
+        ],
         owner_payload={"name": "PixSim Builtins"},
         handler=_change_clothes_handler,
     ),
@@ -544,6 +765,34 @@ _BUILTIN_PRESETS: dict[str, PromptToolPresetRecord] = {
             "preserve_identity": True,
             "preserve_background": True,
         },
+        param_schema=[
+            {
+                "key": "focus",
+                "label": "Focus",
+                "type": "select",
+                "required": False,
+                "options": [
+                    {"value": "hands and fingers", "label": "Hands and fingers"},
+                    {"value": "arms and elbows", "label": "Arms and elbows"},
+                    {"value": "face and jawline", "label": "Face and jawline"},
+                    {"value": "full body", "label": "Full body"},
+                ],
+            },
+            {
+                "key": "quality",
+                "label": "Quality",
+                "type": "select",
+                "required": False,
+                "options": [
+                    {"value": "realistic", "label": "Realistic"},
+                    {"value": "cinematic", "label": "Cinematic"},
+                    {"value": "stylized", "label": "Stylized"},
+                ],
+            },
+            {"key": "strength", "label": "Strength", "type": "number", "required": False, "min": 1, "max": 10, "step": 1},
+            {"key": "preserve_identity", "label": "Preserve identity", "type": "boolean", "required": False},
+            {"key": "preserve_background", "label": "Preserve background", "type": "boolean", "required": False},
+        ],
         owner_payload={"name": "PixSim Builtins"},
         handler=_fix_anatomy_handler,
     ),
@@ -562,6 +811,13 @@ _BUILTIN_PRESETS: dict[str, PromptToolPresetRecord] = {
             "preserve_identity": True,
             "preserve_background": True,
         },
+        param_schema=[
+            {"key": "object", "label": "Object to remove", "type": "text", "required": False},
+            {"key": "cleanup", "label": "Cleanup instruction", "type": "text", "required": False},
+            {"key": "strength", "label": "Strength", "type": "number", "required": False, "min": 1, "max": 10, "step": 1},
+            {"key": "preserve_identity", "label": "Preserve identity", "type": "boolean", "required": False},
+            {"key": "preserve_background", "label": "Preserve background", "type": "boolean", "required": False},
+        ],
         owner_payload={"name": "PixSim Builtins"},
         handler=_remove_object_handler,
     ),
@@ -578,7 +834,7 @@ def get_builtin_prompt_tool(preset_id: str) -> PromptToolPresetRecord | None:
     return _BUILTIN_PRESETS.get(_normalize_text(preset_id))
 
 
-def execute_builtin_prompt_tool(
+async def execute_builtin_prompt_tool(
     preset: PromptToolPresetRecord,
     *,
     prompt_text: str,
@@ -589,8 +845,11 @@ def execute_builtin_prompt_tool(
     handler = preset.handler
     if handler is None:
         return {"prompt_text": prompt_text}
-    return handler(
+    result = handler(
         prompt_text,
         _as_mapping(params),
         _as_mapping(run_context),
     )
+    if inspect.isawaitable(result):
+        return await result
+    return result

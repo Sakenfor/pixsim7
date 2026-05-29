@@ -3,6 +3,11 @@
  * against (length × register × intensity × domains) so we can QA the join
  * logic without firing real generations.
  */
+import {
+  LATIN_COMPOSER_DOMAINS,
+  LATIN_ENHANCER_DOMAIN_COLORS,
+  type LatinEnhancerDomainColor,
+} from '@pixsim7/shared.types';
 import { Button } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -18,19 +23,38 @@ type IntensityChoice = 'subtle' | 'moderate' | 'firm' | 'absolute' | 'escalating
 const LENGTHS: LengthTier[] = ['brief', 'short', 'medium', 'long'];
 const REGISTERS: RegisterChoice[] = ['technical', 'poetic', 'mixed'];
 const INTENSITIES: IntensityChoice[] = ['subtle', 'moderate', 'firm', 'absolute', 'escalating'];
-// Hardcoded for now — these are the domain tags on the shipped latin packs.
-// Grouped roughly by pack so the chip row reads as a topic map. Once we add
-// more packs we should query the tag dictionary.
-const KNOWN_DOMAINS = [
-  // touch_dynamics
-  'touch', 'gluteal', 'hand_contact',
-  // lips_mouth
-  'oral', 'mouth', 'lips', 'kiss',
-  // gaze_breath
-  'gaze', 'breath', 'voice', 'eyes',
-  // chest_torso
-  'chest', 'breast', 'torso', 'embrace',
-];
+
+const ACTIVE_DOMAIN_COLOR_CLASSES: Record<LatinEnhancerDomainColor, string> = {
+  blue: 'bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300',
+  green: 'bg-green-100 border-green-300 text-green-700 dark:bg-green-900/30 dark:border-green-700 dark:text-green-300',
+  purple: 'bg-purple-100 border-purple-300 text-purple-700 dark:bg-purple-900/30 dark:border-purple-700 dark:text-purple-300',
+  yellow: 'bg-yellow-100 border-yellow-300 text-yellow-700 dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-300',
+  pink: 'bg-pink-100 border-pink-300 text-pink-700 dark:bg-pink-900/30 dark:border-pink-700 dark:text-pink-300',
+  cyan: 'bg-cyan-100 border-cyan-300 text-cyan-700 dark:bg-cyan-900/30 dark:border-cyan-700 dark:text-cyan-300',
+  orange: 'bg-orange-100 border-orange-300 text-orange-700 dark:bg-orange-900/30 dark:border-orange-700 dark:text-orange-300',
+  gray: 'bg-neutral-200 border-neutral-300 text-neutral-700 dark:bg-neutral-800 dark:border-neutral-600 dark:text-neutral-300',
+  amber: 'bg-amber-100 border-amber-300 text-amber-700 dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-300',
+  red: 'bg-red-100 border-red-300 text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-300',
+  slate: 'bg-slate-100 border-slate-300 text-slate-700 dark:bg-slate-900/30 dark:border-slate-700 dark:text-slate-300',
+};
+
+const INACTIVE_DOMAIN_COLOR_CLASSES: Record<LatinEnhancerDomainColor, string> = {
+  blue: 'border-blue-200 text-blue-600 hover:bg-blue-50 dark:border-blue-800/40 dark:text-blue-300 dark:hover:bg-blue-900/20',
+  green: 'border-green-200 text-green-600 hover:bg-green-50 dark:border-green-800/40 dark:text-green-300 dark:hover:bg-green-900/20',
+  purple: 'border-purple-200 text-purple-600 hover:bg-purple-50 dark:border-purple-800/40 dark:text-purple-300 dark:hover:bg-purple-900/20',
+  yellow: 'border-yellow-200 text-yellow-700 hover:bg-yellow-50 dark:border-yellow-800/40 dark:text-yellow-300 dark:hover:bg-yellow-900/20',
+  pink: 'border-pink-200 text-pink-600 hover:bg-pink-50 dark:border-pink-800/40 dark:text-pink-300 dark:hover:bg-pink-900/20',
+  cyan: 'border-cyan-200 text-cyan-600 hover:bg-cyan-50 dark:border-cyan-800/40 dark:text-cyan-300 dark:hover:bg-cyan-900/20',
+  orange: 'border-orange-200 text-orange-600 hover:bg-orange-50 dark:border-orange-800/40 dark:text-orange-300 dark:hover:bg-orange-900/20',
+  gray: 'border-neutral-200 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800',
+  amber: 'border-amber-200 text-amber-600 hover:bg-amber-50 dark:border-amber-800/40 dark:text-amber-300 dark:hover:bg-amber-900/20',
+  red: 'border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-900/20',
+  slate: 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800',
+};
+
+function getDomainChipColorClasses(color: LatinEnhancerDomainColor, active: boolean): string {
+  return active ? ACTIVE_DOMAIN_COLOR_CLASSES[color] : INACTIVE_DOMAIN_COLOR_CLASSES[color];
+}
 
 interface ComposedVariant {
   block_id: string;
@@ -100,8 +124,9 @@ function DomainChips({
         Domains <span className="text-neutral-400 normal-case">(none = all)</span>
       </span>
       <div className="flex flex-wrap gap-1">
-        {KNOWN_DOMAINS.map((d) => {
+        {LATIN_COMPOSER_DOMAINS.map((d) => {
           const active = selected.includes(d);
+          const color = LATIN_ENHANCER_DOMAIN_COLORS[d] ?? 'gray';
           return (
             <button
               key={d}
@@ -109,9 +134,7 @@ function DomainChips({
               onClick={() => onToggle(d)}
               className={clsx(
                 'px-2 py-0.5 text-[11px] rounded-full border transition-colors',
-                active
-                  ? 'bg-accent/15 border-accent text-accent'
-                  : 'bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200',
+                getDomainChipColorClasses(color, active),
               )}
             >
               {d}

@@ -8,6 +8,7 @@ import { logEvent } from '@lib/utils/logging';
 import {
   executePromptTool,
   listPromptToolCatalog,
+  type PromptToolParamField,
   type PromptToolCatalogScope,
   type PromptToolExecuteResponse,
   type PromptToolPreset,
@@ -39,19 +40,21 @@ export interface PromptToolsPanelProps {
   onApply: (payload: PromptToolsApplyPayload) => void;
 }
 
-type QuickParamFieldType = 'text' | 'number' | 'boolean' | 'select';
+type QuickParamFieldType = 'text' | 'number' | 'boolean' | 'select' | 'multiselect';
 
 interface QuickParamField {
   key: string;
   label: string;
   type: QuickParamFieldType;
+  required?: boolean;
+  description?: string;
   min?: number;
   max?: number;
   step?: number;
   options?: Array<{ value: string; label: string }>;
 }
 
-const QUICK_PARAM_FIELDS_BY_PRESET: Record<string, QuickParamField[]> = {
+const STATIC_QUICK_PARAM_FIELDS_BY_PRESET: Record<string, QuickParamField[]> = {
   'edit/masked-transform': [
     { key: 'instruction', label: 'Instruction', type: 'text' },
     { key: 'strength', label: 'Strength', type: 'number', min: 1, max: 10, step: 1 },
@@ -101,6 +104,38 @@ const QUICK_PARAM_FIELDS_BY_PRESET: Record<string, QuickParamField[]> = {
     { key: 'preserve_background', label: 'Preserve background', type: 'boolean' },
   ],
 };
+
+function mapParamSchemaToQuickFields(schema: PromptToolParamField[] | undefined): QuickParamField[] {
+  if (!Array.isArray(schema) || schema.length === 0) return [];
+  const fields: QuickParamField[] = [];
+  for (const field of schema) {
+    if (!field || typeof field !== 'object' || typeof field.key !== 'string') continue;
+    const type = field.type;
+    if (type !== 'text' && type !== 'number' && type !== 'boolean' && type !== 'select' && type !== 'multiselect') {
+      continue;
+    }
+    const options = Array.isArray(field.options)
+      ? field.options
+        .filter((option) => option && typeof option.value === 'string')
+        .map((option) => ({
+          value: option.value,
+          label: typeof option.label === 'string' && option.label.trim().length > 0 ? option.label : option.value,
+        }))
+      : undefined;
+    fields.push({
+      key: field.key,
+      label: typeof field.label === 'string' && field.label.trim().length > 0 ? field.label : field.key,
+      type,
+      required: Boolean(field.required),
+      description: typeof field.description === 'string' ? field.description : undefined,
+      min: typeof field.min === 'number' ? field.min : undefined,
+      max: typeof field.max === 'number' ? field.max : undefined,
+      step: typeof field.step === 'number' ? field.step : undefined,
+      options,
+    });
+  }
+  return fields;
+}
 
 function parseJsonObject(raw: string, label: string): Record<string, unknown> {
   const trimmed = raw.trim();
@@ -158,6 +193,7 @@ function coerceQuickParamValue(field: QuickParamField, value: unknown): unknown 
       const parsed = Number(value);
       if (Number.isFinite(parsed)) return parsed;
     }
+    if (!field.required) return '';
     return field.min ?? 1;
   }
   if (field.type === 'boolean') {
@@ -168,6 +204,21 @@ function coerceQuickParamValue(field: QuickParamField, value: unknown): unknown 
       return ['1', 'true', 'yes', 'y', 'on'].includes(normalized);
     }
     return false;
+  }
+  if (field.type === 'multiselect') {
+    if (Array.isArray(value)) {
+      return value
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+    }
+    return [];
   }
   if (field.type === 'select') {
     const asString = typeof value === 'string' ? value : '';
@@ -299,8 +350,13 @@ export function PromptToolsPanel({
     [catalog, selectedId],
   );
   const quickParamFields = useMemo(
-    () => (selectedId ? (QUICK_PARAM_FIELDS_BY_PRESET[selectedId] ?? []) : []),
-    [selectedId],
+    () => {
+      if (!selectedTool) return [];
+      const schemaFields = mapParamSchemaToQuickFields(selectedTool.param_schema);
+      if (schemaFields.length > 0) return schemaFields;
+      return STATIC_QUICK_PARAM_FIELDS_BY_PRESET[selectedTool.id] ?? [];
+    },
+    [selectedTool],
   );
 
   useEffect(() => {
@@ -312,14 +368,14 @@ export function PromptToolsPanel({
     selectedPresetRef.current = selectedTool.id;
     setParamsText(JSON.stringify(selectedTool.defaults ?? {}, null, 2));
     const nextQuickParams: Record<string, unknown> = {};
-    const fields = QUICK_PARAM_FIELDS_BY_PRESET[selectedTool.id] ?? [];
+    const fields = quickParamFields;
     for (const field of fields) {
       nextQuickParams[field.key] = coerceQuickParamValue(field, selectedTool.defaults?.[field.key]);
     }
     setQuickParams(nextQuickParams);
     setRunError(null);
     setResult(null);
-  }, [selectedTool]);
+  }, [quickParamFields, selectedTool]);
 
   const diffSegments = useMemo(() => {
     if (!result) return [];
@@ -429,6 +485,11 @@ export function PromptToolsPanel({
                   return (
                     <label key={field.key} className="text-[11px] text-neutral-600 dark:text-neutral-300">
                       {field.label}
+                      {field.description && (
+                        <span className="ml-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+                          {field.description}
+                        </span>
+                      )}
                       <select
                         value={typeof value === 'string' ? value : ''}
                         disabled={disabled || running}
@@ -445,9 +506,46 @@ export function PromptToolsPanel({
                     </label>
                   );
                 }
+                if (field.type === 'multiselect') {
+                  const selectedValues = Array.isArray(value)
+                    ? value.filter((entry): entry is string => typeof entry === 'string')
+                    : [];
+                  return (
+                    <label key={field.key} className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                      {field.label}
+                      {field.description && (
+                        <span className="ml-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+                          {field.description}
+                        </span>
+                      )}
+                      <select
+                        multiple
+                        value={selectedValues}
+                        disabled={disabled || running}
+                        onChange={(event) => {
+                          const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
+                          setQuickParams((prev) => ({
+                            ...prev,
+                            [field.key]: selected,
+                          }));
+                        }}
+                        className="mt-1 w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs min-h-[82px]"
+                      >
+                        {(field.options ?? []).map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                }
                 return (
                   <label key={field.key} className="text-[11px] text-neutral-600 dark:text-neutral-300">
                     {field.label}
+                    {field.description && (
+                      <span className="ml-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+                        {field.description}
+                      </span>
+                    )}
                     <input
                       type={field.type === 'number' ? 'number' : 'text'}
                       value={typeof value === 'number' ? String(value) : (typeof value === 'string' ? value : '')}
@@ -459,7 +557,9 @@ export function PromptToolsPanel({
                         const raw = event.target.value;
                         setQuickParams((prev) => ({
                           ...prev,
-                          [field.key]: field.type === 'number' ? Number(raw) : raw,
+                          [field.key]: field.type === 'number'
+                            ? (raw.trim().length === 0 ? '' : Number(raw))
+                            : raw,
                         }));
                       }}
                       className="mt-1 w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"

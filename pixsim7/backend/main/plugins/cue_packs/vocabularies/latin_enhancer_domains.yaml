@@ -1,0 +1,71 @@
+# Canonical UI metadata for latin-enhancer domain tags.
+# Source-of-truth for composer ordering and color assignment.
+
+composer_domains:
+  - touch
+  - gluteal
+  - hand_contact
+  - oral
+  - mouth
+  - lips
+  - kiss
+  - gaze
+  - breath
+  - voice
+  - eyes
+  - chest
+  - breast
+  - torso
+  - embrace
+
+domain_colors:
+  alignment: green
+  anatomy: red
+  animal_dynamics: amber
+  body: green
+  breast: purple
+  breath: blue
+  canine: orange
+  chest: purple
+  claim_dynamics: amber
+  connector: slate
+  creature_generic: red
+  creature_neutral_anatomy: orange
+  dominance: red
+  embrace: purple
+  eyes: blue
+  gaze: blue
+  gluteal: cyan
+  hand_contact: cyan
+  hierarchy: red
+  hip: green
+  kiss: pink
+  lips: pink
+  motion_mechanics: green
+  mouth: pink
+  mouthing: amber
+  oral: pink
+  partial_pin: amber
+  pattern: green
+  paw_pin: amber
+  pelvis: green
+  pin: amber
+  play_dynamics: amber
+  pose: green
+  position: green
+  positioning: green
+  pre_contact: green
+  proximity: green
+  reproductive: red
+  restraint: amber
+  rhetoric: slate
+  rhythm: green
+  scruff: amber
+  sensory: green
+  sound: green
+  submission: red
+  tempo: green
+  threat_without_harm: red
+  torso: purple
+  touch: cyan
+  voice: blue

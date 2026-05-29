@@ -21,6 +21,11 @@
       "require": "./src/prompt-roles.generated.ts",
       "types": "./src/prompt-roles.generated.ts"
     },
+    "./latin-enhancer-domains.generated": {
+      "import": "./src/latin-enhancer-domains.generated.ts",
+      "require": "./src/latin-enhancer-domains.generated.ts",
+      "types": "./src/latin-enhancer-domains.generated.ts"
+    },
     "./interactions": {
       "import": "./src/interactions.ts",
       "require": "./src/interactions.ts",

@@ -2,6 +2,27 @@ import { pixsimClient } from './client';
 
 export type PromptToolCatalogScope = 'self' | 'shared' | 'builtin' | 'all';
 
+export type PromptToolParamFieldType = 'text' | 'number' | 'boolean' | 'select' | 'multiselect';
+
+export interface PromptToolParamOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface PromptToolParamField {
+  key: string;
+  label: string;
+  type: PromptToolParamFieldType;
+  description?: string;
+  required?: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: PromptToolParamOption[];
+  option_source?: string;
+}
+
 export interface PromptToolPreset {
   id: string;
   label: string;
@@ -11,6 +32,7 @@ export interface PromptToolPreset {
   enabled: boolean;
   requires: string[];
   defaults: Record<string, unknown>;
+  param_schema?: PromptToolParamField[];
   owner_user_id?: number | null;
   owner_ref?: string | null;
   owner_username?: string | null;

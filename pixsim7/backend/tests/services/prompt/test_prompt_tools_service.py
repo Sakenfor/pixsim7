@@ -70,12 +70,16 @@ async def test_catalog_scope_builtin_includes_builtin_registry() -> None:
     )
 
     preset_ids = {preset.id for preset in result}
+    assert "compose/latin-enhancer" in preset_ids
     assert "rewrite/style-shift" in preset_ids
     assert "compose/reference-merge" in preset_ids
     assert "edit/masked-transform" in preset_ids
     assert "edit/change-clothes" in preset_ids
     assert "edit/fix-anatomy" in preset_ids
     assert "edit/remove-object" in preset_ids
+    latin_preset = next((preset for preset in result if preset.id == "compose/latin-enhancer"), None)
+    assert latin_preset is not None
+    assert any(field.get("key") == "domains" for field in latin_preset.param_schema)
 
 
 @pytest.mark.asyncio
@@ -149,6 +153,7 @@ async def test_catalog_scope_all_dedupes_self_and_shared_overlap(
     ids = [preset.id for preset in result]
     assert ids.count("user/overlap") == 1
     assert "user/shared-extra" in ids
+    assert "compose/latin-enhancer" in ids
     assert "rewrite/style-shift" in ids
     assert "compose/reference-merge" in ids
     assert "edit/masked-transform" in ids
