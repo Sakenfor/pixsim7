@@ -19,7 +19,8 @@ def test_llm_derived_tags_use_metadata_inference_for_canonical_ontology_ids():
     )
 
     assert "has:camera" in tags
-    assert "tone:soft" in tags
+    # mood:tender no longer collapses into a coarse tone:soft tag.
+    assert "tone:soft" not in tags
     assert "camera:pov" in tags
     assert "camera:closeup" in tags
 

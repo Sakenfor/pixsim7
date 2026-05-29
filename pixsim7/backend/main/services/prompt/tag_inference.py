@@ -15,27 +15,6 @@ def _normalize(value: str) -> str:
     return " ".join(text.split())
 
 
-def _derive_mood_tone_tag(mood: object) -> str | None:
-    category = str(getattr(mood, "category", "") or "").strip().lower()
-    tension_range = getattr(mood, "tension_range", (0, 10)) or (0, 10)
-
-    low = 0
-    high = 10
-    if isinstance(tension_range, (list, tuple)) and len(tension_range) >= 2:
-        try:
-            low = int(tension_range[0])
-            high = int(tension_range[1])
-        except Exception:
-            low = 0
-            high = 10
-
-    if high >= 8 or low >= 6 or category == "action":
-        return "tone:intense"
-    if category in {"romantic", "positive", "neutral"} and high <= 7:
-        return "tone:soft"
-    return None
-
-
 def _derive_camera_tags(camera: object) -> Set[str]:
     tags: Set[str] = set()
     category = str(getattr(camera, "category", "") or "").strip().lower()
@@ -69,6 +48,15 @@ def _derive_camera_tags(camera: object) -> Set[str]:
 def derive_sub_tags_from_ontology_ids(ontology_ids: Iterable[str]) -> Set[str]:
     """
     Derive secondary tags from ontology IDs via vocabulary item metadata.
+
+    Mood ontology IDs are emitted verbatim by callers (e.g. ``mood:tender``);
+    we intentionally do NOT collapse them into a coarse ``tone:soft`` /
+    ``tone:intense`` bucket. That heuristic stamped ``tone:soft`` on the entire
+    low-tension positive/romantic half of the mood space — and on any prompt
+    that literally contained the word "soft" (a ``mood:tender`` keyword) — so
+    it landed on roughly every other asset and drowned out the accurate
+    per-mood tag. Authored ``tone:`` / ``arc:`` annotations now flow through
+    the composition path instead of being re-derived here.
     """
     try:
         from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
@@ -83,14 +71,6 @@ def derive_sub_tags_from_ontology_ids(ontology_ids: Iterable[str]) -> Set[str]:
             continue
         tag_id = oid.strip()
         if not tag_id:
-            continue
-
-        if tag_id.startswith("mood:"):
-            mood = registry.get_mood(tag_id)
-            if mood is not None:
-                tone = _derive_mood_tone_tag(mood)
-                if tone:
-                    derived.add(tone)
             continue
 
         if tag_id.startswith("camera:"):

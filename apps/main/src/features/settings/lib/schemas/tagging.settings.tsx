@@ -222,7 +222,7 @@ const analysisTab: SettingTab = {
           id: 'analyzer.auto_apply_tags',
           type: 'toggle',
           label: 'Apply Analysis Tags',
-          description: 'Automatically tag generated assets with extracted tags (e.g., "has:character", "tone:soft").',
+          description: 'Automatically tag generated assets with extracted tags (e.g., "has:character", "mood:tender", "camera:pov").',
           defaultValue: true,
         },
         {

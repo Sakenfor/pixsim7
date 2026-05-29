@@ -5,18 +5,23 @@ from pixsim7.backend.main.services.prompt.tag_inference import (
 )
 
 
-def test_metadata_tag_inference_from_ontology_ids():
+def test_metadata_tag_inference_derives_camera_tags():
     tags = derive_sub_tags_from_ontology_ids(
         ["mood:tender", "camera:angle_pov", "camera:framing_closeup"]
     )
-    assert "tone:soft" in tags
     assert "camera:pov" in tags
     assert "camera:closeup" in tags
 
 
-def test_metadata_tag_inference_detects_intense_mood():
-    tags = derive_sub_tags_from_ontology_ids(["mood:passionate"])
-    assert "tone:intense" in tags
+def test_metadata_tag_inference_does_not_collapse_mood_into_tone():
+    # Mood ontology IDs are emitted verbatim by callers; the old coarse
+    # tone:soft / tone:intense collapse has been removed so it can't stamp
+    # "soft" on roughly every other asset.
+    soft_mood_tags = derive_sub_tags_from_ontology_ids(["mood:tender"])
+    intense_mood_tags = derive_sub_tags_from_ontology_ids(["mood:passionate"])
+
+    assert "tone:soft" not in soft_mood_tags
+    assert "tone:intense" not in intense_mood_tags
 
 
 def test_analyze_prompt_derives_subtags_from_ontology_metadata():

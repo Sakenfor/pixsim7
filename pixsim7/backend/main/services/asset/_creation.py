@@ -267,6 +267,7 @@ class AssetCreationMixin:
             operation_type=generation.operation_type.value if generation.operation_type else None,
             reproducible_hash=getattr(generation, 'reproducible_hash', None),
             input_assets_key=self._compute_input_assets_key(generation),
+            gen_seed=self._compute_gen_seed(generation),
             prompt_version_id=getattr(generation, 'prompt_version_id', None),
             prompt_family_id=await self._resolve_prompt_family_id(generation),
             provider_uploads={submission.provider_id: provider_asset_id},
@@ -343,6 +344,13 @@ class AssetCreationMixin:
         from pixsim7.backend.main.services.generation.context import compute_input_assets_key
 
         return compute_input_assets_key(cls._extract_input_asset_ids(generation))
+
+    @staticmethod
+    def _compute_gen_seed(generation: Any) -> Optional[int]:
+        """Denormalized provider seed for "same seed" sibling counts."""
+        from pixsim7.backend.main.services.generation.context import extract_gen_seed
+
+        return extract_gen_seed(getattr(generation, "canonical_params", None))
 
     async def _resolve_prompt_family_id(self, generation: Any) -> Optional[UUID]:
         """Resolve the prompt family for "same prompt family" grouping.
@@ -598,11 +606,8 @@ class AssetCreationMixin:
             prompt_analysis: Analysis result with candidates (and legacy tags_flat/tags)
         """
         try:
-            # Derive tags from candidates (primary path).
-            # Falls back to legacy tags_flat/tags for old stored analyses.
+            # Derive tags from candidates (the only analysis tag source now).
             analysis_tags = self._derive_analysis_tags_from_candidates(prompt_analysis)
-            if not analysis_tags:
-                analysis_tags = self._extract_legacy_tags(prompt_analysis)
             if not analysis_tags:
                 return
 
@@ -660,32 +665,6 @@ class AssetCreationMixin:
 
         except Exception as e:
             logger.warning(f"Failed to apply analyzer tags to asset {asset_id}: {e}")
-
-    @staticmethod
-    def _extract_legacy_tags(prompt_analysis: dict) -> list[str]:
-        """Fallback: extract tags from legacy tags_flat / tags JSONB fields.
-
-        Only needed for assets created before tags were dropped from parser output.
-        """
-        tags_flat = prompt_analysis.get("tags_flat")
-        if isinstance(tags_flat, list) and tags_flat:
-            return [tag for tag in tags_flat if isinstance(tag, str) and tag.strip()]
-
-        raw_tags = prompt_analysis.get("tags")
-        if not isinstance(raw_tags, list) or not raw_tags:
-            return []
-
-        extracted: list[str] = []
-        for item in raw_tags:
-            if isinstance(item, str):
-                if item.strip():
-                    extracted.append(item)
-                continue
-            if isinstance(item, dict):
-                value = item.get("tag")
-                if isinstance(value, str) and value.strip():
-                    extracted.append(value)
-        return extracted
 
     @staticmethod
     def _derive_analysis_tags_from_candidates(prompt_analysis: dict) -> list[str]:

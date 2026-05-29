@@ -44,16 +44,17 @@ def test_attach_sequence_context_prefers_highest_scoring_primitive_projection():
     assert analysis["sequence_context"]["confidence"] == 0.91
 
 
-def test_attach_sequence_context_falls_back_to_sequence_tag():
+def test_attach_sequence_context_falls_back_to_candidate_sequence_ontology_id():
     analysis = {
-        "candidates": [],
-        "tags": ["style:etching", "sequence:continuation"],
+        "candidates": [
+            {"ontology_ids": ["style:etching", "sequence:continuation"]},
+        ],
     }
 
     _attach_sequence_context(analysis)
 
     assert analysis["sequence_context"]["role_in_sequence"] == "continuation"
-    assert analysis["sequence_context"]["source"] == "analysis.tags"
+    assert analysis["sequence_context"]["source"] == "analysis.candidates"
     assert analysis["sequence_context"]["matched_block_id"] is None
     assert analysis["sequence_context"]["confidence"] is None
 

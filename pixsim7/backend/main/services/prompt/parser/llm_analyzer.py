@@ -51,7 +51,7 @@ RESPONSE FORMAT (JSON only, no other text):
       "ontology_ids": ["mood:tender", "camera:angle_pov"]
     }
   ],
-  "tags": ["has:<role_id>", "tone:soft", "camera:pov"]
+  "tags": ["has:<role_id>", "mood:tender", "camera:pov"]
 }
 
 Be precise. Extract meaningful semantic information. Return ONLY valid JSON."""
