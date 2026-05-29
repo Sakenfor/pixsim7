@@ -612,7 +612,14 @@ class TestManagedProcessDetection:
         return {"type": "user", "message": {"role": "user",
                 "content": [{"type": "tool_result", "tool_use_id": tuid, "content": "ok"}]}}
 
-    def test_subagent_after_text_block_emits_started_then_done(self):
+    def test_subagent_after_text_block_started_then_done_full_id_match(self):
+        # Realistic ids: every Claude tool_use id shares the "toolu_01" prefix,
+        # so an UNRELATED tool_result must NOT close the subagent — only a
+        # full-id match does. (A truncated key would close it on the first
+        # unrelated result, surfacing as "instantly done".)
+        sub_id = "toolu_01SUBAGENTaaaaaaaaaaaa"
+        other_id = "toolu_01OTHERbbbbbbbbbbbbbbb"
+
         async def _run():
             s = AgentCmdSession("test-session", command="claude")
             s._process = _FakeProc()
@@ -627,11 +634,16 @@ class TestManagedProcessDetection:
                 # scan would have missed it.
                 await s._response_queue.put(self._assistant([
                     {"type": "text", "text": "Let me delegate this"},
-                    {"type": "tool_use", "id": "toolu_ABC12345xyz", "name": "Task",
+                    {"type": "tool_use", "id": sub_id, "name": "Task",
                      "input": {"description": "reviewing primitives", "subagent_type": "Explore"}},
                 ]))
                 await asyncio.sleep(0.05)
-                await s._response_queue.put(self._tool_result("toolu_ABC12345xyz"))
+                # Unrelated tool_result, SAME toolu_01 prefix, different full id —
+                # must not close the subagent.
+                await s._response_queue.put(self._tool_result(other_id))
+                await asyncio.sleep(0.05)
+                # The subagent's real result closes it.
+                await s._response_queue.put(self._tool_result(sub_id))
                 await asyncio.sleep(0.05)
                 await s._response_queue.put({"type": "result", "result": "done"})
 
@@ -644,9 +656,9 @@ class TestManagedProcessDetection:
         assert result == "done"
         started = [d for e, d in progress if e == "managed_proc_started"]
         done = [d for e, d in progress if e == "managed_proc_done"]
-        # short_id = first 8 chars of the tool_use id
-        assert any(d.startswith("subagent\ttoolu_AB\t") and "reviewing primitives" in d for d in started), started
-        assert done == ["toolu_AB"], done
+        assert any(d == f"subagent\t{sub_id}\treviewing primitives" for d in started), started
+        # Closed exactly once, by the subagent's own id — never by the unrelated one.
+        assert done == [sub_id], done
 
     def test_background_bash_started_and_not_closed_by_launch_ack(self):
         async def _run():
@@ -660,13 +672,13 @@ class TestManagedProcessDetection:
             async def feed():
                 await asyncio.sleep(0.05)
                 await s._response_queue.put(self._assistant([
-                    {"type": "tool_use", "id": "toolu_BG999999", "name": "Bash",
+                    {"type": "tool_use", "id": "toolu_01BGbbbbbbbbbbbbbbbb", "name": "Bash",
                      "input": {"command": "pytest -q", "run_in_background": True}},
                 ]))
                 await asyncio.sleep(0.05)
                 # background bash acks its tool_result immediately while still
                 # running — must NOT be marked done here.
-                await s._response_queue.put(self._tool_result("toolu_BG999999"))
+                await s._response_queue.put(self._tool_result("toolu_01BGbbbbbbbbbbbbbbbb"))
                 await asyncio.sleep(0.05)
                 await s._response_queue.put({"type": "result", "result": "done"})
 
@@ -679,7 +691,7 @@ class TestManagedProcessDetection:
         assert result == "done"
         started = [d for e, d in progress if e == "managed_proc_started"]
         done = [d for e, d in progress if e == "managed_proc_done"]
-        assert any(d.startswith("background_task\ttoolu_BG\t") and "pytest -q" in d for d in started), started
+        assert any(d == "background_task\ttoolu_01BGbbbbbbbbbbbbbbbb\tpytest -q" for d in started), started
         assert done == [], f"background task must not be closed by its launch ack: {done}"
 
     def test_plain_bash_is_not_a_managed_process(self):

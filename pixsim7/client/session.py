@@ -1057,7 +1057,12 @@ class AgentCmdSession:
                                 _kind = "background_task"
                             else:
                                 continue
-                            _tuid = str(_blk.get("id") or "")[:8]
+                            # Full tool_use id — NOT a prefix: every Claude id
+                            # starts with the same "toolu_01…" prefix, so a
+                            # truncated key collides across all tools and the
+                            # subagent would be closed by the next unrelated
+                            # tool_result.
+                            _tuid = str(_blk.get("id") or "")
                             if not _tuid or _tuid in managed_started:
                                 continue
                             managed_started[_tuid] = _kind
@@ -1109,7 +1114,7 @@ class AgentCmdSession:
                                 for _b in _uc:
                                     if not isinstance(_b, dict) or _b.get("type") != "tool_result":
                                         continue
-                                    _rid = str(_b.get("tool_use_id") or "")[:8]
+                                    _rid = str(_b.get("tool_use_id") or "")
                                     if managed_started.get(_rid) == "subagent":
                                         managed_started.pop(_rid, None)
                                         try:
