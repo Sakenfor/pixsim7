@@ -39,6 +39,23 @@ class CodegenTaskResponse(BaseModel):
     description: str
     script: str
     supports_check: bool
+    # If True, the task only supports `--check`. The frontend should hide its
+    # destructive Run button. Mirrors `checkOnly` in tools/codegen/manifest.ts.
+    # The runner enforces this server-side as well.
+    check_only: bool = False
+    # CLI args appended to the task invocation (e.g., `--include-tags ...`).
+    # Surfaced so the frontend can show what a scoped task actually covers.
+    args: list[str] = Field(default_factory=list)
+    # Repo-relative path the task writes to (file or directory). Mirrors
+    # `outputPath` in tools/codegen/manifest.ts. Used by output-stats endpoints
+    # to compute file count / size / last-modified for the generated artifact.
+    output_path: str | None = None
+    # Service id this task depends on (e.g., "main-api"). Mirrors `requires`
+    # in tools/codegen/manifest.ts. UIs use this for a "service running" badge.
+    requires: str | None = None
+    # Per-task subprocess timeout in milliseconds. None means use the runner's
+    # default. Mirrors `timeoutMs` in tools/codegen/manifest.ts.
+    timeout_ms: int | None = None
     groups: list[str] = Field(default_factory=list)
 
 
@@ -89,6 +106,11 @@ def _to_task_response(task: CodegenTask) -> CodegenTaskResponse:
         description=task.description,
         script=task.script,
         supports_check=task.supports_check,
+        check_only=task.check_only,
+        args=list(task.args),
+        output_path=task.output_path,
+        requires=task.requires,
+        timeout_ms=task.timeout_ms,
         groups=task.groups,
     )
 

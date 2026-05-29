@@ -170,14 +170,70 @@ type CodegenResultEntry = {
   checkMode: boolean
 }
 
+const CODEGEN_GROUP_FILTER_ALL = '__all__'
+const CODEGEN_GROUP_ORDER = [
+  'openapi',
+  'cue',
+  'types',
+  'ontology',
+  'prompt',
+  'plugins',
+  'tests',
+  'docs',
+] as const
+
 function CodegenSection() {
   const [tasks, setTasks] = useState<CodegenTask[]>([])
   const [results, setResults] = useState<Record<string, CodegenResultEntry>>({})
   const [running, setRunning] = useState<string | null>(null)
   const [openapiStats, setOpenapiStats] = useState<CodegenOpenapiStats | null>(null)
+  const [groupFilter, setGroupFilter] = useState<string>(CODEGEN_GROUP_FILTER_ALL)
   // Per-task output filesystem stats; keyed by task id, refreshed on selection
   // and after a Run completes.
   const [outputStats, setOutputStats] = useState<Record<string, CodegenOutputStats>>({})
+
+  const groupTaskCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const task of tasks) {
+      for (const group of task.groups) {
+        counts.set(group, (counts.get(group) ?? 0) + 1)
+      }
+    }
+    return counts
+  }, [tasks])
+
+  const groupFilterOptions = useMemo(() => {
+    const groups = [...groupTaskCounts.keys()]
+    groups.sort((a, b) => {
+      const ai = CODEGEN_GROUP_ORDER.indexOf(a as (typeof CODEGEN_GROUP_ORDER)[number])
+      const bi = CODEGEN_GROUP_ORDER.indexOf(b as (typeof CODEGEN_GROUP_ORDER)[number])
+      const aKnown = ai !== -1
+      const bKnown = bi !== -1
+      if (aKnown && bKnown) return ai - bi
+      if (aKnown) return -1
+      if (bKnown) return 1
+      return a.localeCompare(b)
+    })
+    return [CODEGEN_GROUP_FILTER_ALL, ...groups]
+  }, [groupTaskCounts])
+
+  useEffect(() => {
+    if (groupFilter === CODEGEN_GROUP_FILTER_ALL) return
+    if (!groupTaskCounts.has(groupFilter)) setGroupFilter(CODEGEN_GROUP_FILTER_ALL)
+  }, [groupFilter, groupTaskCounts])
+
+  const filteredTasks = useMemo(
+    () => (groupFilter === CODEGEN_GROUP_FILTER_ALL
+      ? tasks
+      : tasks.filter((t) => t.groups.includes(groupFilter))),
+    [tasks, groupFilter],
+  )
+
+  const tasksById = useMemo(() => {
+    const map = new Map<string, CodegenTask>()
+    for (const task of tasks) map.set(task.id, task)
+    return map
+  }, [tasks])
 
   useEffect(() => {
     getCodegenTasks().then(setTasks)
@@ -195,7 +251,7 @@ function CodegenSection() {
     const childIds = new Set<string>()
     const childrenByParent = new Map<string, CodegenTask[]>()
     for (const parentId of EXPANDABLE_PARENTS) {
-      const children = tasks.filter((t) => t.id.startsWith(`${parentId}-`))
+      const children = filteredTasks.filter((t) => t.id.startsWith(`${parentId}-`))
       if (children.length) {
         childrenByParent.set(parentId, children)
         children.forEach((c) => childIds.add(c.id))
@@ -215,22 +271,23 @@ function CodegenSection() {
     // as a child of the previous task.
     const parentIdSet = new Set<string>(EXPANDABLE_PARENTS)
     for (const parentId of EXPANDABLE_PARENTS) {
-      const t = tasks.find((tt) => tt.id === parentId)
+      const t = filteredTasks.find((tt) => tt.id === parentId) ?? tasksById.get(parentId)
+      const children = childrenByParent.get(parentId)
       if (!t) continue
-      const children = childrenByParent.get(t.id)
+      if (!filteredTasks.some((tt) => tt.id === parentId) && (!children || children.length === 0)) continue
       out.push({
-        id: `task:${t.id}`,
-        label: children ? `${t.id} (${children.length})` : t.id,
+        id: `task:${parentId}`,
+        label: children ? `${parentId} (${children.length})` : parentId,
         icon: taskIcon(t),
         children: children?.map((c) => ({
           id: `task:${c.id}`,
-          label: c.id.replace(new RegExp(`^${t.id}-`), ''),
+          label: c.id.replace(new RegExp(`^${parentId}-`), ''),
           icon: taskIcon(c),
         })),
       })
     }
     // Pass 2: every other task in manifest order, skipping children + parents.
-    for (const t of tasks) {
+    for (const t of filteredTasks) {
       if (childIds.has(t.id) || parentIdSet.has(t.id)) continue
       out.push({
         id: `task:${t.id}`,
@@ -239,15 +296,32 @@ function CodegenSection() {
       })
     }
     return out
-  }, [tasks, running])
+  }, [filteredTasks, tasksById, running])
 
   const nav = useSidebarNav({ sections, storageKey: 'launcher-codegen-active' })
+  const visibleRailIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const section of sections) {
+      ids.add(section.id)
+      for (const child of section.children ?? []) ids.add(child.id)
+    }
+    return ids
+  }, [sections])
+
+  // Keep selected rail id valid when the group filter changes.
+  useEffect(() => {
+    if (sections.length === 0) return
+    const current = nav.activeChildId ?? nav.activeSectionId
+    if (!visibleRailIds.has(current)) nav.navigate(sections[0].id)
+  }, [sections, visibleRailIds, nav.activeSectionId, nav.activeChildId, nav.navigate])
 
   // Resolve the active task from the rail state (`task:<id>` namespace). Falls
   // back to section id when no child is selected.
   const activeRailId = nav.activeChildId ?? nav.activeSectionId
   const activeTaskId = activeRailId.startsWith('task:') ? activeRailId.slice(5) : null
-  const selected = activeTaskId ? tasks.find((t) => t.id === activeTaskId) ?? null : null
+  const selected = activeTaskId && visibleRailIds.has(`task:${activeTaskId}`)
+    ? tasksById.get(activeTaskId) ?? null
+    : null
   const selectedEntry = activeTaskId ? results[activeTaskId] ?? null : null
   const selectedIsOpenapi = !!activeTaskId && activeTaskId.startsWith('openapi')
 
@@ -289,40 +363,70 @@ function CodegenSection() {
   }, [navigate])
 
   return (
-    <SidebarContentLayout
-      sections={sections}
-      activeSectionId={nav.activeSectionId}
-      activeChildId={nav.activeChildId}
-      // Use `navigate` instead of `selectSection`: the latter auto-routes to
-      // the first child of any section that has children, which prevents the
-      // user from ever selecting an EXPANDABLE_PARENT (e.g., `openapi`) itself.
-      // `navigate` clears `activeChildId` for top-level ids, so the parent
-      // task lands in the detail pane as expected.
-      onSelectSection={nav.navigate}
-      onSelectChild={nav.selectChild}
-      expandedSectionIds={nav.expandedSectionIds}
-      onToggleExpand={nav.toggleExpand}
-      sidebarTitle="Codegen tasks"
-      sidebarWidth="w-52"
-      variant="dark"
-      resizable
-      persistKey="launcher-codegen-sidebar"
-      contentClassName="overflow-auto p-3 min-w-0"
-      className="h-full"
-    >
-      {!selected ? (
-        <EmptyState message="Select a codegen task on the left." />
-      ) : (
-        <CodegenTaskDetail
-          task={selected}
-          entry={selectedEntry}
-          running={running === selected.id}
-          onRun={(check) => run(selected.id, check)}
-          openapiStats={selectedIsOpenapi ? openapiStats : null}
-          output={outputStats[selected.id] ?? null}
-        />
-      )}
-    </SidebarContentLayout>
+    <div className="h-full flex flex-col">
+      <div className="shrink-0 p-3 pb-0 space-y-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] text-gray-500 mr-1">Group:</span>
+          {groupFilterOptions.map((group) => {
+            const isAll = group === CODEGEN_GROUP_FILTER_ALL
+            const count = isAll ? tasks.length : (groupTaskCounts.get(group) ?? 0)
+            const active = groupFilter === group
+            const label = isAll ? 'all' : group
+            return (
+              <button
+                key={group}
+                type="button"
+                onClick={() => setGroupFilter(group)}
+                className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                  active
+                    ? 'bg-blue-900/40 border-blue-700/60 text-blue-200'
+                    : 'bg-surface-raised border-border text-gray-400 hover:text-gray-200 hover:border-gray-600'
+                }`}
+              >
+                {label} ({count})
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <SidebarContentLayout
+        sections={sections}
+        activeSectionId={nav.activeSectionId}
+        activeChildId={nav.activeChildId}
+        // Use `navigate` instead of `selectSection`: the latter auto-routes to
+        // the first child of any section that has children, which prevents the
+        // user from ever selecting an EXPANDABLE_PARENT (e.g., `openapi`) itself.
+        // `navigate` clears `activeChildId` for top-level ids, so the parent
+        // task lands in the detail pane as expected.
+        onSelectSection={nav.navigate}
+        onSelectChild={nav.selectChild}
+        expandedSectionIds={nav.expandedSectionIds}
+        onToggleExpand={nav.toggleExpand}
+        sidebarTitle="Codegen tasks"
+        sidebarWidth="w-52"
+        variant="dark"
+        resizable
+        persistKey="launcher-codegen-sidebar"
+        contentClassName="overflow-auto p-3 min-w-0"
+        className="flex-1 min-h-0"
+      >
+        {sections.length === 0 ? (
+          <EmptyState message={groupFilter === CODEGEN_GROUP_FILTER_ALL ? 'No codegen tasks found.' : `No codegen tasks in group "${groupFilter}".`} />
+        ) : !selected ? (
+          <EmptyState message="Select a codegen task on the left." />
+        ) : (
+          <CodegenTaskDetail
+            task={selected}
+            entry={selectedEntry}
+            running={running === selected.id}
+            onRun={(check) => run(selected.id, check)}
+            openapiStats={selectedIsOpenapi ? openapiStats : null}
+            output={outputStats[selected.id] ?? null}
+          />
+        )}
+      </SidebarContentLayout>
+    </div>
   )
 }
 
@@ -824,6 +928,11 @@ function DatabasesSection() {
               <div className="text-[11px]">
                 <span className="text-gray-500">Current:</span>{' '}
                 <span className="text-gray-200 font-mono">{selectedStatus?.current_revision ?? '…'}</span>
+                {selectedStatus?.current_message && (
+                  <div className="text-gray-400 font-mono truncate" title={selectedStatus.current_message}>
+                    {selectedStatus.current_message}
+                  </div>
+                )}
               </div>
               {selectedStatus?.pending && selectedStatus.pending.length > 0 && (
                 <div className="text-[11px] space-y-0.5">

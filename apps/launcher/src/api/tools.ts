@@ -16,9 +16,62 @@ export interface CodegenTask {
   description: string
   script: string
   supports_check: boolean
+  /**
+   * If true, the green Run button is hidden — task only supports --check mode.
+   * Used for tag-filtered openapi smoke-checks that share an output dir with
+   * the full openapi task and would otherwise overwrite it with just a slice.
+   */
+  check_only?: boolean
+  /**
+   * CLI args appended to the script invocation (e.g., `['--include-tags', 'assets,...']`).
+   * Surfaced in the launcher detail pane so users can see what a scoped task covers.
+   */
+  args?: string[]
+  /**
+   * Repo-relative path the task writes to. Mirrors `outputPath` in
+   * `tools/codegen/manifest.ts`. May be null for tasks without a single
+   * declared output (e.g., `plugin-codegen`).
+   */
+  output_path?: string | null
+  /**
+   * Service id the task depends on (e.g., `'main-api'`). Mirrors `requires`
+   * in the manifest. The launcher route also returns a decorated
+   * `requires_service` with a display label, so most UI rendering uses that
+   * — `requires` is exposed as the raw id for clients that want it.
+   */
+  requires?: string | null
+  /**
+   * Per-task subprocess timeout (milliseconds). Mirrors `timeoutMs` in the
+   * manifest. Null means runner default.
+   */
+  timeout_ms?: number | null
   groups: string[]
   requires_service?: CodegenServiceDep | null
   service_running?: boolean
+}
+
+/** Per-tag operation counts from the live OpenAPI schema. */
+export interface CodegenOpenapiStats {
+  ok: boolean
+  total_ops?: number
+  per_tag?: Record<string, number>
+  fetched_at?: number
+  error?: string
+}
+
+/** Filesystem stats for a single task's declared output. */
+export interface CodegenOutputStats {
+  ok: boolean
+  task_id: string
+  output_path?: string
+  kind?: 'file' | 'directory'
+  exists?: boolean
+  file_count?: number
+  total_bytes?: number
+  last_modified?: number  // epoch seconds
+  most_recent_file?: string
+  symbol_count?: number  // openapi only — count of `export` lines in model/index.ts
+  error?: string
 }
 
 export interface CodegenRunResult {
@@ -49,6 +102,35 @@ export async function runCodegenTask(taskId: string, check = false): Promise<Cod
     body: JSON.stringify({ task_id: taskId, check }),
   })
   return res.json()
+}
+
+let _openapiStatsCache: { data: CodegenOpenapiStats; ts: number } | null = null
+const OPENAPI_STATS_TTL = 30_000  // 30s — backend caches this too; this is just to dedupe rapid renders.
+
+export async function getCodegenOutputStats(taskId: string): Promise<CodegenOutputStats> {
+  try {
+    const res = await fetch(`/codegen/output-stats?task_id=${encodeURIComponent(taskId)}`)
+    if (!res.ok) return { ok: false, task_id: taskId, error: `HTTP ${res.status}` }
+    return await res.json()
+  } catch (e) {
+    return { ok: false, task_id: taskId, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export async function getCodegenOpenapiStats(force = false): Promise<CodegenOpenapiStats> {
+  const now = Date.now()
+  if (!force && _openapiStatsCache && now - _openapiStatsCache.ts < OPENAPI_STATS_TTL) {
+    return _openapiStatsCache.data
+  }
+  try {
+    const res = await fetch('/codegen/openapi-stats')
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const data: CodegenOpenapiStats = await res.json()
+    _openapiStatsCache = { data, ts: now }
+    return data
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
 }
 
 // ── Buildables ──
@@ -122,6 +204,7 @@ export interface MigrationStatus {
   db_id: string
   label: string
   current_revision: string
+  current_message: string | null
   heads: string
   pending: MigrationNode[]
   pending_error: string | null

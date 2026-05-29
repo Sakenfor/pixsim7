@@ -163,6 +163,11 @@ class CodegenTaskResponse(BaseModel):
     description: str
     script: str
     supports_check: bool = False
+    check_only: bool = False
+    args: List[str] = []
+    output_path: Optional[str] = None
+    requires: Optional[str] = None
+    timeout_ms: Optional[int] = None
     groups: List[str] = []
 
 

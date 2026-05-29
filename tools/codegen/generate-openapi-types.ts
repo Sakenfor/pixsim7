@@ -438,6 +438,67 @@ async function compareDirectories(expectedDir: string, actualDir: string): Promi
   return { equal: true };
 }
 
+/**
+ * Slice-aware subset compare. Used for tag-filtered checks where the slice
+ * tempdir contains a strict subset of the canonical's files.
+ *
+ * Asks: "for every file this slice would produce, does the canonical contain
+ * the same content?" — passes if all slice files exist + match in canonical.
+ * Ignores files that exist in canonical but not in the slice (those belong to
+ * other tags; out of scope for a slice check). Skips `model/index.ts` because
+ * it's a re-export barrel that legitimately differs between slice and full
+ * (slice's barrel re-exports only the slice's DTOs; canonical's re-exports all).
+ *
+ * Stepping stone toward scoped Generate via merge: the same enumeration
+ * answers "which canonical files would I overwrite" for a slice merge.
+ */
+async function compareSubsetDirectories(sliceDir: string, canonicalDir: string): Promise<DirCompareResult> {
+  if (!(await pathExists(sliceDir))) {
+    return { equal: false, reason: `slice tempdir not generated: ${sliceDir}` };
+  }
+  if (!(await pathExists(canonicalDir))) {
+    return { equal: false, reason: `canonical output not found: ${canonicalDir}` };
+  }
+
+  const sliceFiles = await listFilesRecursive(sliceDir);
+  if (sliceFiles.length === 0) {
+    // Filter matched no operations (or no DTOs were generated). Nothing to verify
+    // — surface this clearly rather than silently passing.
+    return { equal: false, reason: 'slice generated zero files (tag filter matched nothing?)' };
+  }
+
+  const missing: string[] = [];
+  const differing: string[] = [];
+
+  for (const relPath of sliceFiles) {
+    if (relPath === 'model/index.ts') continue;  // see fn comment
+
+    const canonicalPath = path.join(canonicalDir, relPath);
+    if (!(await pathExists(canonicalPath))) {
+      missing.push(relPath);
+      continue;
+    }
+    const sliceContent = await fs.readFile(path.join(sliceDir, relPath), 'utf8');
+    const canonicalContent = await fs.readFile(canonicalPath, 'utf8');
+    if (sliceContent !== canonicalContent) {
+      differing.push(relPath);
+    }
+  }
+
+  if (missing.length === 0 && differing.length === 0) {
+    return { equal: true };
+  }
+
+  const sample = (label: string, values: string[]): string => {
+    if (values.length === 0) return '';
+    const head = values.slice(0, 3).join(', ');
+    const tail = values.length > 3 ? `, +${values.length - 3} more` : '';
+    return `${values.length} ${label} (${head}${tail})`;
+  };
+  const parts = [sample('missing in canonical', missing), sample('differ', differing)].filter(Boolean);
+  return { equal: false, reason: parts.join('; ') };
+}
+
 async function snapshotDirectory(root: string): Promise<FileSnapshot> {
   const snapshot: FileSnapshot = new Map();
   if (!(await pathExists(root))) {
@@ -551,7 +612,8 @@ async function generateOrvalSplit(
   modelsOnly: boolean,
   changeReportEnabled: boolean,
   changeReportSampleLimit: number,
-  isCheckMode: boolean
+  isCheckMode: boolean,
+  isSliceMode: boolean
 ): Promise<boolean> {
   if (isCheckMode) {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pixsim7-orval-check-'));
@@ -561,16 +623,22 @@ async function generateOrvalSplit(
       if (modelsOnly) {
         await pruneToModelOnly(tempOutDir);
       }
-      const comparison = await compareDirectories(tempOutDir, absOutDir);
+      // Slice mode: compare only the files the slice generated against
+      // canonical's matching files (subset compare). Full mode: strict
+      // equality including file lists.
+      const comparison = isSliceMode
+        ? await compareSubsetDirectories(tempOutDir, absOutDir)
+        : await compareDirectories(tempOutDir, absOutDir);
+      const scopeLabel = isSliceMode ? 'slice' : 'full';
       if (comparison.equal) {
-        console.log(`[ok] Orval split output is up-to-date: ${outDir}`);
+        console.log(`[ok] Orval ${scopeLabel} output is up-to-date: ${outDir}`);
         return true;
       }
-      console.error(`[stale] Orval split output is STALE: ${outDir}`);
+      console.error(`[stale] Orval ${scopeLabel} output is STALE: ${outDir}`);
       if (comparison.reason) {
         console.error(`  ${comparison.reason}`);
       }
-      console.error('  Run `pnpm openapi:gen` to update it.');
+      console.error('  Run `pnpm openapi:gen` to update the canonical output.');
       return false;
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
@@ -677,6 +745,7 @@ async function main() {
     );
   }
 
+  const isSliceMode = includeTags.length > 0 || excludeTags.length > 0;
   const orvalOk = await generateOrvalSplit(
     orvalSource,
     absOrvalOutDir,
@@ -686,7 +755,8 @@ async function main() {
     modelsOnly,
     changeReportEnabled,
     changeReportSampleLimit,
-    isCheckMode
+    isCheckMode,
+    isSliceMode,
   );
 
   if (filteredSpecTempDir) {

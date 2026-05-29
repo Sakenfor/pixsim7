@@ -15,6 +15,37 @@ export interface CodegenTask {
   description: string;
   script: string;
   supports_check: boolean;
+  /**
+   * If true, the task only supports `--check` mode. Frontends should hide
+   * destructive Run buttons. Used for tag-filtered openapi smoke-checks
+   * that share an output dir with the full openapi task and would otherwise
+   * clobber it with just their slice.
+   */
+  check_only?: boolean;
+  /**
+   * CLI args appended to the script invocation (e.g., `--include-tags ...`).
+   * Surfaced so the UI can show what a scoped task actually covers.
+   */
+  args?: string[];
+  /**
+   * Repo-relative path the task writes to (file or directory). Used by
+   * output-stats endpoints to compute file count, size, last-modified for
+   * the generated artifact. May be undefined for tasks without a single
+   * declared output (e.g., `plugin-codegen`).
+   */
+  output_path?: string | null;
+  /**
+   * Service id this task depends on (e.g., `'main-api'`). Mirrors `requires`
+   * in `tools/codegen/manifest.ts`. UIs render a "service running" badge from
+   * this; the launcher additionally returns a decorated `requires_service`
+   * with a display label.
+   */
+  requires?: string | null;
+  /**
+   * Per-task subprocess timeout in milliseconds. Null/absent means the runner
+   * default (300_000). Mirrors `timeoutMs` in the manifest.
+   */
+  timeout_ms?: number | null;
   groups: string[];
 }
 

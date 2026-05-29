@@ -100,6 +100,12 @@ async function runTask(task: CodegenTask, checkMode: boolean): Promise<void> {
       throw new Error(`Task "${task.id}" does not support --check mode.`);
     }
     args.push('--check');
+  } else if (task.checkOnly) {
+    throw new Error(
+      `Task "${task.id}" is check-only. Run with --check. ` +
+      `Scoped openapi tasks share the same output dir as the full \`openapi\` task; ` +
+      `running them as Generate would overwrite it with just their slice.`
+    );
   }
 
   await runCommand(runner, args);
