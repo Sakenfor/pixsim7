@@ -374,38 +374,72 @@ function RegenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpa
 }
 
 function StyleVariationsExpand({ expand }: { expand: Extract<GenerationActionExpand, { kind: 'style-variations' }> }) {
-  const { isGenerating, blocks, onPickPreset } = expand;
+  const { isGenerating, categories, activeCategory, blocks, onSelectCategory, onPickPreset, onSweepCategory } = expand;
+  const activeLabel = categories.find((c) => c.id === activeCategory)?.label ?? 'Style';
   return (
-    <div className="flex flex-col rounded-xl bg-accent/95 backdrop-blur-sm shadow-2xl max-h-64 overflow-y-auto">
-      <div className="px-3 py-1.5 text-[10px] font-medium text-white/50 uppercase tracking-wider">
-        Aesthetic Presets
+    <div className="flex flex-col rounded-xl bg-accent/95 backdrop-blur-sm shadow-2xl w-48 max-h-72 overflow-hidden">
+      {/* Style dimension tabs */}
+      <div className="flex flex-row flex-wrap gap-0.5 p-1 rounded-t-xl">
+        {categories.map((cat) => (
+          <button
+            key={cat.id}
+            onClick={() => onSelectCategory(cat.id)}
+            className={`px-2 h-6 text-[10px] rounded-md transition-colors ${
+              cat.id === activeCategory
+                ? 'bg-white/25 text-white font-medium'
+                : 'text-white/70 hover:bg-white/10'
+            }`}
+            title={`Show ${cat.label} presets`}
+            type="button"
+          >
+            {cat.label}
+          </button>
+        ))}
       </div>
-      {!blocks ? (
-        <div className="w-44 h-8 flex items-center justify-center">
-          <Icon name="loader" size={12} className="animate-spin text-white/40" />
-        </div>
-      ) : blocks.length === 0 ? (
-        <div className="w-44 h-8 px-3 text-xs text-white/40 flex items-center">
-          No styles available
-        </div>
-      ) : (
-        blocks.map((block) => {
-          const label = block.block_id.split('.').pop()?.replace(/_/g, ' ') ?? block.block_id;
-          return (
-            <button
-              key={block.block_id}
-              onClick={() => onPickPreset(block.block_id)}
-              className="w-44 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 last:rounded-b-xl capitalize"
-              title={block.text}
-              disabled={isGenerating}
-              type="button"
-            >
-              <Icon name="sparkles" size={10} />
-              <span className="truncate">{label}</span>
-            </button>
-          );
-        })
-      )}
+
+      {/* Sweep every preset in the active dimension */}
+      <div className="h-px bg-white/15 mx-2" />
+      <button
+        onClick={onSweepCategory}
+        className="h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+        title={`Generate one variation per ${activeLabel} preset`}
+        disabled={isGenerating}
+        type="button"
+      >
+        <Icon name={isGenerating ? 'loader' : 'palette'} size={12} className={isGenerating ? 'animate-spin' : ''} />
+        <span>Sweep all {activeLabel}</span>
+      </button>
+
+      {/* Individual presets for the active dimension */}
+      <div className="h-px bg-white/15 mx-2" />
+      <div className="flex flex-col overflow-y-auto">
+        {!blocks ? (
+          <div className="h-8 flex items-center justify-center">
+            <Icon name="loader" size={12} className="animate-spin text-white/40" />
+          </div>
+        ) : blocks.length === 0 ? (
+          <div className="h-8 px-3 text-xs text-white/40 flex items-center">
+            No {activeLabel.toLowerCase()} presets
+          </div>
+        ) : (
+          blocks.map((block) => {
+            const label = block.block_id.split('.').pop()?.replace(/_/g, ' ') ?? block.block_id;
+            return (
+              <button
+                key={block.block_id}
+                onClick={() => onPickPreset(block.block_id)}
+                className="h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 last:rounded-b-xl capitalize"
+                title={block.text}
+                disabled={isGenerating}
+                type="button"
+              >
+                <Icon name="sparkles" size={10} />
+                <span className="truncate">{label}</span>
+              </button>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

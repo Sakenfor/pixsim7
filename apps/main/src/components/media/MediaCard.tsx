@@ -699,7 +699,14 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   useEffect(() => {
     if (!canRevealOverlays || !overlayRevealed) return;
     const onDocPointerDown = (e: PointerEvent) => {
-      if (cardRootRef.current?.contains(e.target as Node | null)) return;
+      const target = e.target as Node | null;
+      if (cardRootRef.current?.contains(target)) return;
+      // The generation button group's submenus (regenerate / quick-gen / slot
+      // picker / provider menu) are portaled to <body>, outside the card root.
+      // Without this, tapping one of those buttons counts as an outside tap,
+      // hides the overlay, and unmounts the submenu before its click fires —
+      // so the action silently does nothing on touch.
+      if (target instanceof Element && target.closest('[data-portal-float="true"]')) return;
       setOverlayRevealed(false);
     };
     document.addEventListener('pointerdown', onDocPointerDown, true);
@@ -1016,6 +1023,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     providerUploads: resolved.contextMenuAsset?.providerUploads,
     lastUploadStatusByProvider: resolved.contextMenuAsset?.lastUploadStatusByProvider,
     versionNumber: resolved.contextMenuAsset?.versionNumber,
+    sameSeedCount: resolved.contextMenuAsset?.sameSeedCount,
     sameInputsCount: resolved.contextMenuAsset?.sameInputsCount,
     samePromptCount: resolved.contextMenuAsset?.samePromptCount,
     onFilterByTagShortcut,

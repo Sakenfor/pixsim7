@@ -31,6 +31,7 @@ import {
   CAP_GENERATION_WIDGET,
   CAP_CHARACTER_INGEST_ACTION,
   useCapability,
+  useCapabilityAll,
   usePanelContext,
   type CharacterIngestActionContext,
   type GenerationWidgetContext,
@@ -129,8 +130,12 @@ export type GenerationActionExpand =
   | {
       kind: 'style-variations';
       isGenerating: boolean;
+      categories: StyleVariationCategory[];
+      activeCategory: string;
       blocks: PromptBlockResponse[] | null;
+      onSelectCategory: (category: string) => void;
       onPickPreset: (blockId: string) => void;
+      onSweepCategory: () => void;
     };
 
 /**
@@ -207,6 +212,24 @@ export type GenerationButtonGroupModel = {
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type StyleVariationCategory = { id: string; label: string };
+
+/**
+ * Style dimensions the media-card "style variations" popover can sweep.
+ * Each `id` is a block-primitive `category` whose text is appended to the
+ * source prompt before re-running the generation (see
+ * handleGenerateStyleVariations). Curated to *look / aesthetic* dimensions —
+ * content-shaping categories (pose, anatomy, camera, wardrobe…) are
+ * intentionally excluded. Add a row here to expose another sweep dimension.
+ */
+export const STYLE_VARIATION_CATEGORIES: StyleVariationCategory[] = [
+  { id: 'aesthetic_preset', label: 'Aesthetic' },
+  { id: 'light', label: 'Lighting' },
+  { id: 'color', label: 'Color' },
+  { id: 'mood', label: 'Mood' },
+  { id: 'rendering_technique', label: 'Rendering' },
+];
+
 const UPLOAD_PROVIDER_COLORS: Record<string, string> = {
   pixverse: '#7C3AED',
   sora: '#6B7280',
@@ -277,8 +300,44 @@ export function useGenerationButtonGroup({
     !!cardProps.actions?.onExtractFrame;
   const hasSelectedAny = hasSelectedFrame || isLastFrameSelected;
 
-  const { value: widgetContext, provider: widgetProvider } =
+  const { value: activeWidgetContext, provider: activeWidgetProvider } =
     useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
+  const allWidgetProviders = useCapabilityAll<GenerationWidgetContext>(
+    CAP_GENERATION_WIDGET,
+    { includeUnavailable: true },
+  );
+  const fallbackWidget = useMemo(() => {
+    if (activeWidgetContext) {
+      return null;
+    }
+
+    let best: { context: GenerationWidgetContext; priority: number; label?: string } | null = null;
+    for (const entry of allWidgetProviders) {
+      const context = entry.value;
+      if (!context) continue;
+      const candidate = {
+        context,
+        priority: entry.provider.priority ?? 0,
+        label: entry.provider.label,
+      };
+      if (!best) {
+        best = candidate;
+        continue;
+      }
+      if (candidate.context.isOpen && !best.context.isOpen) {
+        best = candidate;
+        continue;
+      }
+      if (candidate.context.isOpen === best.context.isOpen && candidate.priority > best.priority) {
+        best = candidate;
+      }
+    }
+
+    return best;
+  }, [activeWidgetContext, allWidgetProviders]);
+  const widgetContext = activeWidgetContext ?? fallbackWidget?.context;
+  const widgetProvider = activeWidgetProvider
+    ?? (fallbackWidget ? { label: fallbackWidget.label } : null);
   const { value: characterIngestAction } =
     useCapability<CharacterIngestActionContext>(CAP_CHARACTER_INGEST_ACTION);
 
@@ -598,14 +657,25 @@ export function useGenerationButtonGroup({
     }
   }, [setDefaultUploadProvider, providerMenuMode, handleUploadToTarget]);
 
-  // Style variation picker state (lazy-loaded on hover)
-  const [styleBlocks, setStyleBlocks] = useState<PromptBlockResponse[] | null>(null);
-  const styleBlocksFetchedRef = useRef(false);
-  const fetchStyleBlocks = useCallback(() => {
-    if (styleBlocksFetchedRef.current) return;
-    styleBlocksFetchedRef.current = true;
-    void searchBlocks({ category: 'aesthetic_preset', limit: 20 }).then(setStyleBlocks);
+  // Style variation picker state (blocks lazy-loaded per category on hover).
+  const [activeStyleCategory, setActiveStyleCategory] = useState<string>(
+    STYLE_VARIATION_CATEGORIES[0].id,
+  );
+  const [styleBlocksByCategory, setStyleBlocksByCategory] = useState<
+    Record<string, PromptBlockResponse[]>
+  >({});
+  const styleBlocksFetchingRef = useRef<Set<string>>(new Set());
+  const fetchStyleBlocks = useCallback((category: string) => {
+    if (styleBlocksFetchingRef.current.has(category)) return;
+    styleBlocksFetchingRef.current.add(category);
+    void searchBlocks({ category, limit: 50 }).then((blocks) => {
+      setStyleBlocksByCategory((prev) => ({ ...prev, [category]: blocks }));
+    });
   }, []);
+  const selectStyleCategory = useCallback((category: string) => {
+    setActiveStyleCategory(category);
+    fetchStyleBlocks(category);
+  }, [fetchStyleBlocks]);
 
   const hasGenContext = data.sourceGenerationId || data.hasGenerationContext;
 
@@ -997,19 +1067,23 @@ export function useGenerationButtonGroup({
       icon: resolved.icon,
       label: resolved.label,
       title: withShortcut(resolved.title, variationsAction?.shortcut),
-      onClick: () => { void handleGenerateStyleVariations(); },
+      onClick: () => { void handleGenerateStyleVariations(activeStyleCategory); },
       onContextMenu: getActionContextMenuHandler({
         actionId: MEDIA_CARD_ACTION_IDS.variations,
         label: 'Generate style variations',
       }),
-      onMouseEnter: fetchStyleBlocks,
+      onMouseEnter: () => fetchStyleBlocks(activeStyleCategory),
       expand: {
         kind: 'style-variations',
         isGenerating: isGeneratingVariations,
-        blocks: styleBlocks,
+        categories: STYLE_VARIATION_CATEGORIES,
+        activeCategory: activeStyleCategory,
+        blocks: styleBlocksByCategory[activeStyleCategory] ?? null,
+        onSelectCategory: selectStyleCategory,
         onPickPreset: (blockId: string) => {
-          void handleGenerateStyleVariations('aesthetic_preset', [blockId]);
+          void handleGenerateStyleVariations(activeStyleCategory, [blockId]);
         },
+        onSweepCategory: () => { void handleGenerateStyleVariations(activeStyleCategory); },
       },
       expandDelay: 150,
       collapseDelay: 200,
