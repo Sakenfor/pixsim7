@@ -329,6 +329,19 @@ class TestClaimSessionResolution:
         db.get.assert_not_awaited()  # no tab lookup needed
 
     @pytest.mark.asyncio
+    async def test_tab_id_claim_resolves(self):
+        """tab_id claim is the primary anchor — works for plan-scoped tabs
+        (scope_key='plan:<id>') and on turn 1 (no chat_session_id yet)."""
+        principal = SimpleNamespace(
+            chat_session_id=None,
+            scope_key="plan:foo",
+            tab_id="11111111-1111-1111-1111-111111111111",
+        )
+        db = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(session_id="from-tab")))
+        assert await _resolve_claim_session_id(db, principal) == "from-tab"
+        db.get.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_scope_key_tab_fallback(self):
         principal = SimpleNamespace(
             chat_session_id=None, scope_key="tab:11111111-1111-1111-1111-111111111111",

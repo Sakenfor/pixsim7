@@ -50,12 +50,14 @@ def _principal(
     *,
     scope_key: Optional[str] = None,
     chat_session_id: Optional[str] = None,
+    tab_id: Optional[str] = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=user_id,
         is_admin=lambda: False,
         scope_key=scope_key,
         chat_session_id=chat_session_id,
+        tab_id=tab_id,
     )
 
 
@@ -129,6 +131,18 @@ class _FakeDB:
 
 
 # ── _resolve_self_tab — token-only resolution ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_resolve_by_tab_id_claim() -> None:
+    """The tab_id claim is the primary anchor — resolves with no scope_key and
+    no chat_session_id (turn 1) and for plan-scoped tabs. Plan
+    ``tab-identity-mode``."""
+    tab = _tab(1)
+    db = _FakeDB(tabs=[tab])
+    p = _principal(1, tab_id=str(tab.id), scope_key="plan:some-plan")
+    resolved = await ct._resolve_self_tab(db, p, fallback_session_id=None)
+    assert resolved is tab
 
 
 @pytest.mark.asyncio

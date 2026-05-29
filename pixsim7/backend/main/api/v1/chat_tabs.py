@@ -66,6 +66,11 @@ class ChatTabResponse(BaseModel):
     # the next poll. Plan `plan-participant-liveness` /
     # `unify-tab-plan-categorization`.
     primaryPlanId: Optional[str] = None
+    # Session-derived preference hints used when a second device opens tabs
+    # that have no local tab-prefs cache yet. Keep optional so unbound tabs
+    # and legacy responses remain valid.
+    engine: Optional[str] = None
+    profileId: Optional[str] = None
     scopeKey: Optional[str] = None
     pinned: bool
     createdAt: str
@@ -151,7 +156,11 @@ class ChatTabReorderRequest(BaseModel):
 
 
 def _to_response(
-    tab: ChatTab, *, primary_plan_id: Optional[str] = None
+    tab: ChatTab,
+    *,
+    primary_plan_id: Optional[str] = None,
+    engine: Optional[str] = None,
+    profile_id: Optional[str] = None,
 ) -> ChatTabResponse:
     # Default the derived primary to the manual binding; the list endpoint
     # overrides with the claim-derived value. create/PATCH leave it == planId
@@ -166,6 +175,8 @@ def _to_response(
         orderIndex=tab.order_index,
         planId=tab.plan_id,
         primaryPlanId=primary_plan_id if primary_plan_id is not None else tab.plan_id,
+        engine=engine,
+        profileId=profile_id,
         scopeKey=tab.scope_key,
         pinned=tab.pinned,
         createdAt=tab.created_at.isoformat(),
@@ -298,9 +309,32 @@ async def list_chat_tabs(
     )
     rows = list((await db.execute(stmt)).scalars().all())
     primary = await _derive_primary_plan_ids(db, rows)
-    return ChatTabsListResponse(
-        tabs=[_to_response(r, primary_plan_id=primary.get(str(r.id))) for r in rows]
-    )
+    # Session-derived hints for devices that don't have this tab's local
+    # prefs cache yet (profile/engine were historically local-only).
+    session_hints: dict[str, tuple[Optional[str], Optional[str]]] = {}
+    session_ids = {r.session_id for r in rows if r.session_id}
+    if session_ids:
+        sess_stmt = select(ChatSession).where(
+            ChatSession.id.in_(session_ids),
+            or_(ChatSession.user_id == user.id, ChatSession.user_id == 0),
+        )
+        for s in (await db.execute(sess_stmt)).scalars().all():
+            session_hints[s.id] = (s.engine, s.profile_id)
+    tabs: list[ChatTabResponse] = []
+    for row in rows:
+        hint_engine: Optional[str] = None
+        hint_profile_id: Optional[str] = None
+        if row.session_id:
+            hint_engine, hint_profile_id = session_hints.get(row.session_id, (None, None))
+        tabs.append(
+            _to_response(
+                row,
+                primary_plan_id=primary.get(str(row.id)),
+                engine=hint_engine,
+                profile_id=hint_profile_id,
+            )
+        )
+    return ChatTabsListResponse(tabs=tabs)
 
 
 @router.post("", response_model=ChatTabResponse)
@@ -455,9 +489,11 @@ async def _resolve_self_tab(
     """Resolve the caller's *own* chat tab from its token, owner-scoped.
 
     Priority (all from the validated JWT, not tool args):
-      1. ``scope_key == 'tab:<uuid>'`` — the tab the token was minted for.
-      2. ``chat_session_id`` claim — the bound session → its ChatTab.
-      3. ``fallback_session_id`` from the request body (last resort).
+      1. ``tab_id`` claim — the tab PK the token was minted for. Works on
+         turn 1 (no session yet) and for plan-scoped tabs.
+      2. ``scope_key == 'tab:<uuid>'`` — the tab the token was minted for.
+      3. ``chat_session_id`` claim — the bound session → its ChatTab.
+      4. ``fallback_session_id`` from the request body (last resort).
 
     Raises 404 when nothing resolves, 403 when the resolved tab is not the
     caller's (mirrors ``_load_owned_tab``). Never trusts a client-supplied
@@ -466,13 +502,20 @@ async def _resolve_self_tab(
     """
     tab: Optional[ChatTab] = None
 
-    scope_key = getattr(principal, "scope_key", None)
-    if scope_key and scope_key.startswith("tab:"):
-        raw = scope_key[len("tab:") :]
+    async def _by_tab_id(raw: Optional[str]) -> Optional[ChatTab]:
+        if not raw:
+            return None
         try:
-            tab = await db.get(ChatTab, UUID(raw))
+            return await db.get(ChatTab, UUID(raw))
         except (ValueError, AttributeError):
-            tab = None
+            return None
+
+    tab = await _by_tab_id(getattr(principal, "tab_id", None))
+
+    if tab is None:
+        scope_key = getattr(principal, "scope_key", None)
+        if scope_key and scope_key.startswith("tab:"):
+            tab = await _by_tab_id(scope_key[len("tab:") :])
 
     async def _by_session(sid: Optional[str]) -> Optional[ChatTab]:
         if not sid:
@@ -492,7 +535,7 @@ async def _resolve_self_tab(
     if tab is None:
         raise HTTPException(
             status_code=404,
-            detail="No chat tab resolvable for this session (token carries no tab scope_key / chat_session_id).",
+            detail="No chat tab resolvable for this session (token carries no tab_id / tab scope_key / chat_session_id).",
         )
     if tab.user_id != principal.id:
         raise HTTPException(status_code=403, detail="Not your tab")

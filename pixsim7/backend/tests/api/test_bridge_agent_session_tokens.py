@@ -209,6 +209,49 @@ class TestBridgeSessionTokenMinting:
         assert claims["scope_key"] == "tab:tab-abc"
 
     @pytest.mark.asyncio
+    async def test_tab_only_mint_without_chat_session_id(self):
+        """Turn 1 of a new conversation has no chat_session_id yet (it IS
+        Claude's cli_session_id, assigned mid-turn). The bridge must still be
+        able to mint a tab-anchored token so the subprocess spawns with
+        identity. Plan ``tab-identity-mode``."""
+        app = _app_for_tokens()
+        async with _client(app) as client:
+            resp = await client.post(
+                "/api/v1/dev/agent-tokens/bridge-session",
+                json={
+                    "agent_type": "claude",
+                    "profile_id": "profile-mn4kk11k",
+                    "tab_id": "tab-turn1",
+                    "on_behalf_of": 1,
+                    # chat_session_id omitted — not known on turn 1
+                },
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["chat_session_id"] is None
+        claims = decode_access_token(data["access_token"])
+        assert claims["tab_id"] == "tab-turn1"
+        assert claims["scope_key"] == "tab:tab-turn1"
+        # chat_session_id claim must be absent, not empty/null.
+        assert "chat_session_id" not in claims
+
+    @pytest.mark.asyncio
+    async def test_mint_rejected_without_any_anchor(self):
+        """No chat_session_id / tab_id / scope_key → the token would be
+        identity-less, so the mint is refused."""
+        app = _app_for_tokens()
+        async with _client(app) as client:
+            resp = await client.post(
+                "/api/v1/dev/agent-tokens/bridge-session",
+                json={
+                    "agent_type": "claude",
+                    "profile_id": "p",
+                    "on_behalf_of": 1,
+                },
+            )
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
     async def test_user_scoped_bridge_inherits_on_behalf_of(self):
         """A user-scoped bridge token (``sub=<user_id>``) should be able to
         omit ``on_behalf_of`` — the endpoint reuses the bridge's user id."""

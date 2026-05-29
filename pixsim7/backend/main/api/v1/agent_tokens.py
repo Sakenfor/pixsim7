@@ -139,9 +139,15 @@ async def mint_agent_token(
 
 
 class BridgeAgentSessionTokenRequest(BaseModel):
-    chat_session_id: str = Field(
-        ..., min_length=1, max_length=120,
-        description="The ChatSession UUID this subprocess will serve.",
+    chat_session_id: Optional[str] = Field(
+        default=None, max_length=120,
+        description=(
+            "The ChatSession UUID this subprocess will serve. Optional: a new "
+            "conversation's first turn has no session id yet (it IS Claude's "
+            "cli_session_id, assigned mid-turn), so the bridge mints a "
+            "tab-anchored token up front using tab_id/scope_key instead. At "
+            "least one of chat_session_id / tab_id / scope_key must be present."
+        ),
     )
     agent_type: str = Field(
         ..., min_length=1, max_length=64,
@@ -173,7 +179,7 @@ class BridgeAgentSessionTokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in_seconds: int
-    chat_session_id: str
+    chat_session_id: Optional[str] = None
     agent_type: str
 
 
@@ -197,6 +203,15 @@ async def mint_bridge_agent_session_token(
         raise HTTPException(
             status_code=403,
             detail="bridge_agent_session_token_requires_service_or_admin",
+        )
+
+    # Need at least one identity anchor to mint a resolvable token. A brand-new
+    # conversation has no chat_session_id yet, but the tab_id/scope_key pins the
+    # token to its tab — without any of the three the token is identity-less.
+    if not (payload.chat_session_id or payload.tab_id or payload.scope_key):
+        raise HTTPException(
+            status_code=400,
+            detail="bridge_agent_session_token_requires_session_or_tab_anchor",
         )
 
     effective_user_id = payload.on_behalf_of
@@ -243,13 +258,14 @@ async def mint_bridge_agent_session_token(
     # agent tokens. The bridge token chain already records the user binding;
     # we just attach the agent JWT to it so logout cascades cleanly.
     if effective_user_id is not None:
+        anchor = (payload.chat_session_id or payload.tab_id or "?")[:12]
         db.add(
             UserSession(
                 user_id=int(effective_user_id),
                 token_id=token_id,
                 expires_at=expires_at,
                 client_type="bridge_agent_session",
-                client_name=f"{payload.agent_type}:{payload.chat_session_id[:12]}",
+                client_name=f"{payload.agent_type}:{anchor}",
                 user_agent=f"bridge/{payload.agent_type}",
             )
         )

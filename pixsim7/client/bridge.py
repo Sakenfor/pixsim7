@@ -890,7 +890,7 @@ class Bridge:
     async def _mint_agent_session_token(
         self,
         *,
-        chat_session_id: str,
+        chat_session_id: str = "",
         agent_type: str,
         profile_id: str,
         scope_key: Optional[str] = None,
@@ -898,8 +898,10 @@ class Bridge:
         on_behalf_of: Optional[int] = None,
         ttl_hours: int = 24,
     ) -> tuple[str, float]:
-        """Ask the backend to mint a per-(chat_session, agent_type) JWT.
+        """Ask the backend to mint a per-session agent JWT.
 
+        Anchored on ``chat_session_id`` when known, else on ``tab_id`` /
+        ``scope_key`` for a new conversation's first turn (no session id yet).
         Returns ``(access_token, exp_epoch_seconds)``. Raises on HTTP error
         so callers can decide whether to fall back to the legacy resolution
         path (this is the cutover seam — failure here is expected when the
@@ -910,12 +912,13 @@ class Bridge:
 
         api_base = self._ws_url_to_http_base()
         url = f"{api_base}/api/v1/dev/agent-tokens/bridge-session"
-        body = {
-            "chat_session_id": chat_session_id,
+        body: dict = {
             "agent_type": agent_type,
             "profile_id": profile_id,
             "ttl_hours": ttl_hours,
         }
+        if chat_session_id:
+            body["chat_session_id"] = chat_session_id
         if scope_key:
             body["scope_key"] = scope_key
         if tab_id:
@@ -941,7 +944,7 @@ class Bridge:
     async def _ensure_per_session_mcp_config(
         self,
         *,
-        chat_session_id: str,
+        chat_session_id: str = "",
         agent_type: str,
         focus: Optional[list[str]] = None,
         profile_id: str,
@@ -966,8 +969,13 @@ class Bridge:
         import os as _os
         import time as _time
 
+        # Anchor the cache key + filename on the chat session when known, else
+        # on the tab (turn 1, pre-session). Keeps per-tab configs distinct so a
+        # tab-anchored turn-1 config and its later session-anchored config don't
+        # collide — and the turn-1 spawn is the one the reused subprocess keeps.
+        anchor = chat_session_id or (f"tab-{tab_id}" if tab_id else "")
         cache_key = (
-            chat_session_id,
+            anchor,
             agent_type,
             frozenset(focus) if focus else frozenset({"__default__"}),
         )
@@ -1012,7 +1020,7 @@ class Bridge:
             scope=focus_scope,
             session_id=chat_session_id,
             profile_id=profile_id,
-            name=_per_session_mcp_config_name(chat_session_id, agent_type, focus),
+            name=_per_session_mcp_config_name(anchor, agent_type, focus),
         )
         self._per_session_mcp_cache[cache_key] = (path, token, exp_epoch)
         return path
@@ -1291,10 +1299,19 @@ class Bridge:
 
         profile_config = msg.get("profile_config") or {}
 
+        # Tab anchor: explicit ``tab_id`` from the dispatch, else parsed from a
+        # ``tab:<id>`` scope_key (unbound tabs). Lets the per-session token mint
+        # pin identity on turn 1 — before any chat_session_id exists — for both
+        # plan-scoped and unbound tabs. Plan `tab-identity-mode`.
+        tab_id = _str("tab_id")
+        if not tab_id and scope_key and scope_key.startswith("tab:"):
+            tab_id = scope_key.split(":", 1)[1] or None
+
         return {
             "bridge_session_id": msg.get("bridge_session_id"),
             "session_policy": _str("session_policy"),
             "scope_key": scope_key,
+            "tab_id": tab_id,
             "engine": msg.get("engine"),
             "model": model,
             "reasoning_effort": profile_config.get("reasoning_effort"),
@@ -1410,19 +1427,28 @@ class Bridge:
             # chat_session_id claims for MCP tool resolution. Falls back to
             # the legacy focus-only path on mint failure (cutover seam).
             mcp_config_override = None
-            if self._per_session_subprocess_enabled() and meta.get("bridge_session_id"):
+            # Engage on a chat_session_id (resume / turn 2+) OR a tab anchor
+            # (turn 1 of a new conversation — no session id yet, but the tab
+            # pins identity). Without the tab fallback, turn 1 spawns with the
+            # shared service token and the reused subprocess never reloads
+            # config, so identity never attaches. Plan `tab-identity-mode`.
+            tab_id = meta.get("tab_id")
+            if self._per_session_subprocess_enabled() and (
+                meta.get("bridge_session_id") or tab_id
+            ):
                 try:
                     profile_id = (
                         msg.get("profile_id")
                         or (msg.get("profile_config") or {}).get("id")
                         or "unknown"
                     )
-                    tab_id = None
                     sk = meta.get("scope_key") or ""
-                    if isinstance(sk, str) and sk.startswith("tab:"):
-                        tab_id = sk.split(":", 1)[1] or None
+                    # Plan-scoped tabs carry scope_key="plan:<id>"; still anchor
+                    # the token to the tab so resolution works on turn 1.
+                    if not sk and tab_id:
+                        sk = f"tab:{tab_id}"
                     mcp_config_override = await self._ensure_per_session_mcp_config(
-                        chat_session_id=str(meta["bridge_session_id"]),
+                        chat_session_id=str(meta.get("bridge_session_id") or ""),
                         agent_type=str(meta.get("engine") or "claude"),
                         focus=meta.get("focus"),
                         profile_id=str(profile_id),
@@ -1434,6 +1460,7 @@ class Bridge:
                     get_logger().warning(
                         "per_session_mcp_config_failed",
                         chat_session=str(meta.get("bridge_session_id") or "")[:12],
+                        tab=str(tab_id or "")[:12],
                         agent_type=meta.get("engine"),
                         error=str(exc),
                     )

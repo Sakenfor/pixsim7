@@ -599,23 +599,37 @@ async def _resolve_claim_session_id(db: AsyncSession, principal) -> Optional[str
     plan via ``PlanParticipant.session_id == ChatTab.session_id``; a NULL
     session makes the claim roster-only and ungroupable. Resolution priority:
     the principal's bound ``chat_session_id``, else the session of the
-    ``ChatTab`` named by a ``tab:<id>`` scope_key. Returns None for headless
-    callers (roster-only claim, no grouping). Plan ``tab-identity-mode``.
+    ``ChatTab`` named by the ``tab_id`` claim (or a ``tab:<id>`` scope_key).
+    On turn 1 the tab's ``session_id`` is still NULL (bound right after the
+    first turn), so grouping fills in from turn 2 once it resolves — the same
+    running token keeps working because this lookup runs fresh per call.
+    Returns None for headless callers (roster-only claim, no grouping).
+    Plan ``tab-identity-mode``.
     """
     sid = getattr(principal, "chat_session_id", None)
     if isinstance(sid, str) and sid.strip():
         return sid.strip()
+
+    from uuid import UUID
+    from pixsim7.backend.main.domain.platform.agent_profile import ChatTab
+
+    async def _session_of_tab(raw: Optional[str]) -> Optional[str]:
+        if not raw:
+            return None
+        try:
+            tab = await db.get(ChatTab, UUID(raw))
+        except (ValueError, AttributeError):
+            return None
+        return tab.session_id if (tab is not None and tab.session_id) else None
+
+    resolved = await _session_of_tab(getattr(principal, "tab_id", None))
+    if resolved:
+        return resolved
     scope_key = getattr(principal, "scope_key", None)
     if isinstance(scope_key, str) and scope_key.startswith("tab:"):
-        from uuid import UUID
-        from pixsim7.backend.main.domain.platform.agent_profile import ChatTab
-
-        try:
-            tab = await db.get(ChatTab, UUID(scope_key[len("tab:") :]))
-        except (ValueError, AttributeError):
-            tab = None
-        if tab is not None and tab.session_id:
-            return tab.session_id
+        resolved = await _session_of_tab(scope_key[len("tab:") :])
+        if resolved:
+            return resolved
     return None
 
 

@@ -80,6 +80,7 @@ def build_task_payload(
     bridge_session_id: Optional[str] = None,
     session_policy: Optional[str] = None,
     scope_key: Optional[str] = None,
+    tab_id: Optional[str] = None,
     profile_id: Optional[str] = None,
     images: Optional[List] = None,
     image_paths: Optional[List] = None,
@@ -119,6 +120,13 @@ def build_task_payload(
         payload["session_policy"] = "scoped"
     if scoped_key:
         payload["scope_key"] = scoped_key
+    # Tab anchor — the chat tab's PK. Carried independently of scope_key so a
+    # plan-scoped tab (scope_key="plan:<id>") still pins identity to its tab on
+    # turn 1, before any chat_session_id exists. Drives the bridge per-session
+    # token mint + backend tab/claim resolution. Plan `tab-identity-mode`.
+    tab_anchor = normalize_scope_value(tab_id)
+    if tab_anchor:
+        payload["tab_id"] = tab_anchor
     normalized_profile = normalize_profile_id(profile_id)
     if normalized_profile:
         payload["profile_id"] = normalized_profile

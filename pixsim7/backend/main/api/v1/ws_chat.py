@@ -790,6 +790,7 @@ async def _handle_message(
         bridge_session_id=bridge_session_id,
         session_policy=session_policy,
         scope_key=scope_key,
+        tab_id=tab_id,
         profile_id=resolved_profile_id,
     )
 

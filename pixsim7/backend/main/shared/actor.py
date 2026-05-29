@@ -83,6 +83,15 @@ class RequestPrincipal(BaseModel):
         default=None,
         description="Bound chat session id for a tab-minted token. JWT claim: chat_session_id.",
     )
+    tab_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Chat tab PK the token was minted for. JWT claim: tab_id. The "
+            "primary anchor for self-tab + plan-claim resolution: it works on "
+            "turn 1 (no chat_session_id yet) and for plan-scoped tabs (where "
+            "scope_key is 'plan:<id>', not 'tab:<id>')."
+        ),
+    )
     on_behalf_of: Optional[int] = Field(default=None, description="User ID the agent acts for.")
     on_behalf_of_name: Optional[str] = Field(default=None, description="Resolved display name of delegating user.")
 
@@ -201,6 +210,7 @@ class RequestPrincipal(BaseModel):
                 plan_id=payload.get("plan_id") or x_plan_id,
                 scope_key=payload.get("scope_key") or x_scope_key,
                 chat_session_id=payload.get("chat_session_id") or x_chat_session_id,
+                tab_id=payload.get("tab_id"),
                 on_behalf_of=delegated_user_id if delegated_user_id > 0 else None,
                 role="agent",
                 admin=False,
@@ -244,6 +254,7 @@ class RequestPrincipal(BaseModel):
                 plan_id=payload.get("plan_id") or x_plan_id,
                 scope_key=payload.get("scope_key") or x_scope_key,
                 chat_session_id=payload.get("chat_session_id") or x_chat_session_id,
+                tab_id=payload.get("tab_id"),
             )
 
         # ── Regular user ──
