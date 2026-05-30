@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Button, Input, Select, Switch } from '@pixsim7/shared.ui'
 import {
   type SettingField,
   type OptionGroup,
@@ -141,7 +142,7 @@ function SettingFieldControl({
       )}
       <div className="mt-0.5">
         {field.type === 'boolean' && (
-          <BooleanControl value={!!value} onChange={onChange} />
+          <Switch size="sm" checked={!!value} onCheckedChange={onChange} />
         )}
         {field.type === 'number' && (
           <NumberControl value={value as number} onChange={onChange} />
@@ -165,21 +166,6 @@ function SettingFieldControl({
   )
 }
 
-function BooleanControl({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      onClick={() => onChange(!value)}
-      className={`relative w-8 h-4 rounded-full transition-colors ${
-        value ? 'bg-cyan-600' : 'bg-gray-700'
-      }`}
-    >
-      <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
-        value ? 'left-[18px]' : 'left-0.5'
-      }`} />
-    </button>
-  )
-}
-
 function NumberControl({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [local, setLocal] = useState(String(value ?? 0))
@@ -195,12 +181,14 @@ function NumberControl({ value, onChange }: { value: number; onChange: (v: numbe
   }
 
   return (
-    <input
-      type="number"
-      value={local}
-      onChange={(e) => { setLocal(e.target.value); commit(e.target.value) }}
-      className="w-24 px-2 py-0.5 text-[10px] rounded border border-gray-700 bg-gray-900 text-gray-300 focus:outline-none focus:border-cyan-600"
-    />
+    <div className="w-24">
+      <Input
+        size="xs"
+        type="number"
+        value={local}
+        onChange={(e) => { setLocal(e.target.value); commit(e.target.value) }}
+      />
+    </div>
   )
 }
 
@@ -216,11 +204,11 @@ function StringControl({ value, onChange }: { value: string; onChange: (v: strin
   }
 
   return (
-    <input
+    <Input
+      size="xs"
       type="text"
       value={local}
       onChange={(e) => { setLocal(e.target.value); commit(e.target.value) }}
-      className="w-full px-2 py-0.5 text-[10px] rounded border border-gray-700 bg-gray-900 text-gray-300 focus:outline-none focus:border-cyan-600"
     />
   )
 }
@@ -251,15 +239,16 @@ function StringListControl({ value, separator, onChange }: { value: string; sepa
         ))}
       </div>
       <div className="flex gap-1">
-        <input
+        <Input
+          size="xs"
           type="text"
           value={draft}
           placeholder="Add entry..."
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-          className="flex-1 px-2 py-0.5 text-[10px] rounded border border-gray-700 bg-gray-900 text-gray-300 focus:outline-none focus:border-cyan-600"
+          className="flex-1"
         />
-        <button onClick={add} className="px-2 py-0.5 text-[10px] rounded border border-gray-700 bg-gray-800 text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors">+</button>
+        <Button variant="secondary" size="xs" onClick={add}>+</Button>
       </div>
     </div>
   )
@@ -267,15 +256,15 @@ function StringListControl({ value, separator, onChange }: { value: string; sepa
 
 function SelectControl({ value, options, onChange }: { value: string; options: string[]; onChange: (v: string) => void }) {
   return (
-    <select
+    <Select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="px-2 py-0.5 text-[10px] rounded border border-gray-700 bg-gray-900 text-gray-300 focus:outline-none focus:border-cyan-600"
+      size="xs" width="auto" className="text-gray-300"
     >
       {options.map((opt) => (
         <option key={opt} value={opt}>{opt}</option>
       ))}
-    </select>
+    </Select>
   )
 }
 

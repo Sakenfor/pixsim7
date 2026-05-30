@@ -8,9 +8,10 @@ import clsx from 'clsx';
  */
 export interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
   /**
-   * Visual size variant
+   * Visual size variant. `xs` is a dense control for tight panels and
+   * toolbars — smaller text and minimal vertical padding.
    */
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
   /**
    * Additional CSS classes to apply
    */
@@ -23,22 +24,29 @@ export interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectE
    * Use transparent background (for inline selects)
    */
   transparent?: boolean;
+  /**
+   * Width behaviour. `full` (default) fills its container; `auto` sizes to
+   * content — use for inline toolbar selects that should not stretch.
+   */
+  width?: 'full' | 'auto';
 }
 
 export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
-  ({ size = 'sm', className, error, disabled, transparent, ...props }, ref) => {
+  ({ size = 'sm', className, error, disabled, transparent, width = 'full', ...props }, ref) => {
     return (
       <select
         ref={ref}
         disabled={disabled}
         className={clsx(
-          'w-full rounded border outline-none transition-colors',
+          'rounded border outline-none transition-colors',
+          width === 'auto' ? 'w-auto' : 'w-full',
           'focus:ring-2 focus:ring-accent/40',
           // Background colors
           transparent
             ? 'bg-transparent'
             : 'bg-white dark:bg-neutral-800',
           // Size variants
+          size === 'xs' && 'text-[11px] px-2 py-0.5',
           size === 'sm' && 'text-xs px-2 py-1.5',
           size === 'md' && 'text-sm px-3 py-2',
           size === 'lg' && 'text-base px-4 py-2.5',

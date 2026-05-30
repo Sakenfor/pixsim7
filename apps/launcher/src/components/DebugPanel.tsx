@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Input, Select } from '@pixsim7/shared.ui'
 import { useServicesStore } from '../stores/services'
 import {
   getDomainCatalog,
@@ -184,25 +185,25 @@ function GlobalConfigSection({
       {/* Levels */}
       <div className="bg-surface-secondary rounded border border-border p-3 space-y-2">
         <Row label="Global Log Level" hint="Minimum severity for all domains">
-          <select
+          <Select
             value={config.log_level}
             disabled={saving}
             onChange={(e) => onPatch({ log_level: e.target.value })}
-            className="px-2 py-1 text-[11px] rounded border border-border bg-surface text-gray-200 focus:border-blue-500 outline-none disabled:opacity-50"
+            size="xs" width="auto" className="text-gray-200"
           >
             {LOG_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
+          </Select>
         </Row>
 
         <Row label="DB Ingestion Level" hint="Minimum severity written to log database">
-          <select
+          <Select
             value={config.log_db_min_level}
             disabled={saving}
             onChange={(e) => onPatch({ log_db_min_level: e.target.value })}
-            className="px-2 py-1 text-[11px] rounded border border-border bg-surface text-gray-200 focus:border-blue-500 outline-none disabled:opacity-50"
+            size="xs" width="auto" className="text-gray-200"
           >
             {LOG_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
+          </Select>
         </Row>
 
         <Row label="Retention" hint="Days to keep log entries (1–365)">
@@ -261,16 +262,19 @@ function RetentionInput({
 
   return (
     <div className="flex items-center gap-2">
-      <input
-        type="number"
-        min={1}
-        max={365}
-        value={local}
-        disabled={saving}
-        onChange={(e) => setLocal(parseInt(e.target.value || '0', 10))}
-        onBlur={() => { if (local !== value && local >= 1 && local <= 365) onCommit(local) }}
-        className="w-16 px-1.5 py-0.5 text-[11px] text-right rounded border border-border bg-surface text-gray-200 focus:border-blue-500 outline-none disabled:opacity-50 tabular-nums"
-      />
+      <div className="w-16">
+        <Input
+          size="xs"
+          type="number"
+          min={1}
+          max={365}
+          value={local}
+          disabled={saving}
+          onChange={(e) => setLocal(parseInt(e.target.value || '0', 10))}
+          onBlur={() => { if (local !== value && local >= 1 && local <= 365) onCommit(local) }}
+          className="text-right tabular-nums"
+        />
+      </div>
       <span className="text-[10px] text-gray-500">d</span>
     </div>
   )
@@ -346,11 +350,12 @@ function DomainOverridesEdit({
                       {domain}
                       {isDrifted && <span className="text-[9px] text-amber-400 ml-1">drift</span>}
                     </span>
-                    <select
+                    <Select
                       value={current}
                       disabled={saving}
                       onChange={(e) => handleChange(domain, e.target.value)}
-                      className={`px-1.5 py-0.5 text-[10px] rounded border bg-surface focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 ${
+                      size="xs" width="auto"
+                      className={`${
                         isDebug
                           ? 'border-blue-700 text-blue-400 font-medium'
                           : isOverridden
@@ -360,7 +365,7 @@ function DomainOverridesEdit({
                     >
                       <option value="">default</option>
                       {DOMAIN_LEVEL_OPTIONS.map((l) => <option key={l} value={l}>{l}</option>)}
-                    </select>
+                    </Select>
                   </div>
                 )
               })}

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
+import { Input, Select } from '@pixsim7/shared.ui'
 import { useLogsStore } from '../stores/logs'
 import { useServicesStore } from '../stores/services'
 import { getLogMeta, getCompiledFields, parseLine, type LogMeta, type CompiledField } from '../api/logMeta'
@@ -99,7 +100,6 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
   }), [lines, levelFilter, searchFilter, eventFilter, domainFilter])
 
   const filters = meta?.filters
-  const sel = "bg-surface-secondary border border-border rounded px-1.5 py-0.5 text-gray-300 text-[11px] focus:border-blue-500 outline-none"
 
   if (!selectedKey) {
     return <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">Select a service to view logs</div>
@@ -123,30 +123,29 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
           </button>
         </div>
 
-        <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} className={sel}>
+        <Select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} size="xs" width="auto" className="text-gray-300">
           {(filters?.level_options ?? ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG']).map((l) => (
             <option key={l} value={l}>{l || 'All levels'}</option>
           ))}
-        </select>
+        </Select>
 
         {discovered.events.length > 0 && (
-          <select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)} className={sel}>
+          <Select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)} size="xs" width="auto" className="text-gray-300">
             <option value="">All events</option>
             {discovered.events.map((ev) => <option key={ev} value={ev}>{ev}</option>)}
-          </select>
+          </Select>
         )}
 
         {discovered.domains.length > 0 && (
-          <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} className={sel}>
+          <Select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} size="xs" width="auto" className="text-gray-300">
             <option value="">All domains</option>
             {discovered.domains.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
+          </Select>
         )}
 
-        <input
+        <div className="w-36"><Input size="xs" className="text-gray-300"
           type="text" value={searchFilter} onChange={(e) => setSearchFilter(e.target.value)}
-          placeholder="Filter…  a | b  for OR" className={`${sel} w-36`}
-        />
+          placeholder="Filter…  a | b  for OR" /></div>
 
         <div className="flex-1" />
         <span className="text-gray-600">{filteredLines.length}{filteredLines.length !== lines.length ? `/${lines.length}` : ''} lines</span>

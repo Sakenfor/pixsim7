@@ -41,6 +41,42 @@ const TONE_CLASSES: Record<StatusTone, { bg: string; text: string; dot: string }
   muted:   { bg: 'bg-transparent',                      text: 'text-neutral-500 dark:text-neutral-400', dot: 'bg-neutral-400' },
 };
 
+export interface StatusDotProps {
+  /** Semantic tone — maps to a canonical dot color. Ignored when `color` is set. */
+  tone?: StatusTone;
+  /** Explicit Tailwind background class (e.g. `bg-emerald-400`). Overrides `tone`. */
+  color?: string;
+  /** Pulse animation (e.g. degraded / connecting states). */
+  pulse?: boolean;
+  /** `sm` = 1.5×1.5 (default), `xs` = 1×1. */
+  size?: 'xs' | 'sm';
+  className?: string;
+  /** Native tooltip text. */
+  title?: string;
+}
+
+/**
+ * StatusDot — bare colored status indicator dot. Centralizes the
+ * `w-1.5 h-1.5 rounded-full shrink-0` shape boilerplate. Use `tone` for
+ * semantic colors or `color` for a bespoke palette (StatusPill renders an
+ * empty pill background, so it is not a fit for a standalone dot).
+ */
+export function StatusDot({ tone = 'neutral', color, pulse, size = 'sm', className, title }: StatusDotProps) {
+  const colorClass = color ?? TONE_CLASSES[tone].dot;
+  return (
+    <span
+      title={title}
+      className={clsx(
+        'inline-block rounded-full shrink-0',
+        size === 'xs' ? 'w-1 h-1' : 'w-1.5 h-1.5',
+        colorClass,
+        pulse && 'animate-pulse',
+        className,
+      )}
+    />
+  );
+}
+
 export function StatusPill({ tone, children, dot, size = 'xs', shape = 'pill', className }: StatusPillProps) {
   const c = TONE_CLASSES[tone];
   return (

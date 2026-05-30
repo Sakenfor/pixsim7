@@ -8,9 +8,10 @@ import clsx from 'clsx';
  */
 export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {
   /**
-   * Visual size variant
+   * Visual size variant. `xs` is a dense control for tight panels
+   * (settings rows, toolbars) — smaller text and minimal vertical padding.
    */
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
   /**
    * Additional CSS classes to apply
    */
@@ -31,6 +32,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           'w-full rounded border bg-white dark:bg-neutral-900 outline-none transition-colors',
           'focus:ring-2 focus:ring-accent/40',
           // Size variants
+          size === 'xs' && 'text-[11px] px-2 py-0.5',
           size === 'sm' && 'text-xs px-2 py-1.5',
           size === 'md' && 'text-sm px-3 py-2',
           size === 'lg' && 'text-base px-4 py-2.5',

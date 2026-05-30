@@ -4,7 +4,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  Badge, Button, EmptyState, Input, LoadingSpinner, SectionHeader, SidebarContentLayout, StatusPill,
+  Badge, Button, Checkbox, DisclosureSection, EmptyState, Input, LoadingSpinner, SectionHeader,
+  SidebarContentLayout, StatusPill,
   useSidebarNav,
   type SidebarContentLayoutSection, type StatusTone,
 } from '@pixsim7/shared.ui'
@@ -1082,22 +1083,23 @@ function HealthPanel({ dbId }: { dbId: string }) {
   const tableLabel = health?.ok && health.table_count != null ? `${health.table_count} tables` : ''
 
   return (
-    <div className="border border-border rounded">
-      <button
-        className="w-full px-2 py-1.5 border-b border-border flex items-center justify-between hover:bg-surface-raised/30"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-medium text-gray-300">Health</span>
+    <DisclosureSection
+      size="sm"
+      isOpen={expanded}
+      onToggle={setExpanded}
+      className="border border-border rounded"
+      headerClassName="px-2 py-1.5 text-[11px] font-medium text-gray-300 hover:bg-surface-raised/30"
+      label="Health"
+      badge={
+        <span className="flex items-center gap-1.5">
           <StatusPill tone={health?.ok ? 'success' : (health ? 'warning' : 'muted')} dot size="xs">
             {loading ? 'loading…' : sizeLabel}
           </StatusPill>
           {tableLabel && <span className="text-[10px] text-gray-500">· {tableLabel}</span>}
-        </div>
-        <span className="text-gray-500 text-[11px]">{expanded ? '▾' : '▸'}</span>
-      </button>
-      {expanded && (
-        <div className="p-2 space-y-3 text-[11px]">
+        </span>
+      }
+    >
+      <div className="p-2 space-y-3 text-[11px]">
           {!health ? (
             <div className="text-gray-500 italic">Loading…</div>
           ) : !health.ok ? (
@@ -1182,9 +1184,8 @@ function HealthPanel({ dbId }: { dbId: string }) {
               )}
             </>
           )}
-        </div>
-      )}
-    </div>
+      </div>
+    </DisclosureSection>
   )
 }
 
@@ -1334,19 +1335,16 @@ function SquashPanel({ dbId }: { dbId: string }) {
   const baselineRev = status?.path?.split(/[\\/]/).pop()?.replace(/_baseline_squash\.py$/, '') ?? lastGenerate?.revision
 
   return (
-    <div className="border border-border rounded">
-      <button
-        className="w-full px-2 py-1.5 border-b border-border flex items-center justify-between hover:bg-surface-raised/30"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-medium text-gray-300">Squash wizard</span>
-          {hasBaseline && <StatusPill tone="warning" dot size="xs">baseline ready</StatusPill>}
-        </div>
-        <span className="text-gray-500 text-[11px]">{expanded ? '▾' : '▸'}</span>
-      </button>
-      {expanded && (
-        <div className="p-2 space-y-2 text-[11px]">
+    <DisclosureSection
+      size="sm"
+      isOpen={expanded}
+      onToggle={setExpanded}
+      className="border border-border rounded"
+      headerClassName="px-2 py-1.5 text-[11px] font-medium text-gray-300 hover:bg-surface-raised/30"
+      label="Squash wizard"
+      badge={hasBaseline ? <StatusPill tone="warning" dot size="xs">baseline ready</StatusPill> : undefined}
+    >
+      <div className="p-2 space-y-2 text-[11px]">
           <div className="text-gray-400">
             Collapses the migration chain into a single baseline generated from the live schema via
             <span className="font-mono text-gray-300"> pg_dump -s</span>. Non-destructive: writes a file
@@ -1456,9 +1454,8 @@ function SquashPanel({ dbId }: { dbId: string }) {
               )}
             </div>
           )}
-        </div>
-      )}
-    </div>
+      </div>
+    </DisclosureSection>
   )
 }
 
@@ -1998,7 +1995,7 @@ function SettingsSection() {
 
   const toggle = (key: string, label: string) => (
     <label key={key} className="flex items-center gap-2 text-[11px]">
-      <input type="checkbox" checked={!!settings[key]} onChange={(e) => update(key, e.target.checked)} className="rounded" />
+      <Checkbox checked={!!settings[key]} onChange={(e) => update(key, e.target.checked)} />
       <span className="text-gray-300">{label}</span>
     </label>
   )
@@ -2024,7 +2021,7 @@ function SettingsSection() {
         <h3 className="text-xs font-bold text-gray-200 mb-2">Launcher</h3>
 
         <label className="flex items-center gap-2 text-[11px]">
-          <input type="checkbox" checked={isDev} onChange={toggleDevMode} className="rounded" />
+          <Checkbox checked={isDev} onChange={toggleDevMode} />
           <span className="text-gray-300">Dev mode (Vite HMR on :3100)</span>
           {isDev && <span className="text-amber-400 text-[9px]">DEV</span>}
         </label>

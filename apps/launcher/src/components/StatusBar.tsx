@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { StatusDot } from '@pixsim7/shared.ui'
 import { useServicesStore } from '../stores/services'
 import { useWsStore } from '../stores/websocket'
 import { getIdentity, type IdentityStatus } from '../api/client'
@@ -63,7 +64,7 @@ export function StatusBar({ onShowSetup }: Props) {
           className="flex items-center gap-1 hover:text-gray-200 transition-colors"
           title={`Signed in as ${identity.username}\nKey: ${identity.keypair_id ?? 'none'}${identity.token_valid ? '' : '\nToken expired!'}`}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${identity.token_valid ? 'bg-blue-400' : 'bg-yellow-400 animate-pulse'}`} />
+          <StatusDot color={identity.token_valid ? 'bg-blue-400' : 'bg-yellow-400'} pulse={!identity.token_valid} />
           {identity.username}
         </button>
       )}
@@ -81,7 +82,7 @@ export function StatusBar({ onShowSetup }: Props) {
           className="flex items-center gap-1 text-amber-400 hover:text-amber-300 transition-colors"
           title={`Switch to ${onDevService.prodTitle}`}
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+          <StatusDot color="bg-amber-400" />
           DEV — switch to prod
         </a>
       ) : devPeer?.devUrl && (
@@ -96,7 +97,7 @@ export function StatusBar({ onShowSetup }: Props) {
         </a>
       )}
       <span className="flex items-center gap-1">
-        <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
+        <StatusDot tone={connected ? 'success' : 'danger'} />
         {connected ? 'Live' : 'Disconnected'}
       </span>
       <span className="text-gray-600">

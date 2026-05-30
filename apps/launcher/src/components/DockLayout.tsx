@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Layout, Model, Actions, IJsonModel, TabNode, type ITabRenderValues } from 'flexlayout-react'
-import { Button } from '@pixsim7/shared.ui'
+import { Button, StatusDot } from '@pixsim7/shared.ui'
 import 'flexlayout-react/style/dark.css'
 
 import { ServiceCard } from './ServiceCard'
@@ -416,9 +416,10 @@ function BridgeSessionsPanel({ bridgeStatus }: { bridgeStatus: Record<string, un
               }`}>
                 {/* Header row */}
                 <div className="flex items-center gap-1.5">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    state === 'ready' ? 'bg-green-400' : state === 'busy' ? 'bg-amber-400 animate-pulse' : state === 'starting' ? 'bg-blue-400 animate-pulse' : 'bg-gray-500'
-                  }`} />
+                  <StatusDot
+                    color={state === 'ready' ? 'bg-green-400' : state === 'busy' ? 'bg-amber-400' : state === 'starting' ? 'bg-blue-400' : 'bg-gray-500'}
+                    pulse={state === 'busy' || state === 'starting'}
+                  />
                   <span className="text-[10px] text-gray-300 font-medium">{state}</span>
                   {model && <span className="text-[9px] text-gray-500 font-mono">{model}</span>}
                   {pid && <span className="text-[9px] text-gray-600">PID {pid}</span>}

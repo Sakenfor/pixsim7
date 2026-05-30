@@ -11,6 +11,7 @@ import {
   getLogMeta, getCompiledFields,
   type LogMeta, type CompiledField, type FilterPreset,
 } from '../api/logMeta'
+import { Input, Select } from '@pixsim7/shared.ui'
 import { LogLine, matchesSearch } from './log'
 
 export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, value: string) => void }) {
@@ -128,8 +129,6 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
     return entries.filter((e) => matchesSearch(logEntryToLine(e), search))
   }, [entries, search])
 
-  const sel = "bg-surface-secondary border border-border rounded px-1.5 py-0.5 text-gray-300 text-[11px] focus:border-blue-500 outline-none"
-
   return (
     <div className="h-full flex flex-col overflow-hidden bg-surface text-gray-100">
       {/* Filter toolbar */}
@@ -140,35 +139,34 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
 
         {/* Presets dropdown */}
         {filters && filters.presets.length > 0 && (
-          <select
+          <Select
             value={activePreset}
             onChange={(e) => e.target.value ? applyPreset(e.target.value) : clearPreset()}
-            className={sel}
+            size="xs" width="auto" className="text-gray-300"
             title="Filter presets"
           >
             <option value="">Presets...</option>
             {filters.presets.map((p) => (
               <option key={p.id} value={p.id} title={p.description}>{p.label}</option>
             ))}
-          </select>
+          </Select>
         )}
 
-        <select value={level} onChange={(e) => setLevel(e.target.value)} className={sel}>
+        <Select value={level} onChange={(e) => setLevel(e.target.value)} size="xs" width="auto" className="text-gray-300">
           {(filters?.level_options ?? ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG']).map((l) => (
             <option key={l} value={l}>{l || 'All levels'}</option>
           ))}
-        </select>
+        </Select>
 
-        <select value={service} onChange={(e) => setService(e.target.value)} className={sel}>
+        <Select value={service} onChange={(e) => setService(e.target.value)} size="xs" width="auto" className="text-gray-300">
           {(filters?.service_options ?? ['', 'api', 'worker']).map((s) => (
             <option key={s} value={s}>{s || 'All services'}</option>
           ))}
-        </select>
+        </Select>
 
-        <input
+        <div className="w-40"><Input size="xs" className="text-gray-300"
           type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter…  a | b  for OR" className={`${sel} w-40`}
-        />
+          placeholder="Filter…  a | b  for OR" /></div>
 
         <div className="flex items-center gap-0.5 text-[10px]">
           {(filters?.time_range_options ?? [{ value: 15, label: '15m' }, { value: 30, label: '30m' }, { value: 60, label: '1h' }, { value: 0, label: 'All' }]).map((t) => (
@@ -181,17 +179,17 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
           ))}
         </div>
 
-        <select value={limit} onChange={(e) => setLimit(Number(e.target.value))} className={sel}>
+        <Select value={limit} onChange={(e) => setLimit(Number(e.target.value))} size="xs" width="auto" className="text-gray-300">
           {(filters?.limit_options ?? [100, 250, 500, 1000]).map((l) => (
             <option key={l} value={l}>{l} rows</option>
           ))}
-        </select>
+        </Select>
 
-        <select value={autoRefresh} onChange={(e) => setAutoRefresh(Number(e.target.value))} className={sel}>
+        <Select value={autoRefresh} onChange={(e) => setAutoRefresh(Number(e.target.value))} size="xs" width="auto" className="text-gray-300">
           {(filters?.auto_refresh_options ?? [{ value: 0, label: 'Off' }, { value: 5000, label: '5s' }]).map((r) => (
             <option key={r.value} value={r.value}>Refresh: {r.label}</option>
           ))}
-        </select>
+        </Select>
 
         <div className="flex-1" />
         <span className="text-[10px] text-gray-500">{displayEntries.length}{displayEntries.length !== entries.length ? `/${entries.length}` : ''}/{total} {loading && '...'}</span>

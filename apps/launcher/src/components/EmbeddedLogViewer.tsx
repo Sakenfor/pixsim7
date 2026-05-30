@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { getLogs, clearLogs } from '../api/client'
 import { getLogMeta, getCompiledFields, type LogMeta, type CompiledField } from '../api/logMeta'
+import { Input, Select } from '@pixsim7/shared.ui'
 import { LogLine, matchesSearch } from './log'
 import { usePollWhenVisible } from '../hooks/usePollWhenVisible'
 
@@ -83,7 +84,6 @@ export function EmbeddedLogViewer() {
   })
 
   const filters = meta?.filters
-  const sel = "bg-surface-secondary border border-border rounded px-1.5 py-0.5 text-gray-300 text-[11px] focus:border-blue-500 outline-none"
 
   if (!serviceKey) {
     return <div className="h-screen flex items-center justify-center bg-surface text-gray-500 text-sm">No service selected</div>
@@ -107,16 +107,15 @@ export function EmbeddedLogViewer() {
           </button>
         </div>
 
-        <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} className={sel}>
+        <Select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} size="xs" width="auto" className="text-gray-300">
           {(filters?.level_options ?? ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG']).map((l) => (
             <option key={l} value={l}>{l || 'All levels'}</option>
           ))}
-        </select>
+        </Select>
 
-        <input
+        <div className="w-36"><Input size="xs" className="text-gray-300"
           type="text" value={searchFilter} onChange={(e) => setSearchFilter(e.target.value)}
-          placeholder="Filter…  a | b  for OR" className={`${sel} w-36`}
-        />
+          placeholder="Filter…  a | b  for OR" /></div>
 
         <div className="flex-1" />
         <span className="text-gray-600">{filteredLines.length}{filteredLines.length !== lines.length ? `/${lines.length}` : ''} lines</span>

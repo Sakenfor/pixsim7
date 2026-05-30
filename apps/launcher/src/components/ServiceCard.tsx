@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { StatusDot } from '@pixsim7/shared.ui'
 import type { ServiceState } from '../api/client'
 import { openWindow, getServiceSettings } from '../api/client'
 import { getBuildables, buildPackage, type BuildStatus } from '../api/tools'
@@ -261,20 +262,20 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
         <div className="mt-1 text-[10px] pl-[30px] flex items-center gap-1.5">
           {service.extras?.mcp_port ? (
             <>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <StatusDot color="bg-emerald-400" />
               <span className="text-emerald-400/80 font-mono">:{String(service.extras.mcp_port)}</span>
               <span className="text-gray-500">MCP server</span>
             </>
           ) : (
             <>
-              <span className="w-1.5 h-1.5 rounded-full bg-gray-600 shrink-0" />
+              <StatusDot color="bg-gray-600" />
               <span className="text-gray-500">MCP server not detected</span>
             </>
           )}
           {!!service.extras?.hook_port && (
             <>
               <span className="text-gray-700 mx-0.5">|</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+              <StatusDot color="bg-cyan-400" />
               <span className="text-cyan-400/80 font-mono">:{String(service.extras.hook_port)}</span>
               <span className="text-gray-500">hooks</span>
             </>
@@ -288,11 +289,7 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
             return (
               <>
                 <span className="text-gray-700 mx-0.5">|</span>
-                <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    isError ? 'bg-red-500 animate-pulse' : 'bg-amber-400'
-                  }`}
-                />
+                <StatusDot color={isError ? 'bg-red-500' : 'bg-amber-400'} pulse={isError} />
                 <span
                   className={isError ? 'text-red-400' : 'text-amber-400'}
                   title={deg.reason || 'MCP wiring degraded'}
@@ -346,9 +343,7 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
                       : 'text-gray-500 hover:text-gray-400 hover:bg-white/5'
                   }`}
                 >
-                  <span className={`w-1 h-1 rounded-full shrink-0 ${
-                    selectedSection === name ? 'bg-blue-400' : 'bg-gray-600'
-                  }`} />
+                  <StatusDot size="xs" color={selectedSection === name ? 'bg-blue-400' : 'bg-gray-600'} />
                   {name}
                 </button>
               ))}
