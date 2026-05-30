@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "sources": [
+    "testing/corpus_discovery.py (eval_corpus*.json _meta blocks)"
+  ],
+  "corpora": [
+    {
+      "id": "primitive-projection",
+      "label": "Primitive Projection",
+      "path": "pixsim7/backend/tests/blocks/evals/primitive_projection/eval_corpus.json",
+      "category": "evals",
+      "subcategory": "primitive-projection",
+      "version": "1.0.0",
+      "total_entries": 297,
+      "description": "Prompt corpus for primitive_projection shadow-mode evaluation"
+    },
+    {
+      "id": "primitive-projection-autogen",
+      "label": "Primitive Projection Autogen",
+      "path": "pixsim7/backend/tests/blocks/evals/primitive_projection/eval_corpus_autogen.json",
+      "category": "evals",
+      "subcategory": "primitive-projection",
+      "version": "1.0.0",
+      "total_entries": 601,
+      "description": "Auto-generated corpus for primitive_projection shadow-mode evaluation"
+    },
+    {
+      "id": "primitive-projection-medium",
+      "label": "Primitive Projection Medium",
+      "path": "pixsim7/backend/tests/blocks/evals/primitive_projection/eval_corpus_medium.json",
+      "category": "evals",
+      "subcategory": "primitive-projection",
+      "version": "1.0.0",
+      "total_entries": 24,
+      "description": "Medium-difficulty corpus for block-ops primitive projection evaluation"
+    }
+  ]
+}

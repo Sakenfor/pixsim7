@@ -67,6 +67,8 @@
     "test:catalog:check": "pnpm test:registry:check",
     "test:block-ops:projection:corpus:gen": "pnpm projection-corpus:gen",
     "test:block-ops:projection:corpus:check": "pnpm projection-corpus:check",
+    "test:corpus:registry:gen": "python scripts/tests/discover_eval_corpora.py --write",
+    "test:corpus:registry:check": "python scripts/tests/discover_eval_corpora.py --check",
     "test:block-ops:projection:eval": "python pixsim7/backend/tests/blocks/evals/primitive_projection/eval_primitive_projection.py --threshold 0.45",
     "test:block-ops:projection:eval:medium": "python pixsim7/backend/tests/blocks/evals/primitive_projection/eval_primitive_projection.py --threshold 0.45 --corpus-id primitive-projection-medium --report docs/plans/prompt-primitive-projection-eval-medium.md",
     "db:migrate": "python scripts/migrate_all.py",
