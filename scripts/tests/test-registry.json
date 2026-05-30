@@ -410,32 +410,18 @@
       "order": 53
     },
     {
-      "id": "block-ops-primitive-projection-eval",
-      "label": "Block Ops Primitive Projection Eval",
-      "path": "scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py",
-      "layer": "scripts",
+      "id": "block-evals",
+      "label": "Block Primitive Eval Harnesses",
+      "path": "pixsim7/backend/tests/blocks/evals",
+      "layer": "backend",
       "kind": "smoke",
-      "category": "scripts/block-ops",
-      "subcategory": "primitive-projection-eval",
+      "category": "backend/blocks",
+      "subcategory": "evals",
       "covers": [
-        "scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py",
-        "scripts/tests/block_ops/primitive_projection/eval_corpus.json"
+        "pixsim7/backend/main/services/prompt/parser/primitive_projection.py",
+        "pixsim7/backend/main/services/prompt/parser/dsl_adapter.py"
       ],
-      "order": 54
-    },
-    {
-      "id": "block-ops-primitive-projection-eval-medium",
-      "label": "Block Ops Primitive Projection Eval (Medium)",
-      "path": "scripts/tests/block_ops/primitive_projection/eval_corpus_medium.json",
-      "layer": "scripts",
-      "kind": "smoke",
-      "category": "scripts/block-ops",
-      "subcategory": "primitive-projection-eval-medium",
-      "covers": [
-        "scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py",
-        "scripts/tests/block_ops/primitive_projection/eval_corpus_medium.json"
-      ],
-      "order": 55
+      "order": 28
     }
   ]
 }

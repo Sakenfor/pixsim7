@@ -26,7 +26,7 @@ This repository uses a unified test runner at `scripts/tests/run.py` to route ba
   - backward-compatibility: legacy callers without parser_context still produce valid scores
 - `scripts/seeds/game/bananza/tests/`
   - Bananza CLI/watch/sync/runtime preference behavior
-- `scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py`
+- `pixsim7/backend/tests/blocks/evals/primitive_projection/eval_primitive_projection.py`
   - block-ops primitive projection evaluator (supports baseline + medium corpus diagnostics)
 - `apps/main/src/lib/game/projectBundle/__tests__/`
   - frontend project bundle runtime/lifecycle/migration behavior
