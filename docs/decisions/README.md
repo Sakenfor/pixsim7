@@ -158,6 +158,7 @@ When a decision needs to change:
 | 2025-11-21 | [Extension Architecture](20251121-extension-architecture.md) | Accepted | Unified extension system with backend/frontend plugins, graph extensions, and JSON-based game state |
 | 2025-11-21 | [Cross-Provider Asset System](20251121-cross-provider-asset-system.md) | Accepted | Automatic upload/download/cache system for assets across providers with lineage tracking |
 | 2025-11-21 | [Structured Logging System](20251121-structured-logging-system.md) | Accepted | JSON structured logging with field catalog, stage taxonomy, and database ingestion |
+| 2026-05-30 | [Narrative Runtime-of-Record](20260530-narrative-runtime-of-record.md) | Accepted | Backend `NarrativeRuntimeEngine` is the single narrative runtime; dormant frontend TS engine retired |
 
 ### Superseded ADRs
 
