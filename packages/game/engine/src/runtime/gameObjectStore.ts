@@ -205,6 +205,37 @@ export function buildInventoryItemObject(
   };
 }
 
+/**
+ * Build a canonical `npc`-kind `GameObject` shell (no components yet).
+ *
+ * Mirrors `buildInventoryItemObject` for the npc domain: narrative / ECS
+ * component state lives on the object's `components[]` array, keyed by
+ * component `type` (e.g. `narrative`), matching the backend's
+ * `npc.components[type='stats:<def_id>']` convention.
+ */
+export function buildNpcObject(
+  session: Pick<GameSessionDTO, 'world_id'>,
+  npcId: number | string,
+  metadata?: Record<string, unknown>
+): GameObject {
+  const id = String(npcId).trim();
+  const meta = asRecord(metadata) ?? {};
+  const name =
+    typeof meta.name === 'string' && meta.name.trim().length > 0 ? meta.name : `npc:${id}`;
+  return {
+    kind: 'npc',
+    id,
+    ref: `npc:${id}`,
+    name,
+    runtimeKind: 'npc',
+    transform: createFallbackTransform(session),
+    components: [],
+    meta: {
+      source: 'canonical.npc',
+    },
+  };
+}
+
 function normalizeStore(
   rawStore: unknown,
   session: Pick<GameSessionDTO, 'world_id'>
@@ -399,4 +430,70 @@ export function removeSessionGameObjects(
   }
 
   return writeStoreObjects(session, mergedObjects, baseStore);
+}
+
+// =============================================================================
+// NPC component accessors (canonical npc-kind GameObject `components[]`)
+// =============================================================================
+//
+// NPC component state (narrative runtime state, ad-hoc ECS components from
+// narrative effects) lives on the canonical npc GameObject's `components[]`
+// array, keyed by component `type`. These helpers are the single read/write
+// seam; legacy `flags.npcs[*].components` is no longer written.
+
+/** Read an npc component's `data` payload (canonical). Returns null if absent. */
+export function getNpcComponentData(
+  session: Pick<GameSessionDTO, 'world_id' | 'flags'>,
+  npcId: number | string,
+  type: string
+): Record<string, unknown> | null {
+  const object = getSessionGameObject(session, `npc:${String(npcId)}`);
+  if (!object) return null;
+  const component = (object.components ?? []).find(
+    (comp) => comp.type === type && comp.enabled !== false
+  );
+  return asRecord(component?.data);
+}
+
+/**
+ * Upsert an npc component's `data` (immutable). Creates the npc GameObject if it
+ * does not exist, then replaces (by `type`) or appends the component entry.
+ */
+export function upsertNpcComponent(
+  session: GameSessionDTO,
+  npcId: number | string,
+  type: string,
+  data: Record<string, unknown>
+): GameSessionDTO {
+  const ref = `npc:${String(npcId)}`;
+  const existing = getSessionGameObject(session, ref);
+  const base = existing ?? buildNpcObject(session, npcId);
+  const components = [...(base.components ?? [])];
+  const index = components.findIndex((comp) => comp.type === type);
+  const nextComponent = { type, enabled: true, data };
+  if (index >= 0) {
+    components[index] = { ...components[index], ...nextComponent };
+  } else {
+    components.push(nextComponent);
+  }
+  return upsertSessionGameObjects(session, [{ ...base, components }]);
+}
+
+/**
+ * Remove an npc component by `type` (immutable). The npc GameObject itself is
+ * left in place even if it becomes component-less.
+ */
+export function removeNpcComponent(
+  session: GameSessionDTO,
+  npcId: number | string,
+  type: string
+): GameSessionDTO {
+  const ref = `npc:${String(npcId)}`;
+  const existing = getSessionGameObject(session, ref);
+  if (!existing) return session;
+  const components = (existing.components ?? []).filter((comp) => comp.type !== type);
+  if (components.length === (existing.components ?? []).length) {
+    return session;
+  }
+  return upsertSessionGameObjects(session, [{ ...existing, components }]);
 }

@@ -188,6 +188,16 @@ export class GameObjectEntity {
     return comp !== undefined && comp.enabled !== false;
   }
 
+  /**
+   * Read a component's `data` payload by type. Returns undefined when the
+   * component is absent or explicitly disabled (`enabled === false`).
+   */
+  getComponentData(type: string): Record<string, unknown> | undefined {
+    const comp = this.getComponent(type);
+    if (!comp || comp.enabled === false) return undefined;
+    return comp.data;
+  }
+
   // --- Tags --------------------------------------------------------------
 
   hasTag(tag: string): boolean {

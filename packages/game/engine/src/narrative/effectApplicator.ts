@@ -27,6 +27,10 @@ import {
   removeInventoryItem,
   setEventState,
 } from '../session/state';
+import {
+  getNpcComponentData,
+  upsertNpcComponent,
+} from '../runtime/gameObjectStore';
 
 /**
  * Result of applying effects.
@@ -335,22 +339,16 @@ export function applyEffects(
     }
   }
 
-  // 7. Apply component effects (ECS components - pass through to flags for now)
+  // 7. Apply component effects (ECS components -> canonical npc GameObject)
   if (effects.components) {
-    const flags = newSession.flags as Record<string, any>;
-    const npcKey = `npc:${npcId}`;
-
-    if (!flags.npcs) flags.npcs = {};
-    if (!flags.npcs[npcKey]) flags.npcs[npcKey] = {};
-    if (!flags.npcs[npcKey].components) flags.npcs[npcKey].components = {};
-
     for (const [componentName, componentData] of Object.entries(effects.components)) {
-      const existing = flags.npcs[npcKey].components[componentName] || {};
-      const newData = componentData && typeof componentData === 'object' ? componentData : {};
-      flags.npcs[npcKey].components[componentName] = {
+      const existing = getNpcComponentData(newSession, npcId, componentName) ?? {};
+      const newData =
+        componentData && typeof componentData === 'object' ? componentData : {};
+      newSession = upsertNpcComponent(newSession, npcId, componentName, {
         ...existing,
         ...(newData as Record<string, any>),
-      };
+      });
     }
   }
 

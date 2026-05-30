@@ -8,103 +8,99 @@
  */
 
 import type {
+  GameSessionDTO,
   NarrativeRuntimeState,
   NarrativeProgramId,
   NodeId,
 } from '@pixsim7/shared.types';
-import { Ref } from '@pixsim7/shared.ref.core';
+import {
+  getNpcComponentData,
+  removeNpcComponent,
+  upsertNpcComponent,
+} from '../runtime/gameObjectStore';
 
 /**
- * Session flags structure (subset needed for narrative)
+ * Game session shape used by the narrative ECS helpers. Aliased to the full
+ * DTO so canonical npc-GameObject reads/writes line up with the rest of the
+ * engine (narrative state now lives on the canonical store, not flags.npcs).
  */
-interface SessionFlags {
-  npcs?: Record<string, {
-    components?: Record<string, any>;
-  }>;
-  [key: string]: any;
+type GameSession = GameSessionDTO;
+
+/** Component `type` under which narrative runtime state is stored. */
+const NARRATIVE_COMPONENT_TYPE = 'narrative';
+
+function freshNarrativeState(): NarrativeRuntimeState {
+  return {
+    activeProgramId: null,
+    activeNodeId: null,
+    stack: [],
+    history: [],
+    variables: {},
+    lastStepAt: undefined,
+    paused: false,
+    error: undefined,
+  };
 }
 
 /**
- * Game session (subset needed for narrative)
+ * Write the canonical `flags.gameObjects` store produced by an immutable
+ * canonical write back onto `session` in place. Preserves the in-place
+ * mutation contract these helpers have always had: callers pass a session and
+ * read it back after mutation rather than threading a returned session.
  */
-interface GameSession {
-  flags: SessionFlags;
-  [key: string]: any;
+function applyCanonical(session: GameSession, next: GameSessionDTO): void {
+  (session.flags as Record<string, unknown>).gameObjects = (
+    next.flags as Record<string, unknown>
+  ).gameObjects;
 }
 
 // ============================================================================
-// ECS Component Access Helpers
+// ECS Component Access Helpers (canonical npc GameObject `components[]`)
 // ============================================================================
 
 /**
- * Ensure NPC components structure exists in session flags
- */
-function ensureNpcComponents(session: GameSession, npcId: number): Record<string, any> {
-  if (!session.flags.npcs) {
-    session.flags.npcs = {};
-  }
-
-  const npcKey = Ref.npc(npcId);
-  if (!session.flags.npcs[npcKey]) {
-    session.flags.npcs[npcKey] = { components: {} };
-  }
-
-  if (!session.flags.npcs[npcKey].components) {
-    session.flags.npcs[npcKey].components = {};
-  }
-
-  return session.flags.npcs[npcKey].components!;
-}
-
-/**
- * Get narrative runtime state for an NPC
+ * Get narrative runtime state for an NPC from the canonical npc GameObject.
  *
- * If no state exists, returns a fresh/empty state.
+ * If no state exists, returns a fresh/empty state. The returned object is a
+ * detached copy — mutate it and persist via `setNarrativeState`.
  */
 export function getNarrativeState(
   session: GameSession,
   npcId: number
 ): NarrativeRuntimeState {
-  const components = ensureNpcComponents(session, npcId);
-
-  if (!components.narrative) {
-    // Return fresh state
-    return {
-      activeProgramId: null,
-      activeNodeId: null,
-      stack: [],
-      history: [],
-      variables: {},
-      lastStepAt: undefined,
-      paused: false,
-      error: undefined,
-    };
+  const data = getNpcComponentData(session, npcId, NARRATIVE_COMPONENT_TYPE);
+  if (!data) {
+    return freshNarrativeState();
   }
-
-  return components.narrative as NarrativeRuntimeState;
+  return data as unknown as NarrativeRuntimeState;
 }
 
 /**
- * Set narrative runtime state for an NPC
+ * Set narrative runtime state for an NPC (in place, canonical-backed).
  */
 export function setNarrativeState(
   session: GameSession,
   npcId: number,
   state: NarrativeRuntimeState
 ): void {
-  const components = ensureNpcComponents(session, npcId);
-  components.narrative = state;
+  const next = upsertNpcComponent(
+    session,
+    npcId,
+    NARRATIVE_COMPONENT_TYPE,
+    state as unknown as Record<string, unknown>
+  );
+  applyCanonical(session, next);
 }
 
 /**
- * Clear narrative runtime state for an NPC
+ * Clear narrative runtime state for an NPC (in place, canonical-backed).
  */
 export function clearNarrativeState(
   session: GameSession,
   npcId: number
 ): void {
-  const components = ensureNpcComponents(session, npcId);
-  delete components.narrative;
+  const next = removeNpcComponent(session, npcId, NARRATIVE_COMPONENT_TYPE);
+  applyCanonical(session, next);
 }
 
 // ============================================================================
