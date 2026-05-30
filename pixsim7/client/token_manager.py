@@ -445,6 +445,8 @@ def render_codex_mcp_http_config(
     mcp_url: str,
     api_token: str = "",
     scope: str = "",
+    session_id: str = "",
+    profile_id: str = "",
     enabled_tools: list[str] | None = None,
     preferred_auth_method: str | None = "chatgpt",
 ) -> str:
@@ -455,6 +457,11 @@ def render_codex_mcp_http_config(
 
     See :func:`render_codex_mcp_config` for why ``preferred_auth_method``
     is pinned per-focus (default ``"chatgpt"``).
+
+    ``session_id`` and ``profile_id`` mirror the Claude writer: when set
+    they emit ``X-Chat-Session-Id`` / ``X-Profile-Id`` headers so a token
+    that doesn't carry those claims (legacy / service token) still resolves
+    to the right tab/agent for self-targeting tools.
     """
     lines: list[str] = []
     # Top-level keys must precede any [table] header in TOML.
@@ -475,6 +482,10 @@ def render_codex_mcp_http_config(
         headers["Authorization"] = f"Bearer {api_token}"
     if scope:
         headers["X-Scope-Key"] = scope
+    if session_id:
+        headers["X-Chat-Session-Id"] = session_id
+    if profile_id:
+        headers["X-Profile-Id"] = profile_id
     if headers:
         lines.append("")
         lines.append("[mcp_servers.pixsim.headers]")
@@ -490,6 +501,8 @@ def write_codex_mcp_http_config(
     mcp_url: str,
     api_token: str = "",
     scope: str = "",
+    session_id: str = "",
+    profile_id: str = "",
     enabled_tools: list[str] | None = None,
     preferred_auth_method: str | None = "chatgpt",
     workdir: str | Path,
@@ -502,6 +515,8 @@ def write_codex_mcp_http_config(
         mcp_url=mcp_url,
         api_token=api_token,
         scope=scope,
+        session_id=session_id,
+        profile_id=profile_id,
         enabled_tools=enabled_tools,
         preferred_auth_method=preferred_auth_method,
     )

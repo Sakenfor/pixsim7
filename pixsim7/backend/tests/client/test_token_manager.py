@@ -245,6 +245,36 @@ class TestCodexMcpConfig:
         assert 'preferred_auth_method = "chatgpt"' in result
         assert result.index("preferred_auth_method") < result.index("[mcp_servers.pixsim]")
 
+    def test_render_http_emits_identity_headers_when_provided(self):
+        """Mirror of the Claude writer: codex must also emit
+        X-Chat-Session-Id + X-Profile-Id so a token without those claims
+        (legacy / service-token fallback) still resolves the right tab/agent.
+        Plan ``tab-identity-mode`` / codex parity."""
+        from pixsim7.client.token_manager import render_codex_mcp_http_config
+
+        result = render_codex_mcp_http_config(
+            mcp_url="http://localhost:9999/mcp",
+            api_token="t",
+            scope="dev",
+            session_id="019e797e-91af-7e52-9c9d-e1989781f8a2",
+            profile_id="profile-mn1z5lul",
+        )
+        assert '[mcp_servers.pixsim.headers]' in result
+        assert '"X-Chat-Session-Id" = "019e797e-91af-7e52-9c9d-e1989781f8a2"' in result
+        assert '"X-Profile-Id" = "profile-mn1z5lul"' in result
+
+    def test_render_http_omits_identity_headers_when_blank(self):
+        from pixsim7.client.token_manager import render_codex_mcp_http_config
+
+        result = render_codex_mcp_http_config(
+            mcp_url="http://localhost:9999/mcp",
+            api_token="t",
+            scope="dev",
+            # session_id / profile_id omitted
+        )
+        assert "X-Chat-Session-Id" not in result
+        assert "X-Profile-Id" not in result
+
     def test_render_with_enabled_tools(self):
         env = McpEnv(api_base="http://x", api_token="t", token_file="/t", scope="dev")
         result = render_codex_mcp_config(

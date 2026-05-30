@@ -1181,6 +1181,9 @@ class Bridge:
         mcp_python_cmd: str,
         mcp_python_prefix: list[str],
         focus: list[str] | None = None,
+        chat_session_id: str = "",
+        profile_id: str = "",
+        tab_id: str | None = None,
     ) -> str | None:
         """Write focus-scoped .codex/config.toml and return launch workdir.
 
@@ -1203,7 +1206,13 @@ class Bridge:
             })
         )
         token_ns = _extract_token_jti(token)
-        cache_key = (scope, normalized_focus, token_ns)
+        # Per-(tab, chat_session) cache slot: a token rotation alone would
+        # already shift token_ns, but mixing the tab anchor in keeps cross-tab
+        # reuse from collapsing identities when two tabs ever share a token
+        # (e.g. service-token fallback on mint failure). Plan
+        # ``tab-identity-mode`` / codex parity.
+        identity_ns = chat_session_id or (f"tab-{tab_id}" if tab_id else "")
+        cache_key = (scope, normalized_focus, token_ns, identity_ns)
 
         enabled_tools: list[str] | None = None
         if focus is not None:
@@ -1234,6 +1243,8 @@ class Bridge:
                     mcp_url=self._mcp_http_url,
                     api_token=token,
                     scope=scope,
+                    session_id=chat_session_id,
+                    profile_id=profile_id,
                     enabled_tools=enabled_tools,
                     workdir=str(workdir),
                 )
@@ -1411,15 +1422,57 @@ class Bridge:
                 if not self._mcp_python_runtime:
                     self._mcp_python_runtime = self._resolve_mcp_python()
                 mcp_python_cmd, mcp_python_prefix = self._mcp_python_runtime
+                # Per-session identity for codex: mint a bridge-session JWT
+                # carrying tab_id/scope_key/chat_session_id claims so the
+                # codex subprocess's MCP traffic is no longer service-token
+                # anonymous. Same path Claude uses
+                # (_ensure_per_session_mcp_config) — falls back to the legacy
+                # user_token / service_token on mint failure. Plan
+                # ``tab-identity-mode`` / codex parity.
+                codex_tab_id = meta.get("tab_id")
+                codex_session_id = str(meta.get("bridge_session_id") or "")
+                codex_profile_id = str(
+                    msg.get("profile_id")
+                    or (msg.get("profile_config") or {}).get("id")
+                    or ""
+                )
+                effective_codex_token = str(user_token or self._service_token or "")
+                if self._per_session_subprocess_enabled() and (
+                    meta.get("bridge_session_id") or codex_tab_id
+                ):
+                    try:
+                        codex_scope_key = meta.get("scope_key") or ""
+                        if not codex_scope_key and codex_tab_id:
+                            codex_scope_key = f"tab:{codex_tab_id}"
+                        minted_token, _exp_epoch = await self._mint_agent_session_token(
+                            chat_session_id=codex_session_id,
+                            agent_type="codex",
+                            profile_id=codex_profile_id or "unknown",
+                            scope_key=codex_scope_key or None,
+                            tab_id=codex_tab_id,
+                            on_behalf_of=msg.get("on_behalf_of"),
+                        )
+                        if minted_token:
+                            effective_codex_token = minted_token
+                    except Exception as exc:
+                        get_logger().warning(
+                            "per_session_codex_token_mint_failed",
+                            chat_session=codex_session_id[:12],
+                            tab=str(codex_tab_id or "")[:12],
+                            error=str(exc),
+                        )
                 codex_workdir = self._ensure_codex_project_workdir(
                     mcp_server_script,
                     api_base,
-                    str(user_token or self._service_token or ""),
+                    effective_codex_token,
                     self._token_file.path,
                     self._mcp_scope,
                     mcp_python_cmd=mcp_python_cmd,
                     mcp_python_prefix=mcp_python_prefix,
                     focus=meta["focus"],
+                    chat_session_id=codex_session_id,
+                    profile_id=codex_profile_id,
+                    tab_id=codex_tab_id,
                 )
         elif meta["focus"] or self._per_session_subprocess_enabled():
             # Per-session HTTP MCP config when the feature flag is on, even
