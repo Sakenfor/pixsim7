@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { StatusDot } from '@pixsim7/shared.ui'
+import { IconButton as UiIconButton, StatusDot } from '@pixsim7/shared.ui'
 import type { ServiceState } from '../api/client'
 import { openWindow, getServiceSettings } from '../api/client'
 import { getBuildables, buildPackage, type BuildStatus } from '../api/tools'
@@ -357,11 +357,18 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
 
 // ── Inline icons (no dependency) ──────────────────────────────────
 
+// Thin launcher preset over the shared IconButton: keeps the `children` API
+// and the base hover highlight shared by every action-row button.
 function IconButton({ children, className = '', title, onClick }: { children: React.ReactNode; className?: string; title?: string; onClick?: () => void }) {
   return (
-    <button className={`p-1 rounded hover:bg-white/10 transition-colors ${className}`} title={title} onClick={onClick}>
-      {children}
-    </button>
+    <UiIconButton
+      icon={children}
+      size="sm"
+      rounded="md"
+      title={title}
+      onClick={onClick}
+      className={`hover:bg-white/10 ${className}`}
+    />
   )
 }
 
