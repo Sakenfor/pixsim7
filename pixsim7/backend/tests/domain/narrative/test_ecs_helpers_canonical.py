@@ -117,25 +117,6 @@ def test_multiple_npcs_keep_independent_state():
     assert get_narrative_state(session, 2).active_program_id == "B"
 
 
-def test_legacy_npc_fields_preserved_through_narrative_write():
-    # Pre-existing legacy flags.npcs entry (role/locationId) should be preserved
-    # on the canonical npc when ecs_helpers writes narrative state.
-    session = SimpleNamespace(
-        flags={"npcs": {"npc:5": {"name": "Alex", "role": "barista", "locationId": 3}}},
-        world_id=WORLD_ID,
-    )
-
-    set_narrative_state(
-        session, 5,
-        _fresh_state(active_program_id="p", active_node_id="n", last_step_at=1),
-    )
-
-    npc = session.flags["gameObjects"]["objects"]["npc:5"]
-    assert npc["name"] == "Alex"
-    assert npc["npcData"]["role"] == "barista"
-    assert npc["transform"]["locationId"] == 3
-
-
 def test_start_program_writes_via_canonical_path():
     session = _new_session()
 

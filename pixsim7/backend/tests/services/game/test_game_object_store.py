@@ -29,7 +29,7 @@ def test_to_game_object_ref_string_and_numeric():
     assert to_game_object_ref("npc", 12.0) == "npc:12"
 
 
-def test_upsert_item_writes_canonical_and_mirror():
+def test_upsert_item_writes_canonical():
     flags: dict = {}
     upsert_session_game_objects(
         flags, WORLD_ID, [build_inventory_item_object(WORLD_ID, "flower", 3)]
@@ -39,12 +39,6 @@ def test_upsert_item_writes_canonical_and_mirror():
     assert obj["kind"] == "item"
     assert obj["itemData"]["quantity"] == 3
     assert obj["ref"] == "item:flower"
-
-    # Temporary mirror kept in sync for the still-flags-based backend.
-    mirror = flags["inventory"]["items"]
-    flower = next(i for i in mirror if i["id"] == "flower")
-    assert flower["quantity"] == 3
-    assert flower["qty"] == 3
 
 
 def test_get_by_ref_and_by_lookup():
@@ -59,7 +53,7 @@ def test_get_by_ref_and_by_lookup():
     assert get_session_game_object(flags, WORLD_ID, "item:missing") is None
 
 
-def test_remove_deletes_object_and_clears_mirror():
+def test_remove_deletes_canonical_object():
     flags: dict = {}
     upsert_session_game_objects(
         flags, WORLD_ID, [build_inventory_item_object(WORLD_ID, "flower", 1)]
@@ -67,42 +61,8 @@ def test_remove_deletes_object_and_clears_mirror():
     remove_session_game_objects(flags, WORLD_ID, ["item:flower"])
 
     assert "item:flower" not in flags["gameObjects"]["objects"]
-    assert all(i["id"] != "flower" for i in flags["inventory"]["items"])
 
 
-def test_hydrate_legacy_inventory_array_and_map():
-    flags_list = {"inventory": {"items": [{"id": "flower", "qty": 2}]}}
-    items = list_session_game_objects(flags_list, WORLD_ID, kind="item")
-    assert len(items) == 1
-    assert item_quantity(items[0]) == 2
-
-    flags_map = {"inventory": {"apple": 5}}
-    apple = get_session_game_object(flags_map, WORLD_ID, "item:apple")
-    assert apple is not None
-    assert item_quantity(apple) == 5
-
-
-def test_hydrate_legacy_npcs():
-    flags = {"npcs": {"npc:7": {"name": "Alex", "role": "barista", "tags": ["regular"]}}}
-    npc = get_session_game_object(flags, WORLD_ID, "npc:7")
-    assert npc is not None
-    assert npc["kind"] == "npc"
-    assert npc["id"] == 7
-    assert npc["name"] == "Alex"
-    assert npc["npcData"]["role"] == "barista"
-    assert has_capability(npc, "dialogue_target")
-
-
-def test_canonical_overrides_legacy_on_same_ref():
-    flags = {"inventory": {"items": [{"id": "flower", "qty": 1}]}}
-    # Canonical write for the same item ref should win on read.
-    upsert_session_game_objects(
-        flags, WORLD_ID, [build_inventory_item_object(WORLD_ID, "flower", 9)]
-    )
-    flower = get_session_game_object(flags, WORLD_ID, "item:flower")
-    assert item_quantity(flower) == 9
-    items = list_session_game_objects(flags, WORLD_ID, kind="item")
-    assert len(items) == 1  # not double-counted
 
 
 def test_list_filtering_by_kind_and_capability():

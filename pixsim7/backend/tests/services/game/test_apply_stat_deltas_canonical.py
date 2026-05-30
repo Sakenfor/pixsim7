@@ -116,25 +116,3 @@ def test_apply_stat_deltas_subsequent_deltas_accumulate_in_both_locations(sessio
     assert comp["data"]["affinity"] == 8.0
 
 
-def test_apply_stat_deltas_preserves_legacy_npc_fields_via_hydration(session, world):
-    # Seed a legacy flags.npcs entry. The canonical npc created by the mirror
-    # should preserve the legacy role/locationId via the store's hydration spread.
-    session.flags = {"npcs": {"npc:5": {"name": "Alex", "role": "barista", "locationId": 3}}}
-
-    run_async(apply_stat_deltas(
-        session,
-        StatDelta(
-            package_id="core.relationships",
-            axes={"affinity": 4.0},
-            entity_type="npc",
-            npc_id=5,
-        ),
-        world,
-    ))
-
-    npc = session.flags["gameObjects"]["objects"]["npc:5"]
-    assert npc["name"] == "Alex"
-    assert npc["npcData"]["role"] == "barista"
-    assert npc["transform"]["locationId"] == 3
-    # And the stats component is on it.
-    assert _npc_component(session, 5, "stats:relationships")["data"]["affinity"] == 4.0

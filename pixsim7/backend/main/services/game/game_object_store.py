@@ -60,12 +60,6 @@ def _to_number(value: Any) -> Optional[float]:
     return None
 
 
-def _to_string_array(value: Any) -> List[str]:
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, str) and item.strip()]
-
-
 def _id_to_ref_string(obj_id: Any) -> str:
     if isinstance(obj_id, str):
         return obj_id.strip()
@@ -204,102 +198,6 @@ def _normalize_store(raw_store: Any, world_id: Any) -> Optional[Dict[str, Any]]:
     return store
 
 
-# ---------------------------------------------------------------------------
-# Legacy hydration (parity with the TS getSessionGameObjectStore merge)
-# ---------------------------------------------------------------------------
-
-def _hydrate_legacy_npc_objects(flags: Dict[str, Any], world_id: Any) -> Dict[str, Any]:
-    npcs = _as_record(flags.get("npcs"))
-    if not npcs:
-        return {}
-    objects: Dict[str, Any] = {}
-    for key, value in npcs.items():
-        npc_id = _parse_npc_numeric_id(key)
-        if npc_id is None:
-            continue
-        npc = _as_record(value) or {}
-        ref = f"npc:{npc_id}"
-        location_id = _to_number(npc.get("locationId") if npc.get("locationId") is not None else npc.get("currentLocationId"))
-        role = npc.get("role") if isinstance(npc.get("role"), str) else None
-        expression_state = npc.get("expressionState") if isinstance(npc.get("expressionState"), str) else None
-        tags = _to_string_array(npc.get("tags"))
-        name = npc.get("name")
-        name = name if isinstance(name, str) and name.strip() else f"NPC {npc_id}"
-        obj: Dict[str, Any] = {
-            "kind": "npc",
-            "id": npc_id,
-            "ref": ref,
-            "name": name,
-            "runtimeKind": "npc",
-            "transform": _create_fallback_transform(world_id, location_id),
-            "capabilities": [
-                {"id": "interactable", "enabled": True},
-                {"id": "dialogue_target", "enabled": True},
-            ],
-            "npcData": {"role": role, "expressionState": expression_state},
-            "meta": {"source": "legacy.flags.npcs"},
-        }
-        if tags:
-            obj["tags"] = tags
-        objects[ref] = obj
-    return objects
-
-
-def _parse_npc_numeric_id(raw_key: str) -> Optional[int]:
-    if not raw_key:
-        return None
-    candidate = raw_key[4:] if raw_key.startswith("npc:") else raw_key
-    number = _to_number(candidate)
-    return int(number) if number is not None else None
-
-
-def read_legacy_inventory_items_raw(flags: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Read raw legacy inventory items from `flags.inventory` (array, `{items:[]}`,
-    or legacy `{itemId: qty}` map). Legacy-edge reader only — never canonical."""
-    raw_inventory = flags.get("inventory")
-    if not raw_inventory:
-        return []
-    if isinstance(raw_inventory, list):
-        return [entry for entry in raw_inventory if isinstance(entry, dict)]
-    if isinstance(raw_inventory, dict):
-        items = raw_inventory.get("items")
-        if isinstance(items, list):
-            return [entry for entry in items if isinstance(entry, dict)]
-        # Legacy map format: { itemId: qty }
-        return [
-            {"id": item_id, "qty": value}
-            for item_id, value in raw_inventory.items()
-            if item_id != "items" and isinstance(value, (int, float)) and not isinstance(value, bool)
-        ]
-    return []
-
-
-def _hydrate_legacy_inventory_objects(flags: Dict[str, Any], world_id: Any) -> Dict[str, Any]:
-    objects: Dict[str, Any] = {}
-    for raw_item in read_legacy_inventory_items_raw(flags):
-        item_id_raw = raw_item.get("id") if raw_item.get("id") is not None else raw_item.get("itemId")
-        if not isinstance(item_id_raw, str) or not item_id_raw.strip():
-            continue
-        item_id = item_id_raw.strip()
-        qty = _to_number(raw_item.get("qty") if raw_item.get("qty") is not None else raw_item.get("quantity"))
-        quantity = max(0, int(qty)) if qty is not None else 1
-        name = raw_item.get("name")
-        name = name if isinstance(name, str) and name.strip() else item_id
-        ref = f"item:{item_id}"
-        objects[ref] = {
-            "kind": "item",
-            "id": item_id,
-            "ref": ref,
-            "name": name,
-            "runtimeKind": "item",
-            "transform": _create_fallback_transform(world_id),
-            "capabilities": [{"id": "inventory_item", "enabled": True}],
-            "itemData": {"itemDefId": item_id, "quantity": quantity},
-            "meta": {"source": "legacy.flags.inventory"},
-        }
-    return objects
-
-
 def build_inventory_item_object(
     world_id: Any,
     item_id: str,
@@ -334,24 +232,11 @@ def build_inventory_item_object(
 # ---------------------------------------------------------------------------
 
 def get_session_game_object_store(
-    session_flags: Dict[str, Any], world_id: Any, hydrate_legacy: bool = True
+    session_flags: Dict[str, Any], world_id: Any
 ) -> Dict[str, Any]:
     flags = _as_record(session_flags) or {}
     canonical = _normalize_store(flags.get("gameObjects"), world_id)
-    base = canonical or {"schemaVersion": GAME_OBJECT_STORE_SCHEMA_VERSION, "objects": {}}
-    if not hydrate_legacy:
-        return base
-
-    merged: Dict[str, Any] = {
-        **_hydrate_legacy_npc_objects(flags, world_id),
-        **_hydrate_legacy_inventory_objects(flags, world_id),
-    }
-    # Canonical entries override legacy hydration on conflicting refs.
-    for ref, obj in base["objects"].items():
-        merged[ref] = obj
-
-    result = {**base, "schemaVersion": base.get("schemaVersion", GAME_OBJECT_STORE_SCHEMA_VERSION), "objects": merged}
-    return result
+    return canonical or {"schemaVersion": GAME_OBJECT_STORE_SCHEMA_VERSION, "objects": {}}
 
 
 def _matches_query(
@@ -413,12 +298,13 @@ def _write_store_objects(
     merged_objects: Dict[str, Any],
     base_store: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Write the merged object set as the canonical store and rebuild the
-    TEMPORARY `flags.inventory.items` mirror from canonical item objects.
+    """Write the merged object set as the canonical store.
 
-    The mirror is the frontend<->backend bridge retained until the cutover
-    (checkpoint cutover-drop-legacy) removes it on both sides."""
-    next_store = {
+    As of the canonical cutover, the legacy ``flags.inventory.items`` mirror is
+    no longer maintained — InventoryService and all readers consume canonical
+    item GameObjects directly.
+    """
+    session_flags["gameObjects"] = {
         "schemaVersion": GAME_OBJECT_STORE_SCHEMA_VERSION,
         "objects": merged_objects,
         "meta": {
@@ -426,24 +312,6 @@ def _write_store_objects(
             "updatedAt": datetime.now(timezone.utc).isoformat(),
         },
     }
-
-    mirror_items: List[Dict[str, Any]] = []
-    for obj in merged_objects.values():
-        if obj.get("kind") != "item":
-            continue
-        item_data = _as_record(obj.get("itemData")) or {}
-        raw_quantity = item_data.get("quantity", 1)
-        quantity_num = _to_number(raw_quantity)
-        quantity = max(0, int(quantity_num)) if quantity_num is not None else 1
-        item_id = obj.get("id")
-        item_id = item_id if isinstance(item_id, str) else str(item_id)
-        if not item_id:
-            continue
-        mirror_items.append({"id": item_id, "qty": quantity, "itemId": item_id, "quantity": quantity})
-
-    current_inventory = _as_record(session_flags.get("inventory")) or {}
-    session_flags["gameObjects"] = next_store
-    session_flags["inventory"] = {**current_inventory, "items": mirror_items}
     return session_flags
 
 

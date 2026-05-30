@@ -86,7 +86,7 @@ function isJsonStable(value: unknown): boolean {
 
 describe('POJO boundary policy (fence)', () => {
   it('store reads return plain, JSON-stable GameObjects (not class instances)', () => {
-    const session = createSession({ npcs: { 'npc:2': { name: 'Mina' } } });
+    const session = upsertSessionGameObjects(createSession(), [npc()]);
 
     const one = getSessionGameObject(session, 'npc:2');
     expect(one).not.toBeNull();

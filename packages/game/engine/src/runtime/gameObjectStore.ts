@@ -1,6 +1,5 @@
 import {
   LocationId,
-  NpcId,
   WorldId,
 } from '@pixsim7/shared.types';
 import type {
@@ -39,19 +38,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function toNumber(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(numeric) ? numeric : null;
-}
-
-function toStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
-}
-
-function parseNpcNumericId(rawKey: string): number | null {
-  if (!rawKey) return null;
-  if (rawKey.startsWith('npc:')) {
-    return toNumber(rawKey.slice(4));
-  }
-  return toNumber(rawKey);
 }
 
 function createFallbackTransform(session: Pick<GameSessionDTO, 'world_id'>, locationId?: number): Transform {
@@ -179,85 +165,8 @@ function normalizeGameObject(
   return normalizedRecord as unknown as GameObject;
 }
 
-function hydrateLegacyNpcObjects(
-  session: Pick<GameSessionDTO, 'world_id' | 'flags'>
-): Record<string, GameObject> {
-  const flags = asRecord(session.flags);
-  const npcs = asRecord(flags?.npcs);
-  if (!npcs) return {};
-
-  const objects: Record<string, GameObject> = {};
-  for (const [key, value] of Object.entries(npcs)) {
-    const npcId = parseNpcNumericId(key);
-    if (npcId === null) continue;
-    const npc = asRecord(value);
-    const ref = `npc:${npcId}`;
-    const locationId = toNumber(npc?.locationId ?? npc?.currentLocationId);
-    const role = typeof npc?.role === 'string' ? npc.role : undefined;
-    const expressionState = typeof npc?.expressionState === 'string' ? npc.expressionState : undefined;
-    const tags = toStringArray(npc?.tags);
-    const object: GameObject = {
-      kind: 'npc',
-      id: NpcId(npcId),
-      ref,
-      name:
-        typeof npc?.name === 'string' && npc.name.trim().length > 0
-          ? npc.name
-          : `NPC ${npcId}`,
-      runtimeKind: 'npc',
-      transform: createFallbackTransform(session, locationId ?? undefined),
-      tags: tags.length > 0 ? tags : undefined,
-      capabilities: [
-        { id: 'interactable', enabled: true },
-        { id: 'dialogue_target', enabled: true },
-      ],
-      npcData: {
-        role,
-        expressionState,
-      },
-      meta: {
-        source: 'legacy.flags.npcs',
-      },
-    };
-    objects[ref] = object;
-  }
-  return objects;
-}
-
 /**
- * Read raw legacy inventory items straight from `flags.inventory` (array,
- * `{items:[]}`, or legacy `{itemId: qty}` map). This is the legacy-edge reader
- * used only by hydration — it must NOT go through `getInventory` (which now
- * reads the canonical store), or hydration would become self-referential.
- */
-function readLegacyInventoryItemsRaw(
-  flags: Record<string, unknown>
-): Array<Record<string, unknown>> {
-  const rawInventory = flags.inventory;
-  if (!rawInventory) return [];
-  if (Array.isArray(rawInventory)) {
-    return rawInventory.filter(
-      (entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object'
-    );
-  }
-  if (typeof rawInventory === 'object') {
-    const container = rawInventory as Record<string, unknown>;
-    if (Array.isArray(container.items)) {
-      return container.items.filter(
-        (entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object'
-      );
-    }
-    // Legacy map format: { itemId: qty }
-    return Object.entries(container)
-      .filter(([key, value]) => key !== 'items' && typeof value === 'number' && Number.isFinite(value))
-      .map(([itemId, qty]) => ({ id: itemId, qty: Number(qty) }));
-  }
-  return [];
-}
-
-/**
- * Build a canonical item-kind `GameObject` for an inventory item. Mirrors the
- * shape produced by legacy hydration so the two paths are interchangeable.
+ * Build a canonical item-kind `GameObject` for an inventory item.
  */
 export function buildInventoryItemObject(
   session: Pick<GameSessionDTO, 'world_id'>,
@@ -296,41 +205,6 @@ export function buildInventoryItemObject(
   };
 }
 
-function hydrateLegacyInventoryObjects(
-  session: Pick<GameSessionDTO, 'world_id' | 'flags'>
-): Record<string, GameObject> {
-  const objects: Record<string, GameObject> = {};
-  const inventory = readLegacyInventoryItemsRaw(asRecord(session.flags) ?? {});
-  for (const rawItem of inventory) {
-    const itemIdRaw = rawItem.id ?? rawItem.itemId;
-    if (typeof itemIdRaw !== 'string' || itemIdRaw.trim().length === 0) continue;
-    const itemId = itemIdRaw.trim();
-    const qty = toNumber(rawItem.qty ?? rawItem.quantity) ?? 1;
-    const ref = `item:${itemId}`;
-    const object: GameObject = {
-      kind: 'item',
-      id: itemId,
-      ref,
-      name:
-        typeof rawItem.name === 'string' && rawItem.name.trim().length > 0
-          ? rawItem.name
-          : itemId,
-      runtimeKind: 'item',
-      transform: createFallbackTransform(session),
-      capabilities: [{ id: 'inventory_item', enabled: true }],
-      itemData: {
-        itemDefId: itemId,
-        quantity: Math.max(0, qty),
-      },
-      meta: {
-        source: 'legacy.flags.inventory',
-      },
-    };
-    objects[ref] = object;
-  }
-  return objects;
-}
-
 function normalizeStore(
   rawStore: unknown,
   session: Pick<GameSessionDTO, 'world_id'>
@@ -355,39 +229,15 @@ function normalizeStore(
 }
 
 export function getSessionGameObjectStore(
-  session: Pick<GameSessionDTO, 'world_id' | 'flags'>,
-  options: { hydrateLegacy?: boolean } = {}
+  session: Pick<GameSessionDTO, 'world_id' | 'flags'>
 ): GameObjectStore {
-  const { hydrateLegacy = true } = options;
   const canonical = normalizeStore(asRecord(session.flags)?.gameObjects, session);
-  const base: GameObjectStore = canonical ?? {
-    schemaVersion: GAME_OBJECT_STORE_SCHEMA_VERSION,
-    objects: {},
-  };
-
-  if (!hydrateLegacy) return base;
-
-  const legacyNpcObjects = hydrateLegacyNpcObjects(session);
-  const legacyInventoryObjects = hydrateLegacyInventoryObjects(session);
-
-  // GUARDRAIL (migration_rollout_v1 / feature-guard): canonical-first
-  // precedence. Legacy npc/inventory hydration is fallback-only - when a ref
-  // exists in both, the canonical `flags.gameObjects` entry MUST win. Legacy
-  // is spread first, then overwritten by canonical. This invariant is the
-  // rollout safety net while flags.npcs/flags.inventory remain the working
-  // store for narrative ECS + inventory plugins (retirement is a deferred
-  // code refactor, not a data migration - there is no data). Locked by
-  // gameObjectEdgeCases: "canonical entry overrides legacy ... by ref".
-  const merged: Record<string, GameObject> = { ...legacyNpcObjects, ...legacyInventoryObjects };
-  for (const [ref, object] of Object.entries(base.objects)) {
-    merged[ref] = object;
-  }
-
-  return {
-    ...base,
-    schemaVersion: base.schemaVersion ?? GAME_OBJECT_STORE_SCHEMA_VERSION,
-    objects: merged,
-  };
+  return (
+    canonical ?? {
+      schemaVersion: GAME_OBJECT_STORE_SCHEMA_VERSION,
+      objects: {},
+    }
+  );
 }
 
 function hasCapability(object: GameObject, capability: string): boolean {
@@ -472,13 +322,9 @@ export function getSessionGameObjectEntity(
 
 /**
  * Write a merged object set back into the session as the canonical
- * `flags.gameObjects` store, and rebuild the TEMPORARY `flags.inventory.items`
- * mirror from the canonical item objects.
- *
- * The mirror is the frontend<->backend bridge that keeps the still-flags-based
- * backend (InventoryService / REST / narrative runtime) in sync until
- * `backend-canonical-gameobject-adoption` lands. It is rebuilt from canonical on
- * every write so the two never drift. Removal is gated on that backend cutover.
+ * `flags.gameObjects` store. As of the canonical cutover, the legacy
+ * `flags.inventory.items` mirror is no longer maintained — both sides read
+ * canonical item GameObjects directly.
  */
 function writeStoreObjects(
   session: GameSessionDTO,
@@ -495,31 +341,12 @@ function writeStoreObjects(
     },
   };
 
-  const mirrorInventoryItems = Object.values(mergedObjects)
-    .filter((object) => object.kind === 'item')
-    .map((object) => {
-      const rawQuantity = ('itemData' in object ? object.itemData?.quantity : undefined) ?? 1;
-      const quantity = Number.isFinite(Number(rawQuantity))
-        ? Math.max(0, Number(rawQuantity))
-        : 1;
-      const itemId = typeof object.id === 'string' ? object.id : String(object.id);
-      return { id: itemId, qty: quantity, itemId, quantity };
-    })
-    .filter((entry) => entry.id.length > 0);
-
-  const currentInventory = asRecord(currentFlags.inventory) ?? {};
-  const nextFlags: Record<string, unknown> = {
-    ...currentFlags,
-    gameObjects: nextStore,
-    inventory: {
-      ...currentInventory,
-      items: mirrorInventoryItems,
-    },
-  };
-
   return {
     ...session,
-    flags: nextFlags,
+    flags: {
+      ...currentFlags,
+      gameObjects: nextStore,
+    },
   };
 }
 

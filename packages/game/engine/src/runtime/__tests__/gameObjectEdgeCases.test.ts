@@ -242,54 +242,6 @@ describe('edge cases: transform normalization', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Legacy + Canonical Collision
-// ---------------------------------------------------------------------------
-
-describe('edge cases: legacy + canonical collision', () => {
-  it('canonical objects take precedence over legacy objects with same ref', () => {
-    const session = upsertSessionGameObjects(
-      createSession({
-        npcs: { 'npc:1': { name: 'Legacy Guard', role: 'guard' } },
-      }),
-      [
-        {
-          kind: 'npc',
-          id: NpcId(1),
-          ref: 'npc:1',
-          name: 'Canonical Guard',
-          runtimeKind: 'npc',
-          transform: createTransform(10),
-          npcData: { role: 'elite_guard' },
-        },
-      ],
-    );
-
-    const obj = getSessionGameObject(session, 'npc:1');
-    expect(obj!.name).toBe('Canonical Guard');
-    if (obj!.kind === 'npc') {
-      expect(obj!.npcData?.role).toBe('elite_guard');
-    }
-  });
-
-  it('hydrateLegacy: false on getSessionGameObjectStore excludes legacy objects', () => {
-    // Create a session with only legacy data (no canonical upsert)
-    const session = createSession({
-      npcs: { 'npc:1': { name: 'Legacy NPC' } },
-      inventory: { items: [{ id: 'sword', qty: 1 }] },
-    });
-
-    // With hydration — legacy objects appear
-    const withLegacy = getSessionGameObjectStore(session, { hydrateLegacy: true });
-    expect(Object.keys(withLegacy.objects)).toContain('npc:1');
-    expect(Object.keys(withLegacy.objects)).toContain('item:sword');
-
-    // Without hydration — only canonical store (empty here)
-    const withoutLegacy = getSessionGameObjectStore(session, { hydrateLegacy: false });
-    expect(Object.keys(withoutLegacy.objects)).toHaveLength(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Query Filtering Edge Cases
 // ---------------------------------------------------------------------------
 

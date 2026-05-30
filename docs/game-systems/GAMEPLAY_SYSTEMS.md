@@ -119,28 +119,22 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 - Service: `pixsim7/backend/main/services/game/inventory.py` (`InventoryService`)
 - API: `pixsim7/backend/main/api/v1/game_inventory.py`
 - Routes: Registered via `pixsim7/backend/main/routes/game_inventory/manifest.py`
-- Data: `GameSession.flags.inventory` (JSON field)
+- Data: `GameSession.flags.gameObjects.objects["item:<id>"]` (canonical GameObject store; per ADR `docs/decisions/20251121-game-session-json-conventions.md` amendment 2026-05-29)
 
-**Data Structure:**
+**REST `InventoryItem` shape (response contract):**
 ```json
 {
-  "flags": {
-    "inventory": {
-      "items": [
-        {
-          "id": "health_potion",
-          "name": "Health Potion",
-          "quantity": 5,
-          "metadata": {
-            "description": "Restores 50 HP",
-            "rarity": "common"
-          }
-        }
-      ]
-    }
+  "id": "health_potion",
+  "name": "Health Potion",
+  "quantity": 5,
+  "metadata": {
+    "description": "Restores 50 HP",
+    "rarity": "common"
   }
 }
 ```
+
+`InventoryService` projects this shape from the canonical item GameObject (`itemData.quantity` → `quantity`; non-reserved `itemData` keys → `metadata`).
 
 **API Endpoints:**
 - `GET /api/v1/game/inventory/sessions/{session_id}/items` - List all items

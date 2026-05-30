@@ -57,9 +57,9 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 **`GameSession`** tracks a single player's progress through a world or scene:
 - **`world_id`**: Links session to a `GameWorld` for world-aware relationship normalization (optional)
 - **`world_time`**: Synchronized with `GameWorldState.world_time` for life-sim sessions
-- **`flags`**: Arbitrary JSON for quest/arc progress, inventory, events
+- **`flags`**: Arbitrary JSON for quest/arc progress, the canonical GameObject store, events
   - Example: `flags.arcs.main_romance_alex.stage = 2`
-  - Example: `flags.inventory.items = [{ id: "flower", qty: 1 }]`
+  - Example (inventory, canonical): `flags.gameObjects.objects["item:flower"] = { kind: "item", id: "flower", itemData: { itemDefId: "flower", quantity: 1 }, ... }` — see ADR `docs/decisions/20251121-game-session-json-conventions.md` (amendment 2026-05-29)
   - Example: `flags.world.currentLocationId = 3`
 - **`relationships`**: NPC ↔ Player and NPC ↔ NPC affinity/trust/flags
   - Example: `relationships["npc:12"].affinity = 72`

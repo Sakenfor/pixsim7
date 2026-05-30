@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { GameSessionDTO, SessionUpdatePayload } from '@pixsim7/shared.types';
 
 import { createSessionHelpers } from '../session/sessionAdapter';
+import { getInventory } from '../session/state';
 import type { SessionAPI } from '../interactions/registry';
 
 function createSession(version: number, flags: Record<string, unknown> = {}): GameSessionDTO {
@@ -80,9 +81,7 @@ describe('createSessionHelpers optimistic updates', () => {
     const helpers = createSessionHelpers(source, onUpdate);
 
     const updated = await helpers.addInventoryItem('flower', 2);
-    const items = ((updated.flags as Record<string, any>).inventory?.items ?? []) as Array<
-      Record<string, unknown>
-    >;
+    const items = getInventory(updated);
 
     expect(onUpdate).toHaveBeenCalledTimes(1);
     expect(items).toHaveLength(1);

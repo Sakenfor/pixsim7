@@ -101,7 +101,10 @@ export function SessionStateViewer() {
     const flags = session.flags as Record<string, any>;
     const arcs = flags.arcs || {};
     const quests = flags.quests || {};
-    const inventory = flags.inventory || {};
+    const gameObjects = flags.gameObjects?.objects || {};
+    const inventoryItems = Object.values(gameObjects).filter(
+      (obj: any) => obj?.kind === "item",
+    ) as Array<Record<string, any>>;
     const events = flags.events || {};
     const sessionKind = flags.sessionKind;
     const world = flags.world;
@@ -177,18 +180,17 @@ export function SessionStateViewer() {
             </div>
           )}
 
-        {/* Inventory */}
+        {/* Inventory (canonical item GameObjects) */}
         {(filter === "all" || filter === "inventory") &&
-          inventory.items &&
-          inventory.items.length > 0 && (
+          inventoryItems.length > 0 && (
             <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded">
               <h4 className="text-sm font-semibold mb-2">Inventory</h4>
               <div className="space-y-1">
-                {inventory.items.map((item: any, idx: number) => (
+                {inventoryItems.map((item, idx) => (
                   <div key={idx} className="text-xs flex justify-between">
-                    <span className="font-mono">{item.id}</span>
+                    <span className="font-mono">{String(item.id)}</span>
                     <span className="text-neutral-600 dark:text-neutral-400">
-                      ×{item.qty}
+                      ×{item.itemData?.quantity ?? 0}
                     </span>
                   </div>
                 ))}

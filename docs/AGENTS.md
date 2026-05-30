@@ -49,9 +49,9 @@ Follow these rules when working on game features:
    - Relationship tiers/scales are defined per-world in `GameWorld.meta`, not hard-coded
 
 5. **Session state conventions**
-   - Use `GameSession.flags` for quest/arc progress, inventory, events
+   - Use `GameSession.flags` for quest/arc progress, the canonical GameObject store, events
      - Example: `flags.arcs.main_romance_alex.stage = 2`
-     - Example: `flags.inventory.items = [{ id: "flower", qty: 1 }]`
+     - Example (inventory, canonical): `flags.gameObjects.objects["item:flower"] = { kind: "item", id: "flower", itemData: { itemDefId: "flower", quantity: 1 }, ... }` — see ADR `docs/decisions/20251121-game-session-json-conventions.md` (amendment 2026-05-29)
    - Use `GameSession.relationships` for NPC affinity/trust
      - Example: `relationships["npc:12"].affinity = 72`
    - Namespace keys to avoid clashes (e.g., `npc:${id}`, `arc:${id}`)

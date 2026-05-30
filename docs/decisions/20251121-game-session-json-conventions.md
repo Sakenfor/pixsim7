@@ -41,11 +41,12 @@ We standardize **JSON state on existing game models** as the primary extension s
 1. **Session-level state**
    - `GameSession.flags` – opaque JSON, used for:
      - Quest/arc progress (`flags.quests.*`)
-     - Inventory (`flags.inventory.*`)
+     - **Canonical GameObject runtime store (`flags.gameObjects`)** — item / npc / prop / custom kind entities keyed by canonical ref (`item:<id>`, `npc:<id>`, ...). This is the runtime source of truth for inventory items and NPC component state; see amendment 2026-05-29 below.
      - Session-wide plugin or system state (namespaced by `plugin:` or feature ID)
    - `GameSession.stats["relationships"]` – JSON keyed by NPC (e.g. `stats["relationships"]["npc:1"]`), storing:
      - Affinity, trust, chemistry, tension.
      - Relationship-specific flags.
+     - **NB:** as of the canonical migration (plan `backend-canonical-gameobject-adoption`), `apply_stat_deltas` additionally writes a mirror onto the canonical npc GameObject's `components[type="stats:<def_id>"]`. `session.stats[...]` remains the documented reader surface; reader migration to canonical is a deliberate follow-up.
 
 2. **World and NPC metadata**
    - `GameWorld.meta` – world-level configuration, including:
@@ -117,3 +118,33 @@ Mitigations:
   - AGENTS guidelines for PixSim7 (game/world/scene editor work)
   - `claude-tasks/27-registry-unification-and-builtin-dogfooding.md`
   - `claude-tasks/28-extensible-scoring-and-simulation-config.md`
+
+---
+
+## Amendments
+
+### 2026-05-29 — Canonical GameObject runtime shape
+
+The ad-hoc `flags.inventory.items` and `flags.npcs[<id>].components` shapes
+documented above are **retired** in favour of a unified canonical store at
+`session.flags["gameObjects"]` (schemaVersion, `objects` keyed by ref). Both
+runtimes — the TS `gameObjectStore` and the Python `game_object_store` — read
+and write that single canonical store; the previous temporary `flags.inventory`
+mirror and `hydrateLegacy*` import paths are removed.
+
+- **Inventory:** items live as canonical item-kind GameObjects
+  (`flags.gameObjects.objects["item:<id>"]` with `itemData.quantity`). The
+  REST contract (`InventoryItem` shape with `id` / `name` / `quantity` /
+  `metadata`) is preserved by `InventoryService`, which projects canonical
+  itemData metadata into the REST `metadata` field.
+- **NPC narrative state:** lives on the canonical npc's
+  `components[type="narrative"]`. The legacy `flags.npcs[<id>].components.narrative`
+  location is no longer written or read.
+- **NPC relationships (stats):** `session.stats[<def_id>][<entity_key>]`
+  stays the documented reader surface; `apply_stat_deltas` additionally
+  writes a canonical `components[type="stats:<def_id>"]` mirror onto the
+  npc GameObject. Reader migration to the canonical path is a deliberate
+  follow-up.
+
+Tracked in plan `backend-canonical-gameobject-adoption` (companion engine plan
+`narrative-inventory-canonical-decoupling`).

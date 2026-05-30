@@ -1,6 +1,6 @@
 {
-  "version": "1.0",
-  "comment": "Shared TS<->Py parity scenarios for the GameObject store. Used by packages/game/engine/src/__tests__/storeParity.test.ts and pixsim7/backend/tests/services/game/test_store_parity.py. Operations are limited to ops both impls expose verbatim (upsert / remove). Each scenario asserts on canonical refs, item/npc fields, and the temporary flags.inventory mirror. Non-deterministic gameObjects.meta.updatedAt is intentionally NOT asserted.",
+  "version": "1.1",
+  "comment": "Shared TS<->Py parity scenarios for the GameObject store. Used by packages/game/engine/src/__tests__/storeParity.test.ts and pixsim7/backend/tests/services/game/test_store_parity.py. Operations limited to upsert / remove (both impls expose verbatim). After the canonical cutover (v1.1), legacy flags.inventory/flags.npcs are no longer hydrated and no inventory mirror is maintained. Non-deterministic gameObjects.meta.updatedAt is intentionally NOT asserted.",
   "scenarios": [
     {
       "name": "upsert-single-item",
@@ -23,9 +23,6 @@
         "canonical_refs": ["item:flower"],
         "items": [
           {"ref": "item:flower", "name": "Flower", "quantity": 3}
-        ],
-        "mirror_items": [
-          {"id": "flower", "itemId": "flower", "qty": 3, "quantity": 3}
         ]
       }
     },
@@ -49,71 +46,7 @@
       ],
       "expect": {
         "canonical_refs": [],
-        "items": [],
-        "mirror_items": []
-      }
-    },
-    {
-      "name": "legacy-inventory-hydrated-as-canonical-items",
-      "world_id": 1,
-      "initial_flags": {
-        "inventory": {
-          "items": [
-            {"id": "flower", "qty": 2},
-            {"id": "key", "qty": 1}
-          ]
-        }
-      },
-      "operations": [],
-      "expect": {
-        "canonical_refs": ["item:flower", "item:key"],
-        "items": [
-          {"ref": "item:flower", "quantity": 2},
-          {"ref": "item:key", "quantity": 1}
-        ]
-      }
-    },
-    {
-      "name": "canonical-overrides-legacy-on-ref-conflict",
-      "world_id": 1,
-      "initial_flags": {
-        "inventory": {"items": [{"id": "flower", "qty": 1}]}
-      },
-      "operations": [
-        {
-          "op": "upsert",
-          "objects": [
-            {
-              "kind": "item",
-              "id": "flower",
-              "name": "Canonical Flower",
-              "itemData": {"itemDefId": "flower", "quantity": 9}
-            }
-          ]
-        }
-      ],
-      "expect": {
-        "canonical_refs": ["item:flower"],
-        "items": [
-          {"ref": "item:flower", "name": "Canonical Flower", "quantity": 9}
-        ],
-        "mirror_items": [
-          {"id": "flower", "quantity": 9}
-        ]
-      }
-    },
-    {
-      "name": "legacy-npc-hydrated",
-      "world_id": 1,
-      "initial_flags": {
-        "npcs": {"npc:7": {"name": "Alex", "role": "barista"}}
-      },
-      "operations": [],
-      "expect": {
-        "canonical_refs": ["npc:7"],
-        "npcs": [
-          {"ref": "npc:7", "name": "Alex", "role": "barista"}
-        ]
+        "items": []
       }
     },
     {

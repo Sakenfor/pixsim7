@@ -177,100 +177,14 @@ describe('contract: GameObject schema round-trip', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Legacy Compatibility — old session formats still work
+// Canonical store reads — sessions without a populated canonical store
 // ---------------------------------------------------------------------------
 
-describe('legacy compat: sessions without gameObjects store', () => {
+describe('canonical store reads', () => {
   it('empty session returns empty object list', () => {
     const session = createSession();
     const objects = listSessionGameObjects(session);
     expect(objects).toEqual([]);
-  });
-
-  it('legacy npcs hydrate without gameObjects store', () => {
-    const session = createSession({
-      npcs: {
-        'npc:5': { name: 'Bard', role: 'entertainer', tags: ['friendly'] },
-      },
-    });
-
-    const objects = listSessionGameObjects(session);
-    expect(objects).toHaveLength(1);
-    expect(objects[0].kind).toBe('npc');
-    expect(objects[0].name).toBe('Bard');
-    expect(objects[0].ref).toBe('npc:5');
-  });
-
-  it('legacy inventory hydrates as item objects', () => {
-    const session = createSession({
-      inventory: {
-        items: [
-          { id: 'key', qty: 1 },
-          { id: 'coin', qty: 50 },
-        ],
-      },
-    });
-
-    const objects = listSessionGameObjects(session);
-    expect(objects).toHaveLength(2);
-
-    const key = getSessionGameObject(session, 'item:key');
-    expect(key).toBeTruthy();
-    expect(key!.kind).toBe('item');
-
-    const coin = getSessionGameObject(session, 'item:coin');
-    expect(coin!.kind).toBe('item');
-    if (coin!.kind === 'item') {
-      expect(coin!.itemData.quantity).toBe(50);
-    }
-  });
-
-  it('legacy npcs + inventory coexist with canonical objects', () => {
-    const session = upsertSessionGameObjects(
-      createSession({
-        npcs: {
-          'npc:1': { name: 'Merchant', role: 'shop' },
-        },
-        inventory: {
-          items: [{ id: 'bread', qty: 3 }],
-        },
-      }),
-      [
-        {
-          kind: 'prop',
-          id: 'sign_1',
-          ref: 'prop:sign_1',
-          name: 'Welcome Sign',
-          runtimeKind: 'prop',
-          transform: createTransform(),
-          propData: { propDefId: 'sign' },
-        },
-      ],
-    );
-
-    const all = listSessionGameObjects(session);
-    const refs = all.map((o) => o.ref).sort();
-    expect(refs).toContain('npc:1');
-    expect(refs).toContain('item:bread');
-    expect(refs).toContain('prop:sign_1');
-  });
-
-  it('item upsert mirrors to legacy inventory for backward compat', () => {
-    const session = upsertSessionGameObjects(createSession(), [
-      {
-        kind: 'item',
-        id: 'gem',
-        ref: 'item:gem',
-        name: 'Ruby Gem',
-        runtimeKind: 'item',
-        transform: createTransform(),
-        itemData: { itemDefId: 'gem', quantity: 5 },
-      },
-    ]);
-
-    const inventory = (session.flags as { inventory?: { items?: Array<{ id: string; qty: number }> } }).inventory;
-    expect(inventory?.items).toBeDefined();
-    expect(inventory!.items!.find((i) => i.id === 'gem')?.qty).toBe(5);
   });
 
   it('canonical store lookup works with both string ref and object lookup', () => {

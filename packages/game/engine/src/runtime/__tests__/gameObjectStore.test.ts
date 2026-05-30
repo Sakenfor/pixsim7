@@ -34,35 +34,6 @@ function createTransform(locationId?: number): Transform {
 }
 
 describe('runtime game object store', () => {
-  it('hydrates legacy npc and inventory flags into object views', () => {
-    const session = createSession({
-      npcs: {
-        'npc:2': {
-          name: 'Mina',
-          role: 'guide',
-          tags: ['friendly'],
-        },
-      },
-      inventory: {
-        items: [{ id: 'flower', qty: 2 }],
-      },
-    });
-
-    const all = listSessionGameObjects(session);
-    expect(all.map((object) => object.ref)).toEqual(['item:flower', 'npc:2']);
-
-    const npc = getSessionGameObject(session, 'npc:2');
-    expect(npc?.kind).toBe('npc');
-    expect(npc?.capabilities?.some((capability) => capability.id === 'dialogue_target')).toBe(true);
-
-    const item = getSessionGameObject(session, 'item:flower');
-    expect(item?.kind).toBe('item');
-    if (!item || item.kind !== 'item') {
-      throw new Error('Expected hydrated inventory item');
-    }
-    expect(item.itemData.quantity).toBe(2);
-  });
-
   it('upserts canonical game objects and keeps store addressable by ref', () => {
     const baseSession = createSession();
     const objects: GameObject[] = [
@@ -150,56 +121,26 @@ describe('runtime game object store', () => {
     expect(questActors.map((object) => object.ref)).toEqual(['npc:5']);
   });
 
-  it('mirrors canonical item objects into legacy inventory flags', () => {
+  it('canonical-only hydration->entity seam yields GameObjectEntity instances', () => {
     const session = upsertSessionGameObjects(createSession(), [
       {
         kind: 'item',
-        id: 'potion_health',
-        ref: 'item:potion_health',
-        name: 'Health Potion',
+        id: 'gem',
+        ref: 'item:gem',
+        name: 'Gem',
         runtimeKind: 'item',
         transform: createTransform(),
-        itemData: { itemDefId: 'potion_health', quantity: 3 },
-      },
+        itemData: { itemDefId: 'gem', quantity: 1 },
+      } as GameObject,
     ]);
-
-    const inventory = (session.flags as { inventory?: { items?: Array<Record<string, unknown>> } }).inventory;
-    expect(inventory?.items).toEqual([
-      {
-        id: 'potion_health',
-        qty: 3,
-        itemId: 'potion_health',
-        quantity: 3,
-      },
-    ]);
-  });
-
-  it('hydration->entity seam yields GameObjectEntity from legacy + canonical', () => {
-    const session = upsertSessionGameObjects(
-      createSession({
-        npcs: { 'npc:9': { name: 'Legacy Only' } },
-      }),
-      [
-        {
-          kind: 'item',
-          id: 'gem',
-          ref: 'item:gem',
-          name: 'Gem',
-          runtimeKind: 'item',
-          transform: createTransform(),
-          itemData: { itemDefId: 'gem', quantity: 1 },
-        } as GameObject,
-      ]
-    );
 
     const entities = listSessionGameObjectEntities(session);
     expect(entities.every((e) => e instanceof GameObjectEntity)).toBe(true);
-    // legacy npc and canonical item both surface through the seam
-    expect(entities.map((e) => e.ref).sort()).toEqual(['item:gem', 'npc:9']);
+    expect(entities.map((e) => e.ref).sort()).toEqual(['item:gem']);
 
-    const one = getSessionGameObjectEntity(session, 'npc:9');
+    const one = getSessionGameObjectEntity(session, 'item:gem');
     expect(one).toBeInstanceOf(GameObjectEntity);
-    expect(one?.kind).toBe('npc');
+    expect(one?.kind).toBe('item');
     expect(getSessionGameObjectEntity(session, 'npc:404')).toBeNull();
   });
 });

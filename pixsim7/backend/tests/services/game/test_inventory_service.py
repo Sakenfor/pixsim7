@@ -16,7 +16,7 @@ from pixsim7.backend.main.services.game.inventory import InventoryItem, Inventor
 WORLD_ID = 1
 
 
-def test_add_item_writes_canonical_and_mirror():
+def test_add_item_writes_canonical_item_object():
     flags: dict = {}
     InventoryService.add_item(flags, "flower", name="Flower", quantity=3, world_id=WORLD_ID)
 
@@ -24,9 +24,6 @@ def test_add_item_writes_canonical_and_mirror():
     assert obj["kind"] == "item"
     assert obj["itemData"]["quantity"] == 3
     assert obj["name"] == "Flower"
-
-    mirror_item = next(i for i in flags["inventory"]["items"] if i["id"] == "flower")
-    assert mirror_item["quantity"] == 3
 
 
 def test_add_item_increments_existing_quantity():
@@ -68,7 +65,6 @@ def test_remove_partial_then_zero():
     InventoryService.remove_item(flags, "flower", quantity=2, world_id=WORLD_ID)
     assert InventoryService.get_item(flags, "flower", world_id=WORLD_ID) is None
     assert "item:flower" not in flags["gameObjects"]["objects"]
-    assert all(i["id"] != "flower" for i in flags["inventory"]["items"])
 
 
 def test_remove_missing_raises_value_error():
@@ -96,14 +92,14 @@ def test_update_item_preserves_unspecified_fields():
     assert item.metadata.get("color") == "red"
 
 
-def test_clear_inventory_removes_all_items_and_mirror():
+def test_clear_inventory_removes_all_items():
     flags: dict = {}
     InventoryService.add_item(flags, "a", quantity=1, world_id=WORLD_ID)
     InventoryService.add_item(flags, "b", quantity=2, world_id=WORLD_ID)
     InventoryService.clear_inventory(flags, world_id=WORLD_ID)
 
     assert InventoryService.get_inventory(flags, WORLD_ID) == []
-    assert flags["inventory"]["items"] == []
+    assert flags["gameObjects"]["objects"] == {}
 
 
 def test_stats_count_and_total_quantity():
@@ -113,16 +109,6 @@ def test_stats_count_and_total_quantity():
 
     assert InventoryService.get_item_count(flags, WORLD_ID) == 2
     assert InventoryService.get_total_quantity(flags, WORLD_ID) == 7
-
-
-def test_get_inventory_hydrates_legacy_flags_inventory():
-    # Pre-migration data written by the old code path lives only in
-    # flags.inventory; the store hydrates it transparently on read.
-    flags = {"inventory": {"items": [{"id": "flower", "qty": 2, "name": "Old Flower"}]}}
-    items = InventoryService.get_inventory(flags, WORLD_ID)
-    assert len(items) == 1
-    assert items[0].id == "flower"
-    assert items[0].quantity == 2
 
 
 @pytest.mark.asyncio

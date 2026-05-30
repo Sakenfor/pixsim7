@@ -119,24 +119,12 @@ describe('canonical inventory (flags.gameObjects is source of truth)', () => {
     expect(obj.itemData.quantity).toBe(3);
   });
 
-  it('keeps the flags.inventory mirror in sync for the backend bridge', () => {
-    let session = createTestSession();
-    session = addInventoryItem(session, 'flower', 2);
-
-    const mirror = (session.flags as any).inventory?.items ?? [];
-    const flowerMirror = mirror.find((i: any) => i.id === 'flower');
-    expect(flowerMirror).toBeDefined();
-    expect(flowerMirror.quantity).toBe(2);
-  });
-
-  it('removeInventoryItem to zero deletes the canonical object and clears the mirror', () => {
+  it('removeInventoryItem to zero deletes the canonical object', () => {
     let session = createTestSession();
     session = addInventoryItem(session, 'flower', 1);
     session = removeInventoryItem(session, 'flower', 1) ?? session;
 
     expect((session.flags as any).gameObjects?.objects?.['item:flower']).toBeUndefined();
-    const mirror = (session.flags as any).inventory?.items ?? [];
-    expect(mirror.find((i: any) => i.id === 'flower')).toBeUndefined();
   });
 
   it('mutable helpers path also lands canonical objects', () => {
@@ -150,17 +138,6 @@ describe('canonical inventory (flags.gameObjects is source of truth)', () => {
     expect((session.flags as any).gameObjects.objects['item:gem'].itemData.quantity).toBe(3);
   });
 
-  it('canonical write merges with a legacy-only inventory entry without double counting', () => {
-    let session = createTestSession();
-    // Seed a legacy-only inventory entry (no canonical store yet).
-    session.flags = { inventory: { items: [{ id: 'flower', qty: 1 }] } } as any;
-
-    session = addInventoryItem(session, 'flower', 2);
-
-    expect(hasInventoryItem(session, 'flower', 3)).toBe(true);
-    expect(hasInventoryItem(session, 'flower', 4)).toBe(false);
-    expect((session.flags as any).gameObjects.objects['item:flower'].itemData.quantity).toBe(3);
-  });
 });
 
 describe('relationship extraction', () => {
