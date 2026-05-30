@@ -229,6 +229,7 @@ export function buildNpcObject(
     name,
     runtimeKind: 'npc',
     transform: createFallbackTransform(session),
+    capabilities: [{ id: 'narrative_participant', enabled: true }],
     components: [],
     meta: {
       source: 'canonical.npc',

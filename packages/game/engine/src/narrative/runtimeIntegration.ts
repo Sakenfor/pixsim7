@@ -37,6 +37,7 @@ import {
 } from './executor';
 
 import { getNarrativeState } from './ecsHelpers';
+import { resolveNarrativeParticipantId } from './participantResolver';
 
 // =============================================================================
 // Program Resolver
@@ -530,7 +531,7 @@ export class NarrativeController implements GameRuntimePlugin {
     session: GameSessionDTO
   ): Promise<boolean> {
     const { interactionId } = intent;
-    const npcId = this.getNpcIdFromIntent(intent);
+    const npcId = await resolveNarrativeParticipantId(session, intent);
 
     // npcId is required for narrative interactions
     if (npcId === null) {
@@ -590,7 +591,7 @@ export class NarrativeController implements GameRuntimePlugin {
     if (!response.success) return;
 
     const { interactionId } = intent;
-    const npcId = this.getNpcIdFromIntent(intent);
+    const npcId = await resolveNarrativeParticipantId(session, intent);
 
     // npcId is required for narrative interactions
     if (npcId === null) {
@@ -890,52 +891,6 @@ export class NarrativeController implements GameRuntimePlugin {
   // ===========================================================================
   // Private Helpers
   // ===========================================================================
-
-  private getNpcIdFromIntent(intent: InteractionIntent): number | null {
-    const primaryRole = intent.primaryRole;
-    const participants = intent.participants ?? [];
-    const npcIdFromRef = (ref?: string): number | null => {
-      if (!ref || !ref.startsWith('npc:')) return null;
-      const rawId = ref.split(':')[1];
-      const parsed = Number(rawId);
-      return Number.isFinite(parsed) ? parsed : null;
-    };
-    let candidate =
-      (primaryRole
-        ? participants.find(
-            (participant) =>
-              participant.role === primaryRole && participant.kind === 'npc'
-          )
-        : undefined) ?? participants.find((participant) => participant.kind === 'npc');
-
-    if (
-      !candidate &&
-      intent.target &&
-      (intent.target.kind === 'npc' || intent.target.ref?.startsWith('npc:'))
-    ) {
-      candidate = { role: 'target', ...intent.target };
-    }
-
-    if (!candidate) {
-      return null;
-    }
-
-    if (typeof candidate.id === 'number') {
-      return candidate.id;
-    }
-
-    if (typeof candidate.id === 'string') {
-      const parsed = Number(candidate.id);
-      return Number.isFinite(parsed) ? parsed : null;
-    }
-
-    const refId = npcIdFromRef(candidate.ref);
-    if (refId !== null) {
-      return refId;
-    }
-
-    return null;
-  }
 
   private buildStepInput(intent: InteractionIntent): StepInput | undefined {
     const context = intent.context as Record<string, unknown> | undefined;

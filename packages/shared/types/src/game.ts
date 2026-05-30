@@ -210,6 +210,7 @@ export type GameObjectCapabilityId =
   | 'inventory_container'
   | 'quest_target'
   | 'navigation_blocker'
+  | 'narrative_participant'
   | (string & {});
 
 /**
