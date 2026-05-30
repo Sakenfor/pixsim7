@@ -137,7 +137,10 @@ router = APIRouter(
 # Include sub-routers
 from pixsim7.backend.main.api.v1.plans.routes_review import router as _review_router
 from pixsim7.backend.main.api.v1.plans.routes_admin import router as _admin_router
-from pixsim7.backend.main.api.v1.plans.routes_agent import router as _agent_router
+from pixsim7.backend.main.api.v1.plans.routes_agent import (
+    TabIdentitySuggestion as _TabIdentitySuggestion,
+    router as _agent_router,
+)
 from pixsim7.backend.main.api.v1.plans.routes_coverage import router as _coverage_router
 from pixsim7.backend.main.api.v1.plans.routes_todo import router as _todo_router
 from pixsim7.backend.main.api.v1.plans.routes_export import router as _export_router
@@ -691,6 +694,22 @@ class PlanUpdateResponse(BaseModel):
     commitSha: Optional[str] = None
     newScope: Optional[str] = None
     warnings: List[str] = Field(default_factory=list)
+    nudge: Optional[str] = Field(
+        default=None,
+        description=(
+            "One-line, never-mandatory suggestion (e.g. that you may brand "
+            "this chat tab via set_tab_identity). Fires at most once per "
+            "anchor-type per session — ignore if not actionable."
+        ),
+    )
+    tab_identity_suggestion: Optional[_TabIdentitySuggestion] = Field(
+        default=None,
+        description=(
+            "Best-effort {icon, subtitle} starter for set_tab_identity, "
+            "derived from the plan. Only present when this update opened a "
+            "fresh auto-claim and the nudge fired."
+        ),
+    )
 
 
 @router.patch("/{plan_id}", response_model=PlanUpdateResponse)
@@ -840,8 +859,10 @@ async def update_plan_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    nudge: Optional[str] = None
+    suggestion: Optional[_TabIdentitySuggestion] = None
     if result.changes:
-        await _record_plan_participant_from_principal(
+        opened_auto_claim = await _record_plan_participant_from_principal(
             db,
             plan_id=plan_id,
             role="builder",
@@ -850,6 +871,25 @@ async def update_plan_endpoint(
             meta={"changed_fields": [str(c.get("field")) for c in result.changes if c.get("field")]},
             auto_claim=True,
         )
+        # Fresh auto-claim is the agent's only signal that the plan is now
+        # theirs — surface the tab-identity nudge here too (mirror of the
+        # explicit /claim path in routes_agent.py). Best-effort; a nudge
+        # failure must never break the update.
+        if opened_auto_claim:
+            try:
+                nudge = await maybe_tab_identity_nudge(
+                    db, principal=principal, plan_id=plan_id, anchor="auto_claim"
+                )
+                if nudge is not None:
+                    bundle = await get_plan_bundle(db, plan_id)
+                    if bundle is not None:
+                        hint = derive_tab_identity_suggestion(bundle)
+                        suggestion = _TabIdentitySuggestion(
+                            icon=hint.get("icon", ""),
+                            subtitle=hint.get("subtitle", ""),
+                        )
+            except Exception:  # noqa: BLE001 — nudge is non-critical
+                logger.warning("tab-identity auto-claim nudge failed", exc_info=True)
         await db.commit()
 
     return PlanUpdateResponse(
@@ -859,6 +899,8 @@ async def update_plan_endpoint(
         commitSha=result.commit_sha,
         newScope=result.new_scope,
         warnings=update_policy_warnings,
+        nudge=nudge,
+        tab_identity_suggestion=suggestion,
     )
 
 

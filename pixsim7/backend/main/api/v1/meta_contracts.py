@@ -3353,7 +3353,8 @@ def build_user_system_prompt(focus: Optional[List[str]] = None) -> str:
         "- When the user asks to create or modify something — use tools, then confirm the result.",
         "- Always confirm before making destructive changes.",
         "- If a tool call fails, report the error clearly.",
-        "- When you settle into substantive work on a dev plan, claim it (plans.claim) so others can see who is working on what, and give this tab a self-describing icon + subtitle (set_tab_identity). Both are quick, optional, and worth doing once the focus is clear.",
+        "- Brand THIS chat tab at the start of substantive work: call set_tab_identity with an @lib/icons name and a short subtitle (e.g. icon='wrench', subtitle='refactoring auth'). It's idempotent — re-call as the focus shifts. Don't skip it; without an icon the tab is indistinguishable from every other one in the sidebar.",
+        "- When working on a dev plan, claim it via plans.claim (with checkpoint_id when known) so the roster reflects who's where. For plan-bound tabs, mutating endpoints (plans.update/progress) auto-claim too — but an explicit claim returns a structured {icon, subtitle} suggestion you can pass straight to set_tab_identity.",
         "- Be concise and helpful.",
     ])
 

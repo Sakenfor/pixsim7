@@ -491,6 +491,50 @@ class TestAutoClaim:
         rec.assert_awaited_once()
         assert rec.await_args.kwargs.get("auto_claim") is True
 
+    @pytest.mark.asyncio
+    async def test_returns_true_when_auto_claim_opens_fresh(self):
+        """The bool return lets callers fire a one-shot tab-identity nudge
+        only when this mutation is what opened the claim. Plan
+        ``tab-identity-mode``."""
+        added = []
+        db = SimpleNamespace(
+            execute=AsyncMock(return_value=_scalar_result(None)),
+            add=lambda o: added.append(o),
+        )
+        opened = await _h._record_plan_participant(
+            db, plan_id="plan-a", role="builder", action="update_plan",
+            principal_type="agent", agent_id="agent-1", agent_type="claude",
+            run_id="run-1", user_id=1, auto_claim=True,
+        )
+        assert opened is True
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_existing_open_claim(self):
+        existing = _participant(meta={"claim": _open_claim("cp-explicit")})
+        db = SimpleNamespace(execute=AsyncMock(return_value=_scalar_result(existing)))
+        opened = await _h._record_plan_participant(
+            db, plan_id="plan-a", role="builder", action="update_plan",
+            principal_type="agent", agent_id="agent-1", agent_type="claude",
+            run_id="run-1", user_id=1, auto_claim=True,
+        )
+        # Existing checkpoint-scoped claim wins; auto_claim is a no-op → False.
+        assert opened is False
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_auto_claim_disabled(self):
+        added = []
+        db = SimpleNamespace(
+            execute=AsyncMock(return_value=_scalar_result(None)),
+            add=lambda o: added.append(o),
+        )
+        opened = await _h._record_plan_participant(
+            db, plan_id="plan-a", role="builder", action="touch_only",
+            principal_type="agent", agent_id="agent-1", agent_type="claude",
+            run_id="run-1", user_id=1,
+            # auto_claim defaults to False
+        )
+        assert opened is False
+
 
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
 class TestAgentContextSelfDeclareClaim:

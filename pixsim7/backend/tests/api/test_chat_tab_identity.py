@@ -344,6 +344,26 @@ async def test_nudge_unknown_anchor_is_none() -> None:
     assert text is None
 
 
+@pytest.mark.asyncio
+async def test_nudge_auto_claim_anchor_fires_and_ledgers() -> None:
+    """The new ``"auto_claim"`` anchor catches plan-bound tabs whose claim was
+    opened implicitly by a mutation (plans.update/progress/etc) — the agent
+    never sees the explicit-claim nudge otherwise. Plan ``tab-identity-mode``."""
+    row = _builder(1, meta=None)
+    db = _FakeDB(rows=[row])
+    text = await _h.maybe_tab_identity_nudge(
+        db, principal=_principal(1), plan_id="plan-a", anchor="auto_claim"
+    )
+    assert text is not None
+    assert "set_tab_identity" in text
+    # Ledger entry exists, idempotent on re-fire (same anchor → None).
+    assert "auto_claim" in row.meta[_h.TAB_IDENTITY_NUDGE_META_KEY]
+    second = await _h.maybe_tab_identity_nudge(
+        db, principal=_principal(1), plan_id="plan-a", anchor="auto_claim"
+    )
+    assert second is None
+
+
 # ── no-auto-guard — explicit non-goals ───────────────────────────────
 
 

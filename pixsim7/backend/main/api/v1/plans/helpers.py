@@ -517,9 +517,13 @@ async def _record_plan_participant(
     seen_at=None,
     meta: Optional[Dict[str, Any]] = None,
     auto_claim: bool = False,
-) -> None:
+) -> bool:
+    """Record participant activity. Returns True iff ``auto_claim=True`` opened
+    a fresh open claim on this call (the row had no live claim before). Lets
+    callers attach a one-shot tab-identity nudge to the response of the
+    triggering mutation — see ``_TAB_IDENTITY_NUDGE_TEXT['auto_claim']``."""
     if not hasattr(db, "execute"):
-        return
+        return False
 
     normalized_principal_type = _normalize_participant_value(principal_type)
     normalized_agent_id = _normalize_participant_value(agent_id)
@@ -530,7 +534,7 @@ async def _record_plan_participant(
     normalized_user_id = int(user_id) if isinstance(user_id, int) and user_id > 0 else None
 
     if normalized_agent_id is None and normalized_user_id is None:
-        return
+        return False
 
     observed_at = seen_at or utcnow()
 
@@ -571,9 +575,11 @@ async def _record_plan_participant(
     # Y" without an explicit POST /claim. Never stomps an existing open claim
     # — a more specific checkpoint-scoped claim from claim_checkpoint wins.
     effective_meta = meta
+    opened_fresh_auto_claim = False
     if auto_claim:
         existing_claim = participant_claim(row) if row is not None else None
         if not claim_is_open(existing_claim):
+            opened_fresh_auto_claim = True
             auto_claim_payload = {
                 CLAIM_META_KEY: {
                     "checkpoint_id": None,
@@ -606,7 +612,7 @@ async def _record_plan_participant(
             meta=initial_meta or None,
         )
         db.add(row)
-        return
+        return opened_fresh_auto_claim
 
     row.last_seen_at = observed_at
     row.last_heartbeat_at = observed_at
@@ -617,6 +623,7 @@ async def _record_plan_participant(
     if not row.profile_id and (normalized_profile_id or normalized_agent_id):
         row.profile_id = normalized_profile_id or normalized_agent_id
     row.meta = _participant_merge_meta(row.meta, effective_meta)
+    return opened_fresh_auto_claim
 
 
 async def _record_plan_participant_from_principal(
@@ -629,9 +636,13 @@ async def _record_plan_participant_from_principal(
     session_id: Optional[str] = None,
     meta: Optional[Dict[str, Any]] = None,
     auto_claim: bool = False,
-) -> None:
+) -> bool:
+    """Returns True iff ``auto_claim=True`` opened a fresh open claim on this
+    call. Callers should use the bool to fire ``maybe_tab_identity_nudge``
+    (anchor=``"auto_claim"``) and attach a ``tab_identity_suggestion`` to the
+    triggering mutation's response — plan ``tab-identity-mode``."""
     actor = _principal_actor_fields(principal)
-    await _record_plan_participant(
+    return await _record_plan_participant(
         db,
         plan_id=plan_id,
         role=role,
@@ -966,6 +977,17 @@ _TAB_IDENTITY_NUDGE_TEXT = {
         "self-describes at a glance — call set_tab_identity (e.g. an "
         "@lib/icons name matching this work, and a short subtitle). Skip it "
         "if nothing meaningful would change."
+    ),
+    # Fires the first time an agent's mutation (plans.update, plans.progress,
+    # plan create/restore, review-graph mutation) implicitly opens a fresh
+    # auto-claim on a plan-bound tab. The agent didn't explicitly call
+    # plans.claim, so they otherwise never see the claim-anchored nudge —
+    # this is the path that catches plan-bound tabs that never get branded.
+    "auto_claim": (
+        "Tip: this mutation auto-claimed the plan for you. You can give this "
+        "chat tab its own icon + subtitle so it self-describes — call "
+        "set_tab_identity with an @lib/icons name (a starter suggestion is "
+        "included below). Skip it if nothing meaningful would change."
     ),
     "completion": (
         "Optional: if this tab's focus has shifted, you can refresh its "
