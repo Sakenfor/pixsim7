@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from pixsim7.common.naming import humanize_label
-from pixsim7.backend.main.api.dependencies import get_current_user
+from pixsim7.backend.main.api.dependencies import CurrentUser, UserSvc, get_current_user
 from pixsim7.backend.main.services.analysis.analyzer_defaults import (
     DEFAULT_PROMPT_ANALYZER_ID,
     resolve_prompt_default_analyzer_ids,
@@ -34,6 +34,14 @@ from pixsim7.backend.main.services.prompt.parser.tokenizer import (
 from pixsim7.backend.main.services.prompt.parser.relation_recipes import (
     get_relation_recipes,
 )
+from pixsim7.backend.main.services.prompt.variable_registry import (
+    PromptVariable,
+    normalize_prompt_variable_description,
+    normalize_prompt_variable_name,
+    read_prompt_variable_entries,
+    write_prompt_variables,
+)
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 
 from .operations import (
     AnalyzePromptRequest,
@@ -318,6 +326,148 @@ class OperatorVocabularyResponse(BaseModel):
         ...,
         description="Cap on consecutive operator chars in a run (e.g. 12 → up to '============').",
     )
+
+
+class PromptVariableEntry(BaseModel):
+    name: str = Field(
+        ...,
+        description="Strict uppercase variable name (^[A-Z][A-Z0-9_]*$).",
+    )
+    description: Optional[str] = Field(
+        None,
+        description="Optional one-line reuse hint (e.g. 'the protagonist').",
+    )
+
+
+class PromptVariablesResponse(BaseModel):
+    variables: List[PromptVariableEntry] = Field(default_factory=list)
+
+
+class UpsertPromptVariableRequest(BaseModel):
+    name: str = Field(..., description="Variable name to save.")
+    description: Optional[str] = Field(
+        None,
+        description="Optional one-line reuse hint. Updates the description when the variable already exists.",
+    )
+    allow_existing: bool = Field(
+        False,
+        description="When true and name already exists, return success instead of HTTP 409.",
+    )
+
+
+class RenamePromptVariableRequest(BaseModel):
+    new_name: str = Field(..., description="New variable name.")
+
+
+async def _load_preferences_for_prompt_variables(
+    principal: CurrentUser,
+    user_service: UserSvc,
+) -> tuple[int, dict[str, Any]]:
+    owner_user_id = resolve_effective_user_id(principal)
+    if not owner_user_id:
+        raise HTTPException(status_code=403, detail="Prompt variables require a user principal")
+
+    user_record = await user_service.get_user(owner_user_id)
+    preferences = dict(user_record.preferences) if isinstance(user_record.preferences, dict) else {}
+    return owner_user_id, preferences
+
+
+def _variables_response(entries: List[PromptVariable]) -> PromptVariablesResponse:
+    return PromptVariablesResponse(
+        variables=[
+            PromptVariableEntry(name=entry.name, description=entry.description)
+            for entry in entries
+        ]
+    )
+
+
+@router.get("/meta/variables", response_model=PromptVariablesResponse)
+async def list_prompt_variables(
+    principal: CurrentUser,
+    user_service: UserSvc,
+):
+    _, preferences = await _load_preferences_for_prompt_variables(principal, user_service)
+    return _variables_response(read_prompt_variable_entries(preferences))
+
+
+@router.post("/meta/variables", response_model=PromptVariablesResponse)
+async def upsert_prompt_variable(
+    request: UpsertPromptVariableRequest,
+    principal: CurrentUser,
+    user_service: UserSvc,
+):
+    normalized_name = normalize_prompt_variable_name(request.name)
+    description = normalize_prompt_variable_description(request.description)
+    owner_user_id, preferences = await _load_preferences_for_prompt_variables(principal, user_service)
+    current = read_prompt_variable_entries(preferences)
+    existing = next((entry for entry in current if entry.name == normalized_name), None)
+
+    if existing is not None and not request.allow_existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Prompt variable '{normalized_name}' already exists",
+        )
+
+    if existing is None:
+        next_entries = [*current, PromptVariable(name=normalized_name, description=description)]
+    else:
+        # allow_existing acts as an edit: update the description when one is provided,
+        # otherwise leave the stored description untouched.
+        resolved = description if request.description is not None else existing.description
+        next_entries = [
+            PromptVariable(name=normalized_name, description=resolved) if entry.name == normalized_name else entry
+            for entry in current
+        ]
+
+    updated_preferences = write_prompt_variables(preferences, next_entries)
+    updated_user = await user_service.update_user(owner_user_id, preferences=updated_preferences)
+    return _variables_response(read_prompt_variable_entries(updated_user.preferences))
+
+
+@router.patch("/meta/variables/{name}", response_model=PromptVariablesResponse)
+async def rename_prompt_variable(
+    name: str,
+    request: RenamePromptVariableRequest,
+    principal: CurrentUser,
+    user_service: UserSvc,
+):
+    current_name = normalize_prompt_variable_name(name)
+    new_name = normalize_prompt_variable_name(request.new_name)
+    owner_user_id, preferences = await _load_preferences_for_prompt_variables(principal, user_service)
+    current = read_prompt_variable_entries(preferences)
+    names = {entry.name for entry in current}
+
+    if current_name not in names:
+        raise HTTPException(status_code=404, detail=f"Prompt variable '{current_name}' not found")
+    if new_name != current_name and new_name in names:
+        raise HTTPException(status_code=409, detail=f"Prompt variable '{new_name}' already exists")
+
+    next_entries = [
+        PromptVariable(name=new_name, description=entry.description) if entry.name == current_name else entry
+        for entry in current
+    ]
+    updated_preferences = write_prompt_variables(preferences, next_entries)
+    updated_user = await user_service.update_user(owner_user_id, preferences=updated_preferences)
+    return _variables_response(read_prompt_variable_entries(updated_user.preferences))
+
+
+@router.delete("/meta/variables/{name}", response_model=PromptVariablesResponse)
+async def delete_prompt_variable(
+    name: str,
+    principal: CurrentUser,
+    user_service: UserSvc,
+):
+    target_name = normalize_prompt_variable_name(name)
+    owner_user_id, preferences = await _load_preferences_for_prompt_variables(principal, user_service)
+    current = read_prompt_variable_entries(preferences)
+
+    if target_name not in {entry.name for entry in current}:
+        raise HTTPException(status_code=404, detail=f"Prompt variable '{target_name}' not found")
+
+    next_entries = [entry for entry in current if entry.name != target_name]
+    updated_preferences = write_prompt_variables(preferences, next_entries)
+    updated_user = await user_service.update_user(owner_user_id, preferences=updated_preferences)
+    return _variables_response(read_prompt_variable_entries(updated_user.preferences))
 
 
 @router.get("/meta/operator-vocabulary", response_model=OperatorVocabularyResponse)
