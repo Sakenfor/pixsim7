@@ -761,6 +761,13 @@ class AgentCmdSession:
         # killing the turn (mirrors the backend heartbeat-extend in
         # remote_cmd_bridge.dispatch_task_streaming).
         tool_inflight = False
+        # Human-readable description of the most recent tool call, kept so that
+        # when its result lands we can re-stamp the busy markers to point at the
+        # *post-tool* model gap rather than leaving them frozen on the (finished)
+        # tool — otherwise an idle-timeout reads "went silent after Searching: …"
+        # long after the search returned, misdirecting triage at a tool that
+        # already completed.
+        last_tool_detail: Optional[str] = None
         # Start of the current silent window (no fresh stdout line yet); reset on
         # every line. Both regimes (a running tool, or the model reasoning
         # between lines) re-arm in <=30s pulse slices off this marker.
@@ -771,12 +778,19 @@ class AgentCmdSession:
         # bounded only by the process staying alive (long Bash/subagent/blocking
         # MCP), so its cap is effectively unbounded within the turn.
         idle_gap = min(timeout, self.AGENT_IDLE_GAP_SECONDS)
-        # Absolute turn budget. Now that the pool stuck-busy watchdog no longer
-        # restarts in-flight turns (it gates on `_inflight_turns`), send_message
-        # is the SINGLE place a turn is bounded. A tool that runs — or wedges —
-        # for the whole turn is capped here at `timeout`, in every regime; the
-        # reasoning `idle_gap` just trips sooner when no tool is outstanding.
-        turn_started = self._busy_started_at or datetime.now(timezone.utc)
+        # Inactivity bound — NOT wall-clock. The pool stuck-busy watchdog no
+        # longer restarts in-flight turns (it gates on `_inflight_turns`), so
+        # send_message is the single authority. But it must bound *silence*, not
+        # total turn length: a turn that's actively streaming events (e.g. 15 min
+        # of edits) is healthy and must never be cut just for running long — an
+        # earlier wall-clock budget here wrongly killed long-but-active turns
+        # (same bug class as the old watchdog). We cut only when the agent goes
+        # silent past a cap measured since the LAST real event:
+        #   • no tool outstanding → the generous reasoning gap (idle_gap)
+        #   • a tool is running   → the full `timeout` of pure silence (a tool
+        #     that emits nothing for the whole budget is presumed wedged)
+        # `silent_since` resets on every real event, so an active turn re-arms
+        # indefinitely.
         # Managed-process tracking for this turn: short tool_use id -> kind
         # ("subagent" | "background_task"). Feeds the panel's per-session
         # "managed processes" list via typed `managed_proc_*` heartbeats.
@@ -788,15 +802,14 @@ class AgentCmdSession:
                     if silent_since is None:
                         silent_since = now
                     silent_elapsed = (now - silent_since).total_seconds()
-                    turn_remaining = float(timeout) - (now - turn_started).total_seconds()
-                    # Cap: while a tool runs, gaps don't kill it — only the
-                    # absolute turn budget does (below). Otherwise the reasoning gap.
-                    silence_cap = float("inf") if tool_inflight else float(idle_gap)
-                    # Pulse cadence, but never wait past the gap cap OR the
-                    # remaining turn budget (so tight caps / the turn deadline
-                    # still fail fast).
+                    # Max silence tolerated in this regime, measured since the
+                    # last real event (NOT turn start): unbounded-feeling for a
+                    # running tool (the full budget) vs the tighter reasoning gap.
+                    silence_cap = float(timeout) if tool_inflight else float(idle_gap)
+                    # Pulse cadence, but never wait past the silence cap so a
+                    # genuine stall (and tight test caps) still fails fast.
                     pulse = min(float(self.AGENT_PULSE_SLICE_SECONDS), float(timeout))
-                    slice_to = max(0.05, min(pulse, silence_cap - silent_elapsed, turn_remaining))
+                    slice_to = max(0.05, min(pulse, silence_cap - silent_elapsed))
                     try:
                         event_raw = await asyncio.wait_for(
                             self._response_queue.get(),
@@ -804,14 +817,9 @@ class AgentCmdSession:
                         )
                         break
                     except asyncio.TimeoutError:
-                        # Process dead, reasoning-gap cap hit, or the absolute
-                        # turn budget exhausted → give up; the outer handler
-                        # classifies the stall (tool_inflight vs agent_idle).
-                        if (
-                            not self.is_alive
-                            or silent_elapsed + slice_to >= silence_cap
-                            or turn_remaining - slice_to <= 0
-                        ):
+                        # Process dead, or silent past the cap → give up; the
+                        # outer handler classifies tool_inflight vs agent_idle.
+                        if not self.is_alive or silent_elapsed + slice_to >= silence_cap:
                             raise
                         # Alive and within budget → pulse + re-arm. Pulsing the
                         # thinking bubble (with an elapsed stamp) lets the user
@@ -1038,6 +1046,10 @@ class AgentCmdSession:
                         # Tool is about to run → reopen the silent-gap window so
                         # the inactivity timeout extends until its result lands.
                         tool_inflight = True
+                        # parsed.text here is the _describe_tool_use rendering
+                        # ("Searching: …"); remember it to attribute the gap that
+                        # follows the tool's result.
+                        last_tool_detail = self._busy_last_detail
 
                     # ── Managed-process detection (subagents / background tasks) ──
                     # Scan ALL content blocks, not just block 0, so a tool_use
@@ -1101,26 +1113,40 @@ class AgentCmdSession:
                 else:
                     # "other" events — still capture usage/context info
                     self._capture_usage(parsed.raw or {})
-                    # Managed-process completion: a tool_result (Claude emits
-                    # these as type="user" events, which fall through to here)
-                    # carrying a tracked tool_use_id ends a SUBAGENT. Background
-                    # tasks ack their tool_result immediately while still running,
-                    # so they are NOT closed here — they clear at turn end.
-                    if on_progress and managed_started:
-                        _raw = parsed.raw or {}
-                        if _raw.get("type") == "user":
-                            _uc = _raw.get("message", {}).get("content", [])
-                            if isinstance(_uc, list):
-                                for _b in _uc:
-                                    if not isinstance(_b, dict) or _b.get("type") != "tool_result":
-                                        continue
-                                    _rid = str(_b.get("tool_use_id") or "")
-                                    if managed_started.get(_rid) == "subagent":
-                                        managed_started.pop(_rid, None)
-                                        try:
-                                            on_progress("managed_proc_done", _rid)
-                                        except Exception:
-                                            self._log.debug("managed_proc_done_emit_failed", exc_info=True)
+                    # Claude emits tool_result as a type="user" event that falls
+                    # through to here. We use it for two things: closing managed
+                    # subagents, and re-stamping the busy markers off the finished
+                    # tool onto the post-tool model gap.
+                    _raw = parsed.raw or {}
+                    if _raw.get("type") == "user":
+                        _uc = _raw.get("message", {}).get("content", [])
+                        if isinstance(_uc, list):
+                            _saw_tool_result = False
+                            for _b in _uc:
+                                if not isinstance(_b, dict) or _b.get("type") != "tool_result":
+                                    continue
+                                _saw_tool_result = True
+                                _rid = str(_b.get("tool_use_id") or "")
+                                # Managed-process completion: a tracked tool_use_id
+                                # ends a SUBAGENT. Background tasks ack their
+                                # tool_result immediately while still running, so
+                                # they are NOT closed here — they clear at turn end.
+                                if on_progress and managed_started.get(_rid) == "subagent":
+                                    managed_started.pop(_rid, None)
+                                    try:
+                                        on_progress("managed_proc_done", _rid)
+                                    except Exception:
+                                        self._log.debug("managed_proc_done_emit_failed", exc_info=True)
+                            # Re-stamp the busy markers: the tool finished and we
+                            # are now waiting on the model. A later idle-timeout
+                            # then blames the post-tool gap, not the (done) tool.
+                            if _saw_tool_result:
+                                self._busy_last_action = "tool_result"
+                                self._busy_last_detail = (
+                                    f"its last tool result ({last_tool_detail})"
+                                    if last_tool_detail
+                                    else "its last tool result"
+                                )
 
         except asyncio.TimeoutError:
             self.stats.errors += 1

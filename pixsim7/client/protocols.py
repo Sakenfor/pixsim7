@@ -227,7 +227,16 @@ class ClaudeProtocol(AgentProtocol):
         ]
 
     def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, model=None, reasoning_effort=None, extra_args=None):
-        cmd = [command, "--print", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose", "--include-hook-events"]
+        # --include-partial-messages: stream incremental thinking/text deltas as
+        # `stream_event` lines. Without it the CLI emits a content block only once
+        # it is COMPLETE, so an extended-thinking phase or a long single reply is
+        # pure stdout silence — and session.py's inactivity watchdog (which only
+        # re-arms on real stdout) can't tell "thinking hard" from "wedged" and
+        # kills healthy turns at AGENT_IDLE_GAP_SECONDS. These deltas reset
+        # `silent_since` every token, turning a dead reasoning gap into a live,
+        # self-extending one. They parse to kind="other" (inert beyond keeping the
+        # turn alive); the complete assistant/user events still arrive as before.
+        cmd = [command, "--print", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose", "--include-hook-events", "--include-partial-messages"]
         if resume_session_id:
             # A resume needs ONLY the session id. The conversation already has
             # its model, reasoning effort, and system prompt baked into history;

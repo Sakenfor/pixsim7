@@ -149,3 +149,14 @@ class TestClaudeResumeOnlyPassesSessionId:
         assert "--append-system-prompt" not in cmd
         # Operational flags the resumed turn still needs are kept.
         assert "--mcp-config" in cmd and "/tmp/mcp.json" in cmd
+
+    def test_streams_partial_messages_on_fresh_and_resume(self):
+        # --include-partial-messages must always be present: it is what feeds
+        # session.py's inactivity watchdog a liveness signal during extended
+        # thinking / long replies. Without it a healthy-but-quiet turn trips the
+        # idle-gap timeout. Required on resume too (long turns happen there).
+        p = ClaudeProtocol()
+        fresh = p.build_start_cmd("claude", model="opus")
+        resumed = p.build_start_cmd("claude", resume_session_id="conv-abc")
+        assert "--include-partial-messages" in fresh
+        assert "--include-partial-messages" in resumed
