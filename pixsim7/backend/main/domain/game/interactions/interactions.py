@@ -234,6 +234,21 @@ class StatDelta(BaseModel):
     def _serialize_entity_ref(self, value: Optional[EntityRef]) -> Optional[str]:
         return value.to_string() if value else None
 
+    @model_validator(mode="after")
+    def _validate_entity_resolution(self) -> "StatDelta":
+        """An npc-scoped delta must either carry entity_ref or npc_id; the
+        ``apply_stat_deltas`` runtime needs at least one to address the entity.
+        Session/world scopes have no entity identifier to require."""
+        if (
+            self.entity_type == "npc"
+            and self.entity_ref is None
+            and self.npc_id is None
+        ):
+            raise ValueError(
+                "npc_id is required when entity_type is 'npc' (or provide entity_ref)"
+            )
+        return self
+
 
 class FlagChanges(InteractionBaseModel):
     """Flag changes to apply to session"""
