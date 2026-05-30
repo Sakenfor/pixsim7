@@ -376,6 +376,12 @@ function RegenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpa
 function StyleVariationsExpand({ expand }: { expand: Extract<GenerationActionExpand, { kind: 'style-variations' }> }) {
   const { isGenerating, categories, activeCategory, blocks, onSelectCategory, onPickPreset, onSweepCategory } = expand;
   const activeLabel = categories.find((c) => c.id === activeCategory)?.label ?? 'Style';
+  const presetCount = blocks?.length ?? null;
+  const sweepInfo =
+    `Submits one generation per ${activeLabel} preset shown` +
+    `${presetCount !== null ? ` (${presetCount})` : ''}. ` +
+    `Each reuses this asset's source generation — same model, inputs, and prompt — ` +
+    `with the style text appended and a fresh random seed.`;
   return (
     <div className="flex flex-col rounded-xl bg-accent/95 backdrop-blur-sm shadow-2xl w-48 max-h-72 overflow-hidden">
       {/* Style dimension tabs */}
@@ -399,16 +405,26 @@ function StyleVariationsExpand({ expand }: { expand: Extract<GenerationActionExp
 
       {/* Sweep every preset in the active dimension */}
       <div className="h-px bg-white/15 mx-2" />
-      <button
-        onClick={onSweepCategory}
-        className="h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-        title={`Generate one variation per ${activeLabel} preset`}
-        disabled={isGenerating}
-        type="button"
-      >
-        <Icon name={isGenerating ? 'loader' : 'palette'} size={12} className={isGenerating ? 'animate-spin' : ''} />
-        <span>Sweep all {activeLabel}</span>
-      </button>
+      <div className="flex items-center pr-1">
+        <button
+          onClick={onSweepCategory}
+          className="flex-1 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+          title={`Generate one variation per ${activeLabel} preset`}
+          disabled={isGenerating}
+          type="button"
+        >
+          <Icon name={isGenerating ? 'loader' : 'palette'} size={12} className={isGenerating ? 'animate-spin' : ''} />
+          <span>Sweep all {activeLabel}</span>
+          {presetCount !== null && <span className="text-white/60">({presetCount})</span>}
+        </button>
+        {/* Always-present info affordance (independent of count). */}
+        <span
+          className="shrink-0 px-1 text-white/45 hover:text-white/80 cursor-help transition-colors"
+          title={sweepInfo}
+        >
+          <Icon name="info" size={12} />
+        </span>
+      </div>
 
       {/* Individual presets for the active dimension */}
       <div className="h-px bg-white/15 mx-2" />
@@ -514,7 +530,14 @@ export function toPillButtonItems(actions: GenerationAction[]): ButtonGroupItem[
     onMouseEnter: action.onMouseEnter,
     title: action.title,
     badge: renderPillBadge(action.badgeHint),
-    expandContent: action.expand ? renderPillExpand(action.expand) : undefined,
+    // Mark the expand submenu so card-level touch handlers (reveal-on-tap,
+    // outside-tap dismiss) can tell a tap *inside* this popover apart from a
+    // tap outside the card. The submenu is portaled to <body>, so its clicks
+    // bubble through the React tree to the card and would otherwise be eaten
+    // by the reveal interceptor before reaching the submenu button.
+    expandContent: action.expand
+      ? <div data-gen-action-popover="true">{renderPillExpand(action.expand)}</div>
+      : undefined,
     expandDelay: action.expandDelay,
     collapseDelay: action.collapseDelay,
   }));

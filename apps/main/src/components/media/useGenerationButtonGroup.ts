@@ -668,7 +668,9 @@ export function useGenerationButtonGroup({
   const fetchStyleBlocks = useCallback((category: string) => {
     if (styleBlocksFetchingRef.current.has(category)) return;
     styleBlocksFetchingRef.current.add(category);
-    void searchBlocks({ category, limit: 50 }).then((blocks) => {
+    // Keep limit in sync with handleGenerateStyleVariations' internal fetch so
+    // the popover's "Sweep all (N)" count matches what a sweep actually submits.
+    void searchBlocks({ category, limit: 20 }).then((blocks) => {
       setStyleBlocksByCategory((prev) => ({ ...prev, [category]: blocks }));
     });
   }, []);

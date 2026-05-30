@@ -18,6 +18,8 @@ export interface ButtonGroupItem {
   onClick?: (e: React.MouseEvent) => void;
   /** Middle-click handler */
   onAuxClick?: (e: React.MouseEvent) => void;
+  /** Pointer-enter handler (e.g. lazy-load expand content on hover) */
+  onMouseEnter?: (e: React.MouseEvent) => void;
   title?: string;
   disabled?: boolean;
   /** Right-click handler */
@@ -444,6 +446,7 @@ export function ButtonGroup({
                   onClick={item.onClick}
                   onAuxClick={item.onAuxClick}
                   onContextMenu={item.onContextMenu}
+                  onMouseEnter={item.onMouseEnter}
                   disabled={item.disabled}
                   className={clsx(
                     sizeClass,
@@ -577,6 +580,7 @@ function ExpandableItem({
         onClick={handleButtonClick}
         onAuxClick={item.onAuxClick}
         onContextMenu={item.onContextMenu}
+        onMouseEnter={item.onMouseEnter}
         disabled={item.disabled}
         className={clsx(
           sizeClass,
