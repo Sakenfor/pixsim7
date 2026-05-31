@@ -16,6 +16,7 @@ import {
   PromptInput,
   PromptEditor,
   getViewportAwarePopupPosition,
+  useToast,
 } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -52,6 +53,7 @@ import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi'
 import { useCmReferenceInput } from '../hooks/useCmReferenceInput';
 import { useOperatorVocabulary } from '../hooks/useOperatorVocabulary';
 import { usePromptHistory } from '../hooks/usePromptHistory';
+import { usePromptVariables } from '../hooks/usePromptVariables';
 import { matchOperator, matchRecipe, useRelationRecipes } from '../hooks/useRelationRecipes';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
@@ -73,6 +75,7 @@ import {
   type SpanProvenanceEntry,
 } from '../lib/spanProvenanceExtension';
 import { tagPillExtension } from '../lib/tagPillExtension';
+import { variableTokenExtension, type VariableRange } from '../lib/variableTokenExtension';
 import { useBlockTemplateStore } from '../stores/blockTemplateStore';
 import { useMediaCompareTargetStore } from '../stores/mediaCompareTargetStore';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
@@ -93,6 +96,7 @@ import { PromptToolsPanel, type PromptToolsApplyPayload } from './PromptToolsPan
 import { ShadowAnalysisPopover } from './ShadowAnalysisPopover';
 import { ShadowTextarea } from './ShadowTextarea';
 import { RoleBadge } from './shared/RoleBadge';
+import { VariableEditPopover } from './VariableEditPopover';
 
 type PromptComposerMode = 'text' | 'blocks';
 
@@ -361,6 +365,18 @@ export function PromptComposer({
   const setMode = usePromptSettingsStore((state) => state.setComposerMode);
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const layoutTriggerRef = useRef<HTMLButtonElement>(null);
+  const [showVariablesMenu, setShowVariablesMenu] = useState(false);
+  const variablesTriggerRef = useRef<HTMLButtonElement>(null);
+  const {
+    entries: savedVariableEntries,
+    saveVariable,
+    deleteVariable,
+  } = usePromptVariables();
+  const savedVariableNames = useMemo(
+    () => new Set(savedVariableEntries.map((entry) => entry.name)),
+    [savedVariableEntries],
+  );
+  const toast = useToast();
   const [blocks, setBlocks] = useState<PromptBlockItem[]>([
     { id: 'block-0', role: DEFAULT_PROMPT_ROLE, text: '' },
   ]);
@@ -627,6 +643,12 @@ export function PromptComposer({
   const [cmOperatorPopover, setCmOperatorPopover] = useState<{
     anchor: HTMLElement;
     operator: OperatorRange;
+  } | null>(null);
+
+  // --- Variable token popover (CM path) ---
+  const [cmVariablePopover, setCmVariablePopover] = useState<{
+    anchor: HTMLElement;
+    variable: VariableRange;
   } | null>(null);
 
   // --- Compare-button dropdown menu (chevron next to the compare-media button) ---
@@ -1372,6 +1394,14 @@ export function PromptComposer({
           setCmOperatorPopover({ operator, anchor });
         },
       }),
+      variableTokenExtension(
+        { tokenLines: cmShadowTokenLines, savedNames: savedVariableNames },
+        {
+          onVariableClick: (variable, anchor) => {
+            setCmVariablePopover({ variable, anchor });
+          },
+        },
+      ),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -1380,6 +1410,7 @@ export function PromptComposer({
       cmGhostConfig?.precision,
       cmShadowTokenLines,
       cmRefInput.extension,
+      savedVariableNames,
     ],
   );
   const hasShadowExt =
@@ -1572,6 +1603,26 @@ export function PromptComposer({
       updateBlocks([...blocks, { id: nextId, role: role || DEFAULT_PROMPT_ROLE, text }]);
     },
     [blocks, updateBlocks]
+  );
+
+  // Quick-insert a saved variable token. Mirrors the operator/paste insert
+  // paths: text mode drops it at the caret; blocks mode appends it as its own
+  // block (the canonical blocks-state insert) so the block model stays the
+  // source of truth instead of mutating a focused textarea behind its back.
+  const insertVariable = useCallback(
+    (name: string) => {
+      if (disabled || !name) return;
+      flushSnapshot();
+      if (mode === 'blocks') {
+        insertSemanticBlock(name);
+        return;
+      }
+      if (!insertTextAtPromptSelection(name)) {
+        const current = valueRef.current;
+        onChangeRef.current(current ? `${current} ${name}` : name);
+      }
+    },
+    [disabled, mode, flushSnapshot, insertSemanticBlock, insertTextAtPromptSelection]
   );
 
   const handlePasteFromClipboard = useCallback(async () => {
@@ -1772,6 +1823,59 @@ export function PromptComposer({
             >
               Template Builder
             </DropdownItem>
+          </Popover>
+        </div>
+
+        <div className="relative">
+          <button
+            ref={variablesTriggerRef}
+            type="button"
+            disabled={disabled}
+            onClick={() => setShowVariablesMenu((prev) => !prev)}
+            title="Insert saved variable"
+            className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          >
+            <Icon name="code" size={14} />
+            <Icon name="chevronDown" size={10} />
+          </button>
+          <Popover
+            open={showVariablesMenu}
+            onClose={() => setShowVariablesMenu(false)}
+            anchor={variablesTriggerRef.current}
+            placement="bottom"
+            align="start"
+            offset={4}
+            triggerRef={variablesTriggerRef}
+            className="min-w-[200px] max-w-[280px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
+          >
+            <div className="px-2 pt-1 pb-0.5 text-[10px] uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+              Insert variable
+            </div>
+            {savedVariableEntries.length === 0 ? (
+              <div className="px-2 py-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                No saved variables yet. Save one from the analysis panel.
+              </div>
+            ) : (
+              savedVariableEntries.map((entry) => (
+                <DropdownItem
+                  key={entry.name}
+                  icon={<Icon name="code" size={14} />}
+                  onClick={() => {
+                    insertVariable(entry.name);
+                    setShowVariablesMenu(false);
+                  }}
+                >
+                  <span className="flex flex-col">
+                    <span className="font-mono">{entry.name}</span>
+                    {entry.description && (
+                      <span className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate">
+                        {entry.description}
+                      </span>
+                    )}
+                  </span>
+                </DropdownItem>
+              ))
+            )}
           </Popover>
         </div>
 
@@ -2137,6 +2241,42 @@ export function PromptComposer({
                               });
                             }
                             setCmOperatorPopover(null);
+                          }}
+                        />
+                      );
+                    })()}
+                  </Popover>
+                  <Popover
+                    anchor={cmVariablePopover?.anchor ?? null}
+                    placement="bottom"
+                    align="start"
+                    offset={6}
+                    open={!!cmVariablePopover}
+                    onClose={() => setCmVariablePopover(null)}
+                  >
+                    {cmVariablePopover && (() => {
+                      const { variable } = cmVariablePopover;
+                      const entry = savedVariableEntries.find((e) => e.name === variable.name);
+                      const saved = savedVariableNames.has(variable.name);
+                      return (
+                        <VariableEditPopover
+                          name={variable.name}
+                          saved={saved}
+                          description={entry?.description}
+                          onCancel={() => setCmVariablePopover(null)}
+                          onSave={async () => {
+                            setCmVariablePopover(null);
+                            const result = await saveVariable(variable.name);
+                            if (result.ok) toast.success(`Saved ${variable.name}`);
+                            else if (result.code === 'duplicate')
+                              toast.info(`${variable.name} is already saved`);
+                            else toast.error(result.message ?? `Failed to save ${variable.name}`);
+                          }}
+                          onRemove={async () => {
+                            setCmVariablePopover(null);
+                            const result = await deleteVariable(variable.name);
+                            if (result.ok) toast.success(`Removed ${variable.name}`);
+                            else toast.error(result.message ?? `Failed to remove ${variable.name}`);
                           }}
                         />
                       );
