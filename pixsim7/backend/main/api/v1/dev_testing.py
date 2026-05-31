@@ -95,6 +95,44 @@ class CoverageGapResponse(BaseModel):
     gaps: List[CoverageGapEntry]
 
 
+class CorpusResponse(BaseModel):
+    id: str
+    label: str
+    path: str
+    category: Optional[str] = None
+    subcategory: Optional[str] = None
+    version: Optional[str] = None
+    total_entries: Optional[int] = None
+    description: Optional[str] = None
+
+
+class CorpusListResponse(BaseModel):
+    corpus_count: int
+    corpora: List[CorpusResponse]
+
+
+class CorpusEntry(BaseModel):
+    id: str
+    text: str
+    category: Optional[str] = None
+    expected_block_prefix: Optional[str] = None
+    expected_category: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CorpusDetailResponse(BaseModel):
+    id: str
+    label: str
+    path: str
+    category: Optional[str] = None
+    subcategory: Optional[str] = None
+    version: Optional[str] = None
+    total_entries: Optional[int] = None
+    description: Optional[str] = None
+    entry_count: int
+    entries: List[CorpusEntry]
+
+
 class TestContractEndpoint(BaseModel):
     method: str
     path: str
@@ -273,6 +311,11 @@ async def get_testing_contract() -> TestContractResponse:
             ),
             TestContractEndpoint(
                 method="GET",
+                path="/api/v1/dev/testing/corpora",
+                summary="List discovered eval corpora. Detail: /corpora/{id} returns entries for preview.",
+            ),
+            TestContractEndpoint(
+                method="GET",
                 path="/api/v1/dev/testing/guidance",
                 summary="Conventions, TEST_SUITE template, and pre-creation checklist for agents.",
             ),
@@ -311,6 +354,77 @@ async def get_catalog(
     return CatalogResponse(
         suite_count=len(suites),
         suites=[SuiteResponse(**s) for s in suites],
+    )
+
+
+@router.get("/corpora", response_model=CorpusListResponse)
+async def list_corpora(
+    category: Optional[str] = Query(None, description="Filter by category prefix"),
+) -> CorpusListResponse:
+    """List discovered eval corpora (block-ops primitive-projection, etc).
+
+    Wraps :func:`testing.corpus_discovery.discover_eval_corpora` — globs
+    ``eval_corpus*.json`` under the backend evals tree and reads each
+    corpus's ``_meta`` block. Read-only; corpora are static test data.
+    """
+    from testing.corpus_discovery import discover_eval_corpora
+    from testing.catalog import _get_root
+
+    corpora = discover_eval_corpora(_get_root())
+    records = [c.to_dict() for c in corpora]
+    if category:
+        records = [c for c in records if (c.get("category") or "").startswith(category)]
+    return CorpusListResponse(
+        corpus_count=len(records),
+        corpora=[CorpusResponse(**c) for c in records],
+    )
+
+
+@router.get("/corpora/{corpus_id}", response_model=CorpusDetailResponse)
+async def get_corpus(corpus_id: str) -> CorpusDetailResponse:
+    """Return one corpus's metadata plus its entries for preview.
+
+    Resolves the corpus by id, then reads its ``corpus`` array directly
+    (the JSON is already structured — no test-runner dependency).
+    """
+    import json
+
+    from testing.corpus_discovery import discover_eval_corpora
+    from testing.catalog import _get_root
+
+    root = _get_root()
+    corpora = {c.id: c for c in discover_eval_corpora(root)}
+    meta = corpora.get(corpus_id)
+    if meta is None:
+        known = ", ".join(sorted(corpora)) or "(none found)"
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown corpus id '{corpus_id}'. Discovered ids: {known}",
+        )
+
+    try:
+        data = json.loads((root / meta.path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read corpus '{corpus_id}': {exc}")
+
+    raw_entries = data.get("corpus") if isinstance(data, dict) else None
+    entries: List[CorpusEntry] = []
+    for item in raw_entries or []:
+        if not isinstance(item, dict):
+            continue
+        entries.append(CorpusEntry(
+            id=str(item.get("id", "")),
+            text=str(item.get("text", "")),
+            category=item.get("category"),
+            expected_block_prefix=item.get("expected_block_prefix"),
+            expected_category=item.get("expected_category"),
+            notes=item.get("notes"),
+        ))
+
+    return CorpusDetailResponse(
+        **meta.to_dict(),
+        entry_count=len(entries),
+        entries=entries,
     )
 
 

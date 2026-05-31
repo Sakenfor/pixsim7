@@ -63,3 +63,42 @@ export async function fetchTestCatalog(): Promise<CatalogSuiteRecord[]> {
   const response = await pixsimClient.get<CatalogResponse>('/dev/testing/catalog');
   return response.suites;
 }
+
+export interface CorpusRecord {
+  id: string;
+  label: string;
+  path: string;
+  category: string | null;
+  subcategory: string | null;
+  version: string | null;
+  total_entries: number | null;
+  description: string | null;
+}
+
+interface CorpusListResponse {
+  corpus_count: number;
+  corpora: CorpusRecord[];
+}
+
+export interface CorpusEntryRecord {
+  id: string;
+  text: string;
+  category: string | null;
+  expected_block_prefix: string | null;
+  expected_category: string | null;
+  notes: string | null;
+}
+
+export interface CorpusDetailRecord extends CorpusRecord {
+  entry_count: number;
+  entries: CorpusEntryRecord[];
+}
+
+export async function fetchEvalCorpora(): Promise<CorpusRecord[]> {
+  const response = await pixsimClient.get<CorpusListResponse>('/dev/testing/corpora');
+  return response.corpora;
+}
+
+export async function fetchEvalCorpus(corpusId: string): Promise<CorpusDetailRecord> {
+  return pixsimClient.get<CorpusDetailRecord>(`/dev/testing/corpora/${corpusId}`);
+}

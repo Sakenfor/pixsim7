@@ -61,14 +61,15 @@ const TEST_RUNS_STORAGE_KEY = 'pixsim7:devtools:test-runs:v1';
 const MAX_SNAPSHOTS = 60;
 const DAY_IN_MS = 86_400_000;
 
+// Corpus JSON files are NOT listed here — the Corpora tab sources them live
+// from /dev/testing/corpora (discovery), so a hand-maintained path list would
+// only drift (it previously omitted the autogen corpus).
 const TEST_DOCS = [
   'docs/testing/TEST_OVERVIEW.md',
   'docs/plans/prompt-primitive-projection-eval.md',
   'scripts/tests/README.md',
   'scripts/tests/run.py',
   'pixsim7/backend/tests/blocks/evals/primitive_projection/eval_primitive_projection.py',
-  'pixsim7/backend/tests/blocks/evals/primitive_projection/eval_corpus.json',
-  'pixsim7/backend/tests/blocks/evals/primitive_projection/eval_corpus_medium.json',
   'pytest.ini',
 ];
 

@@ -27,13 +27,22 @@ import {
   type TestRunSnapshot,
   type TestRunStatus,
 } from '@features/devtools/services/testOverviewService';
-import { fetchTestRuns, fetchTestCatalog, type TestRunRecord, type CatalogSuiteRecord } from '@features/devtools/services/testRunsApi';
+import {
+  fetchTestRuns,
+  fetchTestCatalog,
+  fetchEvalCorpora,
+  fetchEvalCorpus,
+  type TestRunRecord,
+  type CatalogSuiteRecord,
+  type CorpusRecord,
+  type CorpusDetailRecord,
+} from '@features/devtools/services/testRunsApi';
 
 import { useAuthStore } from '@/stores/authStore';
 
 import { TestAnalyticsGraphs } from './TestAnalyticsGraphs';
 
-type TestOverviewSection = 'run' | 'catalog' | 'history' | 'reports' | 'diagnostics';
+type TestOverviewSection = 'run' | 'catalog' | 'corpora' | 'history' | 'reports' | 'diagnostics';
 
 interface SuiteSubcategoryGroup {
   key: string;
@@ -428,6 +437,10 @@ export function TestOverviewPanel() {
   const [serverRuns, setServerRuns] = useState<TestRunRecord[]>([]);
   const [serverRunsLoading, setServerRunsLoading] = useState(false);
   const [backendSuites, setBackendSuites] = useState<CatalogSuiteRecord[]>([]);
+  const [corpora, setCorpora] = useState<CorpusRecord[]>([]);
+  const [selectedCorpusId, setSelectedCorpusId] = useState<string | null>(null);
+  const [corpusDetail, setCorpusDetail] = useState<CorpusDetailRecord | null>(null);
+  const [corpusDetailLoading, setCorpusDetailLoading] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [historySuiteFilter, setHistorySuiteFilter] = useState<string | null>(null);
   // Nested-nav state: which parent rows are expanded, plus the selected leaf
@@ -460,7 +473,31 @@ export function TestOverviewPanel() {
   useEffect(() => {
     void loadServerRuns();
     void fetchTestCatalog().then(setBackendSuites).catch(() => {});
+    void fetchEvalCorpora().then(setCorpora).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Lazy-load a corpus's entries when one is selected for preview.
+  useEffect(() => {
+    if (!selectedCorpusId) {
+      setCorpusDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setCorpusDetailLoading(true);
+    fetchEvalCorpus(selectedCorpusId)
+      .then((detail) => {
+        if (!cancelled) setCorpusDetail(detail);
+      })
+      .catch(() => {
+        if (!cancelled) setCorpusDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCorpusDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCorpusId]);
 
   useEffect(() => {
     if (activeSection === 'history' || activeSection === 'catalog') {
@@ -572,6 +609,14 @@ export function TestOverviewPanel() {
           label: `${layer.label} (${layer.suiteCount})`,
         })),
       },
+      {
+        id: 'corpora',
+        label: `Corpora (${corpora.length})`,
+        children: corpora.map((c) => ({
+          id: `corpus:${c.id}`,
+          label: `${c.label}${c.total_entries != null ? ` (${c.total_entries})` : ''}`,
+        })),
+      },
       { id: 'history', label: `History (${runs.length + serverRuns.length})` },
       { id: 'reports', label: `Reports (${docsByKind.reports.length})` },
     ];
@@ -587,6 +632,7 @@ export function TestOverviewPanel() {
     overview.profiles.length,
     allSuites.length,
     suiteCatalog,
+    corpora,
     runs.length,
     serverRuns.length,
     docsByKind.reports.length,
@@ -598,6 +644,8 @@ export function TestOverviewPanel() {
     setActiveSection(id as TestOverviewSection);
     // Selecting the Catalog parent row resets to the all-layers overview.
     if (id === 'catalog') setSelectedLayerKey(null);
+    // Selecting the Corpora parent row clears any drilled-in corpus.
+    if (id === 'corpora') setSelectedCorpusId(null);
   }, []);
 
   const handleToggleExpand = useCallback((id: string) => {
@@ -612,16 +660,18 @@ export function TestOverviewPanel() {
   const handleSelectChild = useCallback((itemId: string, childId: string) => {
     setActiveSection(itemId as TestOverviewSection);
     if (itemId === 'catalog') setSelectedLayerKey(childId.slice('catalog:'.length));
+    else if (itemId === 'corpora') setSelectedCorpusId(childId.slice('corpus:'.length));
     else if (itemId === 'diagnostics') setSelectedDiagnosticId(childId.slice('diag:'.length));
   }, []);
 
   const getChildState = useCallback(
     (item: HierarchicalSidebarNavItem, child: HierarchicalSidebarNavChildItem): 'inactive' | 'active' => {
       if (item.id === 'catalog') return `catalog:${selectedLayerKey}` === child.id ? 'active' : 'inactive';
+      if (item.id === 'corpora') return `corpus:${selectedCorpusId}` === child.id ? 'active' : 'inactive';
       if (item.id === 'diagnostics') return `diag:${selectedDiagnosticId}` === child.id ? 'active' : 'inactive';
       return 'inactive';
     },
-    [selectedLayerKey, selectedDiagnosticId],
+    [selectedLayerKey, selectedCorpusId, selectedDiagnosticId],
   );
 
   const handleCopyCommand = async (profile: TestProfileDefinition) => {
@@ -927,6 +977,99 @@ export function TestOverviewPanel() {
                 </div>
               </div>
             ))}
+          </section>
+        )}
+
+        {activeSection === 'corpora' && (
+          <section className="space-y-3">
+            {!selectedCorpusId ? (
+              <>
+                <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  Eval corpora ({corpora.length})
+                </h3>
+                {corpora.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700 p-4 text-sm text-neutral-500 dark:text-neutral-400">
+                    No eval corpora discovered.
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {corpora.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setSelectedCorpusId(c.id)}
+                        className="block w-full text-left rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-3 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">{c.label}</span>
+                          <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                            {c.total_entries != null ? `${c.total_entries} entries` : '—'}
+                          </span>
+                        </div>
+                        {c.description && (
+                          <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">{c.description}</p>
+                        )}
+                        <code className="mt-1 block text-[10px] text-neutral-400 dark:text-neutral-500">{c.path}</code>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                    {corpusDetail?.label ?? selectedCorpusId}
+                    {corpusDetail && (
+                      <span className="ml-2 text-[11px] font-normal text-neutral-500 dark:text-neutral-400">
+                        {corpusDetail.entry_count} entries
+                      </span>
+                    )}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCorpusId(null)}
+                    className="px-2 py-0.5 text-[11px] font-medium rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300"
+                  >
+                    Back to corpora
+                  </button>
+                </div>
+                {corpusDetailLoading ? (
+                  <div className="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700 p-4 text-sm text-neutral-500 dark:text-neutral-400">
+                    Loading entries…
+                  </div>
+                ) : !corpusDetail || corpusDetail.entries.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700 p-4 text-sm text-neutral-500 dark:text-neutral-400">
+                    No entries to preview.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+                    <table className="w-full text-[11px]">
+                      <thead className="bg-neutral-100 dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400">
+                        <tr>
+                          <th className="px-2 py-1 text-left font-medium">id</th>
+                          <th className="px-2 py-1 text-left font-medium">text</th>
+                          <th className="px-2 py-1 text-left font-medium">category</th>
+                          <th className="px-2 py-1 text-left font-medium">expected_block_prefix</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {corpusDetail.entries.map((e) => (
+                          <tr key={e.id} className="border-t border-neutral-200 dark:border-neutral-800 align-top">
+                            <td className="px-2 py-1 font-mono text-neutral-500 dark:text-neutral-400 whitespace-nowrap">{e.id}</td>
+                            <td className="px-2 py-1 text-neutral-700 dark:text-neutral-200">{e.text}</td>
+                            <td className="px-2 py-1 text-neutral-500 dark:text-neutral-400 whitespace-nowrap">{e.category ?? '—'}</td>
+                            <td className="px-2 py-1 font-mono text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
+                              {e.expected_block_prefix ?? '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
           </section>
         )}
 
