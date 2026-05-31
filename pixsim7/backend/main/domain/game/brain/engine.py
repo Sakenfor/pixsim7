@@ -32,6 +32,7 @@ from ..stats import (
 from ..core.models import GameSession, GameWorld, GameNPC
 from .types import BrainState, BrainStatSnapshot, DerivationContext
 from .derivation_registry import derivation_registry
+from pixsim7.backend.main.services.game.game_object_store import get_npc_component
 
 logger = logging.getLogger(__name__)
 
@@ -437,7 +438,25 @@ class BrainEngine:
             if stat_def_id in stats:
                 return {k: float(v) for k, v in stats[stat_def_id].items() if isinstance(v, (int, float))}
 
-        # Try session.stats[stat_def_id][npc_key] (canonical stat system storage)
+        # Prefer the canonical npc GameObject component ``stats:<def_id>``
+        # (written by apply_stat_deltas). This is the canonical-readers
+        # migration: the brain reads raw axes, which the component carries.
+        canonical = get_npc_component(
+            session.flags, session.world_id, npc_id, f"stats:{stat_def_id}"
+        )
+        if canonical and isinstance(canonical.get("data"), dict):
+            numeric = {
+                k: float(v)
+                for k, v in canonical["data"].items()
+                if isinstance(v, (int, float))
+            }
+            if numeric:
+                return numeric
+
+        # Legacy fallback: session.stats[stat_def_id][npc_key]. Retained for
+        # sessions populated via paths that do not mirror to canonical (snapshot
+        # restore, one-time migration). Removed once the npc-scoped session.stats
+        # write is dropped (checkpoint drop-legacy-write, rescoped to npc-only).
         if session.stats and stat_def_id in session.stats:
             stat_package = session.stats[stat_def_id]
             if npc_key in stat_package:

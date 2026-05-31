@@ -25,6 +25,7 @@ except ImportError:
 
 from pixsim7.backend.main.domain.game import GameWorld, GameSession
 from pixsim7.backend.main.domain.game.stats import StatEngine, WorldStatsConfig, StatDefinition
+from pixsim7.backend.main.services.game.game_object_store import set_npc_component
 from pixsim7.backend.main.domain.game.stats.migration import (
     migrate_world_meta_to_stats_config,
     needs_migration as needs_world_migration,
@@ -205,6 +206,28 @@ class StatService:
 
         # Update session
         session.stats[stat_definition_id] = normalized
+
+        # Re-mirror npc-scoped normalized stats onto the canonical npc
+        # GameObject component ``stats:<definition_id>`` so the canonical copy
+        # carries the COMPUTED tier/level fields, not just the raw axes written
+        # by apply_stat_deltas. Without this, canonical readers (brain loader,
+        # relationship readers) would see raw axes only. Session/world scopes
+        # have no canonical npc entity and stay in session.stats.
+        if session.flags is not None:
+            for entity_key, entity_stats in normalized.items():
+                if not (isinstance(entity_key, str) and entity_key.startswith("npc:")):
+                    continue
+                if not isinstance(entity_stats, dict):
+                    continue
+                raw_id = entity_key[4:]
+                npc_id: Any = int(raw_id) if raw_id.lstrip("-").isdigit() else raw_id
+                set_npc_component(
+                    session.flags,
+                    session.world_id,
+                    npc_id,
+                    f"stats:{stat_definition_id}",
+                    entity_stats,
+                )
 
         # Cache the result
         await self._cache_stats(session.id, stat_definition_id, normalized)
