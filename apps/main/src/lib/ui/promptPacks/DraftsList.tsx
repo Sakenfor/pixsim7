@@ -5,9 +5,8 @@
  * `onSelect` with the chosen id. Empty / loading / error states are
  * rendered inline.
  *
- * Two density modes — `compact` matches Block Authoring's slim
- * (~208px) sidebar, the default matches PromptPackAuthoringWorkbench's
- * wider (~320px) layout.
+ * Two density modes — `compact` matches the authoring panel's slim
+ * (~208px) sidebar; the default is a wider (~320px) layout.
  */
 
 import clsx from 'clsx';

@@ -30,6 +30,7 @@ import { useWorkspaceStore } from '@features/workspace';
 
 import { useCompositionPackages } from '@/stores/compositionPackageStore';
 
+import { AuthoringPanel } from '../authoring';
 import { BlockExplorerPanel } from '../block-explorer/BlockExplorerPanel';
 import { BlockMatrixView } from '../block-matrix/BlockMatrixView';
 import {
@@ -42,9 +43,9 @@ import {
 
 
 
+
 import { LatinComposerWorkbench } from './LatinComposerWorkbench';
 import { PromptInteractionsWorkbench } from './PromptInteractionsWorkbench';
-import { PromptPackAuthoringWorkbench } from './PromptPackAuthoringWorkbench';
 
 type TabId = 'packages' | 'templates' | 'blocks' | 'matrix' | 'interactions' | 'latin-composer' | 'vocabulary' | 'authoring' | 'prompt-authoring';
 
@@ -1120,7 +1121,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
 
       {tab === 'authoring' && (
         <div className="flex-1 min-h-0">
-          <PromptPackAuthoringWorkbench />
+          <AuthoringPanel />
         </div>
       )}
       </SidebarContentLayout>

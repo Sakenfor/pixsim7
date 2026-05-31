@@ -16,7 +16,7 @@
  * boilerplate.
  *
  * Consumers:
- *   - features/panels/domain/definitions/block-authoring (Versions tab)
+ *   - features/panels/domain/definitions/authoring (Versions tab)
  *   - features/panels/domain/definitions/prompt-library-inspector
  *     workbench (planned refactor in a follow-up commit)
  */

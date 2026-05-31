@@ -6,11 +6,11 @@
  * top of its barrel.
  */
 
-import { registerBlockAuthoringMethod } from '../registry';
+import { registerAuthoringMethod } from '../registry';
 
 import { CuePackEditor } from './CuePackEditor';
 
-registerBlockAuthoringMethod({
+registerAuthoringMethod({
   id: 'cue-pack',
   label: 'CUE Pack',
   description:

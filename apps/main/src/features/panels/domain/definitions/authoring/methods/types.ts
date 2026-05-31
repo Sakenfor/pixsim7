@@ -12,16 +12,16 @@
 import type { User } from '@pixsim7/shared.auth.core';
 import type { ComponentType } from 'react';
 
-export interface BlockAuthoringMethodContext {
+export interface AuthoringMethodContext {
   /** The currently focused block id from the embedded Block Explorer, if any. */
   selectedBlockId?: string | null;
 }
 
-export interface BlockAuthoringMethodProps {
-  context: BlockAuthoringMethodContext;
+export interface AuthoringMethodProps {
+  context: AuthoringMethodContext;
 }
 
-export interface BlockAuthoringMethod {
+export interface AuthoringMethod {
   /** Stable identifier (e.g. "cue-pack"). */
   id: string;
   /** Short label shown in the method picker. */
@@ -49,5 +49,5 @@ export interface BlockAuthoringMethod {
    */
   isAvailable?: (user: User | null) => boolean;
   /** The editor surface for this method. Renders within the panel body. */
-  Editor: ComponentType<BlockAuthoringMethodProps>;
+  Editor: ComponentType<AuthoringMethodProps>;
 }

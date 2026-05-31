@@ -2,10 +2,9 @@
  * Shared UI primitives for prompt-pack authoring lifecycle surfaces.
  *
  * Consumed by:
- *   - features/panels/domain/definitions/prompt-library-inspector
- *     (PromptPackAuthoringWorkbench — full drafts/versions/publish UI)
- *   - features/panels/domain/definitions/block-authoring
- *     (CuePackEditor — drafts editor with embedded Versions tab)
+ *   - features/panels/domain/definitions/authoring
+ *     (CuePackEditor — drafts editor with embedded Pack + Versions
+ *     tabs; the single prompt-pack authoring surface)
  *
  * Each primitive is pure presentation. API calls + state are owned
  * by the parent surface, so new consumers (e.g. a future admin

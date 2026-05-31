@@ -3,9 +3,8 @@
  *
  * Composes the shared prompt-pack primitives (VersionsList,
  * VersionDetailPanel) on top of the shared `useDraftLifecycle` hook,
- * so the workflow plumbing (submit / approve / reject / publish-
- * private / publish-shared / activate / deactivate) is identical to
- * what PromptPackAuthoringWorkbench exposes.
+ * which owns the workflow plumbing (submit / approve / reject /
+ * publish-private / publish-shared / activate / deactivate).
  *
  * The tab renders nothing useful without a selected draft; the
  * parent gates that.
