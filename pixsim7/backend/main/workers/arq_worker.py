@@ -42,6 +42,7 @@ from pixsim7.backend.main.workers.chain_execution_processor import (
 from pixsim7.backend.main.workers.derivatives_processor import process_derivatives
 from pixsim7.backend.main.workers.ingestion_processor import process_ingestion
 from pixsim7.backend.main.workers.prompt_tagging_processor import process_prompt_tagging
+from pixsim7.backend.main.workers.prompt_embedding_processor import process_prompt_embedding
 from pixsim7.backend.main.workers.analysis_backfill import run_analysis_backfill_batch
 from pixsim7.automation.services.device_sync_service import poll_device_ads, poll_device_reconnects
 from pixsim7.backend.main.workers.health import (
@@ -242,6 +243,7 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="process_derivatives")
     logger.info("worker_component_registered", component="process_ingestion")
     logger.info("worker_component_registered", component="process_prompt_tagging")
+    logger.info("worker_component_registered", component="process_prompt_embedding")
     logger.info("worker_component_registered", component="process_chain_execution")
     logger.info("worker_component_registered", component="process_ephemeral_chain_execution")
     logger.info("worker_component_registered", component="process_ephemeral_fanout_execution")
@@ -385,6 +387,9 @@ async def retry_startup(ctx: dict) -> None:
     _retry_event_bridge = await start_event_bus_bridge(role="arq_generation_retry_worker")
     await update_retry_heartbeat(ctx)
 
+    # Prevent Windows from sleeping while retry generation processing is active.
+    inhibit_sleep()
+
 
 async def retry_shutdown(ctx: dict) -> None:
     """Shutdown for generation retry worker."""
@@ -409,6 +414,8 @@ async def retry_shutdown(ctx: dict) -> None:
         await close_database()
     except Exception as e:
         logger.warning("worker_shutdown_database_close_error", error=str(e))
+
+    allow_sleep()
 
 
 async def simulation_startup(ctx: dict) -> None:
@@ -503,6 +510,7 @@ class WorkerSettings:
         process_derivatives,
         process_ingestion,
         process_prompt_tagging,
+        process_prompt_embedding,
         process_chain_execution,
         process_ephemeral_chain_execution,
         process_ephemeral_fanout_execution,

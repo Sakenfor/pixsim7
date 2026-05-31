@@ -19,6 +19,11 @@ from pixsim7.backend.main.services.analysis.analyzer_defaults import (
 )
 from pixsim7.backend.main.services.prompt.parser import AnalyzerTarget
 from pixsim7.backend.main.services.prompt.parser.tokenizer import tokenize as _tokenize_prompt
+from pixsim7.backend.main.services.prompt.variable_registry import (
+    normalize_prompt_variable_name,
+    read_prompt_variables,
+)
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.infrastructure.plugins.capabilities.locator import (
     get_analyzer_registry,
 )
@@ -210,17 +215,20 @@ async def find_similar_prompts(
     limit: int = 10,
     threshold: float = 0.5,
     family_id: Optional[UUID] = None,
+    mode: str = "text",
     db: AsyncSession = Depends(get_db),
     user = Depends(get_current_user),
 ):
     """
-    Find similar prompts using text similarity
+    Find similar prompts.
 
     Query params:
         - prompt: Query prompt text
         - limit: Number of results (default: 10, max: 50)
         - threshold: Minimum similarity score 0-1 (default: 0.5)
         - family_id: Optional family filter
+        - mode: "text" (lexical, default) or "vector" (pgvector semantic
+          search over PromptVersion embeddings)
 
     Returns versions ranked by similarity score.
     """
@@ -231,13 +239,19 @@ async def find_similar_prompts(
             status_code=400,
             detail="Threshold must be between 0 and 1"
         )
+    if mode not in ("text", "vector"):
+        raise HTTPException(
+            status_code=400,
+            detail="mode must be 'text' or 'vector'"
+        )
 
     service = PromptVersionService(db)
     similar = await service.find_similar_prompts(
         prompt_text=prompt,
         limit=limit,
         threshold=threshold,
-        family_id=family_id
+        family_id=family_id,
+        mode=mode,
     )
 
     return {
@@ -245,6 +259,7 @@ async def find_similar_prompts(
         "limit": limit,
         "threshold": threshold,
         "family_id": str(family_id) if family_id else None,
+        "mode": mode,
         "results": similar,
         "result_count": len(similar)
     }
@@ -684,6 +699,21 @@ class PromptTokensPayload(BaseModel):
     lines: List[PromptTokenLine]
 
 
+class PromptVariableHintsPayload(BaseModel):
+    saved: List[str] = Field(
+        default_factory=list,
+        description="User-saved uppercase prompt variable names.",
+    )
+    detected: List[str] = Field(
+        default_factory=list,
+        description="Uppercase variable names detected in this prompt chain parse.",
+    )
+    unsaved_detected: List[str] = Field(
+        default_factory=list,
+        description="Detected names that are not yet saved in the user registry.",
+    )
+
+
 class AnalyzePromptSequenceContext(BaseModel):
     role_in_sequence: str = Field(
         ...,
@@ -724,6 +754,10 @@ class AnalyzePromptResponse(BaseModel):
     tokens: Optional[PromptTokensPayload] = Field(
         None,
         description="Line-level DSL token parse tree (header / chain / prose nodes).",
+    )
+    variable_hints: PromptVariableHintsPayload = Field(
+        default_factory=PromptVariableHintsPayload,
+        description="Saved variable registry and detected-variable hints for prompt authoring UI.",
     )
 
 
@@ -853,6 +887,11 @@ async def analyze_prompt(
         except Exception:
             raw_tokens = None
     tokens_payload = PromptTokensPayload(**raw_tokens) if isinstance(raw_tokens, dict) else None
+    saved_variable_names = await _resolve_saved_prompt_variables_for_principal(user, db)
+    variable_hints = _build_prompt_variable_hints(
+        saved_variable_names=saved_variable_names,
+        tokens=tokens_payload,
+    )
 
     return AnalyzePromptResponse(
         analysis=analysis,
@@ -860,6 +899,7 @@ async def analyze_prompt(
         role_in_sequence=sequence_context["role_in_sequence"],
         sequence_context=sequence_context,
         tokens=tokens_payload,
+        variable_hints=PromptVariableHintsPayload(**variable_hints),
     )
 
 
@@ -919,3 +959,66 @@ def _coerce_sequence_context_payload(raw: Any) -> Dict[str, Any]:
         "confidence": confidence,
         "matched_block_id": matched_block_id,
     }
+
+
+def _extract_detected_prompt_variables(tokens: Optional[PromptTokensPayload]) -> List[str]:
+    if not tokens or not isinstance(tokens.lines, list):
+        return []
+    detected: list[str] = []
+    seen: set[str] = set()
+    for line in tokens.lines:
+        if getattr(line, "kind", None) != "chain":
+            continue
+        elements = getattr(line, "elements", None) or []
+        for element in elements:
+            if getattr(element, "kind", None) != "var":
+                continue
+            raw_name = getattr(element, "text", "")
+            try:
+                name = normalize_prompt_variable_name(raw_name)
+            except ValueError:
+                continue
+            if name in seen:
+                continue
+            seen.add(name)
+            detected.append(name)
+    return detected
+
+
+def _build_prompt_variable_hints(
+    *,
+    saved_variable_names: List[str],
+    tokens: Optional[PromptTokensPayload],
+) -> Dict[str, List[str]]:
+    saved = read_prompt_variables({"prompt_variables": saved_variable_names})
+    detected = _extract_detected_prompt_variables(tokens)
+    saved_set = set(saved)
+    unsaved_detected = [name for name in detected if name not in saved_set]
+    return {
+        "saved": saved,
+        "detected": detected,
+        "unsaved_detected": unsaved_detected,
+    }
+
+
+async def _resolve_saved_prompt_variables_for_principal(user: Any, db: AsyncSession) -> List[str]:
+    direct_preferences = getattr(user, "preferences", None)
+    if isinstance(direct_preferences, dict):
+        names = read_prompt_variables(direct_preferences)
+        if names:
+            return names
+
+    owner_user_id = resolve_effective_user_id(user)
+    if not owner_user_id:
+        return []
+
+    try:
+        from pixsim7.backend.main.domain import User
+
+        user_record = await db.get(User, owner_user_id)
+    except Exception:
+        return []
+
+    if not user_record or not isinstance(user_record.preferences, dict):
+        return []
+    return read_prompt_variables(user_record.preferences)

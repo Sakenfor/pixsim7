@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON, Text, UniqueConstraint
+from pgvector.sqlalchemy import Vector
 from uuid import UUID, uuid4
 import hashlib
 
@@ -273,6 +274,21 @@ class PromptVersion(SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(JSON),
         description="Provider-specific validation results and constraints"
+    )
+
+    # Semantic embedding (pgvector) — see plan:embedding-service-generalization
+    # Phase C. Single primary text vector per version (PerRowStorage); a
+    # cross-modal SigLIP embedder would need a separate column / multi-vector
+    # table (deferred).
+    embedding: Optional[List[float]] = Field(
+        default=None,
+        sa_column=Column(Vector(768), nullable=True),
+        description="Semantic embedding of prompt_text (768-dim)"
+    )
+    embedding_model: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="Model used to generate the embedding"
     )
 
     __table_args__ = (

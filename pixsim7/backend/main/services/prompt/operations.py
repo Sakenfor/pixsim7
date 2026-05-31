@@ -280,19 +280,36 @@ class PromptOperationsService:
         prompt_text: str,
         limit: int = 10,
         threshold: float = 0.5,
-        family_id: Optional[UUID] = None
+        family_id: Optional[UUID] = None,
+        mode: str = "text",
     ) -> List[Dict[str, Any]]:
-        """Find similar prompts using text similarity
+        """Find similar prompts.
 
         Args:
             prompt_text: Query prompt
             limit: Number of results
             threshold: Minimum similarity score (0-1)
             family_id: Optional family filter
+            mode: "text" (in-memory lexical similarity, default) or "vector"
+                (pgvector semantic search over PromptVersion embeddings).
 
         Returns:
-            List of similar versions with similarity scores
+            List of similar versions with similarity scores (same shape for
+            both modes).
         """
+        if mode == "vector":
+            from pixsim7.backend.main.services.embedding.prompt_service import (
+                PromptEmbeddingService,
+            )
+
+            service = PromptEmbeddingService(self.db)
+            return await service.find_similar_by_text(
+                prompt_text,
+                family_id=family_id,
+                limit=limit,
+                min_similarity=threshold,
+            )
+
         from .utils.similarity import calculate_text_similarity
 
         query = select(PromptVersion)

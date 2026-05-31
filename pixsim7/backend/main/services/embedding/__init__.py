@@ -22,6 +22,11 @@ from pixsim7.backend.main.services.embedding.embedding_service import (
     validate_embeddings,
     EXPECTED_DIMENSIONS,
 )
+from pixsim7.backend.main.services.embedding.prompt_service import (
+    PromptEmbeddingService,
+    PromptVersionNotFoundError,
+    PromptVersionNotEmbeddedError,
+)
 
 __all__ = [
     "EmbeddingProvider",
@@ -35,4 +40,7 @@ __all__ = [
     "EmbeddingDimensionError",
     "validate_embeddings",
     "EXPECTED_DIMENSIONS",
+    "PromptEmbeddingService",
+    "PromptVersionNotFoundError",
+    "PromptVersionNotEmbeddedError",
 ]

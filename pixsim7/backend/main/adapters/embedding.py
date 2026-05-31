@@ -34,7 +34,6 @@ from pixsim7.backend.main.services.embedding.embedding_service import (
     EmbeddingModelError,
 )
 from pixsim7.backend.main.services.embedding.registry import embedding_registry
-from pixsim7.backend.main.shared.errors import ProviderNotFoundError
 from pixsim7.embedding.daemon import DaemonEmbeddingService
 from pixsim7.embedding.locator import bind_embedding_service, try_get_embedding_service
 from pixsim7.embedding.protocol import (
@@ -92,7 +91,12 @@ class CompositeEmbeddingService(EmbeddingService):
         """model_id → ai_model_registry → provider_id → embedding_registry.
 
         Session-free: both registries are module singletons. Raises
-        EmbeddingModelError for unknown model or unregistered provider."""
+        EmbeddingModelError for unknown model or unregistered provider.
+
+        The model's ``provider_id`` is the vendor/account id ("openai", "cmd"),
+        while embedding provider plugins register under a capability-scoped id
+        ("openai-embedding", "cmd-embedding"). Prefer an exact match, then fall
+        back to the "<vendor>-embedding" plugin id."""
         model = ai_model_registry.get(model_id)
         if not model:
             raise EmbeddingModelError(
@@ -101,12 +105,13 @@ class CompositeEmbeddingService(EmbeddingService):
         provider_id = model.provider_id
         if not provider_id:
             raise EmbeddingModelError(f"Model '{model_id}' has no provider_id")
-        try:
-            return embedding_registry.get(provider_id)
-        except ProviderNotFoundError:
-            raise EmbeddingModelError(
-                f"Embedding provider '{provider_id}' for model '{model_id}' is not registered"
-            )
+        for candidate in (provider_id, f"{provider_id}-embedding"):
+            if embedding_registry.has(candidate):
+                return embedding_registry.get(candidate)
+        raise EmbeddingModelError(
+            f"Embedding provider for model '{model_id}' "
+            f"(provider_id={provider_id!r}) is not registered"
+        )
 
 
 def _build_default_service() -> EmbeddingService:
