@@ -20,6 +20,7 @@ import {
   type AdoptOrphanedPackResponse,
   type ContentPackMatrixManifest,
 } from '@lib/api/blockTemplates';
+import { groupPacksByCategory } from '@lib/content/packCategoryGrouping';
 import { Icon } from '@lib/icons';
 import { resolveBlockTemplates, resolveContentPacks } from '@lib/resolvers';
 
@@ -258,7 +259,8 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
         const discoveredPack = discovered.has(name);
         const hasBlocks = withBlocks.has(name);
         const templateCount = templateCounts.get(name) ?? 0;
-        const statusFromInventory = inventoryPacks[name]?.status;
+        const inventoryEntry = inventoryPacks[name];
+        const statusFromInventory = inventoryEntry?.status;
         const inferredOrphaned = !statusFromInventory && !discoveredPack && (hasBlocks || templateCount > 0);
         const status: PackStatus = statusFromInventory ?? (inferredOrphaned ? 'orphaned' : (discoveredPack ? 'active' : 'unknown'));
         return {
@@ -267,9 +269,15 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
           hasBlocks,
           templateCount,
           status,
+          category: inventoryEntry?.category ?? null,
         };
       });
   }, [blockPackages, contentPackInventory, contentPacks, templates]);
+
+  const groupedPackageRows = useMemo(
+    () => groupPacksByCategory(packageRows, (row) => row.category),
+    [packageRows],
+  );
 
   useEffect(() => {
     if (!selectedPackage) return;
@@ -521,36 +529,53 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
 
       {tab === 'packages' && (
         <div className="flex-1 min-h-0 flex">
-          <div className="w-72 shrink-0 border-r border-neutral-200 dark:border-neutral-800 overflow-y-auto p-2 space-y-1">
-            {packageRows.map((row) => (
-              <button
-                key={row.name}
-                type="button"
-                onClick={() => setSelectedPackage(row.name)}
-                className={clsx(
-                  'w-full text-left rounded border p-2',
-                  row.name === selectedPackage
-                    ? 'border-blue-300 bg-blue-50 dark:border-blue-800/60 dark:bg-blue-900/20'
-                    : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                )}
-              >
-                <div className="text-xs font-medium text-neutral-800 dark:text-neutral-100 truncate">{row.name}</div>
-                <div className="mt-1 flex items-center gap-1 flex-wrap">
-                  {row.status === 'orphaned' && (
-                    <span className="text-[10px] px-1 py-0.5 rounded border border-red-200 text-red-700 dark:border-red-900/40 dark:text-red-300">
-                      orphaned
-                    </span>
+          <div className="w-72 shrink-0 border-r border-neutral-200 dark:border-neutral-800 overflow-y-auto p-2 space-y-2">
+            {groupedPackageRows.map((group) => (
+              <div key={group.category} data-testid={`pack-category-group-${group.category}`} className="space-y-1">
+                <div
+                  className={clsx(
+                    'px-1 py-0.5 text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5 select-none',
+                    group.isUncategorized
+                      ? 'text-neutral-400 dark:text-neutral-500 italic'
+                      : 'text-neutral-500 dark:text-neutral-400',
                   )}
-                  {row.status === 'disk_only' && (
-                    <span className="text-[10px] px-1 py-0.5 rounded border border-amber-200 text-amber-700 dark:border-amber-800/40 dark:text-amber-300">
-                      disk-only
-                    </span>
-                  )}
-                  {row.discovered && <span className="text-[10px] px-1 py-0.5 rounded border border-emerald-200 text-emerald-700 dark:border-emerald-800/40 dark:text-emerald-300">pack</span>}
-                  {row.hasBlocks && <span className="text-[10px] px-1 py-0.5 rounded border border-blue-200 text-blue-700 dark:border-blue-800/40 dark:text-blue-300">blocks</span>}
-                  {row.templateCount > 0 && <span className="text-[10px] px-1 py-0.5 rounded border border-purple-200 text-purple-700 dark:border-purple-800/40 dark:text-purple-300">{row.templateCount} templates</span>}
+                >
+                  <span>{group.label}</span>
+                  <span className="text-neutral-400 dark:text-neutral-600 normal-case tracking-normal tabular-nums">
+                    {group.entries.length}
+                  </span>
                 </div>
-              </button>
+                {group.entries.map((row) => (
+                  <button
+                    key={row.name}
+                    type="button"
+                    onClick={() => setSelectedPackage(row.name)}
+                    className={clsx(
+                      'w-full text-left rounded border p-2',
+                      row.name === selectedPackage
+                        ? 'border-blue-300 bg-blue-50 dark:border-blue-800/60 dark:bg-blue-900/20'
+                        : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                    )}
+                  >
+                    <div className="text-xs font-medium text-neutral-800 dark:text-neutral-100 truncate">{row.name}</div>
+                    <div className="mt-1 flex items-center gap-1 flex-wrap">
+                      {row.status === 'orphaned' && (
+                        <span className="text-[10px] px-1 py-0.5 rounded border border-red-200 text-red-700 dark:border-red-900/40 dark:text-red-300">
+                          orphaned
+                        </span>
+                      )}
+                      {row.status === 'disk_only' && (
+                        <span className="text-[10px] px-1 py-0.5 rounded border border-amber-200 text-amber-700 dark:border-amber-800/40 dark:text-amber-300">
+                          disk-only
+                        </span>
+                      )}
+                      {row.discovered && <span className="text-[10px] px-1 py-0.5 rounded border border-emerald-200 text-emerald-700 dark:border-emerald-800/40 dark:text-emerald-300">pack</span>}
+                      {row.hasBlocks && <span className="text-[10px] px-1 py-0.5 rounded border border-blue-200 text-blue-700 dark:border-blue-800/40 dark:text-blue-300">blocks</span>}
+                      {row.templateCount > 0 && <span className="text-[10px] px-1 py-0.5 rounded border border-purple-200 text-purple-700 dark:border-purple-800/40 dark:text-purple-300">{row.templateCount} templates</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
             ))}
           </div>
           <div className="flex-1 min-w-0 overflow-y-auto p-3">
