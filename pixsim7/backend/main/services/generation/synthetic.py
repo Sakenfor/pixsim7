@@ -179,6 +179,11 @@ class SyntheticGenerationService:
         # Explicit commit - FastAPI dependency doesn't auto-commit
         await self.db.commit()
 
+        # Embed newly-created one-off prompt versions (post-commit so the worker
+        # can load the row). Reused versions are already handled.
+        if gen_data.get("new_prompt_version_id"):
+            await self._enqueue_prompt_embedding(gen_data["new_prompt_version_id"])
+
         logger.info(
             "synthetic_generation_created",
             generation_id=generation.id,
@@ -260,6 +265,11 @@ class SyntheticGenerationService:
         self.db.add(generation)
         await self.db.commit()
 
+        # Embed newly-created one-off prompt versions (post-commit so the worker
+        # can load the row). Reused versions are already handled.
+        if gen_data.get("new_prompt_version_id"):
+            await self._enqueue_prompt_embedding(gen_data["new_prompt_version_id"])
+
         logger.info(
             "synthetic_generation_updated",
             generation_id=generation.id,
@@ -301,13 +311,18 @@ class SyntheticGenerationService:
 
         # Find or create PromptVersion
         prompt_version_id = None
+        new_prompt_version_id = None
         if prompt_text:
-            prompt_version = await self._find_or_create_prompt_version(
+            prompt_version, prompt_version_created = await self._find_or_create_prompt_version(
                 text=prompt_text,
                 user_id=user.id,
             )
             if prompt_version:
                 prompt_version_id = prompt_version.id
+                # Only newly-created one-offs need embedding; reused versions
+                # are already embedded (or queued from their first sighting).
+                if prompt_version_created:
+                    new_prompt_version_id = str(prompt_version.id)
 
         # Build inputs from existing lineage edges
         inputs = await self._build_inputs_from_lineage(asset.id, create_mode)
@@ -352,6 +367,7 @@ class SyntheticGenerationService:
             "operation_type": operation_type,
             "final_prompt": prompt_text,
             "prompt_version_id": prompt_version_id,
+            "new_prompt_version_id": new_prompt_version_id,
             "canonical_params": canonical_params,
             "inputs": inputs,
             "reproducible_hash": reproducible_hash,
@@ -361,12 +377,17 @@ class SyntheticGenerationService:
         self,
         text: str,
         user_id: int,
-    ) -> Optional[PromptVersion]:
+    ) -> tuple[Optional[PromptVersion], bool]:
         """
         Find existing PromptVersion by hash or create a new one.
 
         For synced assets, we create one-off prompts (no family) to avoid
         polluting the prompt library with imported prompts.
+
+        Returns ``(version, created)`` where ``created`` is True only when a new
+        row was inserted — the caller uses it to enqueue a one-time embedding
+        job (generated one-offs skip the authoring path that would publish
+        PROMPT_VERSION_CREATED).
         """
         prompt_hash = compute_prompt_hash(text)
 
@@ -384,7 +405,7 @@ class SyntheticGenerationService:
                 prompt_version_id=str(existing.id),
                 hash_prefix=prompt_hash[:16],
             )
-            return existing
+            return existing, False
 
         # Create new one-off prompt version (no family)
         version = PromptVersion(
@@ -408,7 +429,31 @@ class SyntheticGenerationService:
             hash_prefix=prompt_hash[:16],
         )
 
-        return version
+        return version, True
+
+    async def _enqueue_prompt_embedding(self, version_id: str) -> None:
+        """Enqueue a vector-embedding job for a newly-created one-off prompt.
+
+        Generated/synced prompts are created here, bypassing the authoring path
+        that publishes ``PROMPT_VERSION_CREATED`` — so we enqueue the embed job
+        directly. This is embed-only (no tag-suggestion side effect of the broad
+        event) and must run post-commit so the ARQ worker can load the row.
+        """
+        try:
+            from pixsim7.backend.main.infrastructure.queue.tasks import queue_task
+
+            await queue_task(
+                "process_prompt_embedding",
+                version_id,
+                _job_id=f"prompt-embed:{version_id}",
+            )
+            logger.debug("synthetic_prompt_embedding_queued", version_id=version_id)
+        except Exception:
+            logger.error(
+                "synthetic_prompt_embedding_enqueue_failed",
+                version_id=version_id,
+                exc_info=True,
+            )
 
     def _build_canonical_params(
         self,
