@@ -96,6 +96,7 @@ import { PromptToolsPanel, type PromptToolsApplyPayload } from './PromptToolsPan
 import { ShadowAnalysisPopover } from './ShadowAnalysisPopover';
 import { ShadowTextarea } from './ShadowTextarea';
 import { RoleBadge } from './shared/RoleBadge';
+import { SimilarPromptsPopover } from './SimilarPromptsPopover';
 import { VariableEditPopover } from './VariableEditPopover';
 
 type PromptComposerMode = 'text' | 'blocks';
@@ -393,6 +394,8 @@ export function PromptComposer({
   const showPromptTools = usePromptSettingsStore((state) => state.composerShowTools);
   const setShowPromptTools = usePromptSettingsStore((state) => state.setComposerShowTools);
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
+  const [showSimilar, setShowSimilar] = useState(false);
+  const similarTriggerRef = useRef<HTMLButtonElement>(null);
 
   // --- Shadow analysis click popover (CM path) ---
   const [cmShadowPopover, setCmShadowPopover] = useState<{
@@ -2095,6 +2098,22 @@ export function PromptComposer({
           />
         </FloatingToolPanel>
 
+        <button
+          ref={similarTriggerRef}
+          type="button"
+          disabled={disabled}
+          onClick={() => setShowSimilar((prev) => !prev)}
+          title="Find similar prompts (semantic)"
+          className={clsx(
+            'p-1 rounded transition-colors',
+            showSimilar
+              ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200'
+              : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+          )}
+        >
+          <Icon name="analysis" size={14} />
+        </button>
+
         {mode === 'blocks' && (
           <>
             <button
@@ -2262,6 +2281,7 @@ export function PromptComposer({
                         <VariableEditPopover
                           name={variable.name}
                           saved={saved}
+                          defaultClass={variable.defaultClass}
                           description={entry?.description}
                           onCancel={() => setCmVariablePopover(null)}
                           onSave={async () => {
@@ -2589,6 +2609,15 @@ export function PromptComposer({
         promotionNotice={historyPromotionNotice}
         promotionError={historyPromotionError}
         onJumpTo={handleHistoryJump}
+      />
+
+      <SimilarPromptsPopover
+        open={showSimilar}
+        onClose={() => setShowSimilar(false)}
+        anchor={similarTriggerRef.current}
+        triggerRef={similarTriggerRef}
+        promptText={value}
+        onUse={(text) => onChange(text)}
       />
 
       <Popover

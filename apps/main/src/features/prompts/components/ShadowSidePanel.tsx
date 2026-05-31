@@ -19,6 +19,7 @@ import {
   extractPrimitiveMatches,
   type CandidateWithPrimitiveMatch,
 } from '../lib/parsePrimitiveMatch';
+import { groupVariablesByEntity } from '../lib/promptVariableName';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptBlockCandidate } from '../types';
 
@@ -332,6 +333,12 @@ export function ShadowSidePanel({
     if (Array.isArray(hinted)) return hinted;
     return detectedVariables.filter((name) => !savedVariableSet.has(name));
   }, [result?.variableHints?.unsaved_detected, detectedVariables, savedVariableSet]);
+  // Stats view: saved + detected grouped by entity (ACTOR1 → DETAILS, POSE, …).
+  // Derived only — see lib/promptVariableName.
+  const variableGroups = useMemo(
+    () => groupVariablesByEntity(savedEntries, detectedVariables),
+    [savedEntries, detectedVariables],
+  );
 
   const openVariableModal = (name: string) => {
     const entry = savedEntries.find((item) => item.name === name);
@@ -744,6 +751,61 @@ export function ShadowSidePanel({
                           )}
                           <Icon name="edit" size={10} className="ml-auto shrink-0 text-neutral-400" />
                         </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {variableGroups.length > 1 && (
+                  <div className="space-y-0.5">
+                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                      By entity
+                    </div>
+                    <div className="space-y-1">
+                      {variableGroups.map((group) => (
+                        <div
+                          key={`entity-${group.entity}`}
+                          className="rounded border border-neutral-200/70 dark:border-neutral-700/60 px-1.5 py-1"
+                        >
+                          <div className="flex items-center gap-1 text-[10px]">
+                            <span className="font-mono font-semibold text-neutral-700 dark:text-neutral-200">
+                              {group.entity}
+                            </span>
+                            {group.defaultClass && (
+                              <span className="px-1 rounded bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 text-[9px] uppercase tracking-wide">
+                                default
+                              </span>
+                            )}
+                            <span className="ml-auto text-neutral-400 tabular-nums">
+                              {group.members.length}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 flex flex-wrap gap-1">
+                            {group.members.map((member) => (
+                              <button
+                                key={`member-${member.name}`}
+                                type="button"
+                                onClick={() =>
+                                  member.saved
+                                    ? openVariableModal(member.name)
+                                    : handleSaveVariable(member.name)
+                                }
+                                title={
+                                  member.saved
+                                    ? `Edit ${member.name}${member.description ? ` — ${member.description}` : ''}`
+                                    : `Save ${member.name} as a known variable`
+                                }
+                                className={clsx(
+                                  'px-1.5 py-0.5 rounded border text-[10px] font-mono transition-colors',
+                                  member.saved
+                                    ? 'border-emerald-300/80 dark:border-emerald-700/70 text-emerald-700 dark:text-emerald-300 bg-emerald-50/70 dark:bg-emerald-900/20'
+                                    : 'border-dashed border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-violet-300 dark:hover:border-violet-600 hover:bg-violet-50/70 dark:hover:bg-violet-900/20',
+                                )}
+                              >
+                                {member.facetPath || group.entity}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>

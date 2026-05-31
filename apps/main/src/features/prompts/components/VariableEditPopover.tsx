@@ -7,6 +7,8 @@ export interface VariableEditPopoverProps {
   name: string;
   /** Whether the name is already saved. */
   saved: boolean;
+  /** Whether the name's class is a hard-coded default (recognised by default). */
+  defaultClass?: boolean;
   /** Optional description shown for an already-saved variable (read-only here). */
   description?: string;
   /** Save the clicked token as a known variable. */
@@ -24,6 +26,7 @@ export interface VariableEditPopoverProps {
 export function VariableEditPopover({
   name,
   saved,
+  defaultClass = false,
   description,
   onSave,
   onRemove,
@@ -46,13 +49,17 @@ export function VariableEditPopover({
               'inline-flex items-center gap-1 normal-case tracking-normal',
               saved
                 ? 'text-emerald-600 dark:text-emerald-400'
-                : 'text-neutral-400 dark:text-neutral-500',
+                : defaultClass
+                  ? 'text-emerald-600/80 dark:text-emerald-400/80'
+                  : 'text-neutral-400 dark:text-neutral-500',
             )}
           >
             {saved ? (
               <>
                 <Icon name="check" size={11} /> Saved
               </>
+            ) : defaultClass ? (
+              'Recognised (default)'
             ) : (
               'Not saved'
             )}
@@ -66,7 +73,9 @@ export function VariableEditPopover({
         )}
         {!saved && (
           <div className="mt-1 text-[10px] text-neutral-400 italic">
-            Save it to reuse this placeholder across prompts.
+            {defaultClass
+              ? 'Recognised by default. Save it to add a description and pin it to your list.'
+              : 'Save it to reuse this placeholder across prompts.'}
           </div>
         )}
       </div>

@@ -9,6 +9,8 @@ import {
 
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 
+import { isDefaultVariableClass } from './promptVariableName';
+
 /**
  * Variable token extension — decorates uppercase `var` chain elements
  * (`ACTOR1`, `GOAL`, …) emitted by the backend tokenizer and makes them
@@ -28,6 +30,9 @@ export interface VariableRange {
   name: string;
   /** Whether this name is currently saved (drives styling + popover state). */
   saved: boolean;
+  /** Whether the name's class is a hard-coded default (e.g. ACTOR1/2/3) — it
+   *  reads as "recognised" even when not explicitly saved. */
+  defaultClass: boolean;
 }
 
 export interface VariableTokenCallbacks {
@@ -73,7 +78,13 @@ function collectVariableRanges(config: VariableTokensConfig, doc: Text): Variabl
       const from = el.start + leading;
       const to = from + raw.trim().length;
       if (from >= to || to > docLength) continue;
-      out.push({ from, to, name, saved: savedNames.has(name) });
+      out.push({
+        from,
+        to,
+        name,
+        saved: savedNames.has(name),
+        defaultClass: isDefaultVariableClass(name),
+      });
     }
   }
 
@@ -84,9 +95,18 @@ function collectVariableRanges(config: VariableTokensConfig, doc: Text): Variabl
 const savedVarMark = Decoration.mark({
   attributes: { class: 'cm-prompt-var cm-prompt-var-saved' },
 });
+const defaultVarMark = Decoration.mark({
+  attributes: { class: 'cm-prompt-var cm-prompt-var-default' },
+});
 const unsavedVarMark = Decoration.mark({
   attributes: { class: 'cm-prompt-var' },
 });
+
+function markFor(range: VariableRange): Decoration {
+  if (range.saved) return savedVarMark;
+  if (range.defaultClass) return defaultVarMark;
+  return unsavedVarMark;
+}
 
 function buildDecorations(config: VariableTokensConfig, doc: Text): DecorationSet {
   try {
@@ -95,7 +115,7 @@ function buildDecorations(config: VariableTokensConfig, doc: Text): DecorationSe
     const builder = new RangeSetBuilder<Decoration>();
     for (const r of ranges) {
       if (r.from >= r.to || r.from < 0 || r.to > doc.length) continue;
-      builder.add(r.from, r.to, r.saved ? savedVarMark : unsavedVarMark);
+      builder.add(r.from, r.to, markFor(r));
     }
     return builder.finish();
   } catch (err) {
@@ -164,10 +184,16 @@ const variableTheme = EditorView.baseTheme({
     backgroundColor: 'rgba(168, 85, 247, 0.18)',
     borderBottomColor: 'rgba(168, 85, 247, 0.7)',
   },
-  // Saved variables get the emerald treatment used by the sidebar list.
+  // Saved variables get the solid emerald treatment used by the sidebar list.
   '.cm-prompt-var-saved': {
     borderBottom: '1px solid rgba(16, 185, 129, 0.75)',
     color: 'rgba(5, 150, 105, 0.95)',
+  },
+  // Default-class variables (ACTOR1/2/3, GOAL, …) read as recognised even when
+  // not explicitly saved: a lighter dotted emerald, between saved and unknown.
+  '.cm-prompt-var-default': {
+    borderBottom: '1px dotted rgba(16, 185, 129, 0.7)',
+    color: 'rgba(5, 150, 105, 0.8)',
   },
 });
 

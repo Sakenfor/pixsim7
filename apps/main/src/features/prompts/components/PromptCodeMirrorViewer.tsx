@@ -150,6 +150,7 @@ export function PromptCodeMirrorViewer({
               <VariableEditPopover
                 name={variable.name}
                 saved={saved}
+                defaultClass={variable.defaultClass}
                 description={entry?.description}
                 onCancel={() => setVarPopover(null)}
                 onSave={async () => {
