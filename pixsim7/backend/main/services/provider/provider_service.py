@@ -1119,11 +1119,51 @@ class ProviderService:
 
         # Default provider status check (or batch-cache miss)
         if status_result is None:
-            status_result = await provider.check_status(
-                account=account,
-                provider_job_id=submission.provider_job_id,
-                operation_type=operation_type,
-            )
+            try:
+                status_result = await provider.check_status(
+                    account=account,
+                    provider_job_id=submission.provider_job_id,
+                    operation_type=operation_type,
+                )
+            except Exception as check_err:
+                # Pixverse per-job get_image (the message-list path) times out
+                # for some burst image jobs while the account's image LIST
+                # endpoint stays healthy. The single-page batch fast-path above
+                # only covers the newest ~200 images, so a job that has scrolled
+                # past it on a busy account falls here — and then the poller
+                # backs off and retries the SAME failing get_image, stretching
+                # an already-rendered image to the ~30 min it took to land one
+                # success (gen 154313 / job 405700859227003: render ready at
+                # submit+7min, ingested at submit+30min). Route around the dead
+                # call via the healthy deeper numeric list-resolve before
+                # propagating. Image ops only; re-raise the ORIGINAL error if
+                # the list can't resolve it terminal so normal backoff still
+                # applies.
+                if not (
+                    submission.provider_id == "pixverse"
+                    and operation_type in get_image_operations()
+                    and submission.provider_job_id
+                    and hasattr(provider, "check_image_status_from_list")
+                ):
+                    raise
+                try:
+                    list_result = await provider.check_image_status_from_list(
+                        account=account,
+                        image_id=submission.provider_job_id,
+                        max_pages=20,
+                    )
+                except Exception:
+                    raise check_err
+                if list_result is None or list_result.status == ProviderStatus.PROCESSING:
+                    raise check_err
+                logger.warning(
+                    "pixverse_image_get_image_timeout_resolved_via_list",
+                    submission_id=submission.id,
+                    provider_job_id=submission.provider_job_id,
+                    status=str(list_result.status),
+                    error=str(check_err),
+                )
+                status_result = list_result
 
         # Pixverse image fallback: use the direct image list to bypass the
         # message endpoint which acts as a notification consumer — completed

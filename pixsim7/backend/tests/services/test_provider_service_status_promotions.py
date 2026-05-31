@@ -973,6 +973,85 @@ async def test_pixverse_image_with_url_stuck_processing_keeps_shallow_pages(
     assert returned.status == ProviderStatus.PROCESSING
 
 
+class _FakeProviderGetImageTimeout(_FakeProvider):
+    """check_status (per-job get_image) raises a timeout; the list endpoint is
+    healthy. Mirrors the burst hole where get_image times out for ~30 min while
+    list_images keeps working."""
+
+    def __init__(self, list_result: ProviderStatusResult, *, list_raises: bool = False):
+        super().__init__(list_result)
+        self._list_result = list_result
+        self._list_raises = list_raises
+        self.list_calls: list[int] = []
+
+    async def check_status(self, **_kwargs) -> ProviderStatusResult:
+        raise RuntimeError("Request timeout: ")
+
+    async def check_image_status_from_list(
+        self, *, account, image_id, max_pages
+    ) -> ProviderStatusResult:
+        self.list_calls.append(max_pages)
+        if self._list_raises:
+            raise RuntimeError("Request timeout: ")
+        return self._list_result
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_get_image_timeout_reroutes_to_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # get_image times out, but the list resolves the job COMPLETED -> the
+    # generation finalizes this tick instead of backing off for ~30 min.
+    submission = _make_submission(response={"metadata": {"provider_status": 5}})
+    list_result = ProviderStatusResult(
+        status=ProviderStatus.COMPLETED,
+        video_url=_IMAGE_URL,
+        thumbnail_url=_IMAGE_URL,
+        metadata={"provider_status": 1, "is_image": True},
+    )
+    provider = _FakeProviderGetImageTimeout(list_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    _patch_probe(monkeypatch, True)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert returned.status == ProviderStatus.COMPLETED
+    assert provider.list_calls == [20]  # deep resolve, once
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_get_image_timeout_propagates_when_list_cannot_resolve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # get_image times out AND the list can't resolve it (still processing /
+    # scrolled past 20 pages) -> the original error propagates so the poller's
+    # normal transient backoff still applies.
+    submission = _make_submission(response={"metadata": {"provider_status": 5}})
+    list_result = ProviderStatusResult(
+        status=ProviderStatus.PROCESSING,
+        metadata={"is_image": True, "matched": False},
+    )
+    provider = _FakeProviderGetImageTimeout(list_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    _patch_probe(monkeypatch, True)
+
+    with pytest.raises(RuntimeError, match="Request timeout"):
+        await service.check_status(
+            submission=submission,
+            account=SimpleNamespace(id=11),
+            operation_type=OperationType.IMAGE_TO_IMAGE,
+            poll_cache=None,
+        )
+    assert provider.list_calls == [20]
+
+
 # ---------------------------------------------------------------------------
 # Terminal-salvage deferral (finalize-site agnostic). Pixverse flips
 # image_status to 8/9 a few seconds before the i2i/ori object is flushed; a
