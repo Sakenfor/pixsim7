@@ -29,6 +29,11 @@ export { createLocalFolderHashesApi } from './localFolderHashes';
 export { createLogsApi } from './logs';
 export { createPluginsApi } from './plugins';
 export { createPromptsApi } from './prompts';
+export type {
+  SearchSimilarPromptsQuery,
+  SimilarPromptMatch,
+  SimilarPromptsResponse,
+} from './prompts';
 export { createPromptOperationsApi } from './promptOperations';
 export type {
   OpExecuteRequest,

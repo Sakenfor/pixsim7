@@ -97,6 +97,8 @@ def _build_search_filters(request: AssetSearchRequest) -> AssetSearchFilters:
         similar_to=request.similar_to,
         similarity_threshold=request.similarity_threshold,
         embedder_id=request.embedder_id,
+        similar_prompt_version_id=request.similar_prompt_version_id,
+        prompt_similarity_threshold=request.prompt_similarity_threshold,
     )
 
 

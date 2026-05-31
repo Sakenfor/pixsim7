@@ -968,6 +968,17 @@ function buildMoreFromVariants(asset: AssetModel): { id: string; label: string; 
   const threshold = useMediaSettingsStore.getState().visualSimilarityThreshold;
   variants.push({ id: 'similar', label: 'Similar content', icon: 'search', filters: { similar_to: asset.id, similarity_threshold: Number.isFinite(threshold) ? threshold : 0.3 } });
 
+  if (asset.promptVersionId) {
+    // Semantic (not exact) prompt cohort — assets whose prompt is semantically
+    // close to this one's. Distinct from "Same prompt version" (exact match).
+    variants.push({
+      id: 'similar-prompt-semantic',
+      label: 'Similar prompts (semantic)',
+      icon: 'sparkles',
+      filters: { similar_prompt_version_id: asset.promptVersionId, prompt_similarity_threshold: 0.5 },
+    });
+  }
+
   if (asset.sha256) {
     variants.push({ id: 'sha256', label: `Same content (#${asset.sha256.slice(0, 8)})`, icon: 'copy', filters: { sha256: asset.sha256 } });
   }

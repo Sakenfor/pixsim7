@@ -109,8 +109,9 @@ class AssetSearchMixin:
         group_filter_invert: bool = False,
         similar_to_embedding=None,
         similar_to_embedder_id: Optional[str] = None,
+        similar_prompt_version_ids: Optional[list] = None,
     ):
-        from sqlalchemy import and_, or_, case, literal, exists, cast, distinct, String
+        from sqlalchemy import and_, or_, case, literal, exists, cast, distinct, String, false as sql_false
         from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
         from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 
@@ -378,6 +379,17 @@ class AssetSearchMixin:
         # Prompt version filter (denormalized on asset)
         if prompt_version_id is not None:
             query = query.where(Asset.prompt_version_id == prompt_version_id)
+
+        # Semantic prompt-similarity cohort — version IDs pre-resolved (async) by
+        # the caller via PromptEmbeddingService. None means the filter is unset;
+        # an empty list means the source had no embedded neighbors → no rows.
+        if similar_prompt_version_ids is not None:
+            if similar_prompt_version_ids:
+                query = query.where(
+                    Asset.prompt_version_id.in_(similar_prompt_version_ids)
+                )
+            else:
+                query = query.where(sql_false())
 
         # Prompt family filter (denormalized on asset) — "same prompt, all versions"
         if sf.prompt_family_id is not None:
@@ -652,6 +664,49 @@ class AssetSearchMixin:
         vector = result.scalar_one_or_none()
         return vector, resolved_id
 
+    async def _resolve_similar_prompt_version_ids(
+        self,
+        sf: AssetSearchFilters,
+    ) -> Optional[list[UUID]]:
+        """Resolve the cohort of prompt-version IDs semantically similar to
+        ``sf.similar_prompt_version_id``.
+
+        Returns ``None`` when the filter is unset (no prompt-similarity filtering),
+        or a (possibly empty) list of version IDs to filter assets by. An empty
+        list means the source version isn't embedded / has no neighbors → the
+        search should yield no rows. Mirrors the visual ``similar_to`` pattern:
+        the async hop runs here so the sync query-builder stays pure.
+        """
+        source_id = sf.similar_prompt_version_id
+        if source_id is None:
+            return None
+
+        from pixsim7.backend.main.services.embedding.prompt_service import (
+            PromptEmbeddingService,
+            PromptVersionNotEmbeddedError,
+            PromptVersionNotFoundError,
+        )
+
+        try:
+            version_id = source_id if isinstance(source_id, UUID) else UUID(str(source_id))
+        except (ValueError, TypeError):
+            return []
+
+        threshold = sf.prompt_similarity_threshold
+        if threshold is None:
+            threshold = 0.5
+
+        try:
+            results = await PromptEmbeddingService(self.db).find_similar(
+                version_id,
+                limit=50,
+                min_similarity=threshold,
+            )
+        except (PromptVersionNotEmbeddedError, PromptVersionNotFoundError):
+            return []
+
+        return [UUID(r["version_id"]) for r in results]
+
     async def list_assets(
         self,
         user: User,
@@ -682,11 +737,15 @@ class AssetSearchMixin:
             sf.similar_to, owner_user_id, embedder_id=sf.embedder_id,
         )
 
+        # Pre-resolve the semantic prompt-similarity cohort (async DB hop)
+        similar_prompt_version_ids = await self._resolve_similar_prompt_version_ids(sf)
+
         query = self._build_asset_search_query(
             user=user,
             sf=sf,
             similar_to_embedding=similar_to_embedding,
             similar_to_embedder_id=similar_to_embedder_id,
+            similar_prompt_version_ids=similar_prompt_version_ids,
         )
 
         # Total count (before sorting/pagination)

@@ -45,6 +45,10 @@ export type AssetSearchRequest = Partial<AssetSearchRequestSchema> & {
   similar_to?: number;
   /** Min similarity 0-1, default 0.3 */
   similarity_threshold?: number;
+  /** Prompt version ID for semantic prompt-similarity search (assets from similar prompt versions) */
+  similar_prompt_version_id?: string;
+  /** Min prompt similarity 0-1, default 0.5 */
+  prompt_similarity_threshold?: number;
   /** Whitelist of asset IDs to include */
   asset_ids?: number[];
   /** Include exact total count (can be expensive on large libraries) */

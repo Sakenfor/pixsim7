@@ -120,6 +120,15 @@ class AssetSearchRequest(BaseModel):
     similarity_threshold: float | None = Field(None, ge=0.0, le=1.0, description="Min similarity 0-1, default 0.3")
     embedder_id: str | None = Field(None, description="Embedder space to search in; defaults to user's primary")
 
+    similar_prompt_version_id: UUID | None = Field(
+        None,
+        description="Prompt version ID for semantic prompt-similarity search "
+        "(returns assets generated from semantically similar prompt versions)",
+    )
+    prompt_similarity_threshold: float | None = Field(
+        None, ge=0.0, le=1.0, description="Min prompt similarity 0-1, default 0.5"
+    )
+
     prompt_version_id: UUID | None = Field(None, description="Filter by prompt version ID")
     prompt_family_id: UUID | None = Field(None, description="Filter by prompt family ID (all versions of a prompt)")
     input_assets_key: str | None = Field(None, description="Filter by input-assets key (assets sharing the same input-asset set)")

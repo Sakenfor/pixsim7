@@ -67,7 +67,12 @@ class AssetSearchFilters:
     group_by: Optional[str] = None
     group_key: Optional[str] = None
 
-    # Similarity
+    # Similarity (visual — cosine distance over AssetEmbedding)
     similar_to: Optional[int] = None
     similarity_threshold: Optional[float] = None
     embedder_id: Optional[str] = None
+
+    # Semantic prompt similarity — resolves to the cohort of prompt versions
+    # semantically similar to this version, then filters assets by them.
+    similar_prompt_version_id: Any = None
+    prompt_similarity_threshold: Optional[float] = None

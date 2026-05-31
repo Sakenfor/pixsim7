@@ -56,6 +56,37 @@ export type PromptAnalytics = unknown;
 export type PromptComparison = unknown;
 export type SemanticPack = SemanticPackManifest;
 
+// ===== Similarity search (/prompts/search/similar) =====
+
+export interface SearchSimilarPromptsQuery {
+  prompt: string;
+  /** "text" (lexical, default) or "vector" (pgvector semantic search). */
+  mode?: 'text' | 'vector';
+  limit?: number;
+  /** Minimum similarity score 0-1. */
+  threshold?: number;
+  family_id?: string;
+}
+
+export interface SimilarPromptMatch {
+  version_id: string;
+  family_id: string | null;
+  version_number: number | null;
+  prompt_text: string;
+  similarity_score: number;
+  commit_message: string | null;
+}
+
+export interface SimilarPromptsResponse {
+  query: string;
+  limit: number;
+  threshold: number;
+  family_id: string | null;
+  mode: string;
+  results: SimilarPromptMatch[];
+  result_count: number;
+}
+
 type ListFamiliesQuery = ListFamiliesApiV1PromptsFamiliesGetParams;
 type ListVersionsQuery = ListVersionsApiV1PromptsFamiliesFamilyIdVersionsGetParams;
 type CreatePromptFamilyRequestSchema = CreatePromptFamilyRequest;
@@ -135,6 +166,14 @@ export function createPromptsApi(client: PixSimApiClient) {
       return client.get<PromptVersionDetail>(
         `/prompts/versions/${encodeURIComponent(String(versionId))}`
       );
+    },
+
+    // ===== Similarity search =====
+
+    async searchSimilar(query: SearchSimilarPromptsQuery): Promise<SimilarPromptsResponse> {
+      return client.get<SimilarPromptsResponse>('/prompts/search/similar', {
+        params: query,
+      });
     },
 
     async createVersion(

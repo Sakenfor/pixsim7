@@ -62,6 +62,11 @@ export type AssetFilters = {
   similar_to?: number;
   similarity_threshold?: number;
 
+  // Semantic prompt-similarity search — assets from prompt versions
+  // semantically similar to this version (UUID string)
+  similar_prompt_version_id?: string;
+  prompt_similarity_threshold?: number;
+
   // Prompt version filter (UUID string)
   prompt_version_id?: string;
   // Prompt family filter (UUID string) — "same prompt, all versions"

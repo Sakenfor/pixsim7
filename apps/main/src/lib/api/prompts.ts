@@ -5,6 +5,9 @@ import type {
   PromptFamilySummary,
   PromptVersionDetail,
   PromptVersionSummary,
+  SearchSimilarPromptsQuery,
+  SimilarPromptMatch,
+  SimilarPromptsResponse,
 } from '@pixsim7/shared.api.client/domains';
 import type {
   CreatePromptFamilyRequest,
@@ -18,6 +21,12 @@ import { pixsimClient } from './client';
 const promptsApi = createPromptsApi(pixsimClient);
 
 export type { BranchSummary, PromptFamilySummary, PromptFamilyDetail, PromptVersionSummary, PromptVersionDetail };
+export type { SearchSimilarPromptsQuery, SimilarPromptMatch, SimilarPromptsResponse };
+
+/** Find prompt versions similar to a query string (semantic via mode='vector'). */
+export const searchSimilarPrompts = (
+  query: SearchSimilarPromptsQuery,
+): Promise<SimilarPromptsResponse> => promptsApi.searchSimilar(query);
 
 export interface GenerationHintContract {
   operation: string;
