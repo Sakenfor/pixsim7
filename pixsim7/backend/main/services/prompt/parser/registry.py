@@ -310,6 +310,28 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
             source_plugin_id="core",
             enabled=True,
         ))
+        # Text embedder for prompt/block similarity (plan:
+        # analyzer-preset-driven-embedder-config). Carries the canonical
+        # subprocess command in its config so CommandEmbeddingProvider can
+        # resolve it without an env var. Presets approved via
+        # analyzer_presets are merged into config["presets"] at startup.
+        self.register(AnalyzerInfo(
+            id="prompt:embedding",
+            name="Text Embedding",
+            description="Generates semantic embeddings for prompts and blocks "
+                        "(default: local BGE-base-en-v1.5, 768-dim)",
+            kind=AnalyzerKind.LLM,
+            target=AnalyzerTarget.PROMPT,
+            task_family=AnalyzerTaskFamily.EMBEDDING,
+            source_plugin_id="core",
+            enabled=True,
+            config={
+                "command": "python -m pixsim7.embedding.cli.text_local",
+                "timeout": 120,
+                "model_id_hint": "BAAI/bge-base-en-v1.5",
+                "dimensions": 768,
+            },
+        ))
         self.register(AnalyzerInfo(
             id="asset:custom",
             name="Custom Asset Analyzer",

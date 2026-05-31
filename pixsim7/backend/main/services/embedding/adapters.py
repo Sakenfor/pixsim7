@@ -155,13 +155,24 @@ class CommandEmbeddingProvider:
             if cmd:
                 return self._parse_shell_args(cmd)
 
-        cmd_str = self._command or os.getenv("CMD_EMBEDDING_COMMAND", "")
-        if not cmd_str.strip():
+        # Constructor override wins next (used by tests + per-instance setups).
+        if self._command:
+            return self._parse_shell_args(self._command)
+
+        # Resolver: analyzer registry config -> env var -> hardcoded default.
+        # See plan:analyzer-preset-driven-embedder-config Session A (p3/p4).
+        from pixsim7.backend.main.services.embedding.preset_resolver import (
+            resolve_embedder_command,
+        )
+
+        resolved = resolve_embedder_command("prompt:embedding")
+        if not resolved.command.strip():
             raise ProviderError(
                 self.provider_id,
-                "No command configured. Set CMD_EMBEDDING_COMMAND environment variable."
+                "No command configured for prompt:embedding. Set the analyzer "
+                "config (analyzer_presets) or CMD_EMBEDDING_COMMAND env var.",
             )
-        return self._parse_shell_args(cmd_str)
+        return self._parse_shell_args(resolved.command)
 
     def _get_timeout(self, instance_config: dict | None = None) -> int:
         if instance_config:
@@ -173,6 +184,14 @@ class CommandEmbeddingProvider:
                     pass
         if self._timeout is not None:
             return self._timeout
+        # Try registry-driven timeout, falling back to env var, then 120.
+        from pixsim7.backend.main.services.embedding.preset_resolver import (
+            resolve_embedder_command,
+        )
+
+        resolved = resolve_embedder_command("prompt:embedding")
+        if resolved.timeout is not None:
+            return resolved.timeout
         try:
             return int(os.getenv("CMD_EMBEDDING_TIMEOUT", "120"))
         except ValueError:
