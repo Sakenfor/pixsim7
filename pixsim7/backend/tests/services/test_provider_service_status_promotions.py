@@ -890,6 +890,89 @@ async def test_pixverse_image_recent_processing_not_probed_before_threshold(
     assert returned.status == ProviderStatus.PROCESSING
 
 
+class _FakeProviderRecordingImageList(_FakeProvider):
+    """Records the max_pages passed to check_image_status_from_list so the
+    no-url stuck-image deepening can be asserted."""
+
+    def __init__(self, result: ProviderStatusResult) -> None:
+        super().__init__(result)
+        self.image_list_calls: list[int] = []
+
+    async def check_image_status_from_list(
+        self, *, max_pages: int = 3, **_kwargs
+    ) -> ProviderStatusResult:
+        self.image_list_calls.append(max_pages)
+        # List can't resolve it either -> stays PROCESSING.
+        return ProviderStatusResult(
+            status=ProviderStatus.PROCESSING,
+            metadata={"is_image": True, "source": "list_fallback", "matched": False},
+        )
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_no_url_stuck_processing_scans_deep_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Quickgen-burst hole: the submit returned a numeric job id but never
+    # captured a CDN url, and get_image stays "processing". The CDN salvage
+    # can't help (nothing to probe), so the numeric list resolve is the ONLY
+    # net -> it must scan as deep as the last-ditch (20 pages), not the
+    # shallow 5, so a render scrolled past page 5 on a busy account resolves
+    # at ~90s instead of stalling until the 2-hour timeout.
+    submission = _make_submission(response={"metadata": {"provider_status": 5}})
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.PROCESSING,
+        video_url=None,
+        thumbnail_url=None,
+        metadata={"provider_status": 5, "is_image": True},
+    )
+    provider = _FakeProviderRecordingImageList(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    probe_calls = _patch_probe(monkeypatch, False)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert provider.image_list_calls == [20]
+    # No candidate url -> CDN salvage never probes.
+    assert probe_calls == []
+    assert returned.status == ProviderStatus.PROCESSING
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_with_url_stuck_processing_keeps_shallow_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Common case: a pre-allocated url was captured, so the CDN salvage is the
+    # primary net and the list resolve stays cheap (5 pages).
+    submission = _make_submission(response={"metadata": {"provider_status": 5}})
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.PROCESSING,
+        video_url=_IMAGE_URL,
+        thumbnail_url=None,
+        metadata={"provider_status": 5, "is_image": True},
+    )
+    provider = _FakeProviderRecordingImageList(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    _patch_probe(monkeypatch, False)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert provider.image_list_calls == [5]
+    assert returned.status == ProviderStatus.PROCESSING
+
+
 # ---------------------------------------------------------------------------
 # Terminal-salvage deferral (finalize-site agnostic). Pixverse flips
 # image_status to 8/9 a few seconds before the i2i/ori object is flushed; a
@@ -1038,18 +1121,59 @@ async def test_pixverse_image_terminal_deferral_requires_candidate_url(
 
 
 @pytest.mark.asyncio
-async def test_pixverse_image_filtered_not_deferred_with_candidate_url(
+async def test_pixverse_image_filtered_deferred_within_short_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Even with a real candidate URL and a recent submission, FILTERED should
-    # remain terminal. Deferral is reserved for FAILED (8/9) so filtered runs
-    # don't consume synthetic processing slots for the full salvage window.
+    # FILTERED (status 7) shares the same "url advertised before object
+    # flushed" race as FAILED, so we also defer briefly. Window is shorter
+    # (30s) than FAILED's because Pixverse releases its slot on filter.
     submission = _make_submission(
         response={
             "asset_url": _IMAGE_URL,
             "metadata": {"provider_status": 7},
         },
         submitted_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+    )
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.FILTERED,
+        video_url=None,
+        thumbnail_url=None,
+        metadata={"provider_status": 7, "is_image": True},
+    )
+    provider = _FakeProvider(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    _patch_probe(monkeypatch, False)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert returned.status == ProviderStatus.PROCESSING
+    meta = submission.response["metadata"]
+    assert meta["image_terminal_salvage_deferred"] is True
+    assert meta["image_terminal_salvage_deferred_status"] == "filtered"
+    assert meta["image_terminal_salvage_window_seconds"] == 30
+    assert submission.response["status"] == "processing"
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_filtered_not_deferred_after_short_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Past the FILTERED window (30s) with the object still absent: emit the
+    # real terminal FILTERED status — no indefinite deferral on filter, and
+    # noticeably shorter than the FAILED window so slot accounting stays
+    # honest. 60s exceeds 30s but is still under the 120s FAILED window.
+    submission = _make_submission(
+        response={
+            "asset_url": _IMAGE_URL,
+            "metadata": {"provider_status": 7},
+        },
+        submitted_at=datetime.now(timezone.utc) - timedelta(seconds=60),
     )
     status_result = ProviderStatusResult(
         status=ProviderStatus.FILTERED,

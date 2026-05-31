@@ -194,6 +194,13 @@ def _is_video_extend_silent_filter_candidate(status_result: ProviderStatusResult
 # in check_status for the full rationale.
 _PIXVERSE_IMAGE_TERMINAL_SALVAGE_WINDOW_SEC = 120
 
+# Shorter sibling window for FILTERED (status 7). The "url advertised before
+# object flushed" race that motivates the FAILED window applies to FILTERED
+# too, but Pixverse releases its slot on filter, so synthetic PROCESSING
+# locally over-counts active jobs. 30s comfortably exceeds the "few seconds"
+# race window without holding a slot for the full 2min the FAILED path uses.
+_PIXVERSE_IMAGE_FILTERED_SALVAGE_WINDOW_SEC = 30
+
 
 def _pixverse_image_salvage_candidate_url(
     submission: Any,
@@ -1138,6 +1145,23 @@ class ProviderService:
             threshold_seconds = 45 if ("qwen" in model_name or "seedream" in model_name) else 90
             elapsed_seconds = (datetime.now(timezone.utc) - submission.submitted_at).total_seconds()
 
+            # When this submission never captured a pre-allocated CDN url, the
+            # CDN salvage below is structurally a no-op (nothing to HEAD-probe)
+            # — so the numeric list resolve here is the ONLY recovery net
+            # before the 2-hour stuck-PROCESSING timeout. This is the
+            # quickgen-burst hole: a submit returns a numeric job id but no
+            # url, get_image then stays permanently "processing", and on a
+            # busy account the rendered image has already scrolled past the
+            # shallow 5-page window — so it stalled 2h until the last-ditch
+            # (max_pages=20) finally found it. Scan that deep here too, but
+            # only for the no-url submissions that actually need it, so the
+            # common (url-bearing) case keeps the cheap 5-page scan.
+            has_salvage_url = (
+                _pixverse_image_salvage_candidate_url(submission, status_result)
+                is not None
+            )
+            fallback_max_pages = 5 if has_salvage_url else 20
+
             if elapsed_seconds >= threshold_seconds:
                 try:
                     # Paginate deeper than the default (3) so older submissions
@@ -1146,7 +1170,7 @@ class ProviderService:
                     fallback_result = await provider.check_image_status_from_list(
                         account=account,
                         image_id=submission.provider_job_id,
-                        max_pages=5,
+                        max_pages=fallback_max_pages,
                     )
                     if fallback_result.status != ProviderStatus.PROCESSING:
                         status_result = fallback_result
@@ -1155,6 +1179,7 @@ class ProviderService:
                         "pixverse_image_fallback_failed",
                         submission_id=submission.id,
                         provider_job_id=submission.provider_job_id,
+                        max_pages=fallback_max_pages,
                         error=str(fallback_err),
                     )
 
@@ -1281,35 +1306,40 @@ class ProviderService:
                 )
 
         # Pixverse image terminal-salvage deferral (finalize-site agnostic).
-        # Pixverse flips image_status to 8/9 (-> FAILED) — and even surfaces
-        # the i2i/ori/<uuid>.png url in the list payload — a few seconds
-        # BEFORE that CDN object is actually flushed. The single-shot salvage
-        # above probes once and 404s on that tick. A normally-retried
-        # generation recovers on a later tick; but one removed from the poll
-        # set the instant it goes terminal (quickgen burst-cancel,
-        # retries-exhausted, deferred cancel) gets no later tick and the
-        # rendered image is lost until a manual resync. Keep the job
-        # PROCESSING for a bounded window so the salvage re-probes on
-        # subsequent ticks regardless of who would finalize it — only emit
-        # the real terminal status once the window elapses with the object
-        # still absent.
+        # Pixverse flips image_status to 7/8/9 — and even surfaces the
+        # i2i/ori/<uuid>.png url in the list payload — a few seconds BEFORE
+        # that CDN object is actually flushed. The single-shot salvage above
+        # probes once and 404s on that tick. A normally-retried generation
+        # recovers on a later tick; but one removed from the poll set the
+        # instant it goes terminal (quickgen burst-cancel, retries-exhausted,
+        # deferred cancel) gets no later tick and the rendered image is
+        # lost until a manual resync. Keep the job PROCESSING for a bounded
+        # window so the salvage re-probes on subsequent ticks regardless of
+        # who would finalize it — only emit the real terminal status once
+        # the window elapses with the object still absent.
         #
-        # IMPORTANT: apply deferral only to FAILED (8/9), not FILTERED (7).
-        # FILTERED verdicts are terminal for provider slot accounting; holding
-        # them in synthetic PROCESSING for the full salvage window can starve
-        # local concurrency while the provider shows fewer active jobs.
+        # Window length differs by status: FAILED (8/9) gets the full 120s
+        # because Pixverse still counts the job against the account's slot;
+        # FILTERED (7) gets a shorter 30s because Pixverse already released
+        # its slot, so holding synthetic PROCESSING locally for the full
+        # window would over-count active jobs and starve concurrency. 30s
+        # still comfortably exceeds the "few seconds" CDN-flush race.
         if (
             submission.provider_id == "pixverse"
             and operation_type in get_image_operations()
-            and status_result.status == ProviderStatus.FAILED
+            and status_result.status in (ProviderStatus.FAILED, ProviderStatus.FILTERED)
             and submission.provider_job_id
             and submission.submitted_at
             and _pixverse_image_salvage_candidate_url(submission, status_result)
         ):
+            if status_result.status == ProviderStatus.FAILED:
+                window_seconds = _PIXVERSE_IMAGE_TERMINAL_SALVAGE_WINDOW_SEC
+            else:
+                window_seconds = _PIXVERSE_IMAGE_FILTERED_SALVAGE_WINDOW_SEC
             elapsed_seconds = (
                 datetime.now(timezone.utc) - submission.submitted_at
             ).total_seconds()
-            if elapsed_seconds < _PIXVERSE_IMAGE_TERMINAL_SALVAGE_WINDOW_SEC:
+            if elapsed_seconds < window_seconds:
                 deferred_terminal = status_result.status.value
                 status_result.status = ProviderStatus.PROCESSING
                 status_result.metadata = {
@@ -1317,9 +1347,7 @@ class ProviderService:
                     "image_terminal_salvage_deferred": True,
                     "image_terminal_salvage_deferred_status": deferred_terminal,
                     "image_terminal_salvage_elapsed_seconds": int(elapsed_seconds),
-                    "image_terminal_salvage_window_seconds": (
-                        _PIXVERSE_IMAGE_TERMINAL_SALVAGE_WINDOW_SEC
-                    ),
+                    "image_terminal_salvage_window_seconds": window_seconds,
                 }
                 logger.info(
                     "pixverse_image_terminal_salvage_deferred",
@@ -1327,7 +1355,7 @@ class ProviderService:
                     provider_job_id=submission.provider_job_id,
                     deferred_status=deferred_terminal,
                     elapsed_seconds=int(elapsed_seconds),
-                    window_seconds=_PIXVERSE_IMAGE_TERMINAL_SALVAGE_WINDOW_SEC,
+                    window_seconds=window_seconds,
                 )
 
         # Update submission response with latest status
