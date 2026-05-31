@@ -102,11 +102,13 @@ export function PromptBoxPanel() {
                   candidates={candidates}
                   tokenLines={tokenLines}
                   emphasizedRole={emphasizedRole}
+                  enableVariableSave
                 />
               ) : (
                 <PromptInlineViewer
                   prompt={prompt}
                   candidates={candidates}
+                  className="h-full overflow-auto rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-2 text-neutral-900 dark:text-neutral-100"
                   emphasizedRole={emphasizedRole}
                 />
               )}
