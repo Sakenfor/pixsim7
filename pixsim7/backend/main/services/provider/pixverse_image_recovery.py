@@ -38,8 +38,8 @@ from sqlalchemy import desc, func, select
 
 from pixsim7.backend.main.domain import Generation
 from pixsim7.backend.main.domain.assets import Asset
-from pixsim7.backend.main.domain.enums import GenerationStatus
-from pixsim7.backend.main.domain.providers import ProviderSubmission
+from pixsim7.backend.main.domain.enums import GenerationStatus, ProviderStatus
+from pixsim7.backend.main.domain.providers import ProviderAccount, ProviderSubmission
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     is_pixverse_placeholder_url as _is_placeholder,
 )
@@ -221,6 +221,98 @@ async def find_recoverable(
     for (s, url, ps), ok in zip(cands, results):
         if ok:
             return RecoverableMatch(submission=s, url=url, provider_status=ps)
+    return None
+
+
+async def find_recoverable_via_numeric_list(
+    session,
+    gen: Generation,
+    *,
+    provider: Any,
+    account_cache: Optional[dict[int, Any]] = None,
+    max_pages: int = 20,
+) -> Optional[RecoverableMatch]:
+    """Resolve a *no-url* submission by numeric ``image_id`` against the
+    account's personal image list — the recovery net for the quickgen-burst
+    hole where a submit returned a job id but never captured a pre-allocated
+    CDN url, so the url-keyed :func:`find_recoverable` above is structurally
+    blind to it (nothing to HEAD-probe).
+
+    Only submissions whose response carries no probeable url are tried; the
+    url-bearing ones are owned by :func:`find_recoverable` and skipped here to
+    avoid a redundant live call. Newest-first; returns the first submission
+    whose list entry resolved to a real (non-placeholder) url at a terminal
+    status, else ``None``.
+
+    Live — calls ``provider.check_image_status_from_list`` per candidate
+    submission. A timeout/error on one submission is swallowed and the next is
+    tried, so a flaky provider degrades to "found nothing" rather than raising
+    (the documented Pixverse ``Request timeout`` that orphans these in the
+    first place must not abort the whole sweep).
+    """
+    if provider is None or not hasattr(provider, "check_image_status_from_list"):
+        return None
+    subs = (
+        await session.execute(
+            select(ProviderSubmission)
+            .where(ProviderSubmission.generation_id == gen.id)
+            .order_by(desc(ProviderSubmission.submitted_at))
+        )
+    ).scalars().all()
+
+    if account_cache is None:
+        account_cache = {}
+
+    for s in subs:
+        if not s.provider_job_id:
+            continue
+        resp = s.response if isinstance(s.response, dict) else {}
+        # Url-bearing submissions are the url-keyed path's job — skip so we
+        # don't pay a live list call for something HEAD-probe already covers.
+        if [u for u in extract_candidate_urls(resp) if not _is_placeholder(u)]:
+            continue
+
+        account = account_cache.get(s.account_id)
+        if account is None:
+            account = await session.get(ProviderAccount, s.account_id)
+            account_cache[s.account_id] = account
+        if account is None:
+            continue
+
+        try:
+            result = await provider.check_image_status_from_list(
+                account=account,
+                image_id=str(s.provider_job_id),
+                max_pages=max_pages,
+            )
+        except Exception:
+            logger.warning(
+                "pixverse_image_recovery_numeric_resolve_failed",
+                generation_id=gen.id,
+                submission_id=s.id,
+                provider_job_id=s.provider_job_id,
+                exc_info=True,
+            )
+            continue
+
+        if result is None or result.status == ProviderStatus.PROCESSING:
+            continue
+        url = result.video_url
+        if not (url and str(url).startswith("http")) or _is_placeholder(url):
+            continue
+        # Terminal (COMPLETED, or FILTERED/FAILED but the list surfaced a real
+        # ori url == false-filter render): re-arm and let the forward salvage
+        # re-classify billing. A genuine non-render returns no real url above.
+        ps = (result.metadata or {}).get("provider_status")
+        logger.info(
+            "pixverse_image_recovery_numeric_resolved",
+            generation_id=gen.id,
+            submission_id=s.id,
+            provider_job_id=s.provider_job_id,
+            status=str(result.status),
+            provider_status=ps,
+        )
+        return RecoverableMatch(submission=s, url=url, provider_status=ps)
     return None
 
 

@@ -78,6 +78,17 @@ def parse_args() -> argparse.Namespace:
                         "(default 40). These chains have 60-70 attempts; the "
                         "rendered one is almost always recent. Raise to be "
                         "exhaustive at the cost of speed.")
+    p.add_argument("--no-numeric-resolve", action="store_true",
+                   help="Disable the live numeric image-list resolve fallback. "
+                        "By default, candidates the url-keyed CDN probe misses "
+                        "(no pre-allocated url ever captured — the quickgen-"
+                        "burst hole) are resolved by numeric image_id against "
+                        "the account's image list. Live (calls Pixverse); skip "
+                        "it for a purely offline CDN-probe run.")
+    p.add_argument("--numeric-max-pages", type=int, default=20,
+                   help="Pages to scan in the numeric image-list resolve "
+                        "fallback (default 20, matching the live poller's "
+                        "deep resolve).")
     p.add_argument("--before", type=str, default=None,
                    help="ISO timestamp upper bound (scan generations created "
                         "strictly before this). Overrides the saved --apply "
@@ -159,10 +170,23 @@ async def main() -> None:
     from pixsim7.backend.main.services.provider.pixverse_image_recovery import (
         RearmStatus,
         find_recoverable,
+        find_recoverable_via_numeric_list,
         make_probe_client,
         query_candidate_generations,
         rearm_generation,
     )
+
+    # Numeric-list resolve fallback (live) for the no-url quickgen-burst hole.
+    # Off for --count-only (read-only/no-network) and when explicitly disabled.
+    numeric_resolve = not args.no_numeric_resolve and not args.count_only
+    provider = None
+    account_cache: dict[int, object] = {}
+    if numeric_resolve:
+        from pixsim7.backend.main.domain.providers.registry import registry
+        try:
+            provider = registry.get("pixverse")
+        except Exception:
+            provider = None
 
     async with get_async_session() as session:
         cands = await query_candidate_generations(
@@ -189,15 +213,27 @@ async def main() -> None:
                 client=probe_client, sem=sem,
                 max_probes=args.max_probes_per_gen,
             )
+            via_numeric = False
+            if not match and numeric_resolve and provider is not None:
+                # No pre-allocated url to HEAD-probe -> resolve the no-url
+                # submissions by numeric image_id against the account's list.
+                match = await find_recoverable_via_numeric_list(
+                    session, g,
+                    provider=provider,
+                    account_cache=account_cache,
+                    max_pages=args.numeric_max_pages,
+                )
+                via_numeric = match is not None
             if not match:
                 continue
             sub, url, ps = match.submission, match.url, match.provider_status
             recoverable += 1
+            tag = " [numeric-list resolve]" if via_numeric else ""
 
             if args.dry_run:
                 print("=" * 72)
                 print(f"gen#{g.id} created={g.created_at.isoformat()} "
-                      f"err={g.error_code!r} attempt={g.attempt_id}")
+                      f"err={g.error_code!r} attempt={g.attempt_id}{tag}")
                 print(f"  sub#{sub.id} job={sub.provider_job_id} "
                       f"prov_st={ps} attempt_id={sub.generation_attempt_id}")
                 print(f"    {url}")
@@ -217,7 +253,8 @@ async def main() -> None:
                 print(f"REARM gen#{g.id} -> PROCESSING "
                       f"attempt_id={sub.generation_attempt_id} "
                       f"(sub#{sub.id} job={sub.provider_job_id} prov_st={ps})"
-                      f"{' [isolated superseded sibling]' if isolated else ''}")
+                      f"{' [isolated superseded sibling]' if isolated else ''}"
+                      f"{tag}")
             elif status is RearmStatus.SKIPPED_NOT_TARGETABLE:
                 skipped += 1
                 print(f"SKIP gen#{g.id}: recoverable sub#{sub.id} row "

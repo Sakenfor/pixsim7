@@ -19,11 +19,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from pixsim7.backend.main.domain.enums import GenerationStatus
+from pixsim7.backend.main.domain.enums import (
+    GenerationStatus,
+    ProviderStatus,
+)
 from pixsim7.backend.main.services.provider import pixverse_image_recovery as rec
+from pixsim7.backend.main.services.provider.base import ProviderStatusResult
 from pixsim7.backend.main.services.provider.pixverse_image_recovery import (
     RearmStatus,
     RecoverableMatch,
+    find_recoverable_via_numeric_list,
     rearm_generation,
     sweep_and_rearm_sibling,
 )
@@ -249,3 +254,146 @@ async def test_sweep_noops_on_asset_bearing_generation(monkeypatch):
         session, generation_id=gen.id, selected_submission_id=1
     )
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Numeric image-list resolve: the recovery net for the quickgen-burst hole
+# where a submit returned a job id but never captured a pre-allocated CDN url,
+# so the url-keyed find_recoverable is structurally blind to it.
+# ---------------------------------------------------------------------------
+
+_REAL_ORI_URL = "https://media.pixverse.ai/pixverse/i2i/ori/realuuid-1234.png"
+
+
+class _ListSession:
+    """Async-session stand-in serving execute()->submissions and get()->account."""
+
+    def __init__(self, subs, accounts):
+        self._subs = subs
+        self._accounts = accounts
+
+    async def execute(self, _query):
+        subs = self._subs
+
+        class _Res:
+            def scalars(self_inner):
+                class _S:
+                    def all(self_s):
+                        return subs
+                return _S()
+        return _Res()
+
+    async def get(self, model, ident):
+        if model.__name__ == "ProviderAccount":
+            return self._accounts.get(ident)
+        return None
+
+
+def _nsub(sid, *, job, response, account_id=2, attempt_id=1):
+    return SimpleNamespace(
+        id=sid,
+        generation_id=134026,
+        generation_attempt_id=attempt_id,
+        account_id=account_id,
+        provider_job_id=job,
+        response=response,
+    )
+
+
+class _FakeListProvider:
+    """Provider stub exposing check_image_status_from_list keyed by job id."""
+
+    def __init__(self, by_job, *, raises_for=None):
+        self._by_job = by_job          # job_id -> ProviderStatusResult
+        self._raises_for = raises_for or set()
+        self.calls = []
+
+    async def check_image_status_from_list(self, *, account, image_id, max_pages):
+        self.calls.append((image_id, max_pages))
+        if image_id in self._raises_for:
+            raise TimeoutError("Request timeout: ")
+        return self._by_job.get(image_id)
+
+
+@pytest.mark.asyncio
+async def test_numeric_resolve_recovers_no_url_submission():
+    gen = _gen(status=GenerationStatus.CANCELLED)
+    # No url ever captured (the burst hole): response carries no asset/image url.
+    sub = _nsub(901, job="405700852609826", response={"metadata": {"provider_status": 5}})
+    session = _ListSession([sub], {2: SimpleNamespace(id=2)})
+    provider = _FakeListProvider({
+        "405700852609826": ProviderStatusResult(
+            status=ProviderStatus.COMPLETED,
+            video_url=_REAL_ORI_URL,
+            thumbnail_url=_REAL_ORI_URL,
+            metadata={"provider_status": 1, "is_image": True},
+        )
+    })
+
+    match = await find_recoverable_via_numeric_list(
+        session, gen, provider=provider, max_pages=20
+    )
+    assert match is not None
+    assert match.submission.id == 901
+    assert match.url == _REAL_ORI_URL
+    assert provider.calls == [("405700852609826", 20)]
+
+
+@pytest.mark.asyncio
+async def test_numeric_resolve_skips_url_bearing_submission():
+    gen = _gen(status=GenerationStatus.CANCELLED)
+    # Url-bearing -> owned by find_recoverable; the live resolve must not pay
+    # a list call for it.
+    sub = _nsub(902, job="405700844932714",
+                response={"asset_url": _REAL_ORI_URL})
+    session = _ListSession([sub], {2: SimpleNamespace(id=2)})
+    provider = _FakeListProvider({})  # would return None if (wrongly) called
+
+    match = await find_recoverable_via_numeric_list(
+        session, gen, provider=provider, max_pages=20
+    )
+    assert match is None
+    assert provider.calls == []
+
+
+@pytest.mark.asyncio
+async def test_numeric_resolve_still_processing_is_not_recovered():
+    gen = _gen(status=GenerationStatus.CANCELLED)
+    sub = _nsub(903, job="j-proc", response={})
+    session = _ListSession([sub], {2: SimpleNamespace(id=2)})
+    provider = _FakeListProvider({
+        "j-proc": ProviderStatusResult(
+            status=ProviderStatus.PROCESSING,
+            metadata={"is_image": True},
+        )
+    })
+
+    match = await find_recoverable_via_numeric_list(
+        session, gen, provider=provider, max_pages=20
+    )
+    assert match is None
+
+
+@pytest.mark.asyncio
+async def test_numeric_resolve_swallows_provider_timeout():
+    gen = _gen(status=GenerationStatus.CANCELLED)
+    # First (newest) submission times out; the next resolves -> still recovered,
+    # proving one flaky call doesn't abort the sweep.
+    s1 = _nsub(904, job="j-timeout", response={}, attempt_id=2)
+    s2 = _nsub(905, job="j-ok", response={}, attempt_id=1)
+    session = _ListSession([s1, s2], {2: SimpleNamespace(id=2)})
+    provider = _FakeListProvider(
+        {"j-ok": ProviderStatusResult(
+            status=ProviderStatus.COMPLETED,
+            video_url=_REAL_ORI_URL,
+            metadata={"provider_status": 1},
+        )},
+        raises_for={"j-timeout"},
+    )
+
+    match = await find_recoverable_via_numeric_list(
+        session, gen, provider=provider, max_pages=20
+    )
+    assert match is not None
+    assert match.submission.id == 905
+    assert [c[0] for c in provider.calls] == ["j-timeout", "j-ok"]
