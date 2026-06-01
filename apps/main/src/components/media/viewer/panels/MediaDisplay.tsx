@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { BACKEND_BASE } from '@lib/api/client';
 import { useAutoContextMenu } from '@lib/dockview';
 import { ensureBackendAbsolute } from '@lib/media/backendUrl';
+import { warmMediaToken } from '@lib/media/mediaToken';
 
 import type { ViewerAsset } from '@features/assets';
 import { registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
@@ -73,12 +74,30 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
 
   const resolvedMediaUrl = asset.type === 'video' ? videoSrc : imageSrc;
   const [videoReady, setVideoReady] = useState(asset.type !== 'video');
+  // Spinner is gated behind a short delay so fast loads (warm token / cached
+  // metadata) never flash it — only genuinely slow loads show a spinner.
+  const [showSpinner, setShowSpinner] = useState(false);
+
+  // Warm the media token on mount so the first <video> doesn't wait on the
+  // token round-trip before it can start streaming.
+  useEffect(() => {
+    warmMediaToken();
+  }, []);
 
   useEffect(() => {
     setVideoReady(asset.type !== 'video');
     setVideoLoadFailed(false);
     setVideoCandidateIndex(0);
   }, [asset.id, asset.type]);
+
+  useEffect(() => {
+    if (asset.type !== 'video' || videoReady || videoLoadFailed) {
+      setShowSpinner(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowSpinner(true), 150);
+    return () => clearTimeout(timer);
+  }, [asset.type, asset.id, resolvedMediaUrl, videoReady, videoLoadFailed]);
 
   useEffect(() => {
     if (asset.type !== 'video') return;
@@ -176,7 +195,7 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
               setVideoReady(false);
             }}
           />
-          {!videoReady && !videoLoadFailed && (
+          {showSpinner && (
             <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-neutral-100/70 dark:bg-neutral-900/70 pointer-events-none">
               <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
             </div>

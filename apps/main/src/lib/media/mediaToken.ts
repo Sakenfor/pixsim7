@@ -54,6 +54,17 @@ export function peekMediaToken(): string | undefined {
   return isFresh() ? cached!.token : undefined;
 }
 
+/**
+ * Fire-and-forget warm-up so the token is cached before the first <video> needs
+ * it (the first stream would otherwise wait on this round-trip). Idempotent and
+ * deduped via getMediaToken; errors are swallowed (the stream falls back to
+ * fetching on demand).
+ */
+export function warmMediaToken(): void {
+  if (isFresh()) return;
+  void getMediaToken().catch(() => {});
+}
+
 /** Append `token=` to an already-resolved backend media URL. */
 export function appendMediaToken(url: string, token: string): string {
   const sep = url.includes('?') ? '&' : '?';

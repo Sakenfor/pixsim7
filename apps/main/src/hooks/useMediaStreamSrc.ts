@@ -6,8 +6,11 @@
  * Backend media gets a short-lived `?token=` appended so the element streams it
  * with native HTTP Range (no full-file blob download — first frame shows while
  * the rest downloads). `blob:`/`data:`/`file:` and external provider URLs are
- * returned as-is. Returns `undefined` until a backend token is available, then
- * resolves on the next tick.
+ * returned as-is.
+ *
+ * When the media token is already warm (the common case after the first video),
+ * the src is resolved synchronously during render so there's no wasted frame
+ * with an empty src. Only the cold-token case is async.
  */
 import { useEffect, useState } from 'react';
 
@@ -15,51 +18,47 @@ import { BACKEND_BASE } from '@lib/api/client';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
 import { appendMediaToken, getMediaToken, peekMediaToken } from '@lib/media/mediaToken';
 
+/** Resolve to a final src synchronously, or undefined if a token fetch is needed. */
+function resolveSync(mediaUrl: string | undefined): string | undefined {
+  if (!mediaUrl) return undefined;
+  if (/^(blob:|data:|file:)/i.test(mediaUrl)) return mediaUrl;
+  const { fullUrl, isBackend } = resolveBackendUrl(mediaUrl, BACKEND_BASE);
+  if (!isBackend) return fullUrl;
+  const token = peekMediaToken();
+  return token ? appendMediaToken(fullUrl, token) : undefined;
+}
+
 export function useMediaStreamSrc(mediaUrl: string | undefined): string | undefined {
-  const [src, setSrc] = useState<string | undefined>(undefined);
+  const [resolved, setResolved] = useState<{ url: string | undefined; src: string | undefined }>(
+    () => ({ url: mediaUrl, src: resolveSync(mediaUrl) }),
+  );
+
+  // Re-resolve synchronously when the input changes — avoids a render with a
+  // stale/empty src (and the spinner that follows) when the token is warm.
+  if (resolved.url !== mediaUrl) {
+    setResolved({ url: mediaUrl, src: resolveSync(mediaUrl) });
+  }
 
   useEffect(() => {
-    let cancelled = false;
-
-    if (!mediaUrl) {
-      setSrc(undefined);
-      return;
-    }
-
-    // Already directly usable by the element.
-    if (/^(blob:|data:|file:)/i.test(mediaUrl)) {
-      setSrc(mediaUrl);
-      return;
-    }
-
+    // Only the backend-needs-token path is async; everything else resolved
+    // synchronously above.
+    if (resolveSync(mediaUrl) !== undefined || !mediaUrl) return;
+    if (/^(blob:|data:|file:)/i.test(mediaUrl)) return;
     const { fullUrl, isBackend } = resolveBackendUrl(mediaUrl, BACKEND_BASE);
-    if (!isBackend) {
-      // External provider URL — no auth needed.
-      setSrc(fullUrl);
-      return;
-    }
+    if (!isBackend) return;
 
-    // Backend: stream directly with a media token.
-    const cachedToken = peekMediaToken();
-    if (cachedToken) {
-      setSrc(appendMediaToken(fullUrl, cachedToken));
-      return;
-    }
-
-    setSrc(undefined);
+    let cancelled = false;
     void getMediaToken()
       .then((token) => {
-        if (!cancelled) setSrc(appendMediaToken(fullUrl, token));
+        if (!cancelled) setResolved({ url: mediaUrl, src: appendMediaToken(fullUrl, token) });
       })
       .catch(() => {
-        // Leave undefined — the <video> onError fallback chain takes over.
-        if (!cancelled) setSrc(undefined);
+        // Leave src empty — the <video> onError fallback chain takes over.
       });
-
     return () => {
       cancelled = true;
     };
   }, [mediaUrl]);
 
-  return src;
+  return resolved.src;
 }
