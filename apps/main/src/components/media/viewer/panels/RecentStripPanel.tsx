@@ -12,11 +12,11 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
+import { archiveAsset } from '@lib/api/assets';
 import { useContextMenuItem } from '@lib/dockview';
 import { useCardGestures } from '@lib/gestures';
 import { Icon } from '@lib/icons';
 
-import { archiveAsset } from '@lib/api/assets';
 import { useAssetViewerStore, type ViewerAsset } from '@features/assets';
 import { toggleFavoriteTag } from '@features/assets/lib/favoriteTag';
 import { getAssetDisplayUrls } from '@features/assets/models/asset';
@@ -32,14 +32,13 @@ interface RecentStripPanelProps {
 
 interface StripThumbProps {
   asset: ViewerAsset;
-  index: number;
   isActive: boolean;
   isPending: boolean;
   activeRef?: React.Ref<HTMLButtonElement>;
-  onClick: (index: number) => void;
+  onClick: (assetId: ViewerAsset['id']) => void;
 }
 
-function StripThumb({ asset, index, isActive, isPending, activeRef, onClick }: StripThumbProps) {
+function StripThumb({ asset, isActive, isPending, activeRef, onClick }: StripThumbProps) {
   const model = asset._assetModel;
   const urls = model
     ? getAssetDisplayUrls(model)
@@ -100,7 +99,7 @@ function StripThumb({ asset, index, isActive, isPending, activeRef, onClick }: S
       ref={activeRef}
       type="button"
       {...contextMenuAttrs}
-      onClick={() => onClick(index)}
+      onClick={() => onClick(asset.id)}
       onPointerDown={gestureHandlers.onPointerDown}
       className={[
         'relative flex-shrink-0 h-full aspect-square rounded overflow-hidden',
@@ -147,11 +146,13 @@ function StripThumb({ asset, index, isActive, isPending, activeRef, onClick }: S
 }
 
 export function RecentStripPanel(_props: RecentStripPanelProps) {
+  void _props;
   const scopes = useAssetViewerStore((s) => s.scopes);
   const activeScopeId = useAssetViewerStore((s) => s.activeScopeId);
   const currentAsset = useAssetViewerStore((s) => s.currentAsset);
   const pendingHeadId = useAssetViewerStore((s) => s.pendingHeadId);
   const navigateTo = useAssetViewerStore((s) => s.navigateTo);
+  const navigateToAssetId = useAssetViewerStore((s) => s.navigateToAssetId);
 
   const assets: ViewerAsset[] = useMemo(
     () => (activeScopeId ? scopes[activeScopeId]?.assets ?? [] : []),
@@ -212,18 +213,17 @@ export function RecentStripPanel(_props: RecentStripPanelProps) {
       ) : (
         <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
           <div className="flex items-center gap-1.5 h-full p-1.5">
-            {assets.map((asset, index) => {
+            {assets.map((asset) => {
               const isActive = asset.id === currentId;
               const isPending = asset.id === pendingHeadId;
               return (
                 <StripThumb
                   key={asset.id}
                   asset={asset}
-                  index={index}
                   isActive={isActive}
                   isPending={isPending}
                   activeRef={isActive ? activeItemRef : undefined}
-                  onClick={navigateTo}
+                  onClick={navigateToAssetId}
                 />
               );
             })}

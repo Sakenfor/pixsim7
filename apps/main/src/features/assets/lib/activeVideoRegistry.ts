@@ -52,9 +52,23 @@ export function registerActiveVideo(
   };
 }
 
+function isVideoPlaying(el: HTMLVideoElement): boolean {
+  return !el.paused && !el.ended && el.readyState >= 2;
+}
+
 export function isAnyVideoPlaying(): boolean {
   for (const { el } of registry.values()) {
-    if (!el.paused && !el.ended && el.readyState >= 2 && el.currentTime > 0) {
+    if (isVideoPlaying(el)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function isVideoPlayingAsset(assetId: string | number): boolean {
+  for (const entry of registry.values()) {
+    if (entry.assetId !== assetId) continue;
+    if (isVideoPlaying(entry.el)) {
       return true;
     }
   }

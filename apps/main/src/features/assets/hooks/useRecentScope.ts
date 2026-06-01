@@ -20,7 +20,7 @@ export const useRecentScope = createCachedScopeHook({
   cacheKey: 'viewer:recentAssetsCache',
   cap: 100,
   label: (n) => `Recent (${n})`,
-  bootstrap: () => bootstrapFromFilters({ sort: 'new' }, 15),
+  bootstrap: () => bootstrapFromFilters({ sort: 'new' }, 100),
   subscribe: ({ prepend, update, remove }) => {
     const unsubCreate = assetEvents.subscribe((response) => {
       prepend(toViewerAsset(fromAssetResponse(response)));

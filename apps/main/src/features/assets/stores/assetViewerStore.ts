@@ -8,7 +8,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import { isAnyVideoPlaying } from '../lib/activeVideoRegistry';
+import { isAnyVideoPlaying, isVideoPlayingAsset } from '../lib/activeVideoRegistry';
 import { viewerOpenEvents } from '../lib/viewerOpenEvents';
 
 export type ViewerMode = 'side' | 'fullscreen' | 'closed';
@@ -119,6 +119,8 @@ interface AssetViewerState {
   navigateNext: () => void;
   /** Navigate to specific index */
   navigateTo: (index: number) => void;
+  /** Navigate to the asset by id in the latest active list */
+  navigateToAssetId: (assetId: string | number) => void;
   /** Toggle metadata visibility */
   toggleMetadata: () => void;
   /** Update settings */
@@ -301,6 +303,21 @@ export const useAssetViewerStore = create<AssetViewerState>()(
         }
       },
 
+      navigateToAssetId: (assetId) => {
+        const { scopes, activeScopeId, assetList, pendingHeadId } = get();
+        const list = (activeScopeId && scopes[activeScopeId]?.assets) || assetList;
+        const index = list.findIndex((asset) => asset.id === assetId);
+        if (index < 0) return;
+        const next = list[index];
+        const clearsPending = pendingHeadId != null && next.id === pendingHeadId;
+        set({
+          assetList: list,
+          currentIndex: index,
+          currentAsset: next,
+          ...(clearsPending ? { pendingHeadId: null } : null),
+        });
+      },
+
       consumePendingHead: () => {
         const { scopes, activeScopeId, pendingHeadId } = get();
         if (pendingHeadId == null) return;
@@ -402,9 +419,27 @@ export const useAssetViewerStore = create<AssetViewerState>()(
 
             if (!scopeChanged && !currentAssetChanged) return;
 
+            const preservePlayingVideoSource =
+              refreshed !== undefined &&
+              currentAsset.type === 'video' &&
+              refreshed.type === 'video' &&
+              isVideoPlayingAsset(currentAsset.id);
+
+            const nextCurrentAsset =
+              refreshed && preservePlayingVideoSource
+                ? {
+                  ...refreshed,
+                  // New assets can flip from provider URL -> local stored URL
+                  // shortly after landing. Keep the currently-playing source
+                  // stable so the <video> element doesn't restart mid-playback.
+                  url: currentAsset.url,
+                  fullUrl: currentAsset.fullUrl,
+                }
+                : refreshed;
+
             set({
               ...(scopeChanged ? { scopes: { ...scopes, [id]: { label, assets } } } : {}),
-              ...(currentAssetChanged ? { currentAsset: refreshed } : {}),
+              ...(currentAssetChanged ? { currentAsset: nextCurrentAsset } : {}),
             });
             return;
           }
@@ -502,7 +537,10 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           : state.currentAsset,
         mode: state.mode,
         showMetadata: state.showMetadata,
-        // Note: assetList, currentIndex, scopes, and activeScopeId are not
+        // Persist activeScopeId so refreshes keep the user's selected strip scope
+        // while app-level scopes re-register asynchronously.
+        activeScopeId: state.activeScopeId,
+        // Note: assetList, currentIndex, and scopes are not
         // persisted as the list can be large. Navigation context is
         // reconstructed when the user interacts with the gallery again.
       }),
