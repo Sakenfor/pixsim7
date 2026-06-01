@@ -38,6 +38,7 @@ from pixsim7.backend.main.services.prompt.variable_registry import (
     PromptVariable,
     normalize_prompt_variable_description,
     normalize_prompt_variable_name,
+    normalize_prompt_variable_value,
     read_prompt_variable_entries,
     write_prompt_variables,
 )
@@ -337,6 +338,10 @@ class PromptVariableEntry(BaseModel):
         None,
         description="Optional one-line reuse hint (e.g. 'the protagonist').",
     )
+    value: Optional[str] = Field(
+        None,
+        description="Optional substitution text. When set, the variable expands to this on the resolved prompt; when absent it stays a literal symbol.",
+    )
 
 
 class PromptVariablesResponse(BaseModel):
@@ -348,6 +353,10 @@ class UpsertPromptVariableRequest(BaseModel):
     description: Optional[str] = Field(
         None,
         description="Optional one-line reuse hint. Updates the description when the variable already exists.",
+    )
+    value: Optional[str] = Field(
+        None,
+        description="Optional substitution text. Updates the value when the variable already exists.",
     )
     allow_existing: bool = Field(
         False,
@@ -375,7 +384,7 @@ async def _load_preferences_for_prompt_variables(
 def _variables_response(entries: List[PromptVariable]) -> PromptVariablesResponse:
     return PromptVariablesResponse(
         variables=[
-            PromptVariableEntry(name=entry.name, description=entry.description)
+            PromptVariableEntry(name=entry.name, description=entry.description, value=entry.value)
             for entry in entries
         ]
     )
@@ -398,6 +407,7 @@ async def upsert_prompt_variable(
 ):
     normalized_name = normalize_prompt_variable_name(request.name)
     description = normalize_prompt_variable_description(request.description)
+    value = normalize_prompt_variable_value(request.value)
     owner_user_id, preferences = await _load_preferences_for_prompt_variables(principal, user_service)
     current = read_prompt_variable_entries(preferences)
     existing = next((entry for entry in current if entry.name == normalized_name), None)
@@ -409,13 +419,19 @@ async def upsert_prompt_variable(
         )
 
     if existing is None:
-        next_entries = [*current, PromptVariable(name=normalized_name, description=description)]
-    else:
-        # allow_existing acts as an edit: update the description when one is provided,
-        # otherwise leave the stored description untouched.
-        resolved = description if request.description is not None else existing.description
         next_entries = [
-            PromptVariable(name=normalized_name, description=resolved) if entry.name == normalized_name else entry
+            *current,
+            PromptVariable(name=normalized_name, description=description, value=value),
+        ]
+    else:
+        # allow_existing acts as an edit: update description/value only for fields
+        # explicitly provided in the request; otherwise keep the stored ones.
+        resolved_description = description if request.description is not None else existing.description
+        resolved_value = value if request.value is not None else existing.value
+        next_entries = [
+            PromptVariable(name=normalized_name, description=resolved_description, value=resolved_value)
+            if entry.name == normalized_name
+            else entry
             for entry in current
         ]
 
@@ -443,7 +459,9 @@ async def rename_prompt_variable(
         raise HTTPException(status_code=409, detail=f"Prompt variable '{new_name}' already exists")
 
     next_entries = [
-        PromptVariable(name=new_name, description=entry.description) if entry.name == current_name else entry
+        PromptVariable(name=new_name, description=entry.description, value=entry.value)
+        if entry.name == current_name
+        else entry
         for entry in current
     ]
     updated_preferences = write_prompt_variables(preferences, next_entries)

@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -11,8 +12,10 @@ export interface VariableEditPopoverProps {
   defaultClass?: boolean;
   /** Optional description shown for an already-saved variable (read-only here). */
   description?: string;
-  /** Save the clicked token as a known variable. */
-  onSave: () => void;
+  /** Current substitution value (phase 2). */
+  value?: string;
+  /** Save the token as a known variable, persisting the (possibly empty) value. */
+  onSave: (value: string) => void;
   /** Remove the saved variable. */
   onRemove: () => void;
   onCancel: () => void;
@@ -20,22 +23,27 @@ export interface VariableEditPopoverProps {
 
 /**
  * Editor variable popover — the click target for an uppercase VAR token in the
- * prompt. Scoped to the save/unsave gesture (description editing lives in the
- * analysis-panel modal). Mirrors OperatorEditPopover's chrome.
+ * prompt. Covers save/unsave plus the phase-2 substitution value (the text the
+ * variable expands to; empty = stays a literal symbol). Mirrors
+ * OperatorEditPopover's chrome.
  */
 export function VariableEditPopover({
   name,
   saved,
   defaultClass = false,
   description,
+  value,
   onSave,
   onRemove,
   onCancel,
 }: VariableEditPopoverProps) {
+  const [draft, setDraft] = useState(value ?? '');
+  const dirty = draft.trim() !== (value ?? '').trim();
+
   return (
     <div
       className={clsx(
-        'w-[240px] rounded-lg shadow-xl border overflow-hidden',
+        'w-[260px] rounded-lg shadow-xl border overflow-hidden',
         'bg-white dark:bg-neutral-900',
         'border-neutral-200 dark:border-neutral-700',
       )}
@@ -66,18 +74,28 @@ export function VariableEditPopover({
           </span>
         </div>
         <div className="mt-1 font-mono text-sm text-neutral-800 dark:text-neutral-200">{name}</div>
-        {saved && description && (
+        {description && (
           <div className="mt-1 text-[11px] italic text-neutral-500 dark:text-neutral-400">
             {description}
           </div>
         )}
-        {!saved && (
-          <div className="mt-1 text-[10px] text-neutral-400 italic">
-            {defaultClass
-              ? 'Recognised by default. Save it to add a description and pin it to your list.'
-              : 'Save it to reuse this placeholder across prompts.'}
-          </div>
-        )}
+      </div>
+
+      {/* Value — substitution text (phase 2) */}
+      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700">
+        <div className="text-[10px] uppercase tracking-wider text-neutral-400 mb-1">
+          Expands to
+        </div>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={3}
+          placeholder="Leave empty to keep it a literal symbol"
+          className="w-full resize-y rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-2 py-1 text-xs text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-violet-400"
+        />
+        <p className="mt-1 text-[10px] text-neutral-400 italic">
+          When set, this text replaces {name} in the generated prompt.
+        </p>
       </div>
 
       {/* Footer — actions */}
@@ -89,23 +107,23 @@ export function VariableEditPopover({
         >
           Cancel
         </button>
-        {saved ? (
+        {saved && (
           <button
             type="button"
             onClick={onRemove}
-            className="flex-1 px-2 py-1 rounded text-xs bg-red-500 text-white hover:bg-red-600 transition-colors"
+            className="px-2 py-1 rounded text-xs bg-red-500 text-white hover:bg-red-600 transition-colors"
           >
             Remove
           </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onSave}
-            className="flex-1 px-2 py-1 rounded text-xs bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
-          >
-            Save variable
-          </button>
         )}
+        <button
+          type="button"
+          onClick={() => onSave(draft)}
+          disabled={saved && !dirty}
+          className="flex-1 px-2 py-1 rounded text-xs bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {saved ? 'Save' : 'Save variable'}
+        </button>
       </div>
     </div>
   );

@@ -189,6 +189,67 @@ async def test_rename_prompt_variable_preserves_description() -> None:
 
 
 @pytest.mark.asyncio
+async def test_upsert_prompt_variable_persists_value() -> None:
+    user = _FakeUser(id=11, preferences={})
+    svc = _FakeUserService(user)
+
+    response = await upsert_prompt_variable(
+        request=UpsertPromptVariableRequest(name="ACTOR1_DETAILS", value="tall woman, 30s"),
+        principal=_principal(),
+        user_service=svc,
+    )
+
+    entry = next(item for item in response.variables if item.name == "ACTOR1_DETAILS")
+    assert entry.value == "tall woman, 30s"
+    assert user.preferences["prompt_variables"] == [
+        {"name": "ACTOR1_DETAILS", "value": "tall woman, 30s"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_upsert_allow_existing_updates_value_independently() -> None:
+    svc = _FakeUserService(
+        _FakeUser(
+            id=11,
+            preferences={
+                "prompt_variables": [
+                    {"name": "ACTOR1", "description": "the lead", "value": "old"}
+                ]
+            },
+        )
+    )
+
+    # Provide only value — description must be preserved.
+    response = await upsert_prompt_variable(
+        request=UpsertPromptVariableRequest(name="ACTOR1", value="new text", allow_existing=True),
+        principal=_principal(),
+        user_service=svc,
+    )
+    entry = next(item for item in response.variables if item.name == "ACTOR1")
+    assert entry.value == "new text"
+    assert entry.description == "the lead"
+
+
+@pytest.mark.asyncio
+async def test_rename_prompt_variable_preserves_value() -> None:
+    svc = _FakeUserService(
+        _FakeUser(
+            id=11,
+            preferences={"prompt_variables": [{"name": "ACTOR1", "value": "tall woman"}]},
+        )
+    )
+
+    response = await rename_prompt_variable(
+        name="ACTOR1",
+        request=RenamePromptVariableRequest(new_name="HERO"),
+        principal=_principal(),
+        user_service=svc,
+    )
+    entry = next(item for item in response.variables if item.name == "HERO")
+    assert entry.value == "tall woman"
+
+
+@pytest.mark.asyncio
 async def test_list_prompt_variables_canonicalizes_legacy_string_entries() -> None:
     # Legacy payloads stored bare strings; they should read back as objects.
     svc = _FakeUserService(

@@ -732,21 +732,22 @@ export function PromptComposer({
       return;
     }
     const textarea = promptTextareaRef.current;
-    const container = referencePickerContainerRef.current;
-    if (!textarea || !container) {
+    if (!textarea) {
       setReferenceAnchor(null);
       return;
     }
 
     const coords = getTextareaCaretCoords(textarea, referenceInput.triggerPos);
     const textareaRect = textarea.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
     const caretRect = new DOMRect(
       textareaRect.left + coords.left,
       textareaRect.top + coords.top,
       1,
       coords.height,
     );
+    // Viewport-relative coordinates so the picker can render via portal
+    // and sit above sibling floating panels/overlays.
+    const containerRect = new DOMRect(0, 0, window.innerWidth, window.innerHeight);
 
     const { style } = getViewportAwarePopupPosition({
       anchorRect: caretRect,
@@ -2200,7 +2201,8 @@ export function PromptComposer({
                     onSelect={handleCmReferenceSelect}
                     onClose={cmRefInput.dismiss}
                     disallowedTypes={['plan', 'world', 'project']}
-                    className="absolute w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-float-overlay-popover"
+                    portal
+                    className="w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-float-overlay-popover"
                     style={cmRefInput.anchor ?? undefined}
                   />
                   <Popover
@@ -2283,10 +2285,14 @@ export function PromptComposer({
                           saved={saved}
                           defaultClass={variable.defaultClass}
                           description={entry?.description}
+                          value={entry?.value}
                           onCancel={() => setCmVariablePopover(null)}
-                          onSave={async () => {
+                          onSave={async (value) => {
                             setCmVariablePopover(null);
-                            const result = await saveVariable(variable.name);
+                            const result = await saveVariable(variable.name, {
+                              allowExisting: true,
+                              value,
+                            });
                             if (result.ok) toast.success(`Saved ${variable.name}`);
                             else if (result.code === 'duplicate')
                               toast.info(`${variable.name} is already saved`);
@@ -2375,7 +2381,8 @@ export function PromptComposer({
               onSelect={handleReferenceSelect}
               onClose={referenceInput.dismiss}
               disallowedTypes={['plan', 'world', 'project']}
-              className="absolute w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-float-overlay-popover"
+              portal
+              className="w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-float-overlay-popover"
               style={referenceAnchor ?? undefined}
             />
           </div>

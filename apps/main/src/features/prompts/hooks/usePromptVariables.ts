@@ -5,6 +5,8 @@ import { useApi } from '@/hooks/useApi';
 export interface PromptVariableEntry {
   name: string;
   description?: string;
+  /** Substitution text (phase 2). When set the variable expands to this. */
+  value?: string;
 }
 
 interface PromptVariablesResponse {
@@ -22,6 +24,8 @@ export interface SaveVariableOptions {
   allowExisting?: boolean;
   /** Optional one-line reuse hint. Persisted/updated when provided. */
   description?: string;
+  /** Optional substitution text (phase 2). Persisted/updated when provided. */
+  value?: string;
 }
 
 export interface PromptVariableMutationResult {
@@ -47,7 +51,11 @@ function normalizeResponseEntries(
       typeof item?.description === 'string' && item.description.trim().length > 0
         ? item.description.trim()
         : undefined;
-    byName.set(name, { name, description });
+    const value =
+      typeof item?.value === 'string' && item.value.trim().length > 0
+        ? item.value
+        : undefined;
+    byName.set(name, { name, description, value });
   }
   return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -136,23 +144,31 @@ export function usePromptVariables() {
     ): Promise<PromptVariableMutationResult> => {
       const normalized = name.trim().toUpperCase();
       const description = options.description?.trim() || undefined;
+      const value = options.value?.trim() || undefined;
       const snapshot = cachedEntries ?? [];
 
-      // Optimistically reflect the add / description-edit. A duplicate add (no
+      // Optimistically reflect the add / field-edit. A duplicate add (no
       // allow_existing) predicts no change, so a 409 rolls back to an identical
-      // list — no flicker.
+      // list — no flicker. On edit, only provided fields override.
       if (normalized) {
-        const exists = snapshot.some((entry) => entry.name === normalized);
-        if (!exists) {
+        const existing = snapshot.find((entry) => entry.name === normalized);
+        if (!existing) {
           applyEntries(
-            [...snapshot, { name: normalized, description }].sort((a, b) =>
+            [...snapshot, { name: normalized, description, value }].sort((a, b) =>
               a.name.localeCompare(b.name),
             ),
           );
-        } else if (options.description !== undefined) {
+        } else if (options.description !== undefined || options.value !== undefined) {
           applyEntries(
             snapshot.map((entry) =>
-              entry.name === normalized ? { name: entry.name, description } : entry,
+              entry.name === normalized
+                ? {
+                    name: entry.name,
+                    description:
+                      options.description !== undefined ? description : entry.description,
+                    value: options.value !== undefined ? value : entry.value,
+                  }
+                : entry,
             ),
           );
         }
@@ -165,6 +181,9 @@ export function usePromptVariables() {
         };
         if (options.description !== undefined) {
           body.description = options.description;
+        }
+        if (options.value !== undefined) {
+          body.value = options.value;
         }
         const payload = await api.post<PromptVariablesResponse>('/prompts/meta/variables', body);
         const next = normalizeResponseEntries(payload);
@@ -189,7 +208,11 @@ export function usePromptVariables() {
       if (to && !snapshot.some((entry) => entry.name === to)) {
         applyEntries(
           snapshot
-            .map((entry) => (entry.name === from ? { name: to, description: entry.description } : entry))
+            .map((entry) =>
+              entry.name === from
+                ? { name: to, description: entry.description, value: entry.value }
+                : entry,
+            )
             .sort((a, b) => a.name.localeCompare(b.name)),
         );
       }

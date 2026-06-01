@@ -6,8 +6,11 @@ operators). Each entry is an object ``{"name": ..., "description": ...}`` with a
 strict uppercase name; ``description`` is an optional one-line reuse hint.
 
 Storage tolerates legacy bare-string entries (``["ACTOR1", ...]``) on read and
-canonicalizes them to objects, so older payloads keep working. A ``value``
-binding for real substitution is intentionally deferred to phase 2.
+canonicalizes them to objects, so older payloads keep working.
+
+Phase 2 (substitution): an optional ``value`` carries the text a variable
+resolves to. A variable with no ``value`` stays a literal symbol in the prompt;
+one with a ``value`` expands to that text on the outbound (resolved) prompt.
 """
 from __future__ import annotations
 
@@ -18,19 +21,24 @@ from typing import Any, Iterable, List, Optional
 PROMPT_VARIABLES_PREF_KEY = "prompt_variables"
 _PROMPT_VAR_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _DESCRIPTION_MAX_LENGTH = 200
+_VALUE_MAX_LENGTH = 2000
 
 
 @dataclass(frozen=True)
 class PromptVariable:
-    """A saved prompt variable: a name plus an optional one-line description."""
+    """A saved prompt variable: a name, an optional one-line description, and an
+    optional ``value`` (the substitution text for phase-2 resolution)."""
 
     name: str
     description: Optional[str] = None
+    value: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"name": self.name}
         if self.description:
             payload["description"] = self.description
+        if self.value:
+            payload["value"] = self.value
         return payload
 
 
@@ -63,23 +71,42 @@ def normalize_prompt_variable_description(raw: Any) -> Optional[str]:
     return collapsed[:_DESCRIPTION_MAX_LENGTH]
 
 
+def normalize_prompt_variable_value(raw: Any) -> Optional[str]:
+    """Normalize an optional substitution value.
+
+    Unlike a description, the value preserves internal whitespace/newlines (it
+    is prompt text). Outer whitespace is stripped, empty becomes ``None``, and
+    the result is capped at ``_VALUE_MAX_LENGTH``.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError("Variable value must be a string")
+    trimmed = raw.strip()
+    if not trimmed:
+        return None
+    return trimmed[:_VALUE_MAX_LENGTH]
+
+
 def coerce_prompt_variable(entry: Any) -> PromptVariable:
     """Coerce an entry to a ``PromptVariable``.
 
     Accepts an already-built ``PromptVariable`` (re-validated, idempotent), a
-    bare name string (legacy), or a ``{name, description}`` dict.
+    bare name string (legacy), or a ``{name, description, value}`` dict.
     """
     if isinstance(entry, PromptVariable):
         return PromptVariable(
             name=normalize_prompt_variable_name(entry.name),
             description=normalize_prompt_variable_description(entry.description),
+            value=normalize_prompt_variable_value(entry.value),
         )
     if isinstance(entry, str):
         return PromptVariable(name=normalize_prompt_variable_name(entry))
     if isinstance(entry, dict):
         name = normalize_prompt_variable_name(entry.get("name"))
         description = normalize_prompt_variable_description(entry.get("description"))
-        return PromptVariable(name=name, description=description)
+        value = normalize_prompt_variable_value(entry.get("value"))
+        return PromptVariable(name=name, description=description, value=value)
     raise ValueError("Variable entry must be a string or object")
 
 
@@ -87,7 +114,7 @@ def canonicalize_prompt_variables(values: Iterable[Any]) -> List[PromptVariable]
     """Validate, dedupe by name, and sort entries.
 
     On duplicate names the first occurrence wins, but a later occurrence's
-    description fills in when the kept entry has none.
+    description/value fills in when the kept entry has none.
     """
     out: list[PromptVariable] = []
     index: dict[str, int] = {}
@@ -97,8 +124,16 @@ def canonicalize_prompt_variables(values: Iterable[Any]) -> List[PromptVariable]
         if existing is None:
             index[variable.name] = len(out)
             out.append(variable)
-        elif out[existing].description is None and variable.description:
-            out[existing] = PromptVariable(name=variable.name, description=variable.description)
+            continue
+        kept = out[existing]
+        filled_description = kept.description or variable.description
+        filled_value = kept.value or variable.value
+        if filled_description != kept.description or filled_value != kept.value:
+            out[existing] = PromptVariable(
+                name=kept.name,
+                description=filled_description,
+                value=filled_value,
+            )
     out.sort(key=lambda item: item.name)
     return out
 
@@ -125,6 +160,19 @@ def read_prompt_variables(preferences: Any) -> List[str]:
     compare names.
     """
     return [variable.name for variable in read_prompt_variable_entries(preferences)]
+
+
+def read_prompt_variable_values(preferences: Any) -> dict[str, str]:
+    """Map of name -> value for entries that have a (non-empty) value.
+
+    Feeds the substitution resolver; names without a value are omitted so they
+    stay literal symbols.
+    """
+    return {
+        variable.name: variable.value
+        for variable in read_prompt_variable_entries(preferences)
+        if variable.value
+    }
 
 
 def write_prompt_variables(preferences: Any, entries: Iterable[Any]) -> dict[str, Any]:

@@ -20,6 +20,7 @@ import {
   type CandidateWithPrimitiveMatch,
 } from '../lib/parsePrimitiveMatch';
 import { groupVariablesByEntity } from '../lib/promptVariableName';
+import { buildVariableValueMap, resolvePromptVariables } from '../lib/resolvePromptVariables';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptBlockCandidate } from '../types';
 
@@ -116,15 +117,17 @@ function SectionLabel({
 }: {
   dotClass: string;
   label: string;
-  count: number;
+  count?: number;
 }) {
   return (
     <span className="flex items-center gap-1.5">
       <span className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0', dotClass)} />
       <span className="truncate">{label}</span>
-      <span className="text-neutral-400 dark:text-neutral-500 ml-auto tabular-nums">
-        {count}
-      </span>
+      {typeof count === 'number' && (
+        <span className="text-neutral-400 dark:text-neutral-500 ml-auto tabular-nums">
+          {count}
+        </span>
+      )}
     </span>
   );
 }
@@ -261,6 +264,7 @@ export function ShadowSidePanel({
   const [editingVariable, setEditingVariable] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [descriptionDraft, setDescriptionDraft] = useState('');
+  const [valueDraft, setValueDraft] = useState('');
   const [variableError, setVariableError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const toast = useToast();
@@ -339,12 +343,22 @@ export function ShadowSidePanel({
     () => groupVariablesByEntity(savedEntries, detectedVariables),
     [savedEntries, detectedVariables],
   );
+  // Phase-2 resolved preview: expand variables that have a value. Null when
+  // resolution is a no-op (no var with a value appears in the prompt), so the
+  // section only shows when there's something to preview.
+  const resolvedPreview = useMemo(() => {
+    const source = result?.analyzedPrompt ?? '';
+    if (!source) return null;
+    const resolved = resolvePromptVariables(source, buildVariableValueMap(savedEntries));
+    return resolved !== source ? resolved : null;
+  }, [result?.analyzedPrompt, savedEntries]);
 
   const openVariableModal = (name: string) => {
     const entry = savedEntries.find((item) => item.name === name);
     setEditingVariable(name);
     setRenameDraft(name);
     setDescriptionDraft(entry?.description ?? '');
+    setValueDraft(entry?.value ?? '');
     setVariableError(null);
     setConfirmingDelete(false);
   };
@@ -352,6 +366,7 @@ export function ShadowSidePanel({
     setEditingVariable(null);
     setRenameDraft('');
     setDescriptionDraft('');
+    setValueDraft('');
     setVariableError(null);
     setConfirmingDelete(false);
   };
@@ -378,10 +393,12 @@ export function ShadowSidePanel({
     }
     const original = savedEntries.find((item) => item.name === editingVariable);
     const nextDescription = descriptionDraft.trim();
+    const nextValue = valueDraft.trim();
     const descriptionChanged = nextDescription !== (original?.description ?? '');
+    const valueChanged = nextValue !== (original?.value ?? '');
 
-    // Rename first (the backend preserves the description through a rename),
-    // then persist a description change via an allow-existing upsert.
+    // Rename first (the backend preserves description/value through a rename),
+    // then persist field changes via an allow-existing upsert.
     let finalName = editingVariable;
     if (nextName !== editingVariable) {
       const resultRename = await renameVariable(editingVariable, nextName);
@@ -396,13 +413,14 @@ export function ShadowSidePanel({
       finalName = nextName;
     }
 
-    if (descriptionChanged || finalName !== editingVariable) {
+    if (descriptionChanged || valueChanged || finalName !== editingVariable) {
       const resultDescription = await saveVariable(finalName, {
         allowExisting: true,
         description: nextDescription,
+        value: nextValue,
       });
       if (!resultDescription.ok) {
-        setVariableError(resultDescription.message ?? 'Failed to save description.');
+        setVariableError(resultDescription.message ?? 'Failed to save variable.');
         return;
       }
     }
@@ -815,6 +833,28 @@ export function ShadowSidePanel({
           </>
         )}
 
+        {/* Resolved preview (phase-2 substitution) */}
+        {resolvedPreview && (
+          <>
+            <div className="h-px bg-neutral-200 dark:bg-neutral-700 mx-0.5 my-1" />
+            <DisclosureSection
+              persistKey={`${keyPrefix}:resolved`}
+              label={
+                <SectionLabel dotClass="bg-violet-500" label="Resolved preview" />
+              }
+              size="sm"
+              bordered
+            >
+              <div className="whitespace-pre-wrap break-words rounded border border-violet-200/70 dark:border-violet-800/50 bg-violet-50/40 dark:bg-violet-950/20 px-2 py-1.5 text-[11px] leading-snug text-neutral-700 dark:text-neutral-200">
+                {resolvedPreview}
+              </div>
+              <p className="mt-1 text-[10px] text-neutral-400 italic">
+                Variables with a value expanded. Preview only — not yet applied at generation.
+              </p>
+            </DisclosureSection>
+          </>
+        )}
+
         {/* Structure */}
         {structureLines.length > 0 && (
           <>
@@ -879,6 +919,22 @@ export function ShadowSidePanel({
             />
             <p className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
               A one-line reuse hint shown next to the variable.
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+              Expands to <span className="text-neutral-400">(optional)</span>
+            </label>
+            <textarea
+              value={valueDraft}
+              onChange={(event) => setValueDraft(event.target.value)}
+              rows={3}
+              placeholder="Leave empty to keep it a literal symbol"
+              maxLength={2000}
+              className="w-full resize-y rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-2 py-1 text-xs text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-violet-400"
+            />
+            <p className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+              Substitution text — when set, the variable expands to this in the generated prompt.
             </p>
           </div>
           {variableError && (

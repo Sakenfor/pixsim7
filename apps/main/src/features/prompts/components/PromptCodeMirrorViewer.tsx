@@ -152,10 +152,14 @@ export function PromptCodeMirrorViewer({
                 saved={saved}
                 defaultClass={variable.defaultClass}
                 description={entry?.description}
+                value={entry?.value}
                 onCancel={() => setVarPopover(null)}
-                onSave={async () => {
+                onSave={async (value) => {
                   setVarPopover(null);
-                  const result = await saveVariable(variable.name);
+                  const result = await saveVariable(variable.name, {
+                    allowExisting: true,
+                    value,
+                  });
                   if (result.ok) toast.success(`Saved ${variable.name}`);
                   else if (result.code === 'duplicate')
                     toast.info(`${variable.name} is already saved`);
