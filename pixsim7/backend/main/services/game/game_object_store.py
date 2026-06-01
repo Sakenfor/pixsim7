@@ -384,6 +384,36 @@ def get_npc_component(
     return None
 
 
+def get_npc_stat_data(
+    session: Any,
+    npc_id: Any,
+    definition_id: str,
+) -> Dict[str, Any]:
+    """Read an npc's stat package (raw axes + computed tier/level fields),
+    preferring the canonical ``stats:<definition_id>`` GameObject component over
+    the legacy ``session.stats[definition_id]['npc:<id>']`` copy.
+
+    Canonical is written by ``apply_stat_deltas`` (raw axes, synchronously) and
+    re-mirrored with computed tier/level by ``normalize_session_stats``. The
+    legacy fallback covers sessions populated via paths that do not mirror to
+    canonical (snapshot restore, one-time migration). Returns ``{}`` when neither
+    source carries data. ``session`` is any object exposing ``flags``,
+    ``world_id`` and ``stats`` (e.g. ``GameSession``)."""
+    comp = get_npc_component(
+        getattr(session, "flags", None),
+        getattr(session, "world_id", None),
+        npc_id,
+        f"stats:{definition_id}",
+    )
+    if comp and isinstance(comp.get("data"), dict) and comp["data"]:
+        return comp["data"]
+
+    legacy = getattr(session, "stats", None) or {}
+    package = legacy.get(definition_id) or {}
+    entry = package.get(_npc_ref(npc_id))
+    return entry if isinstance(entry, dict) else {}
+
+
 def set_npc_component(
     session_flags: Dict[str, Any],
     world_id: Any,

@@ -19,6 +19,7 @@ from pixsim7.backend.main.domain.game.stats.migration import (
     get_default_relationship_definition,
     resolve_stats_config,
 )
+from pixsim7.backend.main.services.game.game_object_store import get_npc_stat_data
 from pixsim7.backend.main.shared.content_rating import (
     clamp_rating,
     is_rating_allowed,
@@ -143,11 +144,11 @@ async def build_generation_social_context(
         session = session_result.scalar_one_or_none()
 
         if session:
-            # Use stat-based relationships
-            relationships = session.stats.get("relationships", {})
-            npc_key = f"npc:{npc_id}"
-            if npc_key in relationships:
-                rel_data = relationships[npc_key]
+            # Use stat-based relationships, preferring the canonical npc
+            # ``stats:relationships`` component (legacy session.stats fallback).
+            # See plan ``backend-stats-readers-canonical-migration``.
+            rel_data = get_npc_stat_data(session, npc_id, "relationships")
+            if rel_data:
                 relationship_values = {
                     'affinity': rel_data.get('affinity', 0),
                     'trust': rel_data.get('trust', 0),

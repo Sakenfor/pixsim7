@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7.backend.main.domain.game.core.models import GameWorld, GameSession
+from pixsim7.backend.main.services.game.game_object_store import get_npc_stat_data
 
 
 def _default_reputation_band(reputation_score: float) -> str:
@@ -175,16 +176,19 @@ async def evaluate_reputation_band(
         session = session_result.scalar_one_or_none()
 
         if session:
-            relationships = session.stats.get("relationships", {})
             # Look for relationship data
             if subject_type == "player":
-                # Player-to-NPC relationship
-                npc_key = f"npc:{target_id}"
-                npc_rel = relationships.get(npc_key, {})
+                # Player-to-NPC relationship. Prefer the canonical npc
+                # ``stats:relationships`` component (legacy session.stats
+                # fallback). See plan
+                # ``backend-stats-readers-canonical-migration``.
+                npc_rel = get_npc_stat_data(session, target_id, "relationships")
                 # Use affinity as reputation score
                 reputation_score = npc_rel.get("affinity", 50.0)
             elif subject_type == "npc":
-                # NPC-to-NPC relationship
+                # NPC-to-NPC relationship. ``npcPair:*`` is pair-scoped and has
+                # no canonical npc entity, so it stays in session.stats.
+                relationships = session.stats.get("relationships", {})
                 pair_key = f"npcPair:{subject_id}:{target_id}"
                 pair_rel = relationships.get(pair_key, {})
                 # Use friendship or rivalry (convert to 0-100 scale)

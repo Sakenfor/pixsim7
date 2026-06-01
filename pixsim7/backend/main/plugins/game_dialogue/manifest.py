@@ -39,6 +39,7 @@ from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
     build_block_primitive_query,
 )
+from pixsim7.backend.main.services.game.game_object_store import get_npc_stat_data
 
 
 # ===== PLUGIN MANIFEST =====
@@ -211,7 +212,13 @@ async def generate_next_line(
         "id": session.id if session else 0,
         "world_time": session.world_time if session else 0.0,
         "flags": session.flags if session else {},
-        "relationships": session.stats.get("relationships", {}) if session else {}
+        # Canonical-first single-npc relationship package (build_context only
+        # reads the f"npc:{npc_id}" entry). See plan
+        # ``backend-stats-readers-canonical-migration``.
+        "relationships": (
+            {f"npc:{req.npc_id}": get_npc_stat_data(session, req.npc_id, "relationships")}
+            if session else {}
+        )
     }
 
     # Build context using the engine
@@ -360,7 +367,13 @@ async def generate_next_line_debug(
         "id": session.id if session else 0,
         "world_time": session.world_time if session else 0.0,
         "flags": session.flags if session else {},
-        "relationships": session.stats.get("relationships", {}) if session else {}
+        # Canonical-first single-npc relationship package (build_context only
+        # reads the f"npc:{npc_id}" entry). See plan
+        # ``backend-stats-readers-canonical-migration``.
+        "relationships": (
+            {f"npc:{req.npc_id}": get_npc_stat_data(session, req.npc_id, "relationships")}
+            if session else {}
+        )
     }
 
     # Build context
@@ -735,10 +748,11 @@ async def _run_primitive_selection(
                     resolve_stats_config,
                 )
 
-                # Get relationship data directly from stats
-                relationships = session.stats.get("relationships", {})
-                npc_key = f"npc:{req.lead_npc_id}"
-                rel_data = relationships.get(npc_key, {})
+                # Get relationship data, preferring the canonical npc
+                # ``stats:relationships`` component (legacy session.stats
+                # fallback). See plan
+                # ``backend-stats-readers-canonical-migration``.
+                rel_data = get_npc_stat_data(session, req.lead_npc_id, "relationships")
 
                 relationship_values = {
                     "affinity": rel_data.get("affinity", 0),

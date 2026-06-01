@@ -51,6 +51,7 @@ from pixsim7.backend.main.domain.narrative.schema import (
     SceneTransition,
     StateEffects,
 )
+from pixsim7.backend.main.services.game.game_object_store import get_npc_stat_data
 from pixsim7.backend.main.services.user import UserService
 from pixsim7.backend.main.services.generation import GenerationService
 from pixsim7.backend.main.shared.operation_mapping import resolve_operation_type
@@ -802,10 +803,10 @@ class NarrativeRuntimeEngine:
         # Load NPC
         npc = await self.db.get(GameNPC, npc_id)
 
-        # Get relationship from stat-based system
-        npc_key = f"npc:{npc_id}"
-        relationships = session.stats.get("relationships", {})
-        relationship = relationships.get(npc_key, {})
+        # Get relationship from stat-based system, preferring the canonical npc
+        # ``stats:relationships`` component (legacy session.stats fallback).
+        # See plan ``backend-stats-readers-canonical-migration``.
+        relationship = get_npc_stat_data(session, npc_id, "relationships")
 
         return {
             "session": {"id": session.id, "flags": session.flags},

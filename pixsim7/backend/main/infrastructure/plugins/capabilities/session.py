@@ -12,6 +12,7 @@ import structlog
 from ..permissions import PluginPermission, PermissionDeniedBehavior
 from ..context_base import BaseCapabilityAPI
 from pixsim7.backend.main.domain.game.core.models import GameSession
+from pixsim7.backend.main.services.game.game_object_store import get_npc_component
 
 
 class SessionReadAPI(BaseCapabilityAPI):
@@ -112,6 +113,15 @@ class SessionReadAPI(BaseCapabilityAPI):
         session = await self.get_session(session_id)
         if not session:
             return None
+
+        # Prefer the canonical npc ``stats:relationships`` component (which
+        # rides along in session.flags) over the legacy relationships package.
+        # See plan ``backend-stats-readers-canonical-migration``.
+        comp = get_npc_component(
+            session["flags"], session["world_id"], npc_key, "stats:relationships"
+        )
+        if comp and isinstance(comp.get("data"), dict) and comp["data"]:
+            return comp["data"]
 
         return session["relationships"].get(npc_key)
 

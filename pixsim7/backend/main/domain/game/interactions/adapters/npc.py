@@ -28,6 +28,7 @@ from pixsim7.backend.main.domain.game.interactions.interactions import (
     format_entity_ref,
 )
 from pixsim7.backend.main.domain.game.interactions.target_adapters import InteractionTargetAdapter
+from pixsim7.backend.main.services.game.game_object_store import get_npc_stat_data
 
 if TYPE_CHECKING:
     from pixsim7.backend.main.infrastructure.plugins.context import PluginContext
@@ -303,7 +304,12 @@ class NpcInteractionTargetAdapter(InteractionTargetAdapter):
                 "id": session.id,
                 "world_time": session.world_time,
                 "flags": session.flags,
-                "relationships": session.stats.get("relationships", {}),
+                # Canonical-first single-npc relationship package (build_context
+                # only reads the f"npc:{npc_id}" entry). See plan
+                # ``backend-stats-readers-canonical-migration``.
+                "relationships": {
+                    f"npc:{npc_id}": get_npc_stat_data(session, npc_id, "relationships")
+                },
             }
 
             context = engine.build_context(

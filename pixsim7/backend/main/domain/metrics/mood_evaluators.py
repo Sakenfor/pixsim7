@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from pixsim7.backend.main.domain.game.core.models import GameWorld, GameSession
 from pixsim7.backend.main.domain.game.entities.npc_memory import NPCEmotionalState, EmotionType
+from pixsim7.backend.main.services.game.game_object_store import get_npc_stat_data
 from .mood_types import (
     GeneralMoodId,
     IntimacyMoodId,
@@ -215,9 +216,10 @@ async def evaluate_npc_mood(
         session = session_result.scalar_one_or_none()
 
         if session:
-            relationships = session.stats.get("relationships", {})
-            npc_key = f"npc:{npc_id}"
-            npc_rel = relationships.get(npc_key, {})
+            # Prefer the canonical npc ``stats:relationships`` component; falls
+            # back to legacy session.stats. See plan
+            # ``backend-stats-readers-canonical-migration``.
+            npc_rel = get_npc_stat_data(session, npc_id, "relationships")
             relationship_values = {
                 "affinity": npc_rel.get("affinity", 50.0),
                 "trust": npc_rel.get("trust", 50.0),
