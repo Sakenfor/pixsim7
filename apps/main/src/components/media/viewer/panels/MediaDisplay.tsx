@@ -12,7 +12,6 @@ import { ensureBackendAbsolute } from '@lib/media/backendUrl';
 
 import type { ViewerAsset } from '@features/assets';
 import { registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
-import { getAssetDisplayUrls } from '@features/assets/models/asset';
 import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
 
 import { useMediaStreamSrc } from '@/hooks/useMediaStreamSrc';
@@ -69,21 +68,6 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
   );
   const { mediaSrc: imageSrc } = useResolvedAssetMedia({
     mediaUrl: asset.type === 'video' ? undefined : (asset.fullUrl || asset.url),
-    mediaType: 'image',
-  });
-
-  // Thumbnail as the <video> poster so a clicked clip shows an image instantly
-  // while the stream warms up. Usually already in the blob cache from the
-  // gallery/strip, so this resolves as a cache hit.
-  const posterUrls = useMemo(() => {
-    const model = asset._assetModel;
-    return model
-      ? getAssetDisplayUrls(model)
-      : { thumbnailUrl: asset.url, previewUrl: undefined as string | undefined, mainUrl: asset.fullUrl };
-  }, [asset._assetModel, asset.url, asset.fullUrl]);
-  const { thumbSrc: posterSrc } = useResolvedAssetMedia({
-    thumbUrl: asset.type === 'video' ? posterUrls.thumbnailUrl : undefined,
-    previewUrl: asset.type === 'video' ? posterUrls.previewUrl : undefined,
     mediaType: 'image',
   });
 
@@ -169,23 +153,9 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
     >
       {asset.type === 'video' ? (
         <div className="relative">
-          {!videoReady && !videoLoadFailed && posterSrc && (
-            // Thumbnail underlay shown while the stream warms up — the <video>
-            // itself is opacity-0 until ready, so a clicked clip shows an image
-            // immediately instead of an empty box behind the spinner.
-            <img
-              src={posterSrc}
-              alt=""
-              aria-hidden
-              className={`absolute inset-0 ${getFitClass()} rounded-lg`}
-              style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})` }}
-              draggable={false}
-            />
-          )}
           <video
             ref={resolvedVideoRef}
             src={resolvedMediaUrl}
-            poster={posterSrc}
             className={`${getFitClass()} rounded-lg transition-opacity ${videoReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
             style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})` }}
             controls={videoReady}
