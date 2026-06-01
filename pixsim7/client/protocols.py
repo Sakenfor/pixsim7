@@ -186,6 +186,62 @@ def _short_path(path: str) -> str:
     return "/".join(parts[-3:]) if len(parts) > 3 else path
 
 
+def _codex_reasoning_text(item: dict) -> str:
+    """Join the text fragments of a Codex `reasoning` item.
+
+    The app-server reasoning item carries two arrays — ``summary`` (model-authored
+    reasoning summary) and ``content`` (raw chain-of-thought) — each a list of
+    ``{"type": "...", "text": ...}`` entries. Both come back EMPTY unless the
+    session is launched with reasoning summaries enabled (see
+    ``model_reasoning_summary`` in CodexAppServerProtocol.build_start_cmd); in
+    that case this returns "" and the caller falls back to a generic beat.
+    """
+    parts: list[str] = []
+    for key in ("summary", "content"):
+        seq = item.get(key)
+        if not isinstance(seq, list):
+            continue
+        for el in seq:
+            if isinstance(el, dict):
+                txt = el.get("text") or el.get("summary") or ""
+            elif isinstance(el, str):
+                txt = el
+            else:
+                txt = ""
+            if txt:
+                parts.append(str(txt).strip())
+    return "\n".join(p for p in parts if p).strip()
+
+
+def _describe_codex_tool_item(item: dict) -> str:
+    """Human-readable beat for a Codex tool-ish item (command / MCP / web search).
+
+    Mirrors the Claude-side _describe_tool_use phrasing so both agents read the
+    same in the thinking bubble. Returns "" for item types that aren't tools.
+    """
+    it = str(item.get("type") or "")
+    if it in {"commandExecution", "command_execution"}:
+        # commandActions[].command is the cleaned inner command (no shell
+        # wrapper); fall back to the raw command string.
+        cmd = ""
+        actions = item.get("commandActions")
+        if isinstance(actions, list) and actions and isinstance(actions[0], dict):
+            cmd = str(actions[0].get("command") or "")
+        if not cmd:
+            raw_cmd = item.get("command")
+            cmd = " ".join(str(c) for c in raw_cmd) if isinstance(raw_cmd, list) else str(raw_cmd or "")
+        cmd = cmd.strip()
+        return f"Running: {cmd[:120]}" if cmd else "Running command"
+    if it in {"mcpToolCall", "mcp_tool_call"}:
+        name = str(item.get("name") or item.get("tool") or "?")
+        server = str(item.get("server") or item.get("serverName") or "")
+        return f"Using tool: {server + '.' if server else ''}{name}"
+    if it in {"webSearch", "web_search"}:
+        q = str(item.get("query") or "").strip()
+        return f"Searching the web: {q[:100]}" if q else "Searching the web"
+    return ""
+
+
 def _codex_error_event(prefix: str, raw: dict, *, detail: str = "") -> ParsedEvent:
     """Build a structured error :class:`ParsedEvent` for Codex protocols.
 
@@ -369,6 +425,13 @@ class CodexAppServerProtocol(AgentProtocol):
     # config.toml values that may be incompatible with non-default models.
     BRIDGE_CONFIG_DEFAULTS: dict[str, str] = {
         "model_reasoning_effort": "high",
+        # Without this the app-server emits `reasoning` items with EMPTY
+        # summary/content arrays, so the panel can only show a static
+        # "Thinking..." — there is no reasoning text to stream. "auto" lets the
+        # model surface concise reasoning summaries that parse_event forwards as
+        # thinking beats. Dial to "detailed" (or add show_raw_agent_reasoning)
+        # for more verbosity.
+        "model_reasoning_summary": "auto",
     }
 
     # Codex accepts these effort values. Normalize stale/legacy values from
@@ -406,6 +469,9 @@ class CodexAppServerProtocol(AgentProtocol):
         cmd = [command, "app-server"]
         if self.BRIDGE_PREFERRED_AUTH_METHOD:
             cmd.extend(["-c", f"preferred_auth_method={self.BRIDGE_PREFERRED_AUTH_METHOD}"])
+        # Enable reasoning summaries so `reasoning` items carry text to stream as
+        # thinking beats (else they arrive empty — see BRIDGE_CONFIG_DEFAULTS).
+        cmd.extend(["-c", f"model_reasoning_summary={self.BRIDGE_CONFIG_DEFAULTS['model_reasoning_summary']}"])
         if model:
             cmd.extend(["-c", f"model={model}"])
         normalized_effort = self._normalize_reasoning_effort(reasoning_effort)
@@ -498,15 +564,34 @@ class CodexAppServerProtocol(AgentProtocol):
                 delta = params.get("text", "")
             return ParsedEvent(kind="progress", text=str(delta or ""), raw=raw)
 
-        # Agent message completed — contains full text
-        if method_norm == "item/completed":
+        # Item lifecycle (started / updated / completed). Each carries a typed
+        # item: agentMessage, reasoning, commandExecution, mcpToolCall, webSearch.
+        # We forward these as progress "beats" so the thinking bubble shows real
+        # steps instead of a single static "Thinking...". Beats are emitted on a
+        # SINGLE phase per item to avoid started+completed duplicates:
+        #   • agentMessage — already streamed via item/agentMessage/delta above;
+        #     forward the completed text too as a non-streaming fallback.
+        #   • reasoning    — text lands on completed (started is empty); forward it.
+        #   • tool-ish     — forward on started so the beat shows WHILE it runs.
+        if method_norm in {"item/started", "item/updated", "item/completed"}:
             item = params.get("item", {})
-            item_type = str(item.get("type", "") or "")
-            if item_type in {"agentMessage", "agent_message"}:
-                return ParsedEvent(kind="progress", text=str(item.get("text", "") or ""), raw=raw)
-            if item_type in {"toolCall", "tool_call"}:
-                tool_name = str(item.get("name", "") or "?")
-                return ParsedEvent(kind="progress", text=f"Using tool: {tool_name}", raw=raw)
+            if isinstance(item, dict):
+                item_type = str(item.get("type", "") or "")
+                if item_type in {"agentMessage", "agent_message"}:
+                    if method_norm == "item/completed":
+                        return ParsedEvent(kind="progress", text=str(item.get("text", "") or ""), raw=raw)
+                    return ParsedEvent(kind="other", raw=raw)
+                if item_type == "reasoning":
+                    rtext = _codex_reasoning_text(item)
+                    if rtext:
+                        return ParsedEvent(kind="progress", text=rtext, raw=raw)
+                    # Empty (reasoning summaries disabled) — nothing to show; the
+                    # turn/started "Thinking..." already covers the idle state.
+                    return ParsedEvent(kind="other", raw=raw)
+                tool_desc = _describe_codex_tool_item(item)
+                if tool_desc and method_norm == "item/started":
+                    return ParsedEvent(kind="progress", text=tool_desc, raw=raw)
+                return ParsedEvent(kind="other", raw=raw)
 
         # Turn completed — final event
         if method_norm in {"turn/completed", "turn/complete"}:

@@ -130,13 +130,21 @@ class TestCodexAgentMessageNotForwardedAsProgress:
         return {"method": "item/completed", "params": {"item": {"type": "agentMessage", "text": text}}}
 
     @staticmethod
-    def _tool_call(name: str) -> dict:
-        return {"method": "item/completed", "params": {"item": {"type": "toolCall", "name": name}}}
+    def _tool_call(cmd: str) -> dict:
+        # Codex surfaces a shell command as a `commandExecution` item; the beat
+        # fires on item/started (while it runs), not on completed. commandActions
+        # carries the cleaned inner command (no shell wrapper).
+        return {"method": "item/started", "params": {"item": {
+            "type": "commandExecution",
+            "command": cmd,
+            "commandActions": [{"command": cmd}],
+            "status": "inProgress",
+        }}}
 
     def test_completed_agent_messages_are_not_forwarded_but_tool_calls_are(self):
         events = [
             self._agent_message("You're asking whether prompt tools should preview..."),
-            self._tool_call("shell_command"),
+            self._tool_call("rg shell_command src/"),
             self._agent_message("Short answer: yes, it should use preview."),
             {"method": "turn/completed", "params": {}},
         ]
@@ -149,8 +157,29 @@ class TestCodexAgentMessageNotForwardedAsProgress:
         # No agent narration leaked into the progress/thinking channel.
         assert not any("asking whether" in d for d in forwarded)
         assert not any("Short answer" in d for d in forwarded)
-        # Tool-call progress is still surfaced.
+        # Tool-call progress is still surfaced (as a "Running: ..." beat).
         assert any("shell_command" in d for d in forwarded)
+
+    def test_reasoning_summary_is_forwarded_as_a_thinking_beat(self):
+        # A reasoning item with a populated summary streams as a beat; an empty
+        # one (reasoning summaries disabled) does NOT, so the bubble isn't spammed.
+        events = [
+            {"method": "item/completed", "params": {"item": {
+                "type": "reasoning", "summary": [], "content": [],
+            }}},
+            {"method": "item/completed", "params": {"item": {
+                "type": "reasoning",
+                "summary": [{"type": "summary_text", "text": "Checking the flag wiring first."}],
+                "content": [],
+            }}},
+            self._agent_message("done"),
+            {"method": "turn/completed", "params": {}},
+        ]
+        _, progress = self._drive(events)
+        forwarded = [detail for _, detail in progress]
+        assert any("Checking the flag wiring first." in d for d in forwarded)
+        # Exactly one reasoning beat — the empty item produced nothing.
+        assert sum("Checking the flag" in d for d in forwarded) == 1
 
 
 class TestToolInflightHeartbeat:
@@ -720,3 +749,44 @@ class TestManagedProcessDetection:
         result, progress = asyncio.run(_run())
         assert result == "done"
         assert not [e for e, _ in progress if e.startswith("managed_proc")], progress
+
+
+class TestActiveTurnSurvivesWallClock:
+    """A turn that keeps streaming events must NOT be cut just for running
+    longer than `timeout` — the bound is INACTIVITY (silence since the last
+    event), not total wall-clock. Regression for the 900s kill of a 15-min turn
+    of continuous edits (mislabelled "agent went silent / 420s"). See
+    session.py send_message.
+    """
+
+    def test_streaming_turn_runs_past_timeout_without_being_cut(self):
+        async def _run():
+            s = AgentCmdSession("test-session", command="claude")
+            s._process = _FakeProc()
+
+            async def feed():
+                await asyncio.sleep(0.05)
+                # Stream a tool_use every 0.25s for ~1.75s — well past the 1s
+                # turn timeout, but each gap is far under it. A wall-clock budget
+                # would cut this at 1s; an inactivity bound must not.
+                for i in range(7):
+                    await s._response_queue.put({
+                        "type": "assistant",
+                        "message": {"content": [
+                            {"type": "tool_use", "id": f"toolu_01READ{i:016d}",
+                             "name": "Read", "input": {"file_path": f"/f{i}.ts"}},
+                        ]},
+                    })
+                    await asyncio.sleep(0.25)
+                await s._response_queue.put({"type": "result", "result": "done"})
+
+            feeder = asyncio.create_task(feed())
+            started = time.monotonic()
+            result = await s.send_message("go", timeout=1)
+            elapsed = time.monotonic() - started
+            await feeder
+            return result, elapsed
+
+        result, elapsed = asyncio.run(_run())
+        assert result == "done", "an actively-streaming turn must not be cut at the wall-clock timeout"
+        assert elapsed > 1.0, f"test must actually run past the 1s timeout to prove it (was {elapsed:.2f}s)"
