@@ -18,6 +18,7 @@ import shutil
 import subprocess as sp
 import sys
 import tempfile
+import time
 import traceback
 import uuid
 from pathlib import Path
@@ -154,6 +155,16 @@ class Bridge:
         self._connected = False
         self._tasks_handled = 0
         self._buffered_results: dict[str, dict] = {}  # task_id -> result msg (buffer for WS failures)
+        # Disk mirror of `_buffered_results`. The in-memory buffer survives a
+        # WS blip (replayed on reconnect in run()), but NOT a bridge process
+        # restart — and a completed reply exists nowhere else once the CLI
+        # session is gone, so a restart in the dead-WS window silently loses
+        # the turn server-side. Mirror to disk at buffer time and reload here
+        # so replay survives a restart. Plan
+        # `launcher-health-probe-stability` /
+        # checkpoint `buffered-result-lost-on-bridge-restart`.
+        self._buffered_results_dir = self._resolve_buffered_results_dir()
+        self._buffered_results.update(self._load_persisted_buffered_results())
         # In-flight tasks the bridge is currently processing. Reported in
         # pool_status so a restarted backend can rebuild its _active_tasks
         # and let frontend reconnects re-attach to running work.
@@ -293,6 +304,77 @@ class Bridge:
                 pass
         except OSError:
             return
+
+    # ── Durable result buffer ────────────────────────────────────────
+    # Undelivered completed results are mirrored to disk so they replay
+    # across a bridge process restart, not just a WS reconnect. One JSON
+    # file per task_id keeps writes/prunes independent. See
+    # `_buffered_results` in __init__.
+    _BUFFERED_RESULT_TTL_SECONDS = 7 * 24 * 3600
+
+    def _resolve_buffered_results_dir(self) -> Path:
+        """Dir holding one JSON file per undelivered result, namespaced like bridge_id."""
+        explicit = str(os.environ.get("PIXSIM_BRIDGE_BUFFER_DIR") or "").strip()
+        if explicit:
+            try:
+                return Path(explicit).expanduser()
+            except Exception:
+                pass
+        namespace = self._normalize_bridge_id_namespace(
+            os.environ.get("PIXSIM_BRIDGE_ID_NAMESPACE") or ""
+        )
+        name = f"buffered_results_{namespace}" if namespace else "buffered_results"
+        return Path.home() / ".pixsim" / name
+
+    def _persist_buffered_result(self, task_id: str, msg: dict) -> None:
+        """Mirror a buffered result to disk so it survives a process restart."""
+        if not task_id:
+            return
+        try:
+            d = self._buffered_results_dir
+            d.mkdir(parents=True, exist_ok=True)
+            tmp = d / f".{task_id}.tmp"
+            final = d / f"{task_id}.json"
+            tmp.write_text(json.dumps(msg), encoding="utf-8")
+            os.replace(str(tmp), str(final))  # atomic swap into place
+            try:
+                os.chmod(str(final), 0o600)
+            except OSError:
+                pass
+        except (OSError, TypeError, ValueError) as e:
+            get_logger().debug("buffered_result_persist_failed", task=task_id[:8], error=str(e))
+
+    def _drop_persisted_buffered_result(self, task_id: str) -> None:
+        """Remove the on-disk copy once a buffered result is delivered."""
+        if not task_id:
+            return
+        try:
+            (self._buffered_results_dir / f"{task_id}.json").unlink()
+        except OSError:
+            pass
+
+    def _load_persisted_buffered_results(self) -> dict[str, dict]:
+        """Reload undelivered results from disk at startup, pruning stale ones."""
+        out: dict[str, dict] = {}
+        try:
+            files = list(self._buffered_results_dir.glob("*.json"))
+        except OSError:
+            return out
+        now = time.time()
+        for f in files:
+            try:
+                if now - f.stat().st_mtime > self._BUFFERED_RESULT_TTL_SECONDS:
+                    f.unlink()
+                    continue
+                msg = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            task_id = msg.get("task_id") if isinstance(msg, dict) else None
+            if task_id:
+                out[task_id] = msg
+        if out:
+            get_logger().info("buffered_results_restored", count=len(out))
+        return out
 
     async def run(self) -> None:
         """Main loop — connect, handle tasks, reconnect on failure."""
@@ -546,6 +628,7 @@ class Bridge:
                     try:
                         await ws.send(json.dumps(result_msg))
                         self._buffered_results.pop(task_id, None)
+                        self._drop_persisted_buffered_result(task_id)
                         get_logger().debug("buffered_replayed", task=task_id[:8])
                     except Exception as e:
                         get_logger().error("buffered_replay_failed", task=task_id[:8], error=str(e))
@@ -1743,8 +1826,10 @@ class Bridge:
                 try:
                     await ws.send(json.dumps(result_msg))
                 except Exception:
-                    # WS dead — buffer result for replay on reconnect
+                    # WS dead — buffer result for replay on reconnect, and
+                    # mirror to disk so it survives a bridge process restart.
                     self._buffered_results[task_id] = result_msg
+                    self._persist_buffered_result(task_id, result_msg)
                     get_logger().warning("ws_dead_buffered", task=task_id[:8], chars=len(response))
                     return
 
@@ -1780,8 +1865,10 @@ class Bridge:
             try:
                 await ws.send(json.dumps(error_msg))
             except Exception:
-                # WS dead — buffer error for replay on reconnect
+                # WS dead — buffer error for replay on reconnect, and mirror
+                # to disk so it survives a bridge process restart.
                 self._buffered_results[task_id] = error_msg
+                self._persist_buffered_result(task_id, error_msg)
                 get_logger().warning("ws_dead_buffered_error", task=task_id[:8])
         finally:
             # Whatever happened — success, buffered, or error — the bridge is
