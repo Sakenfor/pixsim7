@@ -77,7 +77,7 @@ export { useSamePromptScope } from './hooks/useSamePromptScope';
 export { useResolvedAssetSet } from './hooks/useResolvedAssetSet';
 export type { UseResolvedAssetSetResult } from './hooks/useResolvedAssetSet';
 
-export { useFavoriteToggle, FAVORITE_TAG_SLUG, toggleFavoriteTag } from './hooks/useFavoriteToggle';
+export { FAVORITE_TAG_SLUG, isFavoriteAsset, toggleFavoriteTag, setFavoriteTag } from './lib/favoriteTag';
 
 export { useFilterMetadata } from './hooks/useFilterMetadata';
 

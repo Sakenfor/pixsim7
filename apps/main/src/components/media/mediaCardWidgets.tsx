@@ -26,8 +26,10 @@ import {
   type VideoScrubWidgetSettings,
 } from '@lib/widgets';
 
+import { assetEvents } from '@features/assets/lib/assetEvents';
 import type { AssetWarning } from '@features/assets/lib/assetWarnings';
 import { assertBackendAssetId } from '@features/assets/lib/backendAssetId';
+import { FAVORITE_TAG_SLUG, setFavoriteTag } from '@features/assets/lib/favoriteTag';
 import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
 import { getTagSourceMeta } from '@features/assets/lib/tagSource';
@@ -1119,25 +1121,106 @@ function InfoPopoverContent({ data }: { data: MediaCardOverlayData }) {
 // top-right status menu's info section.
 
 /**
- * Create favorite toggle widget (top-right, below status)
- * Always visible — heart icon that toggles the user:favorite tag.
+ * Self-reactive favorite heart.
+ *
+ * The heart owns its own filled/empty truth instead of relying on the host
+ * surface to re-render the card with a freshly-tagged asset. `toggleFavoriteTag`
+ * emits `assetEvents.emitAssetUpdated` after the server write, so this widget
+ * subscribes to that bus and flips on the matching asset id — independent of
+ * whether the surface refreshes the asset prop.
+ *
+ * Why this matters: the gallery refreshes its asset list on `assetEvents`, so a
+ * baked-from-props heart flipped there. But the media viewer and the generation
+ * input slots feed the card through their own stores / context snapshots, and a
+ * single break in that refresh chain (id-type mismatch, `ctx` snapshot bypass,
+ * memo dep gap, subscription race) left the heart visually stale even though the
+ * tag was written. Owning the state here makes the flip surface-agnostic.
  */
-export function createFavoriteWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> {
-  return createBadgeWidget({
+function FavoriteBadgeContent({ data }: { data: MediaCardOverlayData }) {
+  const assetId = typeof data.id === 'number' ? data.id : Number(data.id);
+  const hasBackendId = Number.isFinite(assetId) && assetId > 0;
+  const [isFav, setIsFav] = useState(!!data.isFavorite);
+
+  // Reflect host-provided snapshots: gallery list refresh, or the card slot
+  // being pointed at a different asset (viewer nav, input-slot walk).
+  useEffect(() => {
+    setIsFav(!!data.isFavorite);
+  }, [data.isFavorite]);
+
+  // Listen for the favorite write landing for THIS asset, from any surface.
+  useEffect(() => {
+    if (!hasBackendId) return;
+    return assetEvents.subscribeToUpdates((response) => {
+      if (response.id !== assetId) return;
+      setIsFav(response.tags?.some((t) => t.slug === FAVORITE_TAG_SLUG) ?? false);
+    });
+  }, [assetId, hasBackendId]);
+
+  const label = isFav ? 'Remove from favorites' : 'Add to favorites';
+
+  const handleToggle = () => {
+    const next = !isFav;
+    // Drive the write off the heart's own live state — NOT a stale captured
+    // asset. Optimistically flip so there's no round-trip delay; revert if the
+    // write fails. The emitted assetUpdated reconciles all other surfaces.
+    if (hasBackendId) {
+      setIsFav(next);
+      setFavoriteTag(assetId, next).catch((err) => {
+        console.error('[FavoriteBadge] toggle failed', err);
+        setIsFav(!next);
+      });
+      return;
+    }
+    // Local/edge assets (non-backend id) keep their bespoke handler, e.g. the
+    // local-folder upload-then-tag flow.
+    data.onToggleFavorite?.();
+  };
+
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={isFav}
+      // Keep focus on the document body — focusing a portaled overlay button
+      // scrolls the page (see overlay-button-focus-scroll canon).
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        handleToggle();
+      }}
+      className={`inline-flex items-center justify-center cq-btn-md rounded-full shadow-md backdrop-blur-sm cursor-pointer hover:animate-hover-pop ${
+        isFav
+          ? '!bg-red-500/90 !text-white'
+          : '!bg-white/80 dark:!bg-neutral-800/80 !text-neutral-400 hover:!text-red-500'
+      }`}
+    >
+      <Icon name="heart" />
+    </button>
+  );
+}
+
+/**
+ * Create favorite toggle widget (top-right, below status).
+ * Always visible — heart icon that toggles the user:favorite tag. Renders the
+ * self-reactive {@link FavoriteBadgeContent} so the filled/empty state stays
+ * correct on every surface, not just ones that refresh the asset prop.
+ */
+export function createFavoriteWidget(): OverlayWidget<MediaCardOverlayData> {
+  return {
     id: 'favorite-toggle',
+    type: 'badge',
     position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
     stackGroup: 'badges-tr',
-    variant: 'icon',
-    icon: 'heart',
-    color: 'gray',
-    shape: 'circle',
-    tooltip: props.isFavorite ? 'Remove from favorites' : 'Add to favorites',
-    onClick: () => props.onToggleFavorite?.(),
-    className: props.isFavorite
-      ? '!bg-red-500/90 !text-white backdrop-blur-sm'
-      : '!bg-white/80 dark:!bg-neutral-800/80 !text-neutral-400 hover:!text-red-500 backdrop-blur-sm',
+    visibility: { trigger: 'always', transition: 'none' },
     priority: 18,
-  });
+    interactive: true,
+    // The inner <button> owns its click/keyboard handling; don't let the
+    // wrapper also apply role="button" + click forwarding (would double-fire).
+    handlesOwnInteraction: true,
+    ariaLabel: 'Toggle favorite',
+    render: (data) => <FavoriteBadgeContent data={data} />,
+  };
 }
 
 /**

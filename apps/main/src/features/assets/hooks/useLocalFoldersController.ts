@@ -17,9 +17,7 @@ import { usePersistentState } from '@/hooks/usePersistentState';
 import { useViewer } from '@/hooks/useViewer';
 import type { LocalFoldersController, SourceInfo, ViewMode } from '@/types/localSources';
 
-import { assignTags, getAsset } from '../lib/api';
-import { assetEvents } from '../lib/assetEvents';
-import { FAVORITE_TAG_SLUG } from '../lib/favoriteTag';
+import { toggleFavoriteById } from '../lib/favoriteTag';
 import { setHashWorkerPoolSize } from '../lib/hashWorkerManager';
 import {
   checkHashesAgainstBackend,
@@ -1258,18 +1256,9 @@ export function useLocalFoldersController(): LocalFoldersController {
       throw new Error('Failed to resolve a library asset ID for favorite toggle.');
     }
 
-    const current = await getAsset(targetAssetId);
-    const isCurrentlyFavorite = current.tags?.some((tag) => tag.slug === FAVORITE_TAG_SLUG) ?? false;
-    const updated = await assignTags(
-      targetAssetId,
-      isCurrentlyFavorite
-        ? { remove: [FAVORITE_TAG_SLUG] }
-        : { add: [FAVORITE_TAG_SLUG] },
-    );
-
-    const isNowFavorite = updated.tags?.some((tag) => tag.slug === FAVORITE_TAG_SLUG) ?? false;
-    setFavoriteStatus((state) => ({ ...state, [asset.key]: isNowFavorite }));
-    assetEvents.emitAssetUpdated(updated);
+    // Once a backend asset id exists, the favorite read+write+emit is shared.
+    const next = await toggleFavoriteById(targetAssetId);
+    setFavoriteStatus((state) => ({ ...state, [asset.key]: next }));
   }, [assetsRecord, uploadOneInternal]);
 
   // Refresh all folders

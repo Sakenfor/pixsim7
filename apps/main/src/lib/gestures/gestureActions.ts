@@ -1,3 +1,4 @@
+import { toggleFavoriteById } from '@features/assets/lib/favoriteTag';
 import { resolveUploadTarget } from '@features/assets/lib/resolveUploadTarget';
 
 import type { MediaCardActions } from '@/components/media/MediaCard';
@@ -171,9 +172,19 @@ export function resolveGestureHandler(
   const { actions } = context;
   if (actionId === 'none') return undefined;
 
-  // Special case: toggleFavorite doesn't take an id
-  if (actionId === 'toggleFavorite' && context.onToggleFavorite) {
-    return () => context.onToggleFavorite!();
+  // Special case: toggleFavorite. For backend assets, read fresh state and
+  // write the explicit target via the shared id-based toggle — so a swipe can
+  // never be misled by a stale captured asset (the bug the heart click had).
+  // Non-backend ids (e.g. un-uploaded local files) keep the surface's bespoke
+  // handler, which does the upload-then-tag flow.
+  if (actionId === 'toggleFavorite') {
+    return (id: number) => {
+      if (Number.isFinite(id) && id > 0) {
+        void toggleFavoriteById(id);
+      } else {
+        context.onToggleFavorite?.();
+      }
+    };
   }
 
   // Review action fallback chain so review presets remain usable even when a

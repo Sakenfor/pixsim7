@@ -14,7 +14,7 @@ import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 import { OverlayContainer } from '@lib/ui/overlay';
 
 import { useAssetViewerStore } from '@features/assets';
-import { toggleFavoriteTag } from '@features/assets/lib/favoriteTag';
+import { toggleFavoriteById } from '@features/assets/lib/favoriteTag';
 import { useAssetRegionStore, useCaptureRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
 
 import { useOverlayWidgetsForAsset } from '../../hooks/useOverlayWidgetsForAsset';
@@ -441,9 +441,9 @@ function MediaPanelInner({ context }: MediaPanelProps) {
   }, [setViewport]);
 
   const toggleFavoriteCb = useCallback(() => {
-    const model = asset?._assetModel;
-    if (model) toggleFavoriteTag(model);
-  }, [asset?._assetModel]);
+    const id = asset?._assetModel?.id;
+    if (typeof id === 'number') void toggleFavoriteById(id);
+  }, [asset?._assetModel?.id]);
 
   const viewerGestureCtx = useMemo<ViewerGestureContext>(() => ({
     navigatePrev,
