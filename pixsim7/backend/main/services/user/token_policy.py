@@ -31,6 +31,7 @@ class TokenKind(str, Enum):
     USER = "user"
     BRIDGE = "bridge"
     AGENT = "agent"
+    MEDIA = "media"
     PASSWORD_RESET = "password_reset"
     EMAIL_VERIFICATION = "email_verification"
 
@@ -40,12 +41,18 @@ DEFAULT_TTL: dict[TokenKind, timedelta] = {
     TokenKind.USER: timedelta(days=30),           # from settings, this is the fallback
     TokenKind.BRIDGE: timedelta(hours=24),
     TokenKind.AGENT: timedelta(hours=8),
+    # Short-lived, read-only token carried in <video>/<img> src query strings
+    # (browsers can't set an Authorization header on media element requests).
+    # Kept brief because a query-string token can leak into logs/history.
+    TokenKind.MEDIA: timedelta(minutes=15),
     TokenKind.PASSWORD_RESET: timedelta(hours=1),
     TokenKind.EMAIL_VERIFICATION: timedelta(days=7),
 }
 
-# Tokens with these purposes skip UserSession revocation checks
-SKIP_SESSION_TRACKING: set[TokenKind] = {TokenKind.BRIDGE}
+# Tokens with these purposes skip UserSession revocation checks. Media tokens
+# are short-lived and minted on demand, so per-token revocation isn't worth a
+# session row — they simply expire.
+SKIP_SESSION_TRACKING: set[TokenKind] = {TokenKind.BRIDGE, TokenKind.MEDIA}
 
 
 # Permissions an agent may inherit from the user it acts on behalf of
@@ -190,6 +197,20 @@ def _agent_claims(
     return data
 
 
+def _media_claims(*, user_id: int) -> dict[str, Any]:
+    """Read-only media-streaming token. Resolves to the owning user so the
+    existing ``u/{user.id}/`` ownership check on media routes still gates
+    access — it grants nothing beyond serving that user's own files."""
+    return {
+        "sub": str(user_id),
+        "purpose": "media",
+        "role": "user",
+        "is_admin": False,
+        "permissions": [],
+        "is_active": True,
+    }
+
+
 def _password_reset_claims(*, user_id: int) -> dict[str, Any]:
     return {
         "sub": str(user_id),
@@ -208,6 +229,7 @@ _CLAIMS_BUILDERS = {
     TokenKind.USER: _user_claims,
     TokenKind.BRIDGE: _bridge_claims,
     TokenKind.AGENT: _agent_claims,
+    TokenKind.MEDIA: _media_claims,
     TokenKind.PASSWORD_RESET: _password_reset_claims,
     TokenKind.EMAIL_VERIFICATION: _email_verification_claims,
 }

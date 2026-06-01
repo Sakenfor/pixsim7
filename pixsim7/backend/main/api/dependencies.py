@@ -6,7 +6,7 @@ Provides clean dependency injection for API routes
 import asyncio
 from functools import lru_cache
 from typing import Annotated, Optional
-from fastapi import Depends, HTTPException, Header
+from fastapi import Depends, HTTPException, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 try:
@@ -414,9 +414,48 @@ async def get_current_principal_optional(
         return None
 
 
+async def get_media_principal(
+    authorization: Annotated[str | None, Header()] = None,
+    token: Annotated[str | None, Query()] = None,
+    auth_service: AuthService = Depends(get_auth_service),
+) -> RequestPrincipal:
+    """Auth for media-serving routes — accepts the bearer header OR a ``?token=``
+    query param.
+
+    Native ``<video>``/``<img>`` element requests can't set an Authorization
+    header, so the client carries a short-lived, read-only media token in the
+    URL (mirrors the WebSocket ``?token=`` pattern). The header path is kept so
+    existing authenticated blob fetches keep working unchanged.
+
+    Whatever the token's purpose, downstream routes still enforce the
+    ``u/{user.id}/`` ownership check, so this only ever serves the caller's own
+    files.
+    """
+    raw = _extract_bearer_token(authorization) if authorization else token
+    if not raw:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing authorization",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        payload = await auth_service.verify_token_claims(raw, update_last_used=False)
+    except Exception as e:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid or expired token: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    principal = RequestPrincipal.from_jwt_payload(payload)
+    if not principal.is_active:
+        raise HTTPException(status_code=403, detail="Inactive user")
+    return principal
+
+
 # ===== TYPE ALIASES (for cleaner route signatures) =====
 
 CurrentUser = Annotated[RequestPrincipal, Depends(get_current_principal)]
+MediaUser = Annotated[RequestPrincipal, Depends(get_media_principal)]
 CurrentActiveUser = Annotated[RequestPrincipal, Depends(get_current_principal)]
 CurrentAdminUser = Annotated[RequestPrincipal, Depends(get_current_admin_principal)]
 CurrentCodegenUser = Annotated[RequestPrincipal, Depends(get_current_codegen_principal)]

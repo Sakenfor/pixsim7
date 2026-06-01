@@ -63,6 +63,9 @@ class TestTokenKind:
     def test_agent_tracks_sessions(self):
         assert TokenKind.AGENT not in SKIP_SESSION_TRACKING
 
+    def test_media_skips_session_tracking(self):
+        assert TokenKind.MEDIA in SKIP_SESSION_TRACKING
+
 
 # ═══════════════════════════════════════════════════════════════════
 # TTL defaults
@@ -99,6 +102,32 @@ class TestSessionPolicy:
 
     def test_should_not_track_bridge(self):
         assert should_track_session(TokenKind.BRIDGE) is False
+
+    def test_should_not_track_media(self):
+        assert should_track_session(TokenKind.MEDIA) is False
+
+
+# ═══════════════════════════════════════════════════════════════════
+# mint_token — media
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestMintMedia:
+
+    def test_media_token_claims(self):
+        token = mint_token(TokenKind.MEDIA, user_id=7)
+        payload = decode_access_token(token)
+        assert payload["sub"] == "7"
+        assert payload["purpose"] == "media"
+        assert payload["role"] == "user"
+        assert payload["is_admin"] is False
+        assert payload["permissions"] == []
+
+    def test_media_default_ttl_is_15m(self):
+        token = mint_token(TokenKind.MEDIA, user_id=1)
+        payload = decode_access_token(token)
+        remaining = payload["exp"] - time.time()
+        assert 14 * 60 < remaining < 16 * 60
 
 
 # ═══════════════════════════════════════════════════════════════════

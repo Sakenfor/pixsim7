@@ -352,8 +352,9 @@ class AuthService:
         except (ValueError, KeyError) as e:
             raise AuthenticationError(f"Invalid token: {e}")
 
-        # Bridge and launcher tokens skip session tracking entirely
-        if payload.get("purpose") in ("bridge", "launcher"):
+        # Bridge, launcher, and short-lived media tokens skip session tracking
+        # entirely (media tokens are minted on demand and just expire).
+        if payload.get("purpose") in ("bridge", "launcher", "media"):
             return payload
 
         result = await self.db.execute(

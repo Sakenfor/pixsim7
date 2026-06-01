@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession, MediaUser
 from pixsim7.backend.main.infrastructure.queue.tasks import queue_and_wait
 from pixsim7.backend.main.services.asset import AssetIngestionService
 from pixsim7.backend.main.services.media import get_media_settings
@@ -334,10 +334,38 @@ async def _try_regenerate_derivative(
         return False
 
 
+class MediaTokenResponse(BaseModel):
+    """Short-lived token for streaming media via element ``src`` query string."""
+    token: str = Field(description="Short-lived media token (carry as ?token=)")
+    expires_in: int = Field(description="Seconds until the token expires")
+
+
+# Defined before the `/media/{key:path}` catch-all so it isn't swallowed as a
+# media key.
+@router.get("/media/auth-token", response_model=MediaTokenResponse)
+async def get_media_auth_token(user: CurrentUser):
+    """Mint a short-lived, read-only media token for the current user.
+
+    Native ``<video>``/``<img>`` elements can't send an Authorization header, so
+    the client carries this token in the URL query string to stream backend
+    media directly (enabling native HTTP Range / progressive playback instead
+    of downloading the whole file into a blob first).
+    """
+    from pixsim7.backend.main.services.user.token_policy import (
+        TokenKind,
+        get_default_ttl,
+        mint_token,
+    )
+
+    ttl = get_default_ttl(TokenKind.MEDIA)
+    token = mint_token(TokenKind.MEDIA, user_id=user.id)
+    return MediaTokenResponse(token=token, expires_in=int(ttl.total_seconds()))
+
+
 @router.get("/media/{key:path}")
 async def serve_media(
     key: str,
-    user: CurrentUser,
+    user: MediaUser,
     db: DatabaseSession,
     response: Response,
 ):
@@ -406,7 +434,7 @@ async def serve_media(
 @router.head("/media/{key:path}")
 async def head_media(
     key: str,
-    user: CurrentUser,
+    user: MediaUser,
     response: Response,
 ):
     """
