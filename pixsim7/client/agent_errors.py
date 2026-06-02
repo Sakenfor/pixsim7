@@ -275,3 +275,72 @@ def classify_claude_error(raw: dict) -> AgentError:
         retry_after_ms=None,
         raw=raw,
     )
+
+
+# An HTTP status embedded in free-form Codex text, but ONLY in error-ish
+# context — avoids misreading "read 500 files" / "resets 8:20" as a status.
+_CODEX_STATUS_RE = re.compile(
+    r"(?:status|code|http|error)\s*[:=#]?\s*([45]\d\d)\b"
+    r"|\b([45]\d\d)\s+(?:error|status)\b"
+    r"|[\(\[]\s*([45]\d\d)\s*[\)\]]",
+    re.IGNORECASE,
+)
+
+# Ordered signature → category table (first match wins). Word-based, NOT bare
+# numbers, so a digit in a normal sentence can't trip a category. Matched
+# against the lower-cased message.
+_CODEX_SIGNATURE_CATEGORY: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("session limit", "rate limit", "rate-limit", "too many requests",
+      "quota", "you've hit", "you have hit", "usage limit"), "rate_limited"),
+    (("unauthorized", "not authenticated", "authentication failed",
+      "not logged in", "please log in", "invalid api key", "token expired",
+      "session expired", "login again"), "auth"),
+    (("model not found", "unknown model", "model unavailable",
+      "no such model", "model does not exist"), "model_not_found"),
+    (("overloaded", "temporarily unavailable", "try again later"), "overloaded"),
+    (("internal server error", "server error"), "server_error"),
+    (("invalid request", "bad request"), "client_error"),
+)
+
+
+def classify_codex_error(message: str, raw: dict | None = None) -> AgentError:
+    """Classify a free-form Codex error message into a typed :class:`AgentError`.
+
+    Codex (app-server + exec) doesn't emit a consistent machine-readable error
+    code the way the Anthropic API does, so we infer the category from the
+    message text plus any HTTP status it mentions in error context. Signature
+    matches win over a bare status (a 429 "session limit" reads as rate_limited
+    either way). Falls back to ``unknown`` — the prior behaviour — when nothing
+    matches, so this only ever *adds* signal, never removes a working classification.
+
+    Replaces the previous ``generic_agent_error`` funnel for Codex, which
+    collapsed every failure (rate limits, relogin, model gone) to "unknown" and
+    a non-retryable banner. The bridge keys retry policy on ``retryable`` and the
+    UI keys its banner on the wire error_code, so a correct category here is what
+    turns "unknown error" into an actionable "Rate limited — retry shortly".
+    """
+    msg = (message or "").strip()
+    low = msg.lower()
+
+    status: int | None = None
+    m = _CODEX_STATUS_RE.search(msg)
+    if m:
+        status = int(next(g for g in m.groups() if g))
+
+    category = ""
+    for needles, cat in _CODEX_SIGNATURE_CATEGORY:
+        if any(n in low for n in needles):
+            category = cat
+            break
+    if not category and status is not None:
+        category = _category_from_http_status(status)
+    if not category:
+        category = "unknown"
+
+    return AgentError(
+        category=category,
+        message=msg or "Codex returned an error (no detail)",
+        http_status=status,
+        retryable=is_retryable(category),
+        raw=raw,
+    )

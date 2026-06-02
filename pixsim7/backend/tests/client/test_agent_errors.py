@@ -31,6 +31,7 @@ import pytest
 
 from pixsim7.client.agent_errors import (
     AGENT_ERROR_CATEGORY,
+    classify_codex_error,
     generic_agent_error,
     wire_error_code,
 )
@@ -411,3 +412,64 @@ class TestCodexErrorEventsAreTyped:
         assert parsed.kind == "error"
         assert isinstance(parsed.error, AgentError)
         assert "method not found" in parsed.text
+
+
+# ── Codex signature classifier ────────────────────────────────────
+
+
+class TestClassifyCodexError:
+    """``classify_codex_error`` infers a category from free-form Codex text.
+
+    Codex has no consistent machine-readable error code, so a rate limit or
+    relogin used to collapse to "unknown error" + a non-retryable banner. The
+    classifier recovers the signal from the message so the bridge retries and
+    the UI shows an actionable banner. Only ever ADDS signal — anything it
+    can't recognize stays ``unknown`` (the prior behaviour).
+    """
+
+    def test_session_limit_is_rate_limited_and_retryable(self):
+        # The exact wild message that surfaced as a vague systemError first.
+        err = classify_codex_error(
+            "Codex turn failed: You've hit your session limit · resets 8:20pm"
+        )
+        assert err.category == "rate_limited"
+        assert err.retryable is True
+        assert wire_error_code(err.category) == "agent_rate_limited"
+
+    def test_auth_signature(self):
+        err = classify_codex_error("Codex error: not logged in — please log in to continue")
+        assert err.category == "auth"
+        assert err.retryable is False
+
+    def test_http_status_in_error_context(self):
+        # 503 → server_error (only 529 maps to overloaded); both are retryable.
+        err = classify_codex_error("Codex error: request failed with status 503")
+        assert err.http_status == 503
+        assert err.category == "server_error"
+        assert err.retryable is True
+
+    def test_bare_number_in_normal_text_does_not_classify(self):
+        # "500 files" must NOT read as a server error — guards the status regex.
+        err = classify_codex_error("Codex turn failed: scanned 500 files, found nothing")
+        assert err.category == "unknown"
+        assert err.http_status is None
+
+    def test_unrecognized_stays_unknown(self):
+        err = classify_codex_error("Codex systemError")
+        assert err.category == "unknown"
+        assert err.retryable is False
+
+    def test_empty_message_fallback(self):
+        err = classify_codex_error("")
+        assert err.message  # non-empty fallback
+        assert err.category == "unknown"
+
+    def test_rate_limit_flows_through_parse_event(self):
+        raw = {
+            "method": "turn/failed",
+            "params": {"message": "You've hit your session limit · resets 8:20pm"},
+        }
+        parsed = CodexAppServerProtocol().parse_event(raw)
+        assert parsed.kind == "error"
+        assert parsed.error.category == "rate_limited"
+        assert parsed.error.retryable is True

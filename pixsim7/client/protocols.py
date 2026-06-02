@@ -21,7 +21,7 @@ from pixsim7.client.agent_errors import (
     AgentError,
     _dict_message,
     classify_claude_error as _classify_claude_error,
-    generic_agent_error as _generic_agent_error,
+    classify_codex_error as _classify_codex_error,
 )
 
 __all__ = [
@@ -249,10 +249,10 @@ def _codex_error_event(prefix: str, raw: dict, *, detail: str = "") -> ParsedEve
     MCP startup failures, ``thread/status/changed → systemError``) but they
     all collapse to "prefix + truncated detail" — and they all need a typed
     :class:`AgentError` so the session-layer raise becomes an
-    :class:`AgentTaskError` instead of a bare ``RuntimeError``. Codex
-    doesn't expose enough signal to categorize further today, so all
-    Codex-side errors land as ``category="unknown"``; the bridge maps that
-    to ``error_code="agent_unknown"``.
+    :class:`AgentTaskError` instead of a bare ``RuntimeError``. The combined
+    "prefix: detail" text is run through :func:`classify_codex_error` so a
+    rate-limit / auth / model-gone signature in the message surfaces as the
+    right category (and ``retryable``) instead of collapsing to "unknown".
     """
     detail_text = (detail or "").strip()
     suffix = f": {detail_text[:300]}" if detail_text else ""
@@ -260,7 +260,7 @@ def _codex_error_event(prefix: str, raw: dict, *, detail: str = "") -> ParsedEve
     return ParsedEvent(
         kind="error",
         text=text,
-        error=_generic_agent_error(text, raw),
+        error=_classify_codex_error(text, raw),
         raw=raw,
     )
 
