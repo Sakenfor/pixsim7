@@ -530,7 +530,22 @@ class Bridge:
 
         async with ws_connect(
             ws_url,
-            ping_interval=None,  # disabled — app-level heartbeats handle liveness
+            # WS-level keepalive. Commit 45d54664f disabled this ("app-level
+            # heartbeats handle liveness"), but that left the CLIENT unable to
+            # notice a silently half-open connection: the recv loop blocks on
+            # recv() forever and the app-level keepalive send()s buffer into a
+            # dead socket without raising, so a connection that dies mid-turn is
+            # only discovered when the turn's `result` finally fails to send —
+            # at which point a process restart can lose the buffered reply
+            # (plan launcher-health-probe-stability / checkpoint
+            # buffered-result-lost-on-bridge-restart). Ping expects a *pong*, so
+            # a missing pong closes the connection and surfaces as a recv()
+            # error → prompt reconnect. Timing is deliberately generous (ping
+            # every 20s, 60s to pong) so a briefly-busy event loop is never
+            # mistaken for a dead peer; the server's own 45s ping + 120s
+            # recv-timeout (45d54664f) still guards the other direction.
+            ping_interval=20,
+            ping_timeout=60,
             close_timeout=10,
             max_size=5 * 1024 * 1024,  # 5MB — default 1MB is tight when payloads carry base64 images
         ) as ws:
