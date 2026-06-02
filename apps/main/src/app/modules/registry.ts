@@ -93,7 +93,6 @@ function registerModuleCapabilities(module: Module) {
 class ModuleRegistry {
   private modules = new Map<string, Module>();
   private listeners: Array<() => void> = [];
-  private initialized = false;
   private initializedModules = new Set<string>();
   private capabilitiesRegistered = new Set<string>();
   private initializationPromises = new Map<string, Promise<void>>();
@@ -322,27 +321,6 @@ class ModuleRegistry {
     });
   }
 
-  async initializeAll() {
-    if (this.initialized) {
-      if (import.meta.env?.DEV) {
-        console.warn(
-          '[ModuleRegistry] initializeAll called more than once',
-          new Error('Duplicate initializeAll call').stack
-        );
-      }
-      return;
-    }
-    this.initialized = true;
-
-    const modulesToInit = this
-      .getSortedModules()
-      .filter((module) => !this.initializedModules.has(module.id));
-
-    logEvent('INFO', 'modules_initializing', { count: modulesToInit.length });
-    await this.initializeModules(modulesToInit);
-    logEvent('INFO', 'modules_initialized', { count: modulesToInit.length });
-  }
-
   /**
    * Get modules sorted by priority and dependencies
    * Higher priority modules come first, with dependency ordering respected
@@ -394,6 +372,16 @@ class ModuleRegistry {
     return sorted;
   }
 
+  /**
+   * Run every registered module's `cleanup` hook and reset init tracking.
+   *
+   * Wired to Vite's `vite:beforeFullReload` in main.tsx so module teardown
+   * (unsubscribing stores, unregistering settings) runs before a dev full
+   * reload re-executes the bundle from scratch. NOT safe to call on a partial
+   * HMR dispose — the registry is an `hmrSingleton` and `registerModules()`
+   * only runs at boot, so tearing down without a full reload would leave the
+   * app de-registered. Inert in production (no full-reload event).
+   */
   async cleanupAll() {
     for (const [, module] of this.modules) {
       if (module.cleanup) {
@@ -404,7 +392,6 @@ class ModuleRegistry {
         }
       }
     }
-    this.initialized = false;
     this.initializedModules.clear();
     this.capabilitiesRegistered.clear();
   }

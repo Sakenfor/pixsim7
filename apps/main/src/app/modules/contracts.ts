@@ -11,14 +11,19 @@ type CapabilityCategory = FeatureCapability['category'];
 
 export type Module = ModuleDefinition<BasePanelDefinition, DevToolCategory, CapabilityCategory>;
 
-export type DefineModuleOptions<TModule extends Module = Module> = TModule & {
-  updatedAt: string;
-  changeNote: string;
-};
+/**
+ * Options accepted by {@link defineModule}.
+ *
+ * `updatedAt` / `changeNote` are inherited (optional) from `PluginMeta` via
+ * `Module`. They surface in the App Map / plugin catalog when present, but are
+ * no longer mandatory — the original hard requirement only produced frozen
+ * boilerplate that nobody maintained.
+ */
+export type DefineModuleOptions<TModule extends Module = Module> = TModule;
 
 /**
- * Strict helper for defining modules.
- * Requires latest-update metadata to keep module changes discoverable.
+ * Helper for defining modules. Pass `updatedAt` / `changeNote` when a change is
+ * worth surfacing in the App Map; otherwise omit them.
  */
 export function defineModule<TModule extends Module>(
   options: DefineModuleOptions<TModule>

@@ -24,6 +24,11 @@ import '@features/appearance/panelSkins.registrations'
 // before the first <Ticker /> mounts. See `stores-registry-canon`.
 import '@features/ticker/sources.registrations'
 
+// Side-effect import: attaches the asset-engagement view/play tracking
+// subscriptions to the assetEvents bus at boot, so "played" signals are
+// captured even before the Recent strip first mounts.
+import '@features/assets/stores/assetEngagementStore'
+
 // Side-effect import: registers the generation feature's WS routing
 // listener (job:* / asset:*) against the shared lib-level wsManager.
 // Must run before any subscriber opens the connection so messages are
@@ -55,6 +60,17 @@ initCoarsePointerClass()
 
 // Register and initialize modules outside React to avoid StrictMode re-runs
 registerModules()
+
+// Run module `cleanup` hooks (store unsubscribes, settings unregisters) before
+// a dev full reload re-executes the bundle. Scoped to `vite:beforeFullReload`
+// rather than `hot.dispose` on purpose: the registry is an hmrSingleton and
+// registerModules() only runs at boot, so a partial-HMR teardown would leave
+// the app de-registered. Inert in production (no hot, no full-reload event).
+if (import.meta.hot) {
+  import.meta.hot.on('vite:beforeFullReload', () => {
+    void moduleRegistry.cleanupAll()
+  })
+}
 
 registerContextMenuActions()
 configurePanelLookup(panelSelectors)

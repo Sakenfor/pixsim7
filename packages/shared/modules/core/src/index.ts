@@ -2,16 +2,6 @@ import type { ActionDefinition, AppMapMetadata } from '@pixsim7/shared.types';
 import type { PluginMeta } from '@pixsim7/shared.plugins';
 import type { ComponentType, LazyExoticComponent, ReactNode } from 'react';
 
-// Lifecycle helpers
-export {
-  createModuleInitializer,
-  createModuleCleanup,
-  isModuleInitialized,
-  resetModuleState,
-  getInitializedModules,
-  warnUnguardedInit,
-} from './lifecycle';
-
 /**
  * Module Initialization Priorities
  *
