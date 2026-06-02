@@ -225,9 +225,12 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
       ) : (
         <img
           ref={resolvedImageRef}
-          src={resolvedMediaUrl}
+          // Omit src while the authenticated blob resolves — `src={undefined}`
+          // would otherwise render the browser's broken-image glyph (+ alt) for
+          // a beat on uncached images. Hidden until the real src lands.
+          src={resolvedMediaUrl || undefined}
           alt={asset.name}
-          className={`${getFitClass()} rounded-lg`}
+          className={`${getFitClass()} rounded-lg transition-opacity ${resolvedMediaUrl ? 'opacity-100' : 'opacity-0'}`}
           style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})` }}
           draggable={false}
         />
