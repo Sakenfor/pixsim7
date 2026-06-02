@@ -97,50 +97,39 @@ class ModuleRegistry {
   private capabilitiesRegistered = new Set<string>();
   private initializationPromises = new Map<string, Promise<void>>();
 
-  private async initializeModules(modulesToInit: Module[]): Promise<void> {
-    const initialized = new Set<string>(this.initializedModules);
-
-    for (const module of modulesToInit) {
-      if (module.dependsOn && module.dependsOn.length > 0) {
-        const missingDeps = module.dependsOn.filter(dep => !initialized.has(dep));
-        if (missingDeps.length > 0) {
-          console.warn(
-            `[ModuleRegistry] Module "${module.name}" has uninitialized dependencies: ${missingDeps.join(', ')}`
-          );
-          logEvent('WARNING', 'module_missing_dependencies', {
-            moduleId: module.id,
-            moduleName: module.name,
-            missingDeps,
-          });
-        }
+  /**
+   * Initialize a single module's own logic and register its capabilities.
+   *
+   * Dependency ordering and cycle detection are owned by
+   * {@link initializeModuleInternal} — this method must NOT resolve
+   * dependencies. On init failure the module is left unmarked so a later
+   * attempt can retry.
+   */
+  private async initializeOne(module: Module): Promise<void> {
+    if (!this.initializedModules.has(module.id) && module.initialize) {
+      try {
+        await module.initialize();
+        logEvent('INFO', 'module_initialized', {
+          moduleId: module.id,
+          moduleName: module.name,
+          priority: module.priority ?? 50,
+        });
+      } catch (error) {
+        console.error(`[ModuleRegistry] Failed to initialize ${module.name}:`, error);
+        logEvent('ERROR', 'module_init_failed', {
+          moduleId: module.id,
+          moduleName: module.name,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
       }
+    }
 
-      if (!this.initializedModules.has(module.id) && module.initialize) {
-        try {
-          await module.initialize();
-          logEvent('INFO', 'module_initialized', {
-            moduleId: module.id,
-            moduleName: module.name,
-            priority: module.priority ?? 50,
-          });
-        } catch (error) {
-          console.error(`[ModuleRegistry] Failed to initialize ${module.name}:`, error);
-          logEvent('ERROR', 'module_init_failed', {
-            moduleId: module.id,
-            moduleName: module.name,
-            error: error instanceof Error ? error.message : String(error)
-          });
-          continue;
-        }
-      }
+    this.initializedModules.add(module.id);
 
-      this.initializedModules.add(module.id);
-      initialized.add(module.id);
-
-      if (!this.capabilitiesRegistered.has(module.id)) {
-        registerModuleCapabilities(module);
-        this.capabilitiesRegistered.add(module.id);
-      }
+    if (!this.capabilitiesRegistered.has(module.id)) {
+      registerModuleCapabilities(module);
+      this.capabilitiesRegistered.add(module.id);
     }
   }
 
@@ -278,13 +267,22 @@ class ModuleRegistry {
       const nextStack = new Set(stack);
       nextStack.add(moduleId);
 
-      if (module.dependsOn && module.dependsOn.length > 0) {
-        for (const dependencyId of module.dependsOn) {
-          await this.initializeModuleInternal(dependencyId, nextStack);
+      for (const dependencyId of module.dependsOn ?? []) {
+        if (!this.modules.has(dependencyId)) {
+          console.warn(
+            `[ModuleRegistry] Module "${module.name}" depends on unregistered module "${dependencyId}"`
+          );
+          logEvent('WARNING', 'module_missing_dependencies', {
+            moduleId: module.id,
+            moduleName: module.name,
+            missingDeps: [dependencyId],
+          });
+          continue;
         }
+        await this.initializeModuleInternal(dependencyId, nextStack);
       }
 
-      await this.initializeModules([module]);
+      await this.initializeOne(module);
     })()
       .finally(() => {
         this.initializationPromises.delete(moduleId);
@@ -300,7 +298,7 @@ class ModuleRegistry {
 
   async initializeByPriority(minPriority: number = 75) {
     const modulesToInit = this
-      .getSortedModules()
+      .getModulesByPriority()
       .filter((module) => (module.priority ?? 50) >= minPriority)
       .filter((module) => !this.initializedModules.has(module.id));
 
@@ -313,7 +311,11 @@ class ModuleRegistry {
       count: modulesToInit.length,
     });
 
-    await this.initializeModules(modulesToInit);
+    // Funnel every module through the single dependency-resolving path so the
+    // batch and lazy entrypoints can't disagree on ordering or cycle handling.
+    for (const module of modulesToInit) {
+      await this.initializeModuleInternal(module.id, new Set<string>());
+    }
 
     logEvent('INFO', 'modules_initialized_priority', {
       minPriority,
@@ -322,54 +324,20 @@ class ModuleRegistry {
   }
 
   /**
-   * Get modules sorted by priority and dependencies
-   * Higher priority modules come first, with dependency ordering respected
+   * Registered modules ordered by descending priority (higher first).
+   *
+   * Dependency ordering is deliberately NOT done here:
+   * {@link initializeModuleInternal} resolves `dependsOn` recursively and
+   * detects cycles as each module is initialized, so this only needs to set a
+   * deterministic priority order for the batch. `Array.prototype.sort` is
+   * stable, so equal-priority modules keep registration order.
    */
-  private getSortedModules(): Module[] {
-    const modules = Array.from(this.modules.values());
-
-    // Topological sort respecting dependencies
-    const sorted: Module[] = [];
-    const visited = new Set<string>();
-    const visiting = new Set<string>();
-
-    const visit = (module: Module) => {
-      if (visited.has(module.id)) return;
-      if (visiting.has(module.id)) {
-        console.warn(`[ModuleRegistry] Circular dependency detected involving module "${module.name}"`);
-        return;
-      }
-
-      visiting.add(module.id);
-
-      // Visit dependencies first
-      if (module.dependsOn) {
-        for (const depId of module.dependsOn) {
-          const dep = this.modules.get(depId);
-          if (dep) {
-            visit(dep);
-          }
-        }
-      }
-
-      visiting.delete(module.id);
-      visited.add(module.id);
-      sorted.push(module);
-    };
-
-    // Sort by priority first (higher priority = earlier)
-    const byPriority = [...modules].sort((a, b) => {
+  private getModulesByPriority(): Module[] {
+    return Array.from(this.modules.values()).sort((a, b) => {
       const aPriority = a.priority ?? 50;
       const bPriority = b.priority ?? 50;
       return bPriority - aPriority;
     });
-
-    // Then apply topological sort
-    for (const module of byPriority) {
-      visit(module);
-    }
-
-    return sorted;
   }
 
   /**
