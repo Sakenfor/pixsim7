@@ -63,6 +63,20 @@ class AssetSearchFilters:
     # ID whitelist
     asset_ids: Optional[list[int]] = None
 
+    # Local-folder origin via upload_context (the user's TRACKED folder
+    # identity, distinct from the backend's storage `local_path`). Used by the
+    # "Source" cohort to find siblings within the same tracked folder. When
+    # `upload_source_subfolder` is also set, the filter narrows to that
+    # subdirectory; pass an empty string to match root-of-folder files.
+    upload_source_folder_id: Optional[str] = None
+    upload_source_subfolder: Optional[str] = None
+
+    # Same as upload_source_folder_id + upload_source_subfolder, but with the
+    # backend resolving them from this pivot asset's `upload_context`. Used
+    # when the frontend has the pivot's id but may not have its full
+    # `uploadContext` payload in memory (e.g. carousel slot stubs).
+    source_siblings_of_asset_id: Optional[int] = None
+
     # Grouping
     group_by: Optional[str] = None
     group_key: Optional[str] = None

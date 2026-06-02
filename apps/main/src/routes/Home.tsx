@@ -1,5 +1,6 @@
 import { Button, Panel, ThemeToggle } from '@pixsim7/shared.ui';
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { moduleRegistry, PAGE_CATEGORIES, type PageCategory } from '@app/modules';
 
@@ -93,6 +94,7 @@ function PageCard(props: PageCardProps) {
 }
 
 export function Home() {
+  const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const { favorites, recentPages, toggleFavorite, isFavorite, addToRecent } = usePageTracking({
     userId: user?.username,
@@ -170,8 +172,8 @@ export function Home() {
       icon: page.icon,
       iconColor: page.iconColor,
     });
-    window.open(page.route, '_self');
-  }, [addToRecent]);
+    navigate(page.route);
+  }, [addToRecent, navigate]);
 
   /**
    * Navigate to a page by route
@@ -183,14 +185,14 @@ export function Home() {
       navigateToPage(page);
     } else {
       // Fallback for routes not in registry
-      window.open(route, '_self');
+      navigate(route);
     }
-  }, [allPages, navigateToPage]);
+  }, [allPages, navigate, navigateToPage]);
 
   const categories = Object.keys(CATEGORY_LABELS) as PageCategory[];
 
   return (
-    <div className="mx-auto max-w-7xl p-6 space-y-8 min-h-screen">
+    <div className="mx-auto max-w-7xl p-6 space-y-8 h-full overflow-y-auto">
       {/* Header */}
       <header className="border-b border-neutral-200 dark:border-neutral-800 pb-6 flex items-center justify-between">
         <div className="space-y-2">

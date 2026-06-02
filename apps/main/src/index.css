@@ -446,6 +446,16 @@ input {
   }
 }
 
+/* Carousel bottom bar: drop the Time/Prompt label text on narrow cards so
+   the bar shrinks (~150px → ~100px) and clears the bottom-left play widget.
+   The cohort icon + green up/down chevrons still indicate the cohort and
+   that the badge accepts scroll/swipe walk. */
+@container (max-width: 220px) {
+  .gen-scrub-label {
+    display: none;
+  }
+}
+
 /* ── Probe pack reflow ──────────────────────────────────────────────
  * When the action row is too narrow to fit [gear | Go | Probe] on a
  * single line, the Probe pack jumps onto its own line above Go (and
@@ -504,24 +514,46 @@ input {
  *
  * `coarse-pointer` is toggled on <html> by lib/ui/coarsePointer.ts. We grow
  * the *invisible* tappable region of small controls via a transparent ::after
- * overlay — visuals and layout are untouched, so dense toolbars (assistant
- * header, etc.) keep their compact look but become finger-friendly.
+ * overlay — visuals and layout are untouched, so dense toolbars keep their
+ * compact look but become finger-friendly.
  *
- * `:where()` keeps specificity at 0 so a Tailwind `.absolute`/`.fixed` on a
- * button still wins (those buttons opt themselves out of the relative nudge).
- * Opt a too-dense row out explicitly with `no-tap-expand`.
+ * The whole selector lives inside :where() so its specificity is 0 — a Tailwind
+ * `.absolute`/`.fixed`/`.relative` utility (0,1,0) on a button always wins, so
+ * positioned overlay buttons keep their own positioning (the ::after just
+ * anchors to it). A static button still gets `position: relative` because a
+ * 0-specificity author rule beats the UA default.
+ *
+ * Opt out with `no-tap-expand` (ultra-dense rows). Use `tap-target` instead
+ * when the ::after is unreliable — i.e. inside an `overflow:hidden` ancestor
+ * that clips it, or a tight row where neighbours' overlays overlap and steal
+ * taps: `tap-target` grows the *real* box (see below) and suppresses ::after.
  */
-.coarse-pointer :where(button, [role="button"], a[role="tab"]):not(.no-tap-expand) {
+:where(.coarse-pointer :is(button, [role="button"], a[role="tab"]):not(.no-tap-expand):not(.tap-target)) {
   position: relative;
 }
-.coarse-pointer
-  :where(button, [role="button"], a[role="tab"]):not(.no-tap-expand):not(:disabled)::after {
+:where(.coarse-pointer :is(button, [role="button"], a[role="tab"]):not(.no-tap-expand):not(.tap-target):not(:disabled))::after {
   content: "";
   position: absolute;
   /* ~16px added per axis → a 28px icon button reaches a ~44px tap zone */
   inset: -8px;
   /* Purely a hit target — never paint, never affect layout */
   pointer-events: auto;
+}
+
+/*
+ * Real (not ::after-overlay) touch sizing for small icon controls in dense or
+ * overflow-clipped toolbars where the global ::after expansion fails (clipped
+ * by an `overflow:hidden` ancestor, or overlapping neighbours that steal taps).
+ * Grows the *actual* box to a finger-friendly min size on coarse pointers only;
+ * desktop keeps the compact look. Centres existing icon content. `tap-target`
+ * is excluded from the ::after rule above, so there's no overlapping overlay.
+ */
+.coarse-pointer .tap-target {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Respect user's reduced motion preference */

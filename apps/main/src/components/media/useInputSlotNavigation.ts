@@ -6,27 +6,33 @@
  * here so every affordance stays in lockstep and shares one underlying
  * neighbor lookup.
  *
- * Two cohort branches, both hooks always called (rules-of-hooks); only one
- * is active at a time:
+ * Three cohort branches (all hooks always called per rules-of-hooks; only one
+ * is active at a time):
  *   - **set cohort** (when `assetSetRef` present): walks the resolved set
  *     members via `useResolvedAssetSet`; `commit` pins via
  *     `pinAssetSetMember` (atomic mode='locked' + lockedAssetId + display
  *     swap). Decided with user: walking always pins.
- *   - **time/prompt cohort** (no `assetSetRef`): walks `created_at` filtered
- *     by `media_type` plus the active per-operation cohort
- *     (`navCohortByOperation`); `commit` is `replaceInputAsset`.
+ *   - **time/source-prompt cohort** (no `assetSetRef`, asset NOT local):
+ *     walks `created_at` filtered by `media_type` (+ operationType for
+ *     `time`; + `promptVersionId` for `source`); `commit` is
+ *     `replaceInputAsset`.
+ *   - **source-folder cohort** (no `assetSetRef`, asset IS LocalAssetModel
+ *     under the `source` cohort): walks same-folder + same-directory
+ *     siblings via `useLocalFolderSiblings`; `commit` is `replaceInputAsset`.
  *
  * Plan: `set-slot-walk-and-grid` (set branch); `media-card-input-time-nav`
- * + `same-prompt-cohort-nav` (time/prompt branch).
+ * + `same-prompt-cohort-nav` (time/source branch).
  */
 
 import { useMemo } from 'react';
 
 import {
+  isLocalAssetModel,
   useAssetSequence,
   useResolvedAssetSet,
   type AssetModel,
 } from '@features/assets';
+import { useHasLocalFolderOrigin, useLocalFolderSiblings } from '@features/assets/hooks/useLocalFolderSiblings';
 import {
   useGenerationScopeStores,
   type AssetSetSlotRef,
@@ -55,17 +61,64 @@ export interface UseInputSlotNavResult {
 /**
  * Translate the active nav cohort into `useAssetSequence` filters. Shared so
  * the chevrons, the wheel handler, and `useInputSlotShortcuts` all walk the
- * same axis. `prompt` falls back to the `time` shape when the pivot has no
- * `promptVersionId` (uploads / captures) so navigation never dead-ends —
- * the cohort pill is disabled in that case so the user can't actually
- * select an empty cohort.
+ * same axis.
+ *
+ * `source` falls back to the `time` shape when the pivot has no
+ * `promptVersionId` AND isn't a local-folder asset (uploads/captures with no
+ * source signal), so navigation never dead-ends — the cohort pill is
+ * disabled in that case so the user can't actually pick an empty source.
+ * Local-folder assets short-circuit `useAssetSequence` entirely and use
+ * `useLocalFolderSiblings` instead.
  */
+/**
+ * Pull the tracked-folder identity from the upload pipeline's context.
+ * `Asset.local_path` is the BACKEND storage path (e.g.
+ * `G:\\code\\pixsim7\\data\\media\\u\\1\\content\\...`) and not the user's
+ * folder — the local-folder uploader stores the user-facing identity in
+ * `upload_context.source_folder_id` / `.source_subfolder`.
+ */
+function readUploadSource(asset: AssetModel): { folderId?: string; subfolder?: string } {
+  const ctx = asset.uploadContext as Record<string, unknown> | null | undefined;
+  if (!ctx) return {};
+  const folderId = typeof ctx.source_folder_id === 'string' ? ctx.source_folder_id : undefined;
+  const subfolder = typeof ctx.source_subfolder === 'string' ? ctx.source_subfolder : undefined;
+  return { folderId, subfolder };
+}
+
 export function resolveCohortFilters(
   asset: AssetModel,
   cohort: InputNavCohort,
-): { mediaType?: string; operationType?: string; promptVersionId?: string } {
-  if (cohort === 'prompt' && asset.promptVersionId) {
-    return { mediaType: asset.mediaType, promptVersionId: asset.promptVersionId };
+): {
+  mediaType?: string;
+  operationType?: string;
+  promptVersionId?: string;
+  uploadSourceFolderId?: string;
+  uploadSourceSubfolder?: string;
+  sourceSiblingsOfAssetId?: number;
+} {
+  if (cohort === 'source') {
+    // If we have the upload context on hand (full asset payload), filter by
+    // the source folder/subfolder directly — saves the backend a subquery.
+    // Otherwise fall back to `sourceSiblingsOfAssetId` so the backend looks
+    // up the pivot's upload_context itself; that works for carousel slots
+    // whose asset model may be a partial / not-yet-fully-hydrated stub.
+    const { folderId, subfolder } = readUploadSource(asset);
+    if (folderId) {
+      return {
+        mediaType: asset.mediaType,
+        uploadSourceFolderId: folderId,
+        ...(subfolder !== undefined ? { uploadSourceSubfolder: subfolder } : {}),
+      };
+    }
+    if (asset.uploadMethod === 'local') {
+      return {
+        mediaType: asset.mediaType,
+        sourceSiblingsOfAssetId: asset.id,
+      };
+    }
+    if (asset.promptVersionId) {
+      return { mediaType: asset.mediaType, promptVersionId: asset.promptVersionId };
+    }
   }
   return {
     mediaType: asset.mediaType,
@@ -84,18 +137,42 @@ export function useInputSlotNavigation({
   const { useInputStore } = useGenerationScopeStores();
   const replaceInputAsset = useInputStore((s) => s.replaceInputAsset);
   const pinAssetSetMember = useInputStore((s) => s.pinAssetSetMember);
-  const cohort = useInputStore(
-    (s) => s.navCohortByOperation[operationType] ?? 'time',
-  );
+  // Normalize legacy persisted `'prompt'` (the old cohort name) to `'source'`.
+  const cohort = useInputStore((s) => {
+    const raw = s.navCohortByOperation[operationType];
+    if ((raw as string) === 'prompt') return 'source';
+    return raw ?? 'time';
+  });
 
-  // Time/prompt branch — inert when in set mode (enabled:false yields no
-  // fetch and the cached cohort filters return null neighbors).
+  // Source-folder LOCAL branch (cohort='source' AND asset is directly a
+  // LocalAssetModel — i.e., an unuploaded file in the LocalFolders sidebar).
+  // Walks the in-memory store synchronously. Backend-uploaded local assets
+  // (with `localPath` set) fall through to the seq branch with the
+  // `localPathPrefix` filter, so they can walk siblings without their source
+  // folder being loaded in the sidebar.
+  // Touch hasLocalOrigin so the cohort pill + this hook stay in lockstep on
+  // detection (and to keep the hook order stable across renders).
+  useHasLocalFolderOrigin(asset);
+  const useFolderLocal =
+    !isSetMode && enabled && cohort === 'source' && isLocalAssetModel(asset);
+
+  // Time / source-prompt / source-folder-backend branch — inert in set mode
+  // AND when the local folder branch owns the walk. The filter shape decides
+  // which query the backend runs (mediaType+operationType vs promptVersionId
+  // vs localPathPrefix).
+  const seqEnabled = !isSetMode && enabled && !useFolderLocal;
   const seq = useAssetSequence({
-    pivot: !isSetMode && enabled ? asset : null,
+    pivot: seqEnabled ? asset : null,
     filters: resolveCohortFilters(asset, cohort),
     windowBefore: 1,
     windowAfter: 1,
-    enabled: !isSetMode && enabled,
+    enabled: seqEnabled,
+  });
+
+  // Source-folder LOCAL siblings — inert unless useFolderLocal is true.
+  const folderSibs = useLocalFolderSiblings({
+    pivot: useFolderLocal ? asset : null,
+    enabled: useFolderLocal,
   });
 
   // Set branch — inert when `undefined` setId.
@@ -105,8 +182,6 @@ export function useInputSlotNavigation({
 
   return useMemo<UseInputSlotNavResult>(() => {
     if (isSetMode && assetSetRef) {
-      // lockedAssetId is authoritative when set; otherwise the slot's
-      // representative `asset` is the current pick.
       const currentId = assetSetRef.lockedAssetId ?? asset.id;
       const idx = members.findIndex((m) => m.id === currentId);
       const prev = idx > 0 ? members[idx - 1] : null;
@@ -117,15 +192,15 @@ export function useInputSlotNavigation({
         next,
         isLoadingPrev: isLoadingMembers,
         isLoadingNext: isLoadingMembers,
-        commit: (target) =>
-          pinAssetSetMember(operationType, inputId, target),
+        commit: (target) => pinAssetSetMember(operationType, inputId, target),
       };
     }
+    const src = useFolderLocal ? folderSibs : seq;
     return {
-      prev: seq.prev,
-      next: seq.next,
-      isLoadingPrev: seq.isLoadingPrev,
-      isLoadingNext: seq.isLoadingNext,
+      prev: src.prev,
+      next: src.next,
+      isLoadingPrev: src.isLoadingPrev,
+      isLoadingNext: src.isLoadingNext,
       commit: (target) => replaceInputAsset(operationType, inputId, target),
     };
   }, [
@@ -134,10 +209,9 @@ export function useInputSlotNavigation({
     asset.id,
     members,
     isLoadingMembers,
-    seq.prev,
-    seq.next,
-    seq.isLoadingPrev,
-    seq.isLoadingNext,
+    useFolderLocal,
+    folderSibs,
+    seq,
     replaceInputAsset,
     pinAssetSetMember,
     operationType,

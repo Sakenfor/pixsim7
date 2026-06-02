@@ -23,6 +23,7 @@ import { Icon } from '@lib/icons';
 
 import { getAssetDisplayUrls, type AssetModel } from '@features/assets';
 import { AssetPeekPopover } from '@features/assets/components/AssetPeekPopover';
+import { useHasLocalFolderOrigin } from '@features/assets/hooks/useLocalFolderSiblings';
 import {
   useGenerationScopeStores,
   type AssetSetSlotRef,
@@ -139,7 +140,7 @@ export function ChevronButton({
       flex h-6 w-6 items-center justify-center
       rounded text-white/90
       hover:text-white
-      disabled:opacity-30 disabled:cursor-default
+      disabled:cursor-default
       transition-colors
     `
     : `
@@ -147,7 +148,7 @@ export function ChevronButton({
       rounded-md bg-black/55 text-white/90
       backdrop-blur-sm shadow-md
       hover:bg-black/75 hover:text-white
-      disabled:opacity-30 disabled:cursor-default
+      disabled:cursor-default
       transition-colors
     `;
 
@@ -190,26 +191,59 @@ export interface CohortPillProps {
   operationType: OperationType;
   /** Drop the pill background/padding so it can sit inside a parent bar. */
   bare?: boolean;
+  /**
+   * When set, flank the cohort icon with green up/down chevrons. Both
+   * chevrons are clickable (tap = prev/next) when `onPrev`/`onNext` are
+   * provided. `dir` + `tick` drive a one-shot `animate-bounce-once` flash
+   * on the chevron matching the last commit direction; bumping `tick`
+   * re-triggers the animation each commit.
+   */
+  scrollHint?: {
+    dir: 'prev' | 'next' | null;
+    tick: number;
+    onPrev?: () => void;
+    onNext?: () => void;
+  };
 }
 
-export function CohortPill({ asset, operationType, bare = false }: CohortPillProps) {
+export function CohortPill({ asset, operationType, bare = false, scrollHint }: CohortPillProps) {
   const { useInputStore } = useGenerationScopeStores();
-  const cohort = useInputStore(
-    (s) => s.navCohortByOperation[operationType] ?? 'time',
-  );
+  // Normalize legacy persisted `'prompt'` (old cohort name) → `'source'`.
+  const cohort = useInputStore((s) => {
+    const raw = s.navCohortByOperation[operationType];
+    if ((raw as string) === 'prompt') return 'source';
+    return raw ?? 'time';
+  });
   const setInputNavCohort = useInputStore((s) => s.setInputNavCohort);
 
-  const promptAvailable = Boolean(asset.promptVersionId);
-  const isPrompt = cohort === 'prompt' && promptAvailable;
-  const label = isPrompt ? 'Prompt' : 'Time';
+  // The Source cohort adapts to the asset's actual source: a folder for
+  // assets we can trace to a local folder (either LocalAssetModel directly
+  // or a backend asset whose `last_upload_asset_id` is tracked), or the
+  // prompt-version cohort for generated assets. Disabled when the asset
+  // has neither signal (e.g. plain uploads).
+  const hasLocalOrigin = useHasLocalFolderOrigin(asset);
+  const hasPromptSource = Boolean(asset.promptVersionId);
+  const sourceAvailable = hasLocalOrigin || hasPromptSource;
+  const isSource = cohort === 'source' && sourceAvailable;
+  const label = isSource ? 'Source' : 'Time';
+  const sourceKind: 'folder' | 'prompt' | null = hasLocalOrigin
+    ? 'folder'
+    : hasPromptSource
+      ? 'prompt'
+      : null;
+  const cohortIconName = isSource
+    ? sourceKind === 'folder'
+      ? 'folder'
+      : 'messageSquare'
+    : 'clock';
 
   const toggle = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (!promptAvailable) return;
-      setInputNavCohort(operationType, isPrompt ? 'time' : 'prompt');
+      if (!sourceAvailable) return;
+      setInputNavCohort(operationType, isSource ? 'time' : 'source');
     },
-    [promptAvailable, isPrompt, setInputNavCohort, operationType],
+    [sourceAvailable, isSource, setInputNavCohort, operationType],
   );
 
   const className = bare
@@ -217,7 +251,7 @@ export function CohortPill({ asset, operationType, bare = false }: CohortPillPro
       flex items-center gap-1
       text-white/90 text-[10px] font-medium
       hover:text-white
-      disabled:opacity-30 disabled:cursor-default
+      disabled:cursor-default
       transition-colors
     `
     : `
@@ -226,27 +260,98 @@ export function CohortPill({ asset, operationType, bare = false }: CohortPillPro
       bg-black/55 text-white/90 text-[10px] font-medium
       backdrop-blur-sm shadow-md
       hover:bg-black/75 hover:text-white
-      disabled:opacity-30 disabled:cursor-default
+      disabled:cursor-default
       transition-colors
     `;
+
+  const sourceDescription = sourceKind === 'folder' ? 'same folder' : 'same prompt';
+  const toggleTitle = !sourceAvailable
+    ? 'Navigating neighbors by time · no source signal on this asset (no folder or prompt version)'
+    : isSource
+      ? `Navigating by ${sourceDescription} · click to switch to time`
+      : `Navigating by time · click to switch to ${sourceDescription}`;
+
+  // scrollHint mode: render a div container (not a single button) so the
+  // up/down chevrons can be their own clickable prev/next buttons alongside
+  // the label's toggle button. The cohort icon stays a visual indicator.
+  // Walking remains available even when the toggle is disabled (no prompt
+  // version), so the green chevrons keep full color in that case.
+  if (scrollHint) {
+    const handlePrev = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      scrollHint.onPrev?.();
+    };
+    const handleNext = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      scrollHint.onNext?.();
+    };
+    return (
+      <div className={className} role="group" aria-label={`Cohort: ${label}`}>
+        <span className="flex flex-col items-center leading-none">
+          <button
+            key={scrollHint.dir === 'prev' ? `up-${scrollHint.tick}` : 'up'}
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handlePrev}
+            disabled={!scrollHint.onPrev}
+            className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'prev' ? 'animate-bounce-once' : ''}`}
+            title="Previous neighbor"
+            aria-label="Previous neighbor"
+          >
+            <Icon name="chevronUp" size={10} />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={toggle}
+            disabled={!sourceAvailable}
+            className={`flex items-center justify-center transition-colors ${!sourceAvailable ? 'opacity-30 cursor-default' : 'cursor-pointer hover:text-white'}`}
+            title={toggleTitle}
+            aria-label={`Toggle cohort: ${label}`}
+          >
+            <Icon name={cohortIconName} size={12} />
+          </button>
+          <button
+            key={scrollHint.dir === 'next' ? `down-${scrollHint.tick}` : 'down'}
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleNext}
+            disabled={!scrollHint.onNext}
+            className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'next' ? 'animate-bounce-once' : ''}`}
+            title="Next neighbor"
+            aria-label="Next neighbor"
+          >
+            <Icon name="chevronDown" size={10} />
+          </button>
+        </span>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={toggle}
+          disabled={!sourceAvailable}
+          className={
+            `gen-scrub-label ${!sourceAvailable ? 'opacity-30 cursor-default' : 'cursor-pointer'}`.trim()
+          }
+          title={toggleTitle}
+          aria-label={`Toggle cohort: ${label}`}
+        >
+          {label}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <button
       type="button"
       onMouseDown={(e) => e.preventDefault()}
       onClick={toggle}
-      disabled={!promptAvailable}
+      disabled={!sourceAvailable}
       className={className}
-      title={
-        !promptAvailable
-          ? 'Navigating neighbors by time · no prompt version on this asset to group by'
-          : isPrompt
-            ? 'Navigating by same prompt · click to switch to time'
-            : 'Navigating by time · click to switch to same prompt'
-      }
+      title={toggleTitle}
       aria-label={`Prev/next cohort: ${label}`}
     >
-      <Icon name={isPrompt ? 'messageSquare' : 'clock'} size={12} />
+      <Icon name={cohortIconName} size={12} />
       {label}
     </button>
   );

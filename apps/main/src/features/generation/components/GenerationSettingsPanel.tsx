@@ -719,17 +719,28 @@ export function GenerationSettingsPanel({
                 setPreferredProvider(CAP_GENERATION_WIDGET, targetProviderId);
               }}
               className={clsx(
-                'flex items-center justify-center px-2 py-1.5 rounded-lg border text-[10px] font-medium',
+                'flex items-center justify-center w-7 h-7 shrink-0 rounded-lg shadow-sm',
                 isTargeted
-                  ? 'bg-accent border-accent text-accent-text'
-                  : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300'
+                  ? 'bg-accent text-accent-text'
+                  : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300'
               )}
               title={isTargeted ? 'Targeted for generation actions' : 'Target this widget for generation actions (quick add, gestures, etc.)'}
             >
-              <Icon name="target" size={12} />
+              <Icon name="target" size={14} />
             </button>
           )}
           {showPresets && <PresetSelector disabled={generating} />}
+          {/* Advanced settings gear — sits with the other config icons in this
+              row (provider / operation / account / target / presets). */}
+          <div className="flex-shrink-0">
+            <AdvancedSettingsPopover
+              params={advancedParams}
+              values={workbench.dynamicParams}
+              onChange={workbench.handleParamChange}
+              disabled={generating}
+              currentModel={workbench.dynamicParams?.model as string | undefined}
+            />
+          </div>
           {/* Credit estimate pill — compact cost indicator. Kept visible while
               loading so the optimistic value doesn't blink during reconcile. */}
           {!isCurrentGenerationFree && creditEstimate !== null && (
@@ -797,9 +808,11 @@ export function GenerationSettingsPanel({
         </div>
 
       </div>
-      </div>
-      {/* Action area — pinned to bottom */}
-      <div className="gen-panel-footer flex-shrink-0 flex flex-col gap-1 px-1.5 pb-1.5 pt-1">
+      {/* Action area — flows directly under the controls. Was pinned to the
+          panel bottom via the flex-1 scroll spacer, which left a large empty
+          gap when the controls were short; now it scrolls with the content so
+          Go sits right below them. */}
+      <div className="gen-panel-footer flex flex-col gap-1 px-1.5 pb-1.5 pt-1">
         {/* Queue progress */}
         {queueProgress && (
           <div className="flex items-center gap-2 text-[10px] text-accent">
@@ -840,16 +853,6 @@ export function GenerationSettingsPanel({
           )}
 
           <div className="gen-panel-action-row flex flex-wrap items-stretch gap-1.5 min-w-0">
-            {/* Advanced settings gear icon */}
-            <div className="flex-shrink-0">
-              <AdvancedSettingsPopover
-                params={advancedParams}
-                values={workbench.dynamicParams}
-                onChange={workbench.handleParamChange}
-                disabled={generating}
-                currentModel={workbench.dynamicParams?.model as string | undefined}
-              />
-            </div>
             {/* Primary Go button with inline burst stepper */}
             <div
               ref={burstWheelRef}
@@ -1199,6 +1202,7 @@ export function GenerationSettingsPanel({
           )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

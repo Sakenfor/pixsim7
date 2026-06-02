@@ -185,13 +185,17 @@ function App() {
           }}
         >
           {isAuthenticated && <ActivityBar />}
+          {/* Shell is exactly one viewport tall. Edge insets reserve space as
+              padding INSIDE this fixed-height box (was additive margin on a
+              min-h-screen box, which overflowed the page). Inner routes scroll
+              within their own regions. */}
           <div
-            className="min-h-screen flex flex-col transition-[margin] duration-200"
+            className="h-dvh box-border flex flex-col overflow-hidden transition-[padding] duration-200"
             style={isAuthenticated ? {
-              marginLeft: leftInset,
-              marginRight: rightInset,
-              marginTop: topInset,
-              marginBottom: bottomInset,
+              paddingLeft: leftInset,
+              paddingRight: rightInset,
+              paddingTop: topInset,
+              paddingBottom: bottomInset,
             } : undefined}
           >
             <ErrorBoundary>

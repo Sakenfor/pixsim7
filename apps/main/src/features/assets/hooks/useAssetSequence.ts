@@ -21,6 +21,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { listAssets } from '@lib/api/assets';
 
+import type { OperationType } from '@/types/operations';
+
 import { fromAssetResponses, type AssetModel } from '../models/asset';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,6 +43,25 @@ export interface AssetSequenceFilters {
    * created_at axis *within* that prompt cohort.
    */
   promptVersionId?: string;
+  /**
+   * Restrict to assets uploaded from a specific tracked local folder
+   * (`upload_context.source_folder_id`). The "same folder" cohort key for
+   * the Source axis on locally-uploaded assets.
+   */
+  uploadSourceFolderId?: string;
+  /**
+   * Optional narrowing to a subdirectory within the source folder
+   * (`upload_context.source_subfolder`). Empty string matches root-of-folder
+   * files; omit to match across all subfolders of the source folder.
+   */
+  uploadSourceSubfolder?: string;
+  /**
+   * Server-side variant — backend resolves the pivot asset's
+   * `upload_context.source_folder_id` + `source_subfolder` and filters by
+   * them. Use this when the caller has the asset id but may not carry the
+   * full uploadContext payload (e.g. carousel slot stubs).
+   */
+  sourceSiblingsOfAssetId?: number;
 }
 
 export interface UseAssetSequenceArgs {
@@ -99,7 +120,7 @@ function cacheKey(
   filters: AssetSequenceFilters | undefined,
   windowSize: number,
 ): string {
-  const fk = `mt=${filters?.mediaType ?? ''}|op=${filters?.operationType ?? ''}|pv=${filters?.promptVersionId ?? ''}`;
+  const fk = `mt=${filters?.mediaType ?? ''}|op=${filters?.operationType ?? ''}|pv=${filters?.promptVersionId ?? ''}|sf=${filters?.uploadSourceFolderId ?? ''}|ss=${filters?.uploadSourceSubfolder ?? ''}|ssa=${filters?.sourceSiblingsOfAssetId ?? ''}`;
   return `${pivotId}|${axis}|${direction}|w=${windowSize}|${fk}`;
 }
 
@@ -163,8 +184,13 @@ async function fetchDirection(
     sort_by: 'created_at' as const,
     sort_dir: direction === 'next' ? ('asc' as const) : ('desc' as const),
     limit,
-    ...(filters?.operationType ? { operation_type: filters.operationType } : {}),
+    // operationType is loose `string` upstream (mirrors AssetModel.operationType);
+    // tighten to the generated `OperationType` literal-union at the wire.
+    ...(filters?.operationType ? { operation_type: filters.operationType as OperationType } : {}),
     ...(filters?.promptVersionId ? { prompt_version_id: filters.promptVersionId } : {}),
+    ...(filters?.uploadSourceFolderId ? { upload_source_folder_id: filters.uploadSourceFolderId } : {}),
+    ...(filters?.uploadSourceSubfolder !== undefined ? { upload_source_subfolder: filters.uploadSourceSubfolder } : {}),
+    ...(filters?.sourceSiblingsOfAssetId ? { source_siblings_of_asset_id: filters.sourceSiblingsOfAssetId } : {}),
   };
   const query =
     direction === 'prev'
@@ -227,8 +253,15 @@ export function useAssetSequence({
 
   // Stable serialization of args that should retrigger fetches.
   const filterKey = useMemo(
-    () => `mt=${filters?.mediaType ?? ''}|op=${filters?.operationType ?? ''}|pv=${filters?.promptVersionId ?? ''}`,
-    [filters?.mediaType, filters?.operationType, filters?.promptVersionId],
+    () => `mt=${filters?.mediaType ?? ''}|op=${filters?.operationType ?? ''}|pv=${filters?.promptVersionId ?? ''}|sf=${filters?.uploadSourceFolderId ?? ''}|ss=${filters?.uploadSourceSubfolder ?? ''}|ssa=${filters?.sourceSiblingsOfAssetId ?? ''}`,
+    [
+      filters?.mediaType,
+      filters?.operationType,
+      filters?.promptVersionId,
+      filters?.uploadSourceFolderId,
+      filters?.uploadSourceSubfolder,
+      filters?.sourceSiblingsOfAssetId,
+    ],
   );
 
   // Reset counter — refresh() bumps it to drop cache + refetch.

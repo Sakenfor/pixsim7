@@ -42,6 +42,7 @@ export function PresetSelector({
     loadPresetAsync,
     deletePreset,
     renamePreset,
+    updatePresetFromCurrent,
   } = useGenerationPresets();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -50,6 +51,9 @@ export function PresetSelector({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [newPresetName, setNewPresetName] = useState('');
+  // Two-click confirm for the destructive overwrite action: holds the id of the
+  // preset currently "armed" to be overwritten with the current scope state.
+  const [overwriteArmedId, setOverwriteArmedId] = useState<string | null>(null);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -58,6 +62,7 @@ export function PresetSelector({
     setIsOpen(false);
     setIsSaving(false);
     setEditingId(null);
+    setOverwriteArmedId(null);
   }, []);
 
   // Focus input when saving or editing
@@ -106,6 +111,21 @@ export function PresetSelector({
     setEditName(preset.name);
   }, []);
 
+  // Overwrite is destructive (replaces the saved snapshot), so the first click
+  // arms the button and the second click within the same hover commits.
+  const handleOverwrite = useCallback(
+    (presetId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (overwriteArmedId !== presetId) {
+        setOverwriteArmedId(presetId);
+        return;
+      }
+      updatePresetFromCurrent(presetId);
+      setOverwriteArmedId(null);
+    },
+    [overwriteArmedId, updatePresetFromCurrent]
+  );
+
   const hasPresets = presetsForOperation.length > 0;
 
   return (
@@ -117,7 +137,7 @@ export function PresetSelector({
         onClick={() => setIsOpen(!isOpen)}
         disabled={disabled || presetLoading}
         className={clsx(
-          'flex items-center justify-center px-1.5 py-1.5 rounded-lg',
+          'flex items-center justify-center w-7 h-7 shrink-0 rounded-lg',
           'bg-white dark:bg-neutral-800 shadow-sm',
           'hover:bg-neutral-50 dark:hover:bg-neutral-700',
           'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -225,6 +245,9 @@ export function PresetSelector({
                     preset.providerId && preset.providerId !== providerId && 'opacity-50'
                   )}
                   onClick={() => handleLoad(preset)}
+                  onMouseLeave={() =>
+                    setOverwriteArmedId((id) => (id === preset.id ? null : id))
+                  }
                 >
                   {editingId === preset.id ? (
                     <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
@@ -274,7 +297,27 @@ export function PresetSelector({
                           {preset.providerId}
                         </span>
                       )}
-                      <div className="hidden group-hover:flex items-center gap-0.5">
+                      <div className={clsx(
+                        'items-center gap-0.5',
+                        overwriteArmedId === preset.id ? 'flex' : 'hidden group-hover:flex'
+                      )}>
+                        <button
+                          type="button"
+                          onClick={(e) => handleOverwrite(preset.id, e)}
+                          className={clsx(
+                            'p-0.5 rounded',
+                            overwriteArmedId === preset.id
+                              ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                              : 'hover:bg-neutral-200 dark:hover:bg-neutral-600 text-neutral-500'
+                          )}
+                          title={
+                            overwriteArmedId === preset.id
+                              ? 'Click again to overwrite with current settings'
+                              : 'Overwrite with current settings'
+                          }
+                        >
+                          <Icon name={overwriteArmedId === preset.id ? 'check' : 'save'} size={10} />
+                        </button>
                         <button
                           type="button"
                           onClick={(e) => startEditing(preset, e)}

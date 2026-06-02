@@ -7,6 +7,8 @@
  *   AssetPanelHeader.tsx    – header bar, floating panel toggles, settings popover
  *   AssetPanelGrid.tsx      – multi-asset strip/grid display
  */
+import type { OverlayWidget } from '@lib/ui/overlay';
+
 import { getAssetDisplayUrls, toggleFavoriteTag } from '@features/assets';
 import { needsUploadToProvider } from '@features/assets/lib/resolveUploadTarget';
 
@@ -258,7 +260,36 @@ export function AssetPanel(props: QuickGenPanelProps) {
                 <MediaCard
                   asset={currentAsset}
                   onToggleFavorite={() => toggleFavoriteTag(currentAsset)}
-                  customWidgets={state.buildSlotExtraWidgets(state.currentInput ?? null, currentSlotIndex ?? 0, { suppressTimeNav: true })}
+                  customWidgets={[
+                    ...state.buildSlotExtraWidgets(state.currentInput ?? null, currentSlotIndex ?? 0, { suppressTimeNav: true }),
+                    // Carousel nav bar as an overlay widget — sits in the same
+                    // z-stack and pointer-event scheme as the play button + badges,
+                    // so they share the smart-positioning logic instead of the
+                    // bar being a sibling div that just z-30s over everything.
+                    {
+                      id: 'carousel-nav-bar',
+                      type: 'custom',
+                      // offset.y for bottom anchors is negated (see position.ts):
+                      // bottom: `${-offsetY}px`. Negative y here pushes the bar
+                      // UP from the bottom edge so the lower green chevrons stay
+                      // inside the card; positive y would clip them below.
+                      position: { anchor: 'bottom-center', offset: { x: 0, y: -14 } },
+                      visibility: { trigger: 'always' },
+                      priority: 35,
+                      interactive: true,
+                      handlesOwnInteraction: true,
+                      render: () => (
+                        <CarouselMobileNavBar
+                          inline
+                          asset={currentAsset}
+                          inputId={state.currentInputId}
+                          operationType={state.operationType}
+                          assetSetRef={state.currentInput?.assetSetRef}
+                          queue={queueConfig}
+                        />
+                      ),
+                    } satisfies OverlayWidget,
+                  ]}
                   layout={{
                     density: 'compact',
                     hideFooter: true,
@@ -311,12 +342,15 @@ export function AssetPanel(props: QuickGenPanelProps) {
                 />
               </div>
             )}
-            {showNavBar && (
+            {/* Virtual (empty) slot has no MediaCard to host the bar widget, so
+                we still render it as a sibling there. Asset branch uses the
+                overlay widget version above. */}
+            {showNavBar && state.isOnVirtualSlot && (
               <CarouselMobileNavBar
-                asset={state.isOnVirtualSlot ? null : currentAsset}
-                inputId={state.isOnVirtualSlot ? undefined : state.currentInputId}
+                asset={null}
+                inputId={undefined}
                 operationType={state.operationType}
-                assetSetRef={state.isOnVirtualSlot ? undefined : state.currentInput?.assetSetRef}
+                assetSetRef={undefined}
                 queue={queueConfig}
               />
             )}

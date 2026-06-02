@@ -55,11 +55,16 @@ export interface OperationInputs {
 
 /**
  * Which axis the input-slot prev/next navigation (chevrons, `[`/`]`, wheel)
- * walks. `time` = created_at within media_type+operation_type (default);
- * `prompt` = created_at within the same prompt_version_id cohort.
+ * walks.
+ *   - `time`: created_at within media_type+operation_type (default).
+ *   - `source`: walk siblings of the asset's source — adapts per asset:
+ *       generated asset → same prompt_version_id cohort (the old `prompt`
+ *       behavior); LocalAssetModel → same folder + directory; otherwise
+ *       falls back to time. Legacy persisted `'prompt'` values are
+ *       normalized to `'source'` at read time in `useInputSlotNavigation`.
  * Plan: `media-card-input-time-nav`.
  */
-export type InputNavCohort = 'time' | 'prompt';
+export type InputNavCohort = 'time' | 'source';
 
 export interface AddInputOptions {
   asset: AssetModel;

@@ -9,6 +9,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { Icon } from '@lib/icons';
+
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import type { MediaCardQueueConfig } from './MediaCard';
@@ -28,6 +30,7 @@ export function MediaCardQueueNav({
   queue,
   embedded = false,
   variant = 'arrows',
+  scrubHint,
 }: {
   queue: MediaCardQueueConfig;
   /**
@@ -43,6 +46,18 @@ export function MediaCardQueueNav({
    * dedicated ‹/› chevrons.
    */
   variant?: 'arrows' | 'counter';
+  /**
+   * Counter-variant only. When set, flank the count with green up/down
+   * chevrons (clickable for slot prev/next). Same shape as CohortPill's
+   * scrollHint: `dir` + `tick` drive a one-shot bounce animation on the
+   * chevron matching the last commit direction.
+   */
+  scrubHint?: {
+    dir: 'prev' | 'next' | null;
+    tick: number;
+    onPrev?: () => void;
+    onNext?: () => void;
+  };
 }) {
   const { currentIndex, totalCount, items, onPrev, onNext, onSelect } = queue;
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -98,20 +113,60 @@ export function MediaCardQueueNav({
     <>
       <div className={wrapperClass}>
         {variant === 'counter' ? (
-          hasGrid ? (
-            <button
-              ref={triggerRef}
-              onClick={handleToggleGrid}
-              className="flex items-center text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
-              title={`View all ${items!.length} assets`}
-            >
-              {counterLabel}
-            </button>
-          ) : (
-            <span className="flex items-center text-white/90 text-[11px] font-medium px-1">
-              {counterLabel}
-            </span>
-          )
+          (() => {
+            const countEl = hasGrid ? (
+              <button
+                ref={triggerRef}
+                onClick={handleToggleGrid}
+                className="flex items-center text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
+                title={`View all ${items!.length} assets`}
+              >
+                {counterLabel}
+              </button>
+            ) : (
+              <span className="flex items-center text-white/90 text-[11px] font-medium px-1">
+                {counterLabel}
+              </span>
+            );
+            if (!scrubHint) return countEl;
+            const handleSlotPrev = (e: React.MouseEvent) => {
+              e.stopPropagation();
+              scrubHint.onPrev?.();
+            };
+            const handleSlotNext = (e: React.MouseEvent) => {
+              e.stopPropagation();
+              scrubHint.onNext?.();
+            };
+            return (
+              <span className="flex flex-col items-center leading-none">
+                <button
+                  key={scrubHint.dir === 'prev' ? `up-${scrubHint.tick}` : 'up'}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleSlotPrev}
+                  disabled={!scrubHint.onPrev}
+                  className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-30 disabled:cursor-default transition-colors ${scrubHint.dir === 'prev' ? 'animate-bounce-once' : ''}`}
+                  title="Previous asset (pool)"
+                  aria-label="Previous asset"
+                >
+                  <Icon name="chevronUp" size={10} />
+                </button>
+                {countEl}
+                <button
+                  key={scrubHint.dir === 'next' ? `down-${scrubHint.tick}` : 'down'}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleSlotNext}
+                  disabled={!scrubHint.onNext}
+                  className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-30 disabled:cursor-default transition-colors ${scrubHint.dir === 'next' ? 'animate-bounce-once' : ''}`}
+                  title="Next asset (pool)"
+                  aria-label="Next asset"
+                >
+                  <Icon name="chevronDown" size={10} />
+                </button>
+              </span>
+            );
+          })()
         ) : (
           <>
             <button

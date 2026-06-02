@@ -141,7 +141,7 @@ export function GallerySurfaceShell({
   const showLoading = loading && itemCount === 0 && loadingContent;
 
   return (
-    <div className={`p-6 space-y-4 min-h-screen ${className}`}>
+    <div className={`p-6 space-y-4 h-full overflow-y-auto ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

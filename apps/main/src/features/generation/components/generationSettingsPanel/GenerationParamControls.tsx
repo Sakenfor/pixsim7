@@ -138,9 +138,7 @@ export function GenerationParamControls({
     }
   };
 
-  return (
-    <>
-      {paramSpecs.map((param) => {
+  const renderParam = (param: ParamSpec) => {
         if (param.type === 'boolean') return null;
         if (param.type === 'string' && !param.enum) return null;
 
@@ -415,6 +413,31 @@ export function GenerationParamControls({
             })}
           </select>
         );
+  };
+
+  // Pair orientation (aspect_ratio) + size (quality) into one row so they sit
+  // side by side instead of stacking / the size grid spanning full width.
+  const rendered = new Set<string>();
+  return (
+    <>
+      {paramSpecs.map((param) => {
+        if (rendered.has(param.name)) return null;
+        if (param.name === 'aspect_ratio' || param.name === 'quality') {
+          rendered.add('aspect_ratio');
+          rendered.add('quality');
+          const orientation = paramSpecs.find((p) => p.name === 'aspect_ratio');
+          const size = paramSpecs.find((p) => p.name === 'quality');
+          const orientationEl = orientation ? renderParam(orientation) : null;
+          const sizeEl = size ? renderParam(size) : null;
+          if (!orientationEl && !sizeEl) return null;
+          return (
+            <div key="orientation-size" className="gen-param-full flex flex-wrap items-center gap-1">
+              {orientationEl}
+              {sizeEl}
+            </div>
+          );
+        }
+        return renderParam(param);
       })}
     </>
   );

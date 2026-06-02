@@ -212,9 +212,6 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
                   className="flex-shrink-0 flex flex-col border-b border-neutral-200 dark:border-neutral-800 last:border-b-0"
                   style={{ height: sectionHeight }}
                 >
-                  <header className="flex-none px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/40">
-                    {def.title}
-                  </header>
                   <div className="flex-1 min-h-0 overflow-hidden">
                     <Component
                       params={context}

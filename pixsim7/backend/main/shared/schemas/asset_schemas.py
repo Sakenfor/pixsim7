@@ -116,6 +116,23 @@ class AssetSearchRequest(BaseModel):
 
     asset_ids: list[int] | None = Field(None, description="Whitelist of asset IDs to include")
 
+    upload_source_folder_id: str | None = Field(
+        None,
+        description="Filter by upload_context.source_folder_id (the user's tracked local folder). "
+        "Used by the 'Source' cohort to walk same-folder siblings.",
+    )
+    upload_source_subfolder: str | None = Field(
+        None,
+        description="Filter by upload_context.source_subfolder (narrow to a subdirectory within the "
+        "source folder). Pair with upload_source_folder_id. Empty string matches root-of-folder files.",
+    )
+    source_siblings_of_asset_id: int | None = Field(
+        None,
+        description="Server-side resolves the pivot asset's upload_context.source_folder_id and "
+        "source_subfolder and applies them as filters. Use when the caller has the asset id but not "
+        "its full upload_context payload.",
+    )
+
     similar_to: int | None = Field(None, description="Asset ID for visual similarity search")
     similarity_threshold: float | None = Field(None, ge=0.0, le=1.0, description="Min similarity 0-1, default 0.3")
     embedder_id: str | None = Field(None, description="Embedder space to search in; defaults to user's primary")
@@ -261,15 +278,14 @@ class AssetResponse(BaseModel):
     # Lineage: whether any other asset lists this one as its source/parent (computed at response build time)
     has_children: bool = False
 
-    # Sibling counts (computed at response build time, user-scoped, include-self).
-    # same_inputs_count: assets sharing this asset's input-asset set (Asset.input_assets_key).
-    # same_prompt_count: assets sharing this asset's prompt family (PromptVersion.family_id).
-    # same_seed_count: assets sharing this asset's generation seed (Asset.gen_seed).
-    # 0 when not applicable (no inputs / no prompt linkage). Frontend hides the
-    # badge below 2. See plan media-card-sibling-badges.
-    same_inputs_count: int = 0
-    same_prompt_count: int = 0
-    same_seed_count: int = 0
+    # Cohort counts for the similarity badge (computed at response build time,
+    # user-scoped, include-self). Map keyed by lit-facet letters in canonical
+    # i<p<s order — i, p, s, ip, is, ps, ips — where i=inputs, p=prompt,
+    # s=seed. Each value counts the user's assets matching ALL facets in that
+    # combo; 0 when the asset lacks a facet (e.g. no inputs). The frontend picks
+    # which combo to show from a user-chosen facet lens and hides below 2.
+    # See plan media-card-sibling-badges and services/asset/sibling_counts.py.
+    cohort_counts: dict[str, int] = Field(default_factory=dict)
 
     # Artificial-extend lineage (computed from media_metadata.generation_context.artificial_extend)
     # When present, asset was produced via the "extend via last-frame i2v" flow.

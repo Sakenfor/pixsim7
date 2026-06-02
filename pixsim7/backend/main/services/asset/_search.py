@@ -399,6 +399,48 @@ class AssetSearchMixin:
         if sf.input_assets_key is not None:
             query = query.where(Asset.input_assets_key == sf.input_assets_key)
 
+        # Upload-context source folder — the user's tracked local folder
+        # identity (distinct from the backend storage `local_path`). Set by the
+        # local-folder upload pipeline as
+        # `upload_context.source_folder_id` / `.source_subfolder`. Used by the
+        # "Source" cohort to find sibling assets uploaded from the same folder.
+        if sf.upload_source_folder_id is not None and sf.upload_source_folder_id:
+            query = query.where(
+                Asset.upload_context["source_folder_id"].astext == sf.upload_source_folder_id
+            )
+        if sf.upload_source_subfolder is not None:
+            # Allow empty string explicitly (matches root-of-folder files).
+            query = query.where(
+                Asset.upload_context["source_subfolder"].astext == sf.upload_source_subfolder
+            )
+
+        # Server-side resolved source-siblings: look up the pivot asset's
+        # `upload_context.source_folder_id` / `.source_subfolder` via scalar
+        # subqueries and require matching candidates. Used when the frontend
+        # has only the pivot's id (not its full upload_context payload). NULL
+        # match semantics — if the pivot has no source_folder_id this filter
+        # short-circuits to "no rows" via the IS NOT NULL clauses below.
+        if sf.source_siblings_of_asset_id is not None:
+            from sqlalchemy.orm import aliased
+            pivot = aliased(Asset)
+            pivot_folder = (
+                select(pivot.upload_context["source_folder_id"].astext)
+                .where(pivot.id == sf.source_siblings_of_asset_id)
+                .scalar_subquery()
+            )
+            pivot_subfolder = (
+                select(pivot.upload_context["source_subfolder"].astext)
+                .where(pivot.id == sf.source_siblings_of_asset_id)
+                .scalar_subquery()
+            )
+            query = query.where(
+                Asset.upload_context["source_folder_id"].astext.is_not(None),
+                Asset.upload_context["source_folder_id"].astext == pivot_folder,
+                # subfolder may legitimately be NULL/empty — use NOT DISTINCT
+                # FROM so NULL == NULL matches (root-of-folder files).
+                Asset.upload_context["source_subfolder"].astext.is_not_distinct_from(pivot_subfolder),
+            )
+
         # Lineage filters - use EXISTS subqueries to avoid row duplication
         if operation_type is not None:
             query = query.where(
