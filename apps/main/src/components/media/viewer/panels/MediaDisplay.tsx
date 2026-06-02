@@ -173,6 +173,11 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
       {asset.type === 'video' ? (
         <div className="relative">
           <video
+            // Key per asset so switching clips always mounts a fresh element.
+            // Swapping `src` on the shared element while a previous (not-yet-
+            // ready) stream load is in flight can leave it stuck on the aborted
+            // load — a clean remount loads the newly-selected clip reliably.
+            key={asset.id}
             ref={resolvedVideoRef}
             src={resolvedMediaUrl}
             className={`${getFitClass()} rounded-lg transition-opacity ${videoReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
