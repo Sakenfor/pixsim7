@@ -1,10 +1,14 @@
-"""Tests for the canonical-npc-component mirror added to apply_stat_deltas
-(checkpoint npc-ecs-on-canonical, relationships half).
+"""Tests for the canonical-primary npc stat write in apply_stat_deltas
+(checkpoint drop-legacy-write).
 
-apply_stat_deltas continues to write session.stats[<def_id>][<entity_key>]
-verbatim (the 20+ existing reader sites in brain/derivations/etc. depend on
-that path). It additionally writes a canonical ``stats:<def_id>`` component on
-the npc GameObject so the canonical store is also a source of truth.
+After the reader migration, apply_stat_deltas writes npc-scoped stats ONLY to
+the canonical ``stats:<def_id>`` npc GameObject component — the legacy
+session.stats[<def_id>]["npc:<id>"] write was DROPPED. Canonical is the source
+of truth for npc raw axes; normalize_session_stats recomputes tier/level and
+repopulates the session.stats bulk copy that snapshots/plugins still read.
+Session/world scopes (no canonical npc entity) continue to live in
+session.stats. apply reads npc state canonical-first with a legacy
+session.stats fallback for snapshot-restored sessions.
 """
 import asyncio
 
@@ -63,15 +67,15 @@ def test_apply_stat_deltas_writes_canonical_npc_component(session, world):
 
     run_async(apply_stat_deltas(session, delta, world))
 
-    # Legacy session.stats path still populated (parity for the 20+ readers).
-    assert session.stats["relationships"]["npc:42"]["affinity"] == 5.0
-
-    # Canonical npc.components mirror.
+    # Canonical npc component is the source of truth.
     comp = _npc_component(session, 42, "stats:relationships")
     assert comp is not None
     assert comp["enabled"] is True
     assert comp["data"]["affinity"] == 5.0
     assert comp["data"]["trust"] == 10.0
+
+    # Legacy npc session.stats write was DROPPED — apply must not populate it.
+    assert "npc:42" not in session.stats.get("relationships", {})
 
 
 def test_apply_stat_deltas_session_scope_does_not_touch_canonical(session, world):
@@ -89,7 +93,9 @@ def test_apply_stat_deltas_session_scope_does_not_touch_canonical(session, world
     assert "gameObjects" not in session.flags
 
 
-def test_apply_stat_deltas_subsequent_deltas_accumulate_in_both_locations(session, world):
+def test_apply_stat_deltas_subsequent_deltas_accumulate_in_canonical(session, world):
+    # The second delta must read its prior value back from canonical (apply is
+    # canonical-first), so accumulation works without any session.stats write.
     run_async(apply_stat_deltas(
         session,
         StatDelta(
@@ -111,8 +117,30 @@ def test_apply_stat_deltas_subsequent_deltas_accumulate_in_both_locations(sessio
         world,
     ))
 
-    assert session.stats["relationships"]["npc:7"]["affinity"] == 8.0
     comp = _npc_component(session, 7, "stats:relationships")
     assert comp["data"]["affinity"] == 8.0
+    assert "npc:7" not in session.stats.get("relationships", {})
+
+
+def test_apply_stat_deltas_npc_falls_back_to_legacy_session_stats(session, world):
+    # Snapshot-restored sessions carry npc relationships in session.stats but no
+    # canonical component yet. apply must read that legacy value (fallback) so
+    # the delta accumulates onto it, then write the result to canonical.
+    session.stats = {"relationships": {"npc:9": {"affinity": 20.0}}}
+
+    result = run_async(apply_stat_deltas(
+        session,
+        StatDelta(
+            package_id="core.relationships",
+            axes={"affinity": 10.0},
+            entity_type="npc",
+            npc_id=9,
+        ),
+        world,
+    ))
+
+    assert result["affinity"] == 30.0  # 20 (legacy) + 10
+    comp = _npc_component(session, 9, "stats:relationships")
+    assert comp["data"]["affinity"] == 30.0
 
 

@@ -18,7 +18,10 @@ import time
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.models import GameSession, GameWorld
-from pixsim7.backend.main.services.game.game_object_store import set_npc_component
+from pixsim7.backend.main.services.game.game_object_store import (
+    set_npc_component,
+    get_npc_stat_data,
+)
 from pixsim7.backend.main.services.game.inventory import InventoryService
 from .interactions import (
     InteractionDefinition,
@@ -161,15 +164,28 @@ async def apply_stat_deltas(
         else:
             raise ValueError(f"Invalid entity_type: {delta.entity_type}")
 
-    # Ensure definition exists in session.stats
+    # Ensure definition exists in session.stats (session/world scopes live here;
+    # npc scope is canonical-primary, persisted below).
     if session.stats is None:
         session.stats = {}
     if definition_id not in session.stats:
         session.stats[definition_id] = {}
 
-    # Get current entity stats (or initialize with defaults)
-    stats_for_package = session.stats[definition_id]
-    entity_stats = stats_for_package.get(entity_key, {})
+    is_npc = entity_key.startswith("npc:")
+    npc_id: Any = None
+    if is_npc:
+        raw_id = entity_key[4:]
+        npc_id = int(raw_id) if raw_id.lstrip("-").isdigit() else raw_id
+
+    # Get current entity stats. NPC scope reads canonical-first: the npc
+    # GameObject component ``stats:<def>`` is the source of truth (written
+    # below); get_npc_stat_data falls back to legacy session.stats for
+    # snapshot-restored sessions. Session/world scopes live only in
+    # session.stats.
+    if is_npc:
+        entity_stats = dict(get_npc_stat_data(session, npc_id, definition_id))
+    else:
+        entity_stats = session.stats[definition_id].get(entity_key, {})
 
     # Extract current numeric axis values
     # Default to axis default from definition, or 0 if not specified
@@ -196,17 +212,12 @@ async def apply_stat_deltas(
     for axis_name, clamped_value in clamped_values.items():
         entity_stats[axis_name] = clamped_value
 
-    # Persist back to session
-    session.stats[definition_id][entity_key] = entity_stats
-
-    # Mirror npc-scoped stats onto the canonical npc GameObject component
-    # ``stats:<definition_id>``. Session/world scopes have no canonical entity,
-    # so they remain only in session.stats. Reader migration to the canonical
-    # location is a separate follow-up; for now the legacy session.stats path
-    # stays populated so existing brain/derivation consumers keep working.
-    if entity_key.startswith("npc:"):
-        raw_id = entity_key[4:]
-        npc_id: Any = int(raw_id) if raw_id.lstrip("-").isdigit() else raw_id
+    # Persist. NPC scope -> canonical npc component ONLY. Canonical is the
+    # source of truth for npc raw axes; normalize_session_stats recomputes
+    # tier/level and repopulates the session.stats bulk copy that snapshots /
+    # plugin capabilities still read. Session/world scopes (no canonical npc
+    # entity) -> session.stats.
+    if is_npc:
         set_npc_component(
             session.flags,
             session.world_id,
@@ -214,6 +225,8 @@ async def apply_stat_deltas(
             f"stats:{definition_id}",
             entity_stats,
         )
+    else:
+        session.stats[definition_id][entity_key] = entity_stats
 
     # TODO: Optionally normalize (compute tiers/levels) here
     # For now, we just apply and clamp. Normalization can be done separately

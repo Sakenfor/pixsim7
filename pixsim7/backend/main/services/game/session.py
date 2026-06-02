@@ -25,6 +25,10 @@ from pixsim7.backend.main.domain.game import (
     GameWorld,
 )
 from pixsim7.backend.main.services.game.stat import StatService
+from pixsim7.backend.main.services.game.game_object_store import (
+    list_session_game_objects,
+    get_component,
+)
 
 
 # Type for action names - kept short for storage efficiency
@@ -91,6 +95,27 @@ class GameSessionService:
     async def _normalize_session_relationships(self, session: GameSession) -> None:
         """Normalize relationship stats for a session using the generic stat service."""
         await self.stat_service.normalize_session_stats(session, "relationships")
+
+    def _session_has_relationships(self, session: GameSession) -> bool:
+        """Whether a session has any relationship stats to normalize.
+
+        Checks BOTH the legacy session.stats["relationships"] package (session /
+        world scopes, snapshot-restored npc data) AND the canonical npc
+        ``stats:relationships`` components written by apply_stat_deltas. The
+        canonical check is required since npc relationship state no longer lands
+        in session.stats (plan ``backend-stats-readers-canonical-migration``,
+        drop-legacy-write) — without it, npc-only sessions would skip
+        normalization and never compute tier/level."""
+        if session.stats.get("relationships"):
+            return True
+        if session.flags is not None and session.world_id is not None:
+            for npc_obj in list_session_game_objects(
+                session.flags, session.world_id, kind="npc"
+            ):
+                comp = get_component(npc_obj, "stats:relationships")
+                if comp and isinstance(comp.get("data"), dict) and comp["data"]:
+                    return True
+        return False
 
     async def create_event(
         self,
@@ -324,7 +349,7 @@ class GameSessionService:
         await self._cleanup_old_events(session.id)
 
         # Only normalize if relationships exist (optimization)
-        if session.stats.get("relationships"):
+        if self._session_has_relationships(session):
             await self._normalize_session_relationships(session)
 
         return session
@@ -384,7 +409,7 @@ class GameSessionService:
         await self._cleanup_old_events(session.id)
 
         # Only normalize if relationships exist (optimization)
-        if session.stats.get("relationships"):
+        if self._session_has_relationships(session):
             await self._invalidate_cached_relationships(session.id)
             await self._normalize_session_relationships(session)
 

@@ -18,6 +18,7 @@ from pixsim7.backend.main.domain.game.stats import (
     register_core_stat_packages,
     clear_stat_packages,
 )
+from pixsim7.backend.main.services.game.game_object_store import get_npc_stat_data
 
 
 def run_async(coro):
@@ -72,11 +73,12 @@ def test_apply_stat_deltas_basic(session, world):
     assert result["affinity"] == 5.0
     assert result["trust"] == 10.0
 
-    # Check that session.stats was updated
-    assert "relationships" in session.stats
-    assert "npc:42" in session.stats["relationships"]
-    assert session.stats["relationships"]["npc:42"]["affinity"] == 5.0
-    assert session.stats["relationships"]["npc:42"]["trust"] == 10.0
+    # NPC stats are canonical-primary (the legacy session.stats npc write was
+    # dropped). Read them back via the canonical-first helper.
+    npc_stats = get_npc_stat_data(session, 42, "relationships")
+    assert npc_stats["affinity"] == 5.0
+    assert npc_stats["trust"] == 10.0
+    assert "npc:42" not in session.stats.get("relationships", {})
 
 
 def test_apply_stat_deltas_clamping(session, world):
@@ -153,9 +155,9 @@ def test_apply_stat_deltas_multiple_npcs(session, world):
     )
     run_async(apply_stat_deltas(session, delta2, world))
 
-    # Both NPCs should have independent values
-    assert session.stats["relationships"]["npc:1"]["affinity"] == 50.0
-    assert session.stats["relationships"]["npc:2"]["affinity"] == 75.0
+    # Both NPCs should have independent values (canonical-primary).
+    assert get_npc_stat_data(session, 1, "relationships")["affinity"] == 50.0
+    assert get_npc_stat_data(session, 2, "relationships")["affinity"] == 75.0
 
 
 def test_apply_stat_deltas_validates_npc_id(session, world):

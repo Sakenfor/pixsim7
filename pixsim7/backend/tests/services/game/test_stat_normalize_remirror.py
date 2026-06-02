@@ -19,7 +19,10 @@ import pytest
 
 from pixsim7.backend.main.domain.game.core.models import GameSession
 from pixsim7.backend.main.services.game.stat import StatService
-from pixsim7.backend.main.services.game.game_object_store import get_npc_component
+from pixsim7.backend.main.services.game.game_object_store import (
+    get_npc_component,
+    set_npc_component,
+)
 from pixsim7.backend.main.domain.game.stats import (
     WorldStatsConfig,
     StatDefinition,
@@ -90,6 +93,47 @@ def test_npc_normalized_stats_remirrored_to_canonical(monkeypatch, relationships
     assert data.get("affinityTierId") == "friend", (
         f"canonical must carry computed tier; got {data!r}"
     )
+
+
+def test_normalize_seeds_npc_from_canonical_when_session_stats_empty(
+    monkeypatch, relationships_config
+):
+    # Inversion (drop-legacy-write): apply_stat_deltas writes npc raw axes ONLY
+    # to the canonical component, NOT session.stats. normalize must still pick
+    # the npc up (seed from canonical), compute tier, write it back to
+    # session.stats (for bulk readers) and re-mirror computed to canonical.
+    svc = _make_service(monkeypatch, relationships_config)
+    session = _session(stats={})  # session.stats has no relationships package
+    set_npc_component(
+        session.flags, session.world_id, 5, "stats:relationships",
+        {"affinity": 75.0, "trust": 60.0},
+    )
+
+    run_async(svc.normalize_session_stats(session, "relationships"))
+
+    # session.stats bulk copy is repopulated for the npc (snapshots/plugins read it).
+    npc_entry = session.stats["relationships"]["npc:5"]
+    assert npc_entry["affinity"] == 75.0
+    assert npc_entry.get("affinityTierId") == "friend"
+    # Canonical carries the computed tier too.
+    comp = get_npc_component(session.flags, session.world_id, 5, "stats:relationships")
+    assert comp["data"].get("affinityTierId") == "friend"
+
+
+def test_canonical_wins_over_stale_session_stats_npc(monkeypatch, relationships_config):
+    # If both carry the npc (e.g. a snapshot-restored legacy value plus a fresh
+    # canonical write), canonical is authoritative for the normalized result.
+    svc = _make_service(monkeypatch, relationships_config)
+    session = _session(stats={"relationships": {"npc:5": {"affinity": 10.0}}})  # stale
+    set_npc_component(
+        session.flags, session.world_id, 5, "stats:relationships",
+        {"affinity": 90.0},  # fresh
+    )
+
+    run_async(svc.normalize_session_stats(session, "relationships"))
+
+    assert session.stats["relationships"]["npc:5"]["affinity"] == 90.0
+    assert session.stats["relationships"]["npc:5"].get("affinityTierId") == "friend"
 
 
 def test_session_scope_not_mirrored(monkeypatch, relationships_config):

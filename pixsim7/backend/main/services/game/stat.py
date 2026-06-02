@@ -25,7 +25,11 @@ except ImportError:
 
 from pixsim7.backend.main.domain.game import GameWorld, GameSession
 from pixsim7.backend.main.domain.game.stats import StatEngine, WorldStatsConfig, StatDefinition
-from pixsim7.backend.main.services.game.game_object_store import set_npc_component
+from pixsim7.backend.main.services.game.game_object_store import (
+    set_npc_component,
+    list_session_game_objects,
+    get_component,
+)
 from pixsim7.backend.main.domain.game.stats.migration import (
     migrate_world_meta_to_stats_config,
     needs_migration as needs_world_migration,
@@ -160,8 +164,28 @@ class StatService:
             session: The game session
             stat_definition_id: Which stat type to normalize (e.g., "relationships", "skills")
         """
-        # Get stat data for this definition
-        stat_data = session.stats.get(stat_definition_id)
+        # Build the working set. session.stats carries session/world scopes and
+        # snapshot-restored npc data; overlay the canonical npc components
+        # (authoritative for npc raw axes, written by apply_stat_deltas) so
+        # npc-only sessions still normalize after the legacy npc session.stats
+        # write was dropped. See plan
+        # ``backend-stats-readers-canonical-migration`` (drop-legacy-write).
+        stat_data = dict(session.stats.get(stat_definition_id) or {})
+        if session.flags is not None and session.world_id is not None:
+            for npc_obj in list_session_game_objects(
+                session.flags, session.world_id, kind="npc"
+            ):
+                ref = npc_obj.get("ref")
+                comp = get_component(npc_obj, f"stats:{stat_definition_id}")
+                if (
+                    isinstance(ref, str)
+                    and comp
+                    and isinstance(comp.get("data"), dict)
+                    and comp["data"]
+                ):
+                    # Canonical wins over any stale session.stats npc copy.
+                    stat_data[ref] = dict(comp["data"])
+
         if not stat_data:
             return  # No data to normalize
 
