@@ -298,7 +298,8 @@ export function PresetSelector({
                         </span>
                       )}
                       <div className={clsx(
-                        'items-center gap-0.5',
+                        'items-center gap-0.5 rounded-md p-0.5',
+                        'bg-white/95 dark:bg-neutral-900/90 shadow-sm ring-1 ring-black/5 dark:ring-white/10',
                         overwriteArmedId === preset.id ? 'flex' : 'hidden group-hover:flex'
                       )}>
                         <button
@@ -307,8 +308,8 @@ export function PresetSelector({
                           className={clsx(
                             'p-0.5 rounded',
                             overwriteArmedId === preset.id
-                              ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
-                              : 'hover:bg-neutral-200 dark:hover:bg-neutral-600 text-neutral-500'
+                              ? 'bg-amber-500 text-white'
+                              : 'text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40'
                           )}
                           title={
                             overwriteArmedId === preset.id
@@ -321,7 +322,7 @@ export function PresetSelector({
                         <button
                           type="button"
                           onClick={(e) => startEditing(preset, e)}
-                          className="p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-600 text-neutral-500"
+                          className="p-0.5 rounded text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
                           title="Rename"
                         >
                           <Icon name="pencil" size={10} />
@@ -330,7 +331,7 @@ export function PresetSelector({
                           <button
                             type="button"
                             onClick={(e) => handleDelete(preset.id, e)}
-                            className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
+                            className="p-0.5 rounded text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40"
                             title="Delete"
                           >
                             <Icon name="trash2" size={10} />
