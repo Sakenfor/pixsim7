@@ -148,10 +148,6 @@ interface AssetViewerState {
   unregisterScope: (id: string) => void;
   /** Switch to a different scope, swapping assetList and preserving position. */
   switchScope: (id: string) => void;
-  /** Jump to the pending head asset if any and clear the pending marker. */
-  consumePendingHead: () => void;
-  /** Clear the pending head marker without navigating. */
-  clearPendingHead: () => void;
 }
 
 const defaultSettings: ViewerSettings = {
@@ -346,28 +342,6 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           currentAsset: next,
           ...(clearsPending ? { pendingHeadId: null } : null),
         });
-      },
-
-      consumePendingHead: () => {
-        const { scopes, activeScopeId, pendingHeadId } = get();
-        if (pendingHeadId == null) return;
-        const list = (activeScopeId && scopes[activeScopeId]?.assets) || [];
-        const idx = list.findIndex((a) => a.id === pendingHeadId);
-        if (idx < 0) {
-          set({ pendingHeadId: null });
-          return;
-        }
-        set({
-          assetList: list,
-          currentIndex: idx,
-          currentAsset: list[idx],
-          pendingHeadId: null,
-        });
-      },
-
-      clearPendingHead: () => {
-        if (get().pendingHeadId == null) return;
-        set({ pendingHeadId: null });
       },
 
       toggleMetadata: () => {
