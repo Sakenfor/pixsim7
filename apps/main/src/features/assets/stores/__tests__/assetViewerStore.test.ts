@@ -213,6 +213,60 @@ describe('assetViewerStore scope re-registration stability', () => {
 
     state = useAssetViewerStore.getState();
     expect(state.activeScopeId).toBe('recent');
-    expect(state.assetList.map((a) => a.id)).toEqual([403, 401]);
+    // First-time hydration of the active scope must not steal the viewer off
+    // the asset already on screen, nor spuriously flag a pending head — it just
+    // registers the scope contents. (assetList stays lazily synced via nav.)
+    expect(state.scopes.recent?.assets.map((a) => a.id)).toEqual([403, 401]);
+    expect(state.currentAsset?.id).toBe(401);
+    expect(state.pendingHeadId).toBeNull();
+  });
+});
+
+describe('assetViewerStore follow-latest respects explicit navigation', () => {
+  beforeEach(() => {
+    try {
+      localStorage.clear();
+    } catch {
+      // no-op
+    }
+    mocks.isVideoPlayingAsset.mockReset();
+    mocks.isVideoPlayingAsset.mockReturnValue(false);
+    mocks.emitAssetViewed.mockReset();
+    useAssetViewerStore.setState(useAssetViewerStore.getInitialState(), true);
+  });
+
+  it('flags a new arrival as pending (no steal) when the user has navigated off the head', () => {
+    const a = makeViewerVideo({ id: 1 });
+    const b = makeViewerVideo({ id: 2 });
+    const c = makeViewerVideo({ id: 3 });
+    useAssetViewerStore.getState().openViewer(a, [a, b, c], 'recent');
+
+    // User clicks an earlier thumb — now parked off the head.
+    useAssetViewerStore.getState().navigateToAssetId(b.id);
+    expect(useAssetViewerStore.getState().currentAsset?.id).toBe(b.id);
+
+    // A fresh video lands while `b` is still loading (not "playing" yet).
+    const landed = makeViewerVideo({ id: 4 });
+    useAssetViewerStore.getState().registerScope('recent', 'recent', [landed, a, b, c]);
+
+    const state = useAssetViewerStore.getState();
+    // Viewer stays on the user's selection; arrival only flags the strip.
+    expect(state.currentAsset?.id).toBe(b.id);
+    expect(state.pendingHeadId).toBe(landed.id);
+  });
+
+  it('auto-follows a new arrival when the user is parked on the head', () => {
+    const a = makeViewerVideo({ id: 1 });
+    const b = makeViewerVideo({ id: 2 });
+    useAssetViewerStore.getState().openViewer(a, [a, b], 'recent');
+    expect(useAssetViewerStore.getState().currentAsset?.id).toBe(a.id);
+
+    const landed = makeViewerVideo({ id: 3 });
+    useAssetViewerStore.getState().registerScope('recent', 'recent', [landed, a, b]);
+
+    const state = useAssetViewerStore.getState();
+    expect(state.currentAsset?.id).toBe(landed.id);
+    expect(state.currentIndex).toBe(0);
+    expect(state.pendingHeadId).toBeNull();
   });
 });
