@@ -82,6 +82,7 @@ import './ContextSettings';
 import './GenerationSettings';
 import './NotificationSettings';
 import './GestureSurfacesSettings';
+import './GenerationButtonsSettings';
 import './IconSettings';
 import './ThemeSettings';
 import './SurfacesSettings';

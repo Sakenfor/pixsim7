@@ -53,6 +53,11 @@ import {
   type GenerationSeedModePreference,
 } from './quickGenerateModeStore';
 import { getSmartActionLabel, resolveMaxSlotsForModel } from './SlotPicker';
+import {
+  STYLE_VARIATION_CATEGORIES,
+  useVisibleStyleCategories,
+  type StyleVariationCategory,
+} from './styleVariationPrefsStore';
 import { useGenerationCardHandlers } from './useGenerationCardHandlers';
 import { useSelectedVideoTimestamp, useVideoMarksStore, SELECT_LAST_FRAME } from './videoMarksStore';
 
@@ -212,23 +217,9 @@ export type GenerationButtonGroupModel = {
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type StyleVariationCategory = { id: string; label: string };
-
-/**
- * Style dimensions the media-card "style variations" popover can sweep.
- * Each `id` is a block-primitive `category` whose text is appended to the
- * source prompt before re-running the generation (see
- * handleGenerateStyleVariations). Curated to *look / aesthetic* dimensions —
- * content-shaping categories (pose, anatomy, camera, wardrobe…) are
- * intentionally excluded. Add a row here to expose another sweep dimension.
- */
-export const STYLE_VARIATION_CATEGORIES: StyleVariationCategory[] = [
-  { id: 'aesthetic_preset', label: 'Aesthetic' },
-  { id: 'light', label: 'Lighting' },
-  { id: 'color', label: 'Color' },
-  { id: 'mood', label: 'Mood' },
-  { id: 'rendering_technique', label: 'Rendering' },
-];
+// The style-variation catalog + per-user prefs live in styleVariationPrefsStore.
+// Re-exported here for back-compat with existing importers of this module.
+export { STYLE_VARIATION_CATEGORIES, type StyleVariationCategory };
 
 const UPLOAD_PROVIDER_COLORS: Record<string, string> = {
   pixverse: '#7C3AED',
@@ -658,9 +649,17 @@ export function useGenerationButtonGroup({
   }, [setDefaultUploadProvider, providerMenuMode, handleUploadToTarget]);
 
   // Style variation picker state (blocks lazy-loaded per category on hover).
-  const [activeStyleCategory, setActiveStyleCategory] = useState<string>(
+  // Visible dimensions + order come from the per-user prefs store, so this is
+  // a personal default that follows the card across every surface.
+  const styleCategories = useVisibleStyleCategories();
+  const [storedStyleCategory, setStoredStyleCategory] = useState<string>(
     STYLE_VARIATION_CATEGORIES[0].id,
   );
+  // Fall back to the first visible dimension if the stored one was hidden.
+  const activeStyleCategory =
+    styleCategories.some((c) => c.id === storedStyleCategory)
+      ? storedStyleCategory
+      : (styleCategories[0]?.id ?? storedStyleCategory);
   const [styleBlocksByCategory, setStyleBlocksByCategory] = useState<
     Record<string, PromptBlockResponse[]>
   >({});
@@ -675,7 +674,7 @@ export function useGenerationButtonGroup({
     });
   }, []);
   const selectStyleCategory = useCallback((category: string) => {
-    setActiveStyleCategory(category);
+    setStoredStyleCategory(category);
     fetchStyleBlocks(category);
   }, [fetchStyleBlocks]);
 
@@ -1078,7 +1077,7 @@ export function useGenerationButtonGroup({
       expand: {
         kind: 'style-variations',
         isGenerating: isGeneratingVariations,
-        categories: STYLE_VARIATION_CATEGORIES,
+        categories: styleCategories,
         activeCategory: activeStyleCategory,
         blocks: styleBlocksByCategory[activeStyleCategory] ?? null,
         onSelectCategory: selectStyleCategory,
