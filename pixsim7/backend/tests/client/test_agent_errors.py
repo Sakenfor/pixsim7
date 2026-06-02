@@ -413,6 +413,19 @@ class TestCodexErrorEventsAreTyped:
         assert isinstance(parsed.error, AgentError)
         assert "method not found" in parsed.text
 
+    def test_contentless_system_error_gets_actionable_message(self):
+        # Codex's real-world failure shape: a bare systemError with no detail.
+        # Must not surface as "unknown" — point the user at the likely cause.
+        raw = {
+            "method": "thread/status/changed",
+            "params": {"threadId": "t1", "status": {"type": "systemError"}},
+        }
+        parsed = CodexAppServerProtocol().parse_event(raw)
+        assert parsed.kind == "error"
+        assert "unknown" not in parsed.text.lower()
+        low = parsed.text.lower()
+        assert "subscription" in low or "plan" in low or "sign" in low
+
 
 # ── Codex signature classifier ────────────────────────────────────
 

@@ -650,7 +650,20 @@ class CodexAppServerProtocol(AgentProtocol):
                 if status_type in ("systemError", "error"):
                     err = params.get("error", "")
                     err_text = _dict_message(err) if isinstance(err, dict) else str(err or "")
-                    detail = _dict_message(status) or _dict_message(params) or err_text or "unknown"
+                    detail = _dict_message(status) or _dict_message(params) or err_text
+                    # Codex frequently emits a bare `{status: {type: systemError}}`
+                    # with NO message/code (confirmed via raw-event logging). A
+                    # literal "unknown" tells the user nothing; this failure mode
+                    # is most often plan/model-access or auth (e.g. a ChatGPT plan
+                    # that no longer covers the Codex model) or a transient
+                    # upstream fault. Surface that actionable guess instead.
+                    if not detail:
+                        detail = (
+                            "Codex sent no detail — usually your plan/subscription "
+                            "no longer covers this model or you're signed out; "
+                            "otherwise a transient upstream fault. Check Codex "
+                            "sign-in / subscription, then retry."
+                        )
                     return _codex_error_event(f"Codex {status_type}", raw, detail=detail)
                 return ParsedEvent(kind="progress", text=f"Status: {status_type}", raw=raw)
             if status:
