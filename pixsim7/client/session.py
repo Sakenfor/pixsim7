@@ -973,6 +973,23 @@ class AgentCmdSession:
                     # backstop only fires for any future protocol that emits
                     # a kind="error" ParsedEvent without populating .error.
                     err = parsed.error or generic_agent_error(parsed.text, parsed.raw)
+                    # Uncategorized errors are a black box in the UI ("unknown
+                    # error"). The classifiers extract what they can from the
+                    # MESSAGE, but a Codex `systemError` often carries no message
+                    # at all — so log the full raw event once here to capture
+                    # whatever fields the agent DID send (auth/plan hints,
+                    # nested codes). This is the only place the raw payload of an
+                    # unknown error is preserved for triage.
+                    if err.category == "unknown":
+                        try:
+                            self._log.warning(
+                                "agent_error_uncategorized",
+                                message=err.message[:200],
+                                raw=json.dumps(parsed.raw)[:1500] if parsed.raw else None,
+                                cli_session=self.cli_session_id,
+                            )
+                        except Exception:
+                            self._log.debug("agent_error_uncategorized_log_failed", exc_info=True)
                     raise AgentTaskError(err)
 
                 elif parsed.kind == "progress":
