@@ -86,6 +86,7 @@ def _build_search_filters(request: AssetSearchRequest) -> AssetSearchFilters:
         source_asset_id=request.source_asset_id,
         sha256=request.sha256,
         operation_type=request.operation_type,
+        asset_operation_type=request.asset_operation_type,
         has_parent=request.has_parent,
         has_children=request.has_children,
         asset_ids=request.asset_ids,
@@ -172,8 +173,12 @@ async def search_assets(
                 # Opaque format: created_at|id
                 next_cursor = f"{last.created_at.isoformat()}|{last.id}"
 
-        # Build responses with tags (batch-loaded in single query)
-        asset_responses = await build_asset_responses_with_tags(assets, db)
+        # Build responses with tags (batch-loaded in single query). Cohort/sibling
+        # counts are skippable — neighbor/sequence walking sets this false to avoid
+        # the expensive prompt-coalesce scan it never renders.
+        asset_responses = await build_asset_responses_with_tags(
+            assets, db, include_cohort_counts=bool(getattr(request, "include_cohort_counts", True))
+        )
 
         return AssetListResponse(
             assets=asset_responses,

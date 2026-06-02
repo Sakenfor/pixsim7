@@ -121,7 +121,7 @@ class AssetSearchMixin:
          created_from, created_to, min_width, max_width, min_height, max_height,
          content_domain, content_category, content_rating,
          asset_ids, source_generation_id, source_asset_id,
-         sha256, prompt_version_id, operation_type,
+         sha256, prompt_version_id, operation_type, asset_operation_type,
          has_parent, has_children, group_by, group_key,
          similarity_threshold) = (
             sf.filters, sf.group_filter, sf.group_path, sf.sync_status, sf.provider_status,
@@ -129,7 +129,7 @@ class AssetSearchMixin:
             sf.created_from, sf.created_to, sf.min_width, sf.max_width, sf.min_height, sf.max_height,
             sf.content_domain, sf.content_category, sf.content_rating,
             sf.asset_ids, sf.source_generation_id, sf.source_asset_id,
-            sf.sha256, sf.prompt_version_id, sf.operation_type,
+            sf.sha256, sf.prompt_version_id, sf.operation_type, sf.asset_operation_type,
             sf.has_parent, sf.has_children, sf.group_by, sf.group_key,
             sf.similarity_threshold,
         )
@@ -451,6 +451,16 @@ class AssetSearchMixin:
                     )
                 )
             )
+
+        # Column-based operation filter (denormalized Asset.operation_type).
+        # Distinct from the lineage EXISTS above: this seeks straight into
+        # idx_asset_user_op_created (user_id, operation_type, created_at), so a
+        # created_at-ordered range scan stays dense within the cohort instead of
+        # scanning the whole timeline and running a correlated EXISTS per row.
+        # Used by time-cohort neighbor walking, where the value is the pivot's
+        # own column (so results match the EXISTS path for generated assets).
+        if asset_operation_type is not None:
+            query = query.where(Asset.operation_type == asset_operation_type)
 
         if has_parent is True:
             query = query.where(

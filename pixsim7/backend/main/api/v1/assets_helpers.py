@@ -85,18 +85,23 @@ async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetRes
     has_children_map = await AssetLineageService(db).has_children_map([asset.id])
     ar.has_children = has_children_map.get(asset.id, False)
     counts = await AssetSiblingCountService(db).counts_map([asset], asset.user_id)
-    asset_counts = counts.get(asset.id, {})
-    ar.same_inputs_count = asset_counts.get("same_inputs", 0)
-    ar.same_prompt_count = asset_counts.get("same_prompt", 0)
-    ar.same_seed_count = asset_counts.get("same_seed", 0)
+    ar.cohort_counts = counts.get(asset.id, {})
     ar.gen_seed = asset.gen_seed
 
     return ar
 
 
-async def build_asset_responses_with_tags(assets, db: DatabaseSession) -> List[AssetResponse]:
+async def build_asset_responses_with_tags(
+    assets, db: DatabaseSession, *, include_cohort_counts: bool = True
+) -> List[AssetResponse]:
     """
     Build AssetResponses with tags batch-loaded in a single query.
+
+    ``include_cohort_counts`` gates the sibling/cohort count computation, whose
+    prompt facet (COALESCE(prompt_family_id, prompt_version_id)) is an
+    unindexable seq scan on large libraries. Surfaces that don't render the
+    sibling badge — e.g. neighbor/sequence walking — should pass False to skip
+    ~2.5s of work per page on big libraries.
     """
     if not assets:
         return []
@@ -108,13 +113,14 @@ async def build_asset_responses_with_tags(assets, db: DatabaseSession) -> List[A
 
     # Sibling counts are user-scoped; group by owner so a mixed-owner list
     # (e.g. admin views) still counts each asset within its own library.
-    sibling_svc = AssetSiblingCountService(db)
-    by_owner: dict[int, List] = {}
-    for asset in assets:
-        by_owner.setdefault(asset.user_id, []).append(asset)
     sibling_counts: dict = {}
-    for owner_user_id, owned in by_owner.items():
-        sibling_counts.update(await sibling_svc.counts_map(owned, owner_user_id))
+    if include_cohort_counts:
+        sibling_svc = AssetSiblingCountService(db)
+        by_owner: dict[int, List] = {}
+        for asset in assets:
+            by_owner.setdefault(asset.user_id, []).append(asset)
+        for owner_user_id, owned in by_owner.items():
+            sibling_counts.update(await sibling_svc.counts_map(owned, owner_user_id))
 
     responses: List[AssetResponse] = []
     for asset in assets:
@@ -126,10 +132,7 @@ async def build_asset_responses_with_tags(assets, db: DatabaseSession) -> List[A
             for tag, source in tags_map.get(asset.id, [])
         ]
         ar.has_children = has_children_map.get(asset.id, False)
-        asset_counts = sibling_counts.get(asset.id, {})
-        ar.same_inputs_count = asset_counts.get("same_inputs", 0)
-        ar.same_prompt_count = asset_counts.get("same_prompt", 0)
-        ar.same_seed_count = asset_counts.get("same_seed", 0)
+        ar.cohort_counts = sibling_counts.get(asset.id, {})
         ar.gen_seed = asset.gen_seed
         responses.append(ar)
 

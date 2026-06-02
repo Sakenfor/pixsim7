@@ -57,6 +57,11 @@ class AssetSearchFilters:
     prompt_family_id: Any = None
     input_assets_key: Optional[str] = None
     operation_type: Any = None
+    # Column-based counterpart to `operation_type` (which is a lineage EXISTS
+    # subquery). Filters the denormalized Asset.operation_type column directly so
+    # it can ride the (user_id, operation_type, created_at) index — the fast path
+    # for time-cohort neighbor walking. See AssetSearchRequest.asset_operation_type.
+    asset_operation_type: Any = None
     has_parent: Optional[bool] = None
     has_children: Optional[bool] = None
 

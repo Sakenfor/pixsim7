@@ -107,9 +107,24 @@ export interface UseAssetSequenceReturn {
 
 type Direction = 'prev' | 'next';
 
-// Cap is intentionally small — chevron use cases pivot on at most a handful
-// of assets in a session, and stale entries are cheap to refetch.
-const CACHE_CAP = 64;
+const opposite = (d: Direction): Direction => (d === 'next' ? 'prev' : 'next');
+
+// We fetch this many neighbors in a single directional call and seed the
+// per-step cache for every asset along the chain (see `fetchWindowAndSeed`).
+// One round-trip therefore warms up to PREFETCH_SPAN forward/back steps, so
+// walking into not-yet-explored territory doesn't stall on a fetch per click.
+const PREFETCH_SPAN = 20;
+
+// When the seeded frontier (first asset whose neighbor isn't cached yet) is
+// within this many steps of the current pivot, refill the next span in the
+// background. Kept comfortably below PREFETCH_SPAN so a refill (which adds a
+// whole span) lands long before machine-gun clicking can reach the wall.
+const REFILL_AHEAD = 10;
+
+// Bumped from 64: seeding a chain writes up to ~PREFETCH_SPAN entries per
+// direction per fetch, and entries are tiny (1-element windows for chevrons),
+// so a larger cap keeps a multi-asset walk fully warm without churn.
+const CACHE_CAP = 512;
 const cache = new Map<string, AssetModel[]>();
 const inFlight = new Map<string, Promise<AssetModel[]>>();
 
@@ -184,9 +199,17 @@ async function fetchDirection(
     sort_by: 'created_at' as const,
     sort_dir: direction === 'next' ? ('asc' as const) : ('desc' as const),
     limit,
+    // Neighbor walking never renders the sibling-count badge; skip the
+    // expensive prompt-coalesce cohort scan (~2.5s/page on large libraries).
+    include_cohort_counts: false,
     // operationType is loose `string` upstream (mirrors AssetModel.operationType);
     // tighten to the generated `OperationType` literal-union at the wire.
-    ...(filters?.operationType ? { operation_type: filters.operationType as OperationType } : {}),
+    // Use `asset_operation_type` (denormalized Asset.operation_type COLUMN) — not
+    // the lineage-EXISTS `operation_type` — so the walk rides
+    // idx_asset_user_op_created and stays fast for sparse cohorts. The filter
+    // value is the pivot's own column, so results match the EXISTS path for the
+    // generated assets this cohort walks.
+    ...(filters?.operationType ? { asset_operation_type: filters.operationType as OperationType } : {}),
     ...(filters?.promptVersionId ? { prompt_version_id: filters.promptVersionId } : {}),
     ...(filters?.uploadSourceFolderId ? { upload_source_folder_id: filters.uploadSourceFolderId } : {}),
     ...(filters?.uploadSourceSubfolder !== undefined ? { upload_source_subfolder: filters.uploadSourceSubfolder } : {}),
@@ -208,28 +231,103 @@ async function fetchDirection(
   return candidates.slice(0, windowSize);
 }
 
-async function fetchDirectionCached(
+/**
+ * Resolve the pivot's immediate `windowSize` neighbors in one direction, but
+ * fetch a wider `PREFETCH_SPAN` chain and seed the per-step cache for every
+ * asset along it — in BOTH directions — so subsequent walks land on warm
+ * cache instead of a fresh round-trip.
+ *
+ * For a `next` fetch returning the chain `[n1, n2, n3, …]` (created_at
+ * ascending after pivot), we seed for each `chain[i]`:
+ *   - its forward (`next`) window: the assets after it in the chain;
+ *   - its reverse (`prev`) window: the earlier chain members nearest-first,
+ *     terminating at the original pivot.
+ * The symmetric `prev` fetch seeds the mirror image. Two fetches per pivot
+ * therefore warm a ±PREFETCH_SPAN neighborhood for chevron-by-chevron walking.
+ *
+ * Only COMPLETELY FULL windows are seeded. Near the tail of the fetched chain
+ * a window is short only because we stopped fetching, NOT because the sequence
+ * ended — caching that truncation would assert "no further neighbor" and
+ * permanently dead-end the walk at the span boundary. Leaving the boundary
+ * uncached lets the hook refetch (and re-seed the next span) when you arrive.
+ */
+async function fetchWindowAndSeed(
   pivot: AssetModel,
   axis: AssetSequenceAxis,
   direction: Direction,
   filters: AssetSequenceFilters | undefined,
   windowSize: number,
 ): Promise<AssetModel[]> {
-  const key = cacheKey(pivot.id, axis, direction, filters, windowSize);
-  const cached = cacheGet(key);
+  const directKey = cacheKey(pivot.id, axis, direction, filters, windowSize);
+  const cached = cacheGet(directKey);
   if (cached) return cached;
-  const existing = inFlight.get(key);
+
+  // Dedupe on a span-scoped key so concurrent consumers share the wide fetch.
+  const spanKey = `span#${directKey}`;
+  const existing = inFlight.get(spanKey);
   if (existing) return existing;
-  const promise = fetchDirection(pivot, axis, direction, filters, windowSize)
-    .then((items) => {
-      cacheSet(key, items);
-      return items;
+
+  const span = Math.max(windowSize, PREFETCH_SPAN);
+  const promise = fetchDirection(pivot, axis, direction, filters, span)
+    .then((chain) => {
+      // Seed the pivot's own immediate window first — this is the authoritative
+      // result of the fetch, so a short/empty window here is a genuine end.
+      cacheSet(directKey, chain.slice(0, windowSize));
+      const back = opposite(direction);
+      for (let i = 0; i < chain.length; i++) {
+        const node = chain[i];
+        // Forward window: the assets further along the chain from `node`.
+        // Seed only when full — a short window at the chain tail is a fetch
+        // boundary, not a real end (see fn doc).
+        const forward = chain.slice(i + 1, i + 1 + windowSize);
+        if (forward.length === windowSize) {
+          cacheSet(cacheKey(node.id, axis, direction, filters, windowSize), forward);
+        }
+        // Reverse window: earlier chain members nearest-first, then the pivot.
+        // The pivot is a real boundary, so this is complete whenever it's full.
+        const reverse = [...chain.slice(0, i).reverse(), pivot].slice(0, windowSize);
+        if (reverse.length === windowSize) {
+          cacheSet(cacheKey(node.id, axis, back, filters, windowSize), reverse);
+        }
+      }
+      return chain.slice(0, windowSize);
     })
     .finally(() => {
-      inFlight.delete(key);
+      inFlight.delete(spanKey);
     });
-  inFlight.set(key, promise);
+  inFlight.set(spanKey, promise);
   return promise;
+}
+
+/**
+ * Walk the seeded chain forward from `pivot` (cache lookups only, no network)
+ * to locate the frontier — the first asset whose neighbor window isn't cached.
+ * If that frontier is within `REFILL_AHEAD` steps, kick a background fetch from
+ * it to extend the chain by another span. This is what keeps machine-gun
+ * clicking ahead of the wall: the buffer is topped up well before you reach it,
+ * not one step before. A genuinely-ended sequence (empty seeded window) stops
+ * the walk without refetching.
+ */
+function extendFrontier(
+  pivot: AssetModel,
+  axis: AssetSequenceAxis,
+  direction: Direction,
+  filters: AssetSequenceFilters | undefined,
+  windowSize: number,
+): void {
+  let current = pivot;
+  for (let dist = 0; dist <= REFILL_AHEAD; dist++) {
+    const win = cacheGet(cacheKey(current.id, axis, direction, filters, windowSize));
+    if (win === undefined) {
+      // Frontier within reach — extend from here (deduped + no-op if the
+      // immediate window is already warm under a different code path).
+      void fetchWindowAndSeed(current, axis, direction, filters, windowSize);
+      return;
+    }
+    if (win.length === 0) return; // genuine end of sequence — nothing to fetch
+    current = win[0];
+  }
+  // Frontier is farther than REFILL_AHEAD — plenty of buffer, nothing to do.
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -279,16 +377,22 @@ export function useAssetSequence({
 
     if (windowBefore > 0) {
       // Read sync cache first so the first paint after a pivot change shows
-      // cached neighbors instead of flickering through empty state.
+      // cached neighbors instead of flickering through empty state. When the
+      // walk pre-seeded this pivot we already have the neighbor, so skip the
+      // loading flag entirely — otherwise the chevron disables on every step
+      // even though it has somewhere to go.
       const cached = cacheGet(cacheKey(pivotForRun.id, axis, 'prev', filters, windowBefore));
       if (cached) setPrevItems(cached);
-      setLoadingPrev(true);
-      fetchDirectionCached(pivotForRun, axis, 'prev', filters, windowBefore)
+      else setLoadingPrev(true);
+      fetchWindowAndSeed(pivotForRun, axis, 'prev', filters, windowBefore)
         .then((items) => {
           if (cancelled) return;
           setPrevItems(items);
+          // Keep a deep buffer ahead of the pivot so rapid walking never hits
+          // a cold fetch at the boundary (no-op while the buffer is full).
+          extendFrontier(pivotForRun, axis, 'prev', filters, windowBefore);
         })
-        .catch(() => { if (!cancelled) setPrevItems(EMPTY); })
+        .catch(() => { if (!cancelled && !cached) setPrevItems(EMPTY); })
         .finally(() => { if (!cancelled) setLoadingPrev(false); });
     } else {
       setPrevItems(EMPTY);
@@ -297,13 +401,16 @@ export function useAssetSequence({
     if (windowAfter > 0) {
       const cached = cacheGet(cacheKey(pivotForRun.id, axis, 'next', filters, windowAfter));
       if (cached) setNextItems(cached);
-      setLoadingNext(true);
-      fetchDirectionCached(pivotForRun, axis, 'next', filters, windowAfter)
+      else setLoadingNext(true);
+      fetchWindowAndSeed(pivotForRun, axis, 'next', filters, windowAfter)
         .then((items) => {
           if (cancelled) return;
           setNextItems(items);
+          // Keep a deep buffer ahead of the pivot so rapid walking never hits
+          // a cold fetch at the boundary (no-op while the buffer is full).
+          extendFrontier(pivotForRun, axis, 'next', filters, windowAfter);
         })
-        .catch(() => { if (!cancelled) setNextItems(EMPTY); })
+        .catch(() => { if (!cancelled && !cached) setNextItems(EMPTY); })
         .finally(() => { if (!cancelled) setLoadingNext(false); });
     } else {
       setNextItems(EMPTY);

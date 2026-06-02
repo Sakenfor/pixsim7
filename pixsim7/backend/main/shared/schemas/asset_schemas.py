@@ -111,6 +111,13 @@ class AssetSearchRequest(BaseModel):
     source_asset_id: int | None = Field(None, description="Filter by source asset ID")
     sha256: str | None = Field(None, description="Filter by content hash (exact match)")
     operation_type: OperationType | None = Field(None, description="Filter by lineage operation type")
+    asset_operation_type: OperationType | None = Field(
+        None,
+        description="Filter by the denormalized Asset.operation_type COLUMN (set on generated "
+        "assets; NULL for uploads/masks/frames). Unlike `operation_type` (a lineage EXISTS "
+        "subquery), this rides the (user_id, operation_type, created_at) index, so it's the fast "
+        "path for time-cohort neighbor walking where the filter value is the pivot's own column.",
+    )
     has_parent: bool | None = Field(None, description="Has lineage parent")
     has_children: bool | None = Field(None, description="Has lineage children")
 
@@ -161,6 +168,13 @@ class AssetSearchRequest(BaseModel):
     include_total: bool = Field(
         True,
         description="When true, computes exact total count. Set false to skip expensive count query.",
+    )
+    include_cohort_counts: bool = Field(
+        True,
+        description="When true, computes the media-card sibling/cohort counts (same prompt / seed / "
+        "inputs). The prompt facet scans on COALESCE(prompt_family_id, prompt_version_id) and is "
+        "expensive on large libraries. Set false for surfaces that don't render the badge (e.g. "
+        "neighbor/sequence walking) to skip it entirely.",
     )
 
     limit: int = Field(50, ge=1, le=100, description="Results per page")
