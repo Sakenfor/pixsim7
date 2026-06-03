@@ -175,10 +175,12 @@ class GenerationErrorCode(str, Enum):
     # re-probe the preserved /ori/ URL before classifying — a 200 there is
     # salvaged to COMPLETED instead). Distinct from CONTENT_FILTERED (retryable,
     # "output varies") because here the job genuinely produced no video and the
-    # same prompt keeps failing fast. Deliberately NON-retryable by default
-    # (absent from RETRYABLE_ERROR_CODES) so it doesn't churn the account pool —
-    # but it IS in TWEAKABLE_ERROR_CODES, so an operator can flip it retryable
-    # live if a provider rollout changes the behavior again.
+    # same prompt keeps failing fast. Retryable (some prompts pass on a re-roll)
+    # but backed off + capped by the per-prompt render-moderation retry cap
+    # (worker_concurrency): once a prompt+image fails N times in a row, AUTO-
+    # retry is suppressed (job stays Failed — still manually retryable, never
+    # paused). Also TWEAKABLE, so an operator can flip it terminal live from the
+    # error catalog if a provider rollout changes things.
     CONTENT_RENDER_MODERATED = "content_render_moderated"
     # External partner (e.g. fal-proxied models like grok-imagine, happyhorse-1.0)
     # accepted the job then refused mid-stream. We don't get a structured reason
@@ -211,6 +213,11 @@ RETRYABLE_ERROR_CODES: frozenset[GenerationErrorCode] = frozenset({
     GenerationErrorCode.CONTENT_OUTPUT_REJECTED,
     GenerationErrorCode.CONTENT_IMAGE_REJECTED,
     GenerationErrorCode.CONTENT_FILTERED,
+    # Retryable because pixverse occasionally renders a prompt its moderation
+    # usually filters — but auto-retry is capped per-prompt (worker_concurrency
+    # render-moderation retry cap) so a persistently-filtered prompt stops
+    # auto-retrying instead of churning. Retries are backed off + same-account.
+    GenerationErrorCode.CONTENT_RENDER_MODERATED,
     GenerationErrorCode.PROVIDER_QUOTA,
     GenerationErrorCode.PROVIDER_CONCURRENT_LIMIT,
     GenerationErrorCode.PROVIDER_RATE_LIMIT,

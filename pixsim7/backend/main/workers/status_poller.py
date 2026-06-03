@@ -122,6 +122,11 @@ from pixsim7.backend.main.services.provider.cdn_probe import cdn_head_probe
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     is_pixverse_placeholder_url,
 )
+from pixsim7.backend.main.workers.worker_concurrency import (
+    seed_agnostic_prompt_group_hash,
+    bump_render_moderated_count,
+    clear_render_moderated_count,
+)
 from pixsim7.backend.main.services.provider.pixverse_image_recovery import (
     RearmStatus,
     sweep_and_rearm_sibling,
@@ -1797,6 +1802,14 @@ async def _poll_single_generation(
                     # Mark generation as completed
                     await generation_service.mark_completed(generation.id, asset.id)
 
+                    # Render-moderation retry cap: a clean completion proves this
+                    # prompt CAN pass — reset its consecutive-fail streak so
+                    # auto-retry is fully restored.
+                    await clear_render_moderated_count(
+                        submission.provider_id,
+                        seed_agnostic_prompt_group_hash(generation_model),
+                    )
+
                     if _is_filtered_completion:
                         # Early CDN says filtered → Pixverse will auto-refund.
                         # Skip local billing deduction AND skip the credit refresh
@@ -1908,11 +1921,11 @@ async def _poll_single_generation(
                             error_code = GenerationErrorCode.EXTERNAL_PARTNER_REFUSED.value
                         elif submission.provider_id == "pixverse":
                             # Reaching here means the salvage re-probe above did
-                            # NOT recover a real video (URL stayed 404 / was a
-                            # placeholder / was never captured) — the job was
-                            # moderated at render time with no usable output.
-                            # Distinct, non-retryable: rotating accounts can't
-                            # beat a prompt the provider filters every time.
+                            # NOT recover a real video — the job was moderated at
+                            # render time with no usable output. Retryable (some
+                            # prompts do pass on a re-roll), but capped by the
+                            # per-prompt circuit breaker below so a persistently-
+                            # filtered prompt quarantines instead of churning.
                             # Scoped to pixverse (where we ran the salvage probe);
                             # other providers keep the retryable CONTENT_FILTERED.
                             error_code = GenerationErrorCode.CONTENT_RENDER_MODERATED.value
@@ -1922,6 +1935,19 @@ async def _poll_single_generation(
                         error_code = GenerationErrorCode.PROVIDER_GENERIC.value
                     else:
                         error_code = None
+
+                    # Render-moderation retry cap: bump the consecutive-fail
+                    # streak for this prompt+image. The auto-retry handler reads
+                    # this streak and suppresses AUTO-retry once it crosses the
+                    # cap (the job stays FAILED — still manually retryable, never
+                    # paused). A success clears the streak (COMPLETED branch).
+                    if error_code == GenerationErrorCode.CONTENT_RENDER_MODERATED.value:
+                        await bump_render_moderated_count(
+                            submission.provider_id,
+                            seed_agnostic_prompt_group_hash(generation_model),
+                            gen_logger=logger,
+                        )
+
                     await generation_service.mark_failed(
                         generation.id,
                         error_text,

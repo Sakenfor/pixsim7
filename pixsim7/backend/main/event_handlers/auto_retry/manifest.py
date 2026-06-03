@@ -164,6 +164,32 @@ async def handle_event(event: Event) -> None:
                 )
                 return
 
+            # Render-moderation retry cap: stop AUTO-retrying once this prompt +
+            # image has failed render-moderation too many times in a row. The
+            # job stays FAILED (still manually retryable, never paused); a
+            # success resets the streak and editing the prompt gets a fresh
+            # count. Checked before the claim so a capped prompt is never
+            # re-queued. Fresh user submissions are unaffected (this only gates
+            # the auto-retry path).
+            if generation.error_code == GenerationErrorCode.CONTENT_RENDER_MODERATED.value:
+                from pixsim7.backend.main.workers.worker_concurrency import (
+                    seed_agnostic_prompt_group_hash,
+                    get_render_moderated_count,
+                    render_moderated_retry_cap,
+                )
+                _rm_count = await get_render_moderated_count(
+                    generation.provider_id,
+                    seed_agnostic_prompt_group_hash(generation),
+                )
+                if _rm_count >= render_moderated_retry_cap():
+                    logger.info(
+                        "auto_retry_render_moderated_cap_reached",
+                        generation_id=generation_id,
+                        consecutive=_rm_count,
+                        cap=render_moderated_retry_cap(),
+                    )
+                    return
+
             # Single-flight claim. Duplicate job:failed events (late
             # terminals from abandoned retry-storm siblings) otherwise each
             # enqueue a submission — the duplicate-submit root cause behind
@@ -192,6 +218,16 @@ async def handle_event(event: Event) -> None:
                     exhausted_account_id=rotate_account_from,
                     retry_count=generation.retry_count or 0,
                 )
+
+            # Render-time moderation: back off before retrying (same account, no
+            # rotation — the prompt, not the account, is filtered). Without this
+            # the retryable code would re-queue instantly and churn until the
+            # per-prompt circuit breaker quarantines it.
+            if generation.error_code == GenerationErrorCode.CONTENT_RENDER_MODERATED.value:
+                from pixsim7.backend.main.workers.worker_concurrency import (
+                    render_moderated_retry_defer_seconds,
+                )
+                defer_seconds = render_moderated_retry_defer_seconds()
 
             if _is_poll_time_content_filtered(generation):
                 is_pinned = _is_pinned_generation(generation)

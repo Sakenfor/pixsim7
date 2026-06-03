@@ -675,6 +675,98 @@ def seed_agnostic_prompt_group_hash(generation: Generation) -> str | None:
         return None
 
 
+# --- Render-moderation retry cap -------------------------------------------
+#
+# CONTENT_RENDER_MODERATED is retryable (pixverse occasionally renders a prompt
+# its moderation usually filters), but a prompt that keeps failing must not
+# AUTO-retry forever. We count consecutive render-moderated finalizes per
+# seed-agnostic request key; once the streak crosses the cap, only the
+# *auto-retry churn* is suppressed — the job stays FAILED (still retryable
+# manually) and fresh user submissions are NEVER blocked or paused. Any success
+# clears the streak; a different prompt/image hashes differently, so editing the
+# prompt naturally gets a fresh count.
+
+
+def _render_moderated_count_ttl_seconds() -> int:
+    # Streak window: long enough to span a user iterating on the same prompt
+    # across several submissions, short enough that an old streak decays.
+    return _settings_int("render_moderated_count_ttl_seconds", 3600, minimum=60)
+
+
+def _render_moderated_count_key(provider_id: str, prompt_group_hash: str) -> str:
+    safe_provider = (provider_id or "unknown").strip().lower() or "unknown"
+    return f"generation:render_moderated_count:{safe_provider}:{prompt_group_hash}"
+
+
+def render_moderated_retry_cap() -> int:
+    """Consecutive render-moderated fails after which AUTO-retry is suppressed
+    (the job stays FAILED — still manually retryable, never paused)."""
+    return _settings_int("render_moderated_retry_cap", 10, minimum=1)
+
+
+def render_moderated_retry_defer_seconds() -> int:
+    """Backoff before a CONTENT_RENDER_MODERATED auto-retry — keeps a retryable
+    render-moderated job from re-queuing instantly (the storm). Same account, no
+    pool rotation (it's the prompt, not the account, that's filtered)."""
+    return _settings_int("render_moderated_retry_defer_seconds", 20, minimum=1)
+
+
+async def bump_render_moderated_count(
+    provider_id: str,
+    prompt_group_hash: str | None,
+    *,
+    gen_logger=None,
+) -> int:
+    """Increment + return the consecutive render-moderated count for a request."""
+    if not prompt_group_hash:
+        return 0
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_redis
+
+        redis_client = await get_redis()
+        key = _render_moderated_count_key(provider_id, prompt_group_hash)
+        count = await redis_client.incr(key)
+        await redis_client.expire(key, _render_moderated_count_ttl_seconds())
+        return max(0, int(count))
+    except Exception as e:
+        if gen_logger:
+            gen_logger.debug("render_moderated_count_bump_failed", error=str(e))
+        return 0
+
+
+async def get_render_moderated_count(
+    provider_id: str,
+    prompt_group_hash: str | None,
+) -> int:
+    """Read the current consecutive render-moderated count (0 if none)."""
+    if not prompt_group_hash:
+        return 0
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_redis
+
+        redis_client = await get_redis()
+        raw = await redis_client.get(_render_moderated_count_key(provider_id, prompt_group_hash))
+        return max(0, int(raw)) if raw is not None else 0
+    except Exception:
+        return 0
+
+
+async def clear_render_moderated_count(
+    provider_id: str,
+    prompt_group_hash: str | None,
+) -> None:
+    """Reset the streak (called on a clean success)."""
+    if not prompt_group_hash:
+        return
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_redis
+
+        redis_client = await get_redis()
+        await redis_client.delete(_render_moderated_count_key(provider_id, prompt_group_hash))
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Pre-submit gate
 # ---------------------------------------------------------------------------

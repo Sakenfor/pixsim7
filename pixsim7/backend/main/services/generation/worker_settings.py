@@ -196,6 +196,20 @@ class GenerationWorkerSettings(SettingsBase):
         description="How long a quarantined request stays auto-paused before it can run again",
     )
 
+    # ── Render-moderation retry cap ───────────────────────────────────────
+    render_moderated_retry_cap: int = Field(
+        10, ge=1, le=100,
+        description="Consecutive CONTENT_RENDER_MODERATED fails for the same prompt+image after which AUTO-retry is suppressed (job stays Failed — still manually retryable, never paused)",
+    )
+    render_moderated_count_ttl_seconds: int = Field(
+        3600, ge=60, le=86400,
+        description="Redis TTL for the per-request render-moderated streak counter (window over which consecutive fails accumulate)",
+    )
+    render_moderated_retry_defer_seconds: int = Field(
+        20, ge=1, le=600,
+        description="Backoff before auto-retrying a CONTENT_RENDER_MODERATED job (same account, no rotation) — prevents instant re-queue churn",
+    )
+
 
 def get_worker_settings() -> GenerationWorkerSettings:
     """Get the global GenerationWorkerSettings instance."""
