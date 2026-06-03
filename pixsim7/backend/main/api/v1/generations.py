@@ -14,6 +14,7 @@ from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import (
     CurrentUser,
+    CurrentAdminUser,
     GenerationSvc,
     GenerationTrackingSvc,
     DatabaseSession,
@@ -1744,3 +1745,140 @@ async def get_generation_tracking(
         raise HTTPException(
             status_code=500, detail=f"Failed to get generation tracking: {str(e)}"
         )
+
+
+# ───────────────────────────── Error catalog ─────────────────────────────
+# Dynamic taxonomy of generation error codes for Library → Maintenance:
+# description + default/effective retry policy + live occurrence counts, and a
+# PATCH to tune per-code overrides for the tweakable content_* family.
+
+from datetime import timedelta, timezone  # noqa: E402
+from sqlalchemy import select, func, case  # noqa: E402
+
+from pixsim7.backend.main.domain.enums import (  # noqa: E402
+    GenerationErrorCode,
+    RETRYABLE_ERROR_CODES,
+    TWEAKABLE_ERROR_CODES,
+    ERROR_CODE_CATEGORY,
+    ERROR_CODE_DESCRIPTIONS,
+)
+from pixsim7.backend.main.domain.generation.models import Generation as _GenerationModel  # noqa: E402
+from pixsim7.backend.main.services.generation.error_policy import (  # noqa: E402
+    ErrorPolicyOverride,
+    get_error_policy_settings,
+    parse_override,
+    TWEAKABLE_ERROR_CODE_VALUES,
+)
+from pixsim7.backend.main.services.generation.generation_settings import (  # noqa: E402
+    get_generation_settings,
+)
+
+
+class ErrorCatalogEntry(BaseModel):
+    code: str
+    description: str
+    category: str
+    default_retryable: bool
+    effective_retryable: bool
+    tweakable: bool
+    override: Optional[ErrorPolicyOverride]
+    count_24h: int
+    count_7d: int
+
+
+class ErrorCatalogResponse(BaseModel):
+    codes: List[ErrorCatalogEntry]
+    global_max_attempts: int
+
+
+async def _build_error_catalog(db) -> ErrorCatalogResponse:
+    now = datetime.now(timezone.utc)
+    d1 = now - timedelta(hours=24)
+    d7 = now - timedelta(days=7)
+    stmt = (
+        select(
+            _GenerationModel.error_code,
+            func.count().label("c7"),
+            func.sum(case((_GenerationModel.created_at >= d1, 1), else_=0)).label("c1"),
+        )
+        .where(
+            _GenerationModel.error_code.is_not(None),
+            _GenerationModel.created_at >= d7,
+        )
+        .group_by(_GenerationModel.error_code)
+    )
+    rows = (await db.execute(stmt)).all()
+    counts: Dict[str, tuple] = {
+        r[0]: (int(r[2] or 0), int(r[1] or 0)) for r in rows  # (24h, 7d)
+    }
+
+    overrides = get_error_policy_settings().overrides or {}
+    max_attempts = get_generation_settings().auto_retry_max_attempts
+
+    entries: List[ErrorCatalogEntry] = []
+    for code in GenerationErrorCode:
+        default_retryable = code in RETRYABLE_ERROR_CODES
+        tweakable = code in TWEAKABLE_ERROR_CODES
+        override = parse_override(overrides.get(code.value)) if tweakable else None
+        effective = override.retryable if override is not None else default_retryable
+        c24, c7 = counts.get(code.value, (0, 0))
+        entries.append(
+            ErrorCatalogEntry(
+                code=code.value,
+                description=ERROR_CODE_DESCRIPTIONS.get(code, ""),
+                category=ERROR_CODE_CATEGORY.get(code, "other"),
+                default_retryable=default_retryable,
+                effective_retryable=effective,
+                tweakable=tweakable,
+                override=override,
+                count_24h=c24,
+                count_7d=c7,
+            )
+        )
+    # Most-active codes (by 7d count) first, then alphabetical.
+    entries.sort(key=lambda e: (-e.count_7d, e.code))
+    return ErrorCatalogResponse(codes=entries, global_max_attempts=max_attempts)
+
+
+@router.get("/generations/error-catalog", response_model=ErrorCatalogResponse)
+async def get_error_catalog(user: CurrentUser, db: DatabaseSession) -> ErrorCatalogResponse:
+    """Error-code taxonomy with effective retry policy + recent occurrence counts."""
+    return await _build_error_catalog(db)
+
+
+class ErrorOverridePatch(BaseModel):
+    # code -> override; an explicit null clears that code's override.
+    overrides: Dict[str, Optional[ErrorPolicyOverride]]
+
+
+@router.patch("/generations/error-catalog/overrides", response_model=ErrorCatalogResponse)
+async def patch_error_overrides(
+    body: ErrorOverridePatch,
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+) -> ErrorCatalogResponse:
+    """Set/clear per-code retry overrides (tweakable content_* codes only, admin)."""
+    from pixsim7.backend.main.services.system_config import patch_config, apply_namespace
+
+    current = dict(get_error_policy_settings().overrides or {})
+    for code, override in body.overrides.items():
+        if code not in TWEAKABLE_ERROR_CODE_VALUES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Error code '{code}' is not tweakable",
+            )
+        if override is None:
+            current.pop(code, None)
+        else:
+            current[code] = override.model_dump()
+
+    row = await patch_config(db, "generation_error_policy", {"overrides": current}, admin.id)
+    apply_namespace("generation_error_policy", row.data)
+    get_error_policy_settings().reload()
+
+    logger.info(
+        "Error-policy overrides updated by admin %s: %s",
+        getattr(admin, "username", admin.id),
+        {k: current[k] for k in current},
+    )
+    return await _build_error_catalog(db)

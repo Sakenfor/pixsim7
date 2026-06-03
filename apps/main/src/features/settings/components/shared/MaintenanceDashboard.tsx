@@ -34,6 +34,7 @@ import { Icon, type IconName } from '@lib/icons';
 
 import { DuplicatesRow } from './DuplicatesRow';
 import { DurationCohortTable } from './DurationCohortTable';
+import { ErrorCatalogRow } from './ErrorCatalogRow';
 import {
   bustStatsCache,
   extractErrorMessage,
@@ -1555,6 +1556,11 @@ export function MaintenanceDashboard() {
       label: 'Thumbnails',
       icon: <Icon name="image" size={14} />,
     },
+    {
+      id: 'error-types',
+      label: 'Error Types',
+      icon: <Icon name="alertTriangle" size={14} />,
+    },
   ];
 
   const activeTask =
@@ -1613,6 +1619,8 @@ export function MaintenanceDashboard() {
           <ThumbnailRow onRefresh={refreshCallbacks} />
         </div>
       )}
+
+      {activeId === 'error-types' && <ErrorCatalogRow />}
     </SidebarContentLayout>
   );
 }

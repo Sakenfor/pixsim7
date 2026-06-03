@@ -215,7 +215,15 @@ class GenerationRetryService:
         # Check retry count against configured max (not attempt_id which
         # includes non-error transitions like concurrent waits)
         from pixsim7.backend.main.services.generation.generation_settings import get_generation_settings
+        from pixsim7.backend.main.services.generation.error_policy import get_error_policy_override
+
+        # Per-code override (tweakable content_* codes only): may set a per-code
+        # max-attempts cap and/or flip retryability live, no code change needed.
+        override = get_error_policy_override(generation.error_code)
+
         max_attempts = get_generation_settings().auto_retry_max_attempts
+        if override is not None and override.max_attempts is not None:
+            max_attempts = override.max_attempts
 
         if (generation.retry_count or 0) >= max_attempts:
             return False
@@ -226,6 +234,12 @@ class GenerationRetryService:
                 GenerationErrorCode,
                 RETRYABLE_ERROR_CODES,
             )
+            if override is not None:
+                logger.info(
+                    f"Generation {generation.id} error_code={generation.error_code} "
+                    f"retryable={override.retryable} (per-code override)"
+                )
+                return override.retryable
             try:
                 code = GenerationErrorCode(generation.error_code)
                 is_retryable = code in RETRYABLE_ERROR_CODES
