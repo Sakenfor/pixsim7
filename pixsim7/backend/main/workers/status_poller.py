@@ -118,6 +118,10 @@ from pixsim7.backend.main.services.provider.early_cdn import (
     is_early_cdn_filtered,
     is_early_cdn_terminal,
 )
+from pixsim7.backend.main.services.provider.cdn_probe import cdn_head_probe
+from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
+    is_pixverse_placeholder_url,
+)
 from pixsim7.backend.main.services.provider.pixverse_image_recovery import (
     RearmStatus,
     sweep_and_rearm_sibling,
@@ -215,6 +219,14 @@ def _cancel_grace_period_for(operation_type: Any) -> int:
 # finalised for a pixverse image that may have rendered post-cancel.
 _IMAGE_CANCEL_SALVAGE_WINDOW_SEC = 120
 
+# Periodic sibling-sweep cadence during the deferred-cancel grace window.
+# The cutoff (at end of grace) is the documented chokepoint, but a transient
+# CDN/probe failure on that single attempt loses an otherwise-recoverable
+# sibling image. Re-running the sweep at this interval during the grace
+# gives multiple chances. Pixverse images only (sweep is no-op elsewhere).
+_CANCEL_GRACE_SIBLING_SWEEP_INTERVAL_SEC = 30
+_CANCEL_GRACE_SIBLING_SWEEP_MAX_SIZE = 5000
+
 
 def _effective_cancel_grace(
     *,
@@ -258,6 +270,111 @@ _EARLY_CDN_RECHECK_DELAY_SEC = 15
 # Follow-up delay for the known-flagged fast-path — catches refunds that
 # hadn't landed by the first recheck.
 _KNOWN_FLAGGED_FOLLOWUP_DELAY_SEC = 60
+
+# Filtered-video salvage: a pixverse job that reports FILTERED (status 7) may
+# still have rendered a real video whose /ori/ CDN file lands a couple seconds
+# AFTER the placeholder swap (measured via the early-cdn-webapi diagnostic: the
+# real URL 404s for ~2-3s, then turns 200 for genuinely-rendered jobs; for
+# truly-moderated jobs it stays 404). Re-probe the preserved real URL for this
+# bounded window before finalizing — a 200 means we can salvage the video; a
+# persistent 404 earns the distinct, non-retryable CONTENT_RENDER_MODERATED.
+#
+# Latency: the common fast-filter (job never exposed a real URL) skips the probe
+# entirely and finalizes immediately — only the ambiguous "real URL captured
+# then 404" case pays this window, and it exits the instant a probe returns 200.
+# Terminal detection already lags render completion, so the CDN state is usually
+# settled by the first probe; the window just covers the measured ~2-3s
+# propagation with margin. Polls run concurrently (semaphore-bounded
+# asyncio.gather), so this blocks one slot, not the whole cycle.
+_FILTERED_VIDEO_SALVAGE_PROBE_SEC = 4.0
+_FILTERED_VIDEO_SALVAGE_PROBE_INTERVAL_SEC = 1.0
+
+
+async def _maybe_salvage_filtered_pixverse_video(
+    *,
+    db: Any,
+    status_result: Any,
+    submission: Any,
+    generation: Any,
+) -> bool:
+    """Re-probe a FILTERED pixverse video's real CDN URL for a late 200.
+
+    The real ``/ori/`` URL is preserved on the submission response even after
+    the placeholder swap (see ``_merge_video_url_preferring_retrievable``). If a
+    HEAD probe of it returns 200 within the salvage window, the video really
+    rendered (moderation only flagged it) — promote it to an early-CDN-filtered
+    COMPLETED: mutate ``status_result`` AND persist the completed shape onto
+    ``submission.response`` (the caller's COMPLETED branch ``db.refresh``es the
+    submission, so an in-memory-only mutation would be lost). ``create_from_
+    submission`` then builds the asset from the real URL and the stamped
+    ``video_early_cdn_terminal`` flag skips local billing (Pixverse refunds).
+
+    Returns True when salvaged (``status_result`` mutated to COMPLETED), else
+    False (caller finalizes the job as terminal).
+    """
+    if getattr(submission, "provider_id", None) != "pixverse":
+        return False
+    candidate = (
+        status_result.video_url
+        or (submission.response or {}).get("video_url")
+        or (submission.response or {}).get("asset_url")
+    )
+    if not candidate or is_pixverse_placeholder_url(candidate):
+        return False
+
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + _FILTERED_VIDEO_SALVAGE_PROBE_SEC
+    attempts = 0
+    last_probe: bool | None = None
+    while True:
+        attempts += 1
+        last_probe = await cdn_head_probe(candidate)
+        if last_probe is True:
+            status_result.status = ProviderStatus.COMPLETED
+            status_result.video_url = candidate
+            meta = dict(status_result.metadata or {})
+            meta["video_early_cdn_terminal"] = True
+            meta["video_original_status"] = "filtered"
+            meta["has_retrievable_media_url"] = True
+            status_result.metadata = meta
+
+            # Persist the completed shape so the COMPLETED branch's
+            # db.refresh(submission) + create_from_submission see a real,
+            # retrievable, early-CDN-filtered video (not the placeholder).
+            response = dict(submission.response or {})
+            response["status"] = ProviderStatus.COMPLETED.value
+            response["video_url"] = candidate
+            response["asset_url"] = candidate
+            response["metadata"] = {**(response.get("metadata") or {}), **meta}
+            submission.response = response
+            flag_modified(submission, "response")
+            await db.commit()
+
+            logger.info(
+                "pixverse_filtered_video_salvaged",
+                generation_id=generation.id,
+                submission_id=submission.id,
+                probe_attempts=attempts,
+                url_preview=str(candidate)[:120],
+            )
+            return True
+        if loop.time() >= deadline:
+            logger.info(
+                "pixverse_filtered_video_not_salvageable",
+                generation_id=generation.id,
+                submission_id=submission.id,
+                probe_attempts=attempts,
+                last_probe=last_probe,  # False=404 (gone), None=inconclusive
+                url_preview=str(candidate)[:120],
+            )
+            return False
+        await asyncio.sleep(_FILTERED_VIDEO_SALVAGE_PROBE_INTERVAL_SEC)
+
+# Per-generation monotonic deadline for the next within-grace sibling sweep
+# (see _maybe_finalize_deferred_cancel). Stored as gen_id -> monotonic float;
+# entries are cleaned up on cancel finalize / sibling recovery / cancel
+# cleared, with hard-cap eviction in _prune_transient_poll_backoff.
+_cancel_grace_sibling_sweep_deadline: dict[int, float] = {}
 
 
 def _has_pending_cancel(generation_model: Any) -> bool:
@@ -427,6 +544,18 @@ def _prune_transient_poll_backoff(*, now_mono: float) -> None:
         )
         for aid in sorted_aids[: len(_moderation_recheck) - _MODERATION_RECHECK_MAX_SIZE]:
             _moderation_recheck.pop(aid, None)
+
+    # Hard cap on cancel-grace sibling-sweep deadline dict (entries normally
+    # clean up via the cancel finalize / recovery paths; this is the safety
+    # net if a generation somehow leaves the grace flow without cleanup).
+    if len(_cancel_grace_sibling_sweep_deadline) > _CANCEL_GRACE_SIBLING_SWEEP_MAX_SIZE:
+        sorted_ids = sorted(
+            _cancel_grace_sibling_sweep_deadline,
+            key=lambda k: _cancel_grace_sibling_sweep_deadline[k],
+        )
+        excess = len(_cancel_grace_sibling_sweep_deadline) - _CANCEL_GRACE_SIBLING_SWEEP_MAX_SIZE
+        for gen_id in sorted_ids[:excess]:
+            _cancel_grace_sibling_sweep_deadline.pop(gen_id, None)
 
 
 def _processing_generations_snapshot(
@@ -716,9 +845,11 @@ async def _maybe_finalize_deferred_cancel(
     period has not yet elapsed (caller continues normal polling).
     """
     if generation.deferred_action != "cancel":
+        _cancel_grace_sibling_sweep_deadline.pop(generation.id, None)
         return False
     generation_model = await db.get(Generation, generation.id)
     if not (generation_model and generation_model.deferred_action == "cancel"):
+        _cancel_grace_sibling_sweep_deadline.pop(generation.id, None)
         return False
     now_utc = datetime.now(timezone.utc)
     cancel_requested_at = generation_model.cancel_requested_at
@@ -773,6 +904,38 @@ async def _maybe_finalize_deferred_cancel(
             effective_grace_sec=effective_grace,
             grace_remaining_sec=round(effective_grace - elapsed, 1),
         )
+        # Belt-and-suspenders: also fire the sibling sweep at intervals
+        # during the grace window so a transient CDN/probe failure at the
+        # cutoff (below) doesn't lose a recoverable sibling image.  Gated
+        # on pixverse + image + provider_job because the sweep is a no-op
+        # otherwise and we'd just be doing a DB hit for nothing.
+        if (
+            has_provider_job
+            and generation_model.provider_id == "pixverse"
+            and op_type in get_image_operations()
+        ):
+            now_mono = time.monotonic()
+            deadline = _cancel_grace_sibling_sweep_deadline.get(generation.id)
+            if deadline is None:
+                # First encounter — stamp deadline, defer first sweep one
+                # interval so we're not duplicating the forward salvage that
+                # already ran on this tick.
+                _cancel_grace_sibling_sweep_deadline[generation.id] = (
+                    now_mono + _CANCEL_GRACE_SIBLING_SWEEP_INTERVAL_SEC
+                )
+            elif now_mono >= deadline:
+                _cancel_grace_sibling_sweep_deadline[generation.id] = (
+                    now_mono + _CANCEL_GRACE_SIBLING_SWEEP_INTERVAL_SEC
+                )
+                if await _maybe_recover_pixverse_image_sibling(
+                    db,
+                    generation_id=generation.id,
+                    operation_type=op_type,
+                    provider_id=generation_model.provider_id,
+                    selected_submission_id=None,
+                ):
+                    _cancel_grace_sibling_sweep_deadline.pop(generation.id, None)
+                    return False
         return False
     logger.info(
         "generation_cancel_while_provider_processing",
@@ -794,6 +957,7 @@ async def _maybe_finalize_deferred_cancel(
         provider_id=generation_model.provider_id,
         selected_submission_id=None,
     ):
+        _cancel_grace_sibling_sweep_deadline.pop(generation.id, None)
         return False
     generation_model.deferred_action = None
     await db.commit()
@@ -801,6 +965,7 @@ async def _maybe_finalize_deferred_cancel(
     await generation_service.update_status(
         generation.id, GenerationStatus.CANCELLED,
     )
+    _cancel_grace_sibling_sweep_deadline.pop(generation.id, None)
     return True
 
 
@@ -1437,6 +1602,20 @@ async def _poll_single_generation(
                     provider_status=str(provider_status) if provider_status is not None else None,
                 )
 
+                # Salvage check: a FILTERED pixverse video may still have a real
+                # CDN file that lands a couple seconds after the placeholder
+                # swap. If the preserved real URL serves 200, this flips
+                # status_result to COMPLETED so the branch below creates the
+                # asset (early-CDN-filtered); otherwise it stays FILTERED and is
+                # finalized below as CONTENT_RENDER_MODERATED.
+                if status_result.status == ProviderStatus.FILTERED:
+                    await _maybe_salvage_filtered_pixverse_video(
+                        db=db,
+                        status_result=status_result,
+                        submission=submission,
+                        generation=generation,
+                    )
+
                 # Handle status
                 if status_result.status == ProviderStatus.COMPLETED:
                     # If a cancel was requested while we polled, honour the
@@ -1727,6 +1906,16 @@ async def _poll_single_generation(
                             # prompt, image, or some other partner policy was
                             # the trigger — distinct, non-retryable code.
                             error_code = GenerationErrorCode.EXTERNAL_PARTNER_REFUSED.value
+                        elif submission.provider_id == "pixverse":
+                            # Reaching here means the salvage re-probe above did
+                            # NOT recover a real video (URL stayed 404 / was a
+                            # placeholder / was never captured) — the job was
+                            # moderated at render time with no usable output.
+                            # Distinct, non-retryable: rotating accounts can't
+                            # beat a prompt the provider filters every time.
+                            # Scoped to pixverse (where we ran the salvage probe);
+                            # other providers keep the retryable CONTENT_FILTERED.
+                            error_code = GenerationErrorCode.CONTENT_RENDER_MODERATED.value
                         else:
                             error_code = GenerationErrorCode.CONTENT_FILTERED.value
                     elif status_result.status == ProviderStatus.FAILED:

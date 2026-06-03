@@ -22,6 +22,9 @@ const CONTENT_ERROR_CODES = new Set([
   'content_output_rejected',
   'content_image_rejected',
   'content_filtered',
+  // Render-time moderation with no usable output — the job rendered nothing
+  // retrievable and is terminal (non-retryable). Distinct from content_filtered.
+  'content_render_moderated',
 ]);
 
 /**
@@ -63,6 +66,8 @@ function getModerationLabel(gen: GenerationModel): string {
         return 'Image rejected';
       case 'content_output_rejected':
         return 'Output rejected';
+      case 'content_render_moderated':
+        return 'Render-time filtered';
       case 'content_filtered':
       default:
         return 'Content filtered';

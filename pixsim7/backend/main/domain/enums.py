@@ -170,6 +170,16 @@ class GenerationErrorCode(str, Enum):
     CONTENT_OUTPUT_REJECTED = "content_output_rejected"
     CONTENT_IMAGE_REJECTED = "content_image_rejected"
     CONTENT_FILTERED = "content_filtered"
+    # Render-time moderation with NO usable output: the provider reported a
+    # FILTERED terminal AND the real CDN file never became retrievable (we
+    # re-probe the preserved /ori/ URL before classifying — a 200 there is
+    # salvaged to COMPLETED instead). Distinct from CONTENT_FILTERED (retryable,
+    # "output varies") because here the job genuinely produced no video and the
+    # same prompt keeps failing fast. Deliberately NON-retryable by default
+    # (absent from RETRYABLE_ERROR_CODES) so it doesn't churn the account pool —
+    # but it IS in TWEAKABLE_ERROR_CODES, so an operator can flip it retryable
+    # live if a provider rollout changes the behavior again.
+    CONTENT_RENDER_MODERATED = "content_render_moderated"
     # External partner (e.g. fal-proxied models like grok-imagine, happyhorse-1.0)
     # accepted the job then refused mid-stream. We don't get a structured reason
     # back — could be prompt, image, or some other partner-side policy. Distinct
@@ -194,7 +204,9 @@ class GenerationErrorCode(str, Enum):
     PROVIDER_GENERIC = "provider_generic"
 
 
-# Which codes are worth retrying (transient / output-varies)
+# Which codes are worth retrying by DEFAULT (transient / output-varies).
+# Per-code overrides (see services/generation/error_policy.py) can flip the
+# retryability of TWEAKABLE_ERROR_CODES at runtime without a code change.
 RETRYABLE_ERROR_CODES: frozenset[GenerationErrorCode] = frozenset({
     GenerationErrorCode.CONTENT_OUTPUT_REJECTED,
     GenerationErrorCode.CONTENT_IMAGE_REJECTED,
@@ -206,3 +218,59 @@ RETRYABLE_ERROR_CODES: frozenset[GenerationErrorCode] = frozenset({
     GenerationErrorCode.PROVIDER_TIMEOUT,
     GenerationErrorCode.PROVIDER_GENERIC,
 })
+
+# Codes whose retry policy is a judgment call (output varies / provider
+# behavior shifts over time, e.g. the pixverse v6 moderation change). Only
+# these may be tuned via per-code overrides — deterministic input rejections
+# (param_*, prompt/text rejected) and partner refusals stay fixed.
+TWEAKABLE_ERROR_CODES: frozenset[GenerationErrorCode] = frozenset({
+    GenerationErrorCode.CONTENT_FILTERED,
+    GenerationErrorCode.CONTENT_OUTPUT_REJECTED,
+    GenerationErrorCode.CONTENT_IMAGE_REJECTED,
+    GenerationErrorCode.CONTENT_RENDER_MODERATED,
+})
+
+# Coarse grouping for display in the error catalog.
+ERROR_CODE_CATEGORY: dict[GenerationErrorCode, str] = {
+    GenerationErrorCode.CONTENT_PROMPT_REJECTED: "moderation",
+    GenerationErrorCode.CONTENT_TEXT_REJECTED: "moderation",
+    GenerationErrorCode.CONTENT_OUTPUT_REJECTED: "moderation",
+    GenerationErrorCode.CONTENT_IMAGE_REJECTED: "moderation",
+    GenerationErrorCode.CONTENT_FILTERED: "moderation",
+    GenerationErrorCode.CONTENT_RENDER_MODERATED: "moderation",
+    GenerationErrorCode.EXTERNAL_PARTNER_REFUSED: "moderation",
+    GenerationErrorCode.PARAM_TOO_LONG: "param",
+    GenerationErrorCode.PARAM_INVALID: "param",
+    GenerationErrorCode.PARAM_MISSING: "param",
+    GenerationErrorCode.PARAM_ASSET_UNRESOLVABLE: "param",
+    GenerationErrorCode.PROVIDER_QUOTA: "provider",
+    GenerationErrorCode.PROVIDER_RATE_LIMIT: "provider",
+    GenerationErrorCode.PROVIDER_CONCURRENT_LIMIT: "provider",
+    GenerationErrorCode.PROVIDER_AUTH: "provider",
+    GenerationErrorCode.PROVIDER_TIMEOUT: "provider",
+    GenerationErrorCode.PROVIDER_UNAVAILABLE: "provider",
+    GenerationErrorCode.PROVIDER_GENERIC: "provider",
+}
+
+# Human-readable descriptions surfaced in the error catalog (single source of
+# truth — keep in sync with the enum). Terse, one line each.
+ERROR_CODE_DESCRIPTIONS: dict[GenerationErrorCode, str] = {
+    GenerationErrorCode.CONTENT_PROMPT_REJECTED: "Provider rejected the prompt at submit time (deterministic).",
+    GenerationErrorCode.CONTENT_TEXT_REJECTED: "Provider rejected the text input at submit time.",
+    GenerationErrorCode.CONTENT_OUTPUT_REJECTED: "Rendered output was moderated; a re-roll may pass.",
+    GenerationErrorCode.CONTENT_IMAGE_REJECTED: "Source image was rejected by moderation.",
+    GenerationErrorCode.CONTENT_FILTERED: "Generic content filter; output varies, so a retry may pass.",
+    GenerationErrorCode.CONTENT_RENDER_MODERATED: "Accepted at submit but moderated at render with no retrievable video (early/fast fail).",
+    GenerationErrorCode.EXTERNAL_PARTNER_REFUSED: "Fal-proxied partner accepted then refused mid-stream (no structured reason).",
+    GenerationErrorCode.PARAM_TOO_LONG: "A parameter exceeded the provider's length limit.",
+    GenerationErrorCode.PARAM_INVALID: "A parameter value was invalid for this operation.",
+    GenerationErrorCode.PARAM_MISSING: "A required parameter was missing.",
+    GenerationErrorCode.PARAM_ASSET_UNRESOLVABLE: "An input asset reference could not be resolved.",
+    GenerationErrorCode.PROVIDER_QUOTA: "Account out of credits/quota; another account may have capacity.",
+    GenerationErrorCode.PROVIDER_RATE_LIMIT: "Provider rate-limited the request.",
+    GenerationErrorCode.PROVIDER_CONCURRENT_LIMIT: "Provider concurrent-job limit hit.",
+    GenerationErrorCode.PROVIDER_AUTH: "Provider authentication/session failure.",
+    GenerationErrorCode.PROVIDER_TIMEOUT: "Provider did not respond in time.",
+    GenerationErrorCode.PROVIDER_UNAVAILABLE: "Provider temporarily unavailable.",
+    GenerationErrorCode.PROVIDER_GENERIC: "Unspecified provider-side failure.",
+}

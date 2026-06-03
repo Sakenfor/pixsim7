@@ -60,8 +60,10 @@ def test_does_not_misfire_for_native_v6_status_8():
 
 
 def test_does_not_misfire_for_status_other_than_8():
-    # video_status=7 (Pixverse-side filter) is a real content filter, not
-    # partner-interrupt — must remain retryable via CONTENT_FILTERED path.
+    # video_status=7 (Pixverse-side filter) is a real content filter, not a
+    # partner-interrupt — so this detector must stay False. (Downstream, the
+    # poller routes pixverse status-7 to the salvage probe → either an
+    # early-CDN-filtered COMPLETED or the terminal CONTENT_RENDER_MODERATED.)
     status_result = _make_status_result(provider_status=7)
     generation = _make_generation(model="happyhorse-1.0")
     assert _is_partner_interrupted_filter(status_result, generation) is False
