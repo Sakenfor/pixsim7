@@ -12,6 +12,8 @@ most recent real CDN URL.  Records a transition timeline:
     t_first_real_get / t_first_real_list   first retrievable URL per source
     t_placeholder_get / t_placeholder_list first /default.mp4 per source
     t_404                                   first HEAD probe that 404'd
+    t_recovery_200                          first HEAD 200 AFTER a 404 (real
+                                            CDN file lands late — v6 filter race)
     t_first_thumbnail_get / _list           first real last-frame URL
     window        = t_placeholder − t_first_real (catch budget)
     cdn_lifespan  = t_404 − earliest_real        (file uptime)
@@ -55,10 +57,13 @@ _FAILED_CODES = (-1, 4, 8, 9)
 
 _MODE_PRESETS: dict[str, dict[str, Any]] = {
     "flagged": {
+        # Pixverse upload of pixsim asset:6989 — reliably trips v6 moderation
+        # (the previous default sometimes passed through, which is a false
+        # negative for a salvage/early-CDN test).
         "image_url": (
             "https://media.pixverse.ai/openapi/"
-            "22b41e80-1002-4905-8817-afeb66bbdcc2_"
-            "cca85883542dc195891af14f093f74ba_auto.jpg"
+            "27fc8113-a399-4132-bbf0-a1c3734926b0_"
+            "82259c786111c681fa6e1d64d7d47630_auto.jpg"
         ),
         "prompt": "ACTIONS = SHE DANCES WILDLY, FIGURE 8 STRIPPER STYLE, BACK TO CAMERA",
         "model": "v6",
@@ -85,6 +90,9 @@ class _Timeline:
     t_placeholder_get: Optional[float] = None
     t_placeholder_list: Optional[float] = None
     t_404: Optional[float] = None
+    # First HEAD 2xx observed AFTER a 404 — the real CDN file propagating in
+    # late (the v6 early-CDN race: real URL 404s for ~2-3s, then turns 200).
+    t_recovery_200: Optional[float] = None
     t_first_thumbnail_get: Optional[float] = None
     t_first_thumbnail_list: Optional[float] = None
     last_real_url: Optional[str] = None
@@ -101,6 +109,7 @@ class _Timeline:
         "t_placeholder_get",
         "t_placeholder_list",
         "t_404",
+        "t_recovery_200",
         "t_first_thumbnail_get",
         "t_first_thumbnail_list",
     )
@@ -138,6 +147,13 @@ class _Timeline:
     def record_head(self, *, t_rel: float, http_status: Optional[int]) -> None:
         if http_status and http_status >= 400 and self.t_404 is None:
             self.t_404 = t_rel
+        if (
+            http_status
+            and 200 <= http_status < 300
+            and self.t_404 is not None
+            and self.t_recovery_200 is None
+        ):
+            self.t_recovery_200 = t_rel
 
 
 def _extract_fields(v: Any) -> dict:
@@ -261,7 +277,7 @@ class EarlyCdnWebapiDiagnostic(Diagnostic):
                 label="Post-terminal probe (s)",
                 default="60 — default",
                 options=["30 — short", "60 — default", "120 — long (catch very late thumbnails)"],
-                description="After terminal, keep watching for a late thumbnail (skipped if filtered).",
+                description="After terminal, keep watching — a late thumbnail (non-filtered) or a post-filter real-URL 200 recovery (filtered).",
             ),
         ),
     )
@@ -539,8 +555,35 @@ class EarlyCdnWebapiDiagnostic(Diagnostic):
                         for s in (seen_get + seen_list)
                     )
 
-                    # ── Phase: post_terminal (skip for filtered) ────────────
-                    if (timeline.last_real_url or terminal) and not was_filtered and not cancel_event.is_set():
+                    # ── Phase: post_terminal ────────────────────────────────
+                    # Non-filtered: watch for a late real thumbnail.
+                    # Filtered WITH a captured real URL: keep HEAD-probing it
+                    # (the concurrent head_probe_monitor stays alive) to time a
+                    # post-filter 200 recovery — the v6 early-CDN race where the
+                    # real /ori/ file lands ~2-3s after the placeholder swap.
+                    if was_filtered and timeline.last_real_url and not cancel_event.is_set():
+                        await emit("phase", {"phase": "post_terminal"})
+                        await log(
+                            f"FILTERED — re-probing the real CDN URL up to {post_terminal_s:.0f}s "
+                            "for a post-filter 200 recovery…"
+                        )
+                        post_deadline = loop.time() + post_terminal_s
+                        while loop.time() < post_deadline and not cancel_event.is_set():
+                            await asyncio.sleep(1.0)
+                            await emit_new_transitions(timeline)
+                            if timeline.t_recovery_200 is not None:
+                                await log(
+                                    "CDN RECOVERED — real URL returned 200 at "
+                                    f"t={timeline.t_recovery_200:.2f}s "
+                                    f"({timeline.t_recovery_200 - (timeline.t_404 or 0):.2f}s after first 404)."
+                                )
+                                break
+                        else:
+                            await log(
+                                "No post-filter recovery — real URL stayed non-200 for the whole window.",
+                                level="warning",
+                            )
+                    elif (timeline.last_real_url or terminal) and not cancel_event.is_set():
                         await emit("phase", {"phase": "post_terminal"})
                         await log(
                             f"Post-terminal monitoring up to {post_terminal_s:.0f}s — watching for a late thumbnail…"
@@ -578,7 +621,7 @@ class EarlyCdnWebapiDiagnostic(Diagnostic):
                                 break
                     elif was_filtered:
                         await log(
-                            "Skipping post-terminal monitoring — FILTERED job has no real last-frame URL."
+                            "Skipping post-terminal monitoring — FILTERED job never exposed a real URL to re-probe."
                         )
                 finally:
                     stop_event.set()
@@ -621,6 +664,13 @@ class EarlyCdnWebapiDiagnostic(Diagnostic):
                 "t_placeholder_get": timeline.t_placeholder_get,
                 "t_placeholder_list": timeline.t_placeholder_list,
                 "t_404": timeline.t_404,
+                "t_recovery_200": timeline.t_recovery_200,
+                "cdn_recovered": timeline.t_recovery_200 is not None,
+                "recovery_delay_s": (
+                    timeline.t_recovery_200 - timeline.t_404
+                    if timeline.t_recovery_200 is not None and timeline.t_404 is not None
+                    else None
+                ),
                 "t_first_thumbnail_get": timeline.t_first_thumbnail_get,
                 "t_first_thumbnail_list": timeline.t_first_thumbnail_list,
                 "get_video_window_s": get_window,
