@@ -98,12 +98,13 @@ class ModuleRegistry {
   private initializationPromises = new Map<string, Promise<void>>();
 
   /**
-   * Initialize a single module's own logic and register its capabilities.
+   * Run a single module's own initialize() setup logic.
    *
    * Dependency ordering and cycle detection are owned by
    * {@link initializeModuleInternal} — this method must NOT resolve
-   * dependencies. On init failure the module is left unmarked so a later
-   * attempt can retry.
+   * dependencies. Capability registration happens eagerly in register(), not
+   * here. On init failure the module is left unmarked so a later attempt can
+   * retry.
    */
   private async initializeOne(module: Module): Promise<void> {
     if (!this.initializedModules.has(module.id) && module.initialize) {
@@ -125,12 +126,9 @@ class ModuleRegistry {
       }
     }
 
+    // Capabilities are registered eagerly in register(), not here — init only
+    // runs the module's own setup logic.
     this.initializedModules.add(module.id);
-
-    if (!this.capabilitiesRegistered.has(module.id)) {
-      registerModuleCapabilities(module);
-      this.capabilitiesRegistered.add(module.id);
-    }
   }
 
   /**
@@ -215,12 +213,16 @@ class ModuleRegistry {
       });
     }
 
-    // Modules without initialize hooks still expose capabilities immediately.
-    if (!module.initialize) {
-      if (!this.capabilitiesRegistered.has(module.id)) {
-        registerModuleCapabilities(module);
-        this.capabilitiesRegistered.add(module.id);
-      }
+    // Capabilities (route, feature, actions) are static metadata declared on
+    // module.page — they don't depend on initialize() having run. Register them
+    // eagerly for every module so the capability/action registry is complete at
+    // boot, rather than only after each route is first visited (which is when
+    // an initialize() module would otherwise expose them). The route component
+    // stays lazy and initialize() still gates on navigation; this only affects
+    // discoverability (nav, search, command palette).
+    if (!this.capabilitiesRegistered.has(module.id)) {
+      registerModuleCapabilities(module);
+      this.capabilitiesRegistered.add(module.id);
     }
   }
 
