@@ -849,7 +849,8 @@ export function ShadowSidePanel({
                 {resolvedPreview}
               </div>
               <p className="mt-1 text-[10px] text-neutral-400 italic">
-                Variables with a value expanded. Preview only — not yet applied at generation.
+                What the model receives — variables with a value are expanded at generation. The
+                saved prompt stays symbolic.
               </p>
             </DisclosureSection>
           </>

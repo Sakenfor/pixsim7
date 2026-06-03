@@ -33,6 +33,10 @@ from pixsim7.backend.main.shared.operation_mapping import (
     OPERATION_REGISTRY,
 )
 from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
+from pixsim7.backend.main.services.prompt.resolver import resolve_prompt_variables
+from pixsim7.backend.main.services.prompt.variable_registry import (
+    read_prompt_variable_values,
+)
 from pixsim7.backend.main.services.provider.provider_logging import (
     summarize_provider_params_for_log,
 )
@@ -292,6 +296,46 @@ class ProviderService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    # ===== PROMPT VARIABLE SUBSTITUTION (phase-2) =====
+
+    async def _load_prompt_variable_values(self, user_id: Optional[int]) -> Dict[str, str]:
+        """Owner's saved variable values (name -> value) for outbound resolution.
+
+        Returns an empty map (no-op) when there's no owner, no user, or no
+        variable carries a value.
+        """
+        if not user_id:
+            return {}
+        try:
+            from pixsim7.backend.main.domain import User
+
+            user = await self.db.get(User, user_id)
+        except Exception:
+            return {}
+        prefs = getattr(user, "preferences", None) if user else None
+        if not isinstance(prefs, dict):
+            return {}
+        return read_prompt_variable_values(prefs)
+
+    async def _resolve_prompt_variables_inplace(
+        self, generation: Generation, params: Dict[str, Any]
+    ) -> None:
+        """Resolve variable tokens in ``params['prompt']`` (mutates the outbound copy only)."""
+        prompt_text = params.get("prompt")
+        if not isinstance(prompt_text, str) or not prompt_text:
+            return
+        values = await self._load_prompt_variable_values(getattr(generation, "user_id", None))
+        if not values:
+            return
+        resolved = resolve_prompt_variables(prompt_text, values)
+        if resolved != prompt_text:
+            params["prompt"] = resolved
+            logger.info(
+                "prompt_variables_resolved",
+                generation_id=getattr(generation, "id", None),
+                variable_count=len(values),
+            )
+
     # ===== PROVIDER EXECUTION =====
 
     async def execute_generation(
@@ -357,6 +401,11 @@ class ProviderService:
         # point we only need to coerce whatever shape the caller handed us into
         # the normalized form.  The previous raw_params fallback is retired.
         params = dict(params)
+        # Phase-2 substitution: expand prompt variables that carry a bound value
+        # on the OUTBOUND copy only. The stored canonical_params / final_prompt /
+        # PromptVersion stay symbolic (resolve-on-use), so regenerate stays
+        # editable and the UI keeps showing the authored ACTOR1-style tokens.
+        await self._resolve_prompt_variables_inplace(generation, params)
         operation_type = generation.operation_type
         spec = OPERATION_REGISTRY.get(operation_type)
         if spec and "composition_assets" in (spec.required_inputs or []):
