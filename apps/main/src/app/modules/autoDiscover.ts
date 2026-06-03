@@ -107,3 +107,49 @@ export function registerDiscoveredFeatureModules(): void {
 export function getDiscoveredFeatureModuleIds(): string[] {
   return getDiscoveredFeatureModules().map((m) => m.id);
 }
+
+/**
+ * Dev-only HMR entrypoint. When a feature's module.ts file is edited, Vite
+ * re-executes this self-accepting boundary (rather than full-reloading the
+ * page). We re-glob the modules, diff them against the registry by identity,
+ * and hot-replace only the ones whose definition object actually changed.
+ *
+ * A live module that lacks a `cleanup` hook can't undo its `initialize()` side
+ * effects, so hot re-init would duplicate them — for those we invalidate, which
+ * bubbles to a full reload (and runs cleanupAll via vite:beforeFullReload).
+ */
+export function syncDiscoveredFeatureModulesForHmr(): void {
+  const changed = getDiscoveredFeatureModules().filter(
+    (mod) => moduleRegistry.get(mod.id) !== mod,
+  );
+  if (changed.length === 0) {
+    return;
+  }
+
+  const ids = changed.map((m) => m.id).join(', ');
+  const needsFullReload = changed.some((mod) => {
+    const existing = moduleRegistry.get(mod.id);
+    return existing != null && !existing.cleanup && moduleRegistry.isModuleInitialized(mod.id);
+  });
+
+  if (needsFullReload) {
+    console.info(`[autoDiscover] HMR: ${ids} changed but a live module has no cleanup hook — full reload`);
+    import.meta.hot?.invalidate();
+    return;
+  }
+
+  console.info(`[autoDiscover] HMR: hot-replacing ${ids}`);
+  void moduleRegistry.hotReplaceModules(changed);
+}
+
+if (import.meta.hot) {
+  // Self-accepting boundary: a change to any glob-imported feature module
+  // propagates here. Re-run discovery from the *new* module so the fresh glob
+  // (with the edited module's new code) is used.
+  import.meta.hot.accept((newModule) => {
+    const next = newModule as unknown as
+      | { syncDiscoveredFeatureModulesForHmr?: () => void }
+      | undefined;
+    next?.syncDiscoveredFeatureModulesForHmr?.();
+  });
+}

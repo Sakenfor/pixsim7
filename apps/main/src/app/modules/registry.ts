@@ -3,6 +3,8 @@ import {
   registerActionsFromDefinitions,
   registerFeature,
   registerRoute,
+  unregisterAction,
+  unregisterRoute,
 } from '@lib/capabilities';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
@@ -81,6 +83,30 @@ function registerModuleCapabilities(module: Module) {
         actionId: action.id,
       });
     }
+  }
+}
+
+/**
+ * Inverse of {@link registerModuleCapabilities}, used when hot-replacing a
+ * module so a stale route/action (e.g. one the edit removed) doesn't linger.
+ * The feature capability is intentionally left in place — registerFeature uses
+ * upsert/merge semantics and a feature may be contributed by multiple modules,
+ * so the re-register refreshes it without dropping a sibling's contribution.
+ */
+function unregisterModuleCapabilities(module: Module) {
+  const page = module.page;
+  if (!page) {
+    return;
+  }
+
+  if (page.actions) {
+    for (const action of page.actions) {
+      unregisterAction(action.id);
+    }
+  }
+
+  if (page.featureId) {
+    unregisterRoute(page.route);
   }
 }
 
@@ -323,6 +349,59 @@ class ModuleRegistry {
       minPriority,
       count: modulesToInit.length,
     });
+  }
+
+  /**
+   * Dev-only hot-replace: swap a changed module's definition in place when its
+   * source file is hot-updated, instead of doing a full page reload.
+   *
+   * For each module: run the OLD definition's cleanup hook, unregister its
+   * route/actions, forget its init state, register the NEW definition (which
+   * re-registers capabilities eagerly), and re-run initialize() if it had
+   * already been initialized so the new code's setup takes effect.
+   *
+   * Callers must only pass modules that are safe to re-initialize — i.e. ones
+   * that were not yet initialized or that expose a cleanup hook. A live module
+   * with no cleanup can't undo its initialize() side effects, so the HMR caller
+   * falls back to a full reload for those. See autoDiscover.ts.
+   */
+  async hotReplaceModules(modules: Module[]): Promise<void> {
+    for (const incoming of modules) {
+      const existing = this.modules.get(incoming.id);
+      const wasInitialized = this.initializedModules.has(incoming.id);
+
+      if (existing?.cleanup) {
+        try {
+          await existing.cleanup();
+        } catch (error) {
+          console.error(`[ModuleRegistry] hot-replace cleanup failed for "${incoming.id}":`, error);
+        }
+      }
+
+      if (existing && this.capabilitiesRegistered.has(incoming.id)) {
+        unregisterModuleCapabilities(existing);
+      }
+
+      // Forget all prior state so register() + initialize run against new code.
+      this.modules.delete(incoming.id);
+      this.initializedModules.delete(incoming.id);
+      this.capabilitiesRegistered.delete(incoming.id);
+      this.initializationPromises.delete(incoming.id);
+
+      this.register(incoming);
+
+      if (wasInitialized) {
+        await this.initializeModule(incoming.id);
+      }
+
+      logEvent('INFO', 'module_hot_replaced', {
+        moduleId: incoming.id,
+        moduleName: incoming.name,
+        reinitialized: wasInitialized,
+      });
+    }
+
+    this.invalidate();
   }
 
   /**
