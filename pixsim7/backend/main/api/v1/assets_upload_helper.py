@@ -164,7 +164,9 @@ async def prepare_upload(
                 source_path=tmp_path,
                 extension=file_ext
             )
-            result.local_path = storage_service.get_path(result.stored_key)
+            # Uploads land on the local (hot) root; local_path is a real path
+            # there (None for non-local roots, derived on demand instead).
+            result.local_path = storage_service.local_path_if_local(result.stored_key)
             logger.info(
                 "upload_cas_stored",
                 user_id=user_id,

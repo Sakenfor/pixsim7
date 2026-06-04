@@ -262,6 +262,16 @@ class Asset(SQLModel, table=True):
         max_length=512,
         description="Storage key for preview/proxy image"
     )
+    # Named storage root the main file lives on (see plan media-storage-tiering).
+    # None / 'local' == the hot local filesystem root. Other ids (e.g. 'archive')
+    # resolve to a backend in the storage roots registry. stored_key stays
+    # root-agnostic; physical path = roots[storage_root_id] + stored_key.
+    storage_root_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        index=True,
+        description="Storage root id for the main file (None/'local' = hot local; e.g. 'archive' = S3/MinIO)",
+    )
 
     # Independent step completion timestamps (allow re-running one without the other)
     metadata_extracted_at: Optional[datetime] = Field(

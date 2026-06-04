@@ -227,6 +227,20 @@ class Settings(BaseSettings):
         default=500,
         description="Max file size for uploads (MB)"
     )
+    media_storage_roots: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional JSON array of EXTRA media storage roots beyond the built-in "
+            "'local' (the path-registry media_root). Each entry: "
+            "{\"id\": str, \"kind\": \"local\"|\"s3\", ...kind config}. "
+            "For kind 's3' (MinIO/S3): endpoint_url, bucket, access_key, secret_key, "
+            "optional region and presigned_ttl_seconds. Example: "
+            "[{\"id\":\"archive\",\"kind\":\"s3\",\"endpoint_url\":\"http://10.243.1.2:9000\","
+            "\"bucket\":\"pixsim-archive\",\"access_key\":\"...\",\"secret_key\":\"...\"}]. "
+            "Tiering is a no-op until at least one extra root is declared. "
+            "See plan media-storage-tiering."
+        ),
+    )
 
     # ===== PROVIDERS =====
     pixverse_timeout: int = Field(

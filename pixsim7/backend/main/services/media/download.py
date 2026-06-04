@@ -18,6 +18,7 @@ import httpx
 
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.services.storage import get_storage_service
+from pixsim7.backend.main.services.storage.roots import LOCAL_ROOT_ID
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     has_retrievable_pixverse_media_url,
     is_pixverse_placeholder_url,
@@ -158,12 +159,15 @@ async def download_file(
                 extension=ext,
             )
 
-            # Get local path from storage
-            local_path = storage.get_path(stored_key)
+            # Download always lands on the local (hot) root — derive a real
+            # local_path and (re)assert the root so a previously-archived row
+            # is corrected if it gets re-downloaded.
+            local_path = storage.local_path_if_local(stored_key, LOCAL_ROOT_ID)
 
             # Update asset with new storage location
             asset.local_path = local_path
             asset.stored_key = stored_key
+            asset.storage_root_id = LOCAL_ROOT_ID
             asset.file_size_bytes = total_size
             asset.sync_status = SyncStatus.DOWNLOADED
             asset.downloaded_at = datetime.now(timezone.utc)
