@@ -628,9 +628,11 @@ function CodegenTaskDetail({
               )}
             </>
           )}
-          {task.check_only && output.exists && (
+          {isOpenapiScoped && output.exists && (
             <div className="text-[10px] text-gray-500 italic">
-              Shares this output with full <span className="font-mono">openapi</span>; this task only checks a slice of it.
+              Shares the canonical <span className="font-mono">openapi</span> output. Generate merges
+              just this slice (overwrites/adds its DTO files, no clobber); it won&apos;t prune DTOs
+              deleted upstream — run full <span className="font-mono">openapi</span> for that.
             </div>
           )}
         </div>
@@ -711,17 +713,16 @@ function CodegenTaskDetail({
             className="bg-green-700 hover:bg-green-600 text-white"
             onClick={() => onRun(false)}
             disabled={disabled}
+            title={isOpenapiScoped ? 'Merge just this slice into the canonical openapi output (no clobber)' : undefined}
           >
-            {running ? 'Running…' : 'Run'}
+            {running
+              ? (isOpenapiScoped ? 'Merging…' : 'Running…')
+              : (isOpenapiScoped ? 'Merge' : 'Run')}
           </Button>
         )}
         {task.check_only && (
           <span className="text-[10px] text-gray-500 italic">
-            {isOpenapiScoped ? (
-              <>Check-only — full <span className="font-mono">openapi</span> task is the only generator.</>
-            ) : (
-              <>Check-only — verifies an invariant; it doesn&apos;t generate output.</>
-            )}
+            Check-only — verifies an invariant; it doesn&apos;t generate output.
           </span>
         )}
         {task.timeout_ms && (

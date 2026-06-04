@@ -603,6 +603,81 @@ async function runOrval(
   }
 }
 
+type MergeResult = { added: string[]; changed: string[]; unchanged: number };
+
+/**
+ * Scoped slice merge (Option A — scoped Generate). Instead of clobbering the
+ * whole canonical output with one tag-slice, overwrite/add only the DTO files
+ * this slice produced and rebuild the barrel from the post-merge file set.
+ *
+ * Shared DTOs (referenced by >1 domain) regenerate byte-identically, so merging
+ * them is a no-op write — that's why a single canonical dir is correct and there
+ * is no cross-slice divergence. What a merge canNOT do is prune: a DTO deleted
+ * backend-side leaves an orphan file (the slice simply stops producing it; merge
+ * never removes). Callers warn about that; full `openapi` (clean:true) prunes.
+ *
+ * The barrel format is reproduced exactly (header + localeCompare-sorted
+ * `export * from './x';` lines, '\n'-joined, no trailing newline) so a later
+ * full `openapi --check` stays green.
+ */
+async function mergeSliceIntoCanonical(sliceDir: string, canonicalDir: string): Promise<MergeResult> {
+  const sliceModel = path.join(sliceDir, 'model');
+  const canonModel = path.join(canonicalDir, 'model');
+
+  if (!(await pathExists(canonModel))) {
+    throw new Error(
+      `Canonical output not found at ${normalizeSlashes(canonModel)}. A scoped slice can ` +
+      'only merge into an existing canonical output — run the full `openapi` task once first.'
+    );
+  }
+
+  const sliceFiles = (await fs.readdir(sliceModel)).filter(
+    (name) => name.endsWith('.ts') && name !== 'index.ts'
+  );
+  if (sliceFiles.length === 0) {
+    throw new Error(
+      'Slice generated zero model files (tag filter matched nothing?). Canonical left untouched.'
+    );
+  }
+
+  const added: string[] = [];
+  const changed: string[] = [];
+  let unchanged = 0;
+
+  for (const name of sliceFiles) {
+    const sliceContent = await fs.readFile(path.join(sliceModel, name), 'utf8');
+    const canonPath = path.join(canonModel, name);
+    if (!(await pathExists(canonPath))) {
+      added.push(name);
+    } else {
+      const canonContent = await fs.readFile(canonPath, 'utf8');
+      if (canonContent === sliceContent) {
+        unchanged += 1;
+        continue;
+      }
+      changed.push(name);
+    }
+    await fs.writeFile(canonPath, sliceContent, 'utf8');
+  }
+
+  // Rebuild the barrel from the post-merge canonical file set so newly-added
+  // DTOs get exported (and removed nothing — merge doesn't prune). Header comes
+  // from the freshly-generated slice barrel; export lines are the full canonical
+  // model listing, localeCompare-sorted, exactly as orval emits.
+  const sliceBarrel = await fs.readFile(path.join(sliceModel, 'index.ts'), 'utf8');
+  const headerEnd = sliceBarrel.indexOf('\nexport * from');
+  const header = headerEnd >= 0 ? sliceBarrel.slice(0, headerEnd + 1) : sliceBarrel;
+  const exports = (await fs.readdir(canonModel))
+    .filter((name) => name.endsWith('.ts') && name !== 'index.ts')
+    .map((name) => name.slice(0, -3))
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => `export * from './${name}';`)
+    .join('\n');
+  await fs.writeFile(path.join(canonModel, 'index.ts'), header + exports, 'utf8');
+
+  return { added, changed, unchanged };
+}
+
 async function generateOrvalSplit(
   source: string,
   absOutDir: string,
@@ -652,6 +727,26 @@ async function generateOrvalSplit(
     await runOrval(source, tempOutDir, mode, client);
     if (modelsOnly) {
       await pruneToModelOnly(tempOutDir);
+    }
+    if (isSliceMode) {
+      // Scoped Generate: merge this slice into canonical instead of clobbering.
+      const result = await mergeSliceIntoCanonical(tempOutDir, absOutDir);
+      const sample = (label: string, values: string[]) => {
+        if (values.length === 0) return;
+        const head = values.slice(0, changeReportSampleLimit).join(', ');
+        console.log(`  ${label} (${values.length}): ${head}${values.length > changeReportSampleLimit ? ', …' : ''}`);
+      };
+      console.log(
+        `[ok] Merged slice into canonical: ${outDir} ` +
+        `(+${result.added.length} added / ~${result.changed.length} changed / =${result.unchanged} unchanged)`
+      );
+      sample('added', result.added);
+      sample('changed', result.changed);
+      console.log(
+        '  Note: a scoped merge does not prune deletions — if you removed or renamed DTOs in ' +
+        'this domain, run `pnpm openapi:gen` (full) to drop the orphaned type files.'
+      );
+      return true;
     }
     if (changeReportEnabled && previousSnapshot) {
       const nextSnapshot = await snapshotDirectory(tempOutDir);

@@ -66,18 +66,20 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     supportsCheck: true,
     groups: ['types', 'openapi'],
   },
-  // Scoped openapi-* tasks below are tag-filtered smoke-checks. They write into
-  // the same shared output dir as `openapi`, so they're constrained to --check
-  // (checkOnly: true) — running them as Generate would silently overwrite the
-  // canonical types with just their slice. Coverage policy: the five scopes form
-  // an EXHAUSTIVE, NON-OVERLAPPING partition of every tag in the live spec — each
-  // backend tag belongs to exactly one scoped task. Together with `openapi` they
-  // cover the full schema; full `openapi` remains the only generator. When you
-  // add a backend router tag, assign it to exactly one scope here (re-audit with
-  // tools/codegen/check-openapi-tag-partition.ts against a running main-api).
+  // Scoped openapi-* tasks are tag-filtered slices of the canonical `openapi`
+  // output. Generate MERGES the slice into the shared output dir (overwrites/adds
+  // just the slice's DTO files + rebuilds the barrel) instead of clobbering it —
+  // so a scoped Generate means "regenerate just this domain". Caveat: a merge does
+  // NOT prune deletions; full `openapi` (clean:true) remains the only task that
+  // removes DTO files orphaned by a backend deletion/rename. Check mode compares
+  // the slice against canonical (subset compare). Coverage policy: the five scopes
+  // form an EXHAUSTIVE, NON-OVERLAPPING partition of every tag in the live spec —
+  // each backend tag belongs to exactly one scoped task. When you add a backend
+  // router tag, assign it to exactly one scope here (re-audit with the
+  // `tag-partition` task / tools/codegen/check-openapi-tag-partition.ts).
   {
     id: 'openapi-assets',
-    description: 'Scoped OpenAPI smoke-check for assets/providers/media tags',
+    description: 'Scoped OpenAPI slice for assets/providers/media tags (merge-generate or check)',
     script: 'tools/codegen/generate-openapi-types.ts',
     args: [
       '--include-tags',
@@ -85,12 +87,11 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     ],
     requires: 'main-api',
     supportsCheck: true,
-    checkOnly: true,
     groups: ['types', 'openapi'],
   },
   {
     id: 'openapi-prompts',
-    description: 'Scoped OpenAPI smoke-check for prompts/templates/vocabulary tags',
+    description: 'Scoped OpenAPI slice for prompts/templates/vocabulary tags (merge-generate or check)',
     script: 'tools/codegen/generate-openapi-types.ts',
     args: [
       '--include-tags',
@@ -98,12 +99,11 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     ],
     requires: 'main-api',
     supportsCheck: true,
-    checkOnly: true,
     groups: ['types', 'openapi'],
   },
   {
     id: 'openapi-game',
-    description: 'Scoped OpenAPI smoke-check for gameplay/world/NPC tags',
+    description: 'Scoped OpenAPI slice for gameplay/world/NPC tags (merge-generate or check)',
     script: 'tools/codegen/generate-openapi-types.ts',
     args: [
       '--include-tags',
@@ -111,12 +111,11 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     ],
     requires: 'main-api',
     supportsCheck: true,
-    checkOnly: true,
     groups: ['types', 'openapi'],
   },
   {
     id: 'openapi-runtime',
-    description: 'Scoped OpenAPI smoke-check for runtime/agents/automation tags',
+    description: 'Scoped OpenAPI slice for runtime/agents/automation tags (merge-generate or check)',
     script: 'tools/codegen/generate-openapi-types.ts',
     args: [
       '--include-tags',
@@ -124,12 +123,11 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     ],
     requires: 'main-api',
     supportsCheck: true,
-    checkOnly: true,
     groups: ['types', 'openapi'],
   },
   {
     id: 'openapi-dev',
-    description: 'Scoped OpenAPI smoke-check for dev/admin/plugins tags',
+    description: 'Scoped OpenAPI slice for dev/admin/plugins tags (merge-generate or check)',
     script: 'tools/codegen/generate-openapi-types.ts',
     args: [
       '--include-tags',
@@ -137,7 +135,6 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     ],
     requires: 'main-api',
     supportsCheck: true,
-    checkOnly: true,
     groups: ['types', 'openapi'],
   },
   {
