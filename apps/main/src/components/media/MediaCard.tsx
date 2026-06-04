@@ -58,6 +58,7 @@ import { MediaCardQueueNav } from './MediaCardQueueNav';
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
 import { applyMediaOverlayPolicyChain } from './overlayWidgetPolicy';
 import { ThumbnailImage } from './ThumbnailImage';
+import { useSiblingCountRefresh } from './useSiblingCountRefresh';
 import { useVideoMarksStore } from './videoMarksStore';
 
 /** Get crossOrigin attribute - required for CDN URLs to enable canvas operations */
@@ -695,18 +696,24 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   // worth revealing (the generation menu). Other cards keep one-tap open.
   const canRevealOverlays = isCoarsePointer && !!presetCapabilities.showsGenerationMenu;
 
+  // Sibling-count badges freeze their (live) count at fetch time; refresh them
+  // on hover so a newly-generated cohort doesn't keep reading stale 1/2/3.
+  const refreshSiblingCounts = useSiblingCountRefresh(
+    id,
+    !!presetCapabilities.showsSiblingBadges,
+  );
+
   // Hide the revealed overlays when the user taps outside this card.
   useEffect(() => {
     if (!canRevealOverlays || !overlayRevealed) return;
     const onDocPointerDown = (e: PointerEvent) => {
       const target = e.target as Node | null;
       if (cardRootRef.current?.contains(target)) return;
-      // The generation button group's submenus (regenerate / quick-gen / slot
-      // picker / provider menu) are portaled to <body>, outside the card root.
-      // Without this, tapping one of those buttons counts as an outside tap,
-      // hides the overlay, and unmounts the submenu before its click fires —
-      // so the action silently does nothing on touch.
-      if (target instanceof Element && target.closest('[data-portal-float="true"]')) return;
+      // The generation button group's submenus are portaled to <body> (outside
+      // the card root). A tap on one of those is not an "outside" tap — hiding
+      // the overlay here would collapse the trigger pill, shift the portaled
+      // submenu out from under the finger, and lose the pending click.
+      if (target instanceof Element && target.closest('[data-gen-action-popover="true"]')) return;
       setOverlayRevealed(false);
     };
     document.addEventListener('pointerdown', onDocPointerDown, true);
@@ -724,6 +731,91 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     presetGestureOverrides: presetCapabilities.gestureOverrides,
   });
 
+  // Open the viewer. On a video card with a coarse pointer, opening is the
+  // deliberate *double-tap* — handled by handleRootPointerDownCapture below —
+  // so the click-based paths (handleOpen, the scrub widget's onClick) are
+  // intentionally no-ops here to avoid a single tap (which reveals + plays)
+  // also opening. Desktop and non-video cards open immediately on click.
+  const openViewerNow = useCallback(
+    (openId: number) => {
+      if (!onOpen) return;
+      setOverlayRevealed(false);
+      onOpen(openId);
+    },
+    [onOpen],
+  );
+  const requestOpen = useCallback(
+    (openId: number) => {
+      if (isCoarsePointer && mediaType === 'video') return;
+      openViewerNow(openId);
+    },
+    [isCoarsePointer, mediaType, openViewerNow],
+  );
+
+  // Double-tap-to-open for touch video cards. The scrub overlay handles its own
+  // (emulated) mouse events and forwards center taps to the gesture system, so
+  // the click chain is an unreliable place to detect a second tap. Instead we
+  // watch pointer events in the CAPTURE phase at the card root — they fire
+  // before any descendant (including the scrub overlay) and see every gesture.
+  //
+  // A gesture only counts as a *tap* when it ends (pointerup) with little
+  // movement and short duration — so a scroll/drag is excluded and never
+  // registers, even though it also starts with a pointerdown. Two taps close
+  // in time and space open the viewer; a lone tap falls through to the reveal +
+  // auto-play path untouched. Taps on interactive controls (the gen menu, scrub
+  // dot/timeline buttons) are ignored so they keep working.
+  const DOUBLE_TAP_MS = 320; // max gap between the two taps
+  const DOUBLE_TAP_DIST_PX = 36; // max distance between the two taps
+  const TAP_SLOP_PX = 12; // movement beyond this within one press = drag, not tap
+  const TAP_MAX_MS = 500; // press longer than this = long-press, not tap
+  const tapStartRef = useRef<{ id: number; t: number; x: number; y: number } | null>(null);
+  const lastTapRef = useRef<{ t: number; x: number; y: number } | null>(null);
+  const handleRootPointerDownCapture = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      tapStartRef.current = null;
+      if (mediaType !== 'video') return;
+      if (event.pointerType === 'mouse') return;
+      if (!onOpen) return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('button, a, input, select, textarea, [role="button"], [data-gen-action-popover="true"]')
+      ) {
+        return;
+      }
+      tapStartRef.current = { id: event.pointerId, t: Date.now(), x: event.clientX, y: event.clientY };
+    },
+    [mediaType, onOpen],
+  );
+  const handleRootPointerUpCapture = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const start = tapStartRef.current;
+      tapStartRef.current = null;
+      if (!start || start.id !== event.pointerId) return;
+      const now = Date.now();
+      const movedFar = Math.hypot(event.clientX - start.x, event.clientY - start.y) > TAP_SLOP_PX;
+      if (movedFar || now - start.t > TAP_MAX_MS) return; // drag / scroll / long-press
+      const pos = { x: event.clientX, y: event.clientY };
+      const prev = lastTapRef.current;
+      const isDouble =
+        prev !== null &&
+        now - prev.t <= DOUBLE_TAP_MS &&
+        Math.hypot(pos.x - prev.x, pos.y - prev.y) <= DOUBLE_TAP_DIST_PX;
+      if (isDouble) {
+        event.preventDefault();
+        event.stopPropagation();
+        lastTapRef.current = null;
+        openViewerNow(id);
+        return;
+      }
+      lastTapRef.current = { t: now, x: pos.x, y: pos.y };
+    },
+    [id, openViewerNow],
+  );
+  const handleRootPointerCancelCapture = useCallback(() => {
+    tapStartRef.current = null;
+  }, []);
+
   const handleOpen = (event: ReactMouseEvent<HTMLDivElement>) => {
     // Suppress open when gesture just completed (click fires after pointerup)
     if (gesture.gestureConsumed.current) return;
@@ -739,10 +831,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       });
       return;
     }
-    if (onOpen) {
-      setOverlayRevealed(false);
-      onOpen(id);
-    }
+    requestOpen(id);
   };
 
   const handleMediaDragStart = useCallback((event: React.DragEvent<HTMLDivElement>) => {
@@ -808,6 +897,9 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     // Pass capabilities so runtime widgets can adapt without hardcoded ID checks
     const allDefaultWidgets = createDefaultMediaCardWidgets({
       ...resolved,
+      // Route the video scrubber's click-to-open through the coarse-pointer
+      // double-tap gate (the scrub widget is the only onOpen consumer).
+      onOpen: requestOpen,
       overlayPresetId: effectivePresetId,
       presetCapabilities,
     });
@@ -928,6 +1020,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     return result;
   }, [
     resolved,
+    requestOpen,
     mediaType,
     contextMenuAsset?.providerStatus,
     contextMenuAsset?.syncStatus,
@@ -1023,9 +1116,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     providerUploads: resolved.contextMenuAsset?.providerUploads,
     lastUploadStatusByProvider: resolved.contextMenuAsset?.lastUploadStatusByProvider,
     versionNumber: resolved.contextMenuAsset?.versionNumber,
-    sameSeedCount: resolved.contextMenuAsset?.sameSeedCount,
-    sameInputsCount: resolved.contextMenuAsset?.sameInputsCount,
-    samePromptCount: resolved.contextMenuAsset?.samePromptCount,
+    cohortCounts: resolved.contextMenuAsset?.cohortCounts,
     onFilterByTagShortcut,
     lockedTimestamp: picker?.lockedTimestamp,
     onLockTimestamp: picker?.onLockTimestamp,
@@ -1072,7 +1163,13 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       className={wrapperClass}
       data-pixsim7="media-card"
       {...componentContextMenuAttrs}
-      onPointerEnter={() => setIsCapabilityActive(true)}
+      onPointerDownCapture={handleRootPointerDownCapture}
+      onPointerUpCapture={handleRootPointerUpCapture}
+      onPointerCancelCapture={handleRootPointerCancelCapture}
+      onPointerEnter={() => {
+        setIsCapabilityActive(true);
+        refreshSiblingCounts();
+      }}
       onPointerLeave={() => setIsCapabilityActive(false)}
       onFocusCapture={() => setIsCapabilityActive(true)}
       onBlurCapture={(event) => {
@@ -1086,6 +1183,14 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       // open handler nor the compact wrapper onClick fires. Subsequent taps pass
       // through normally.
       onClickCapture={(event) => {
+        // The generation button group's submenus are portaled to <body>, but
+        // their clicks still bubble through the React tree to this card. Don't
+        // treat such a click as a reveal-tap — swallowing it here (capture
+        // phase) would eat the submenu button's own onClick before it fires.
+        const target = event.target;
+        if (target instanceof Element && target.closest('[data-gen-action-popover="true"]')) {
+          return;
+        }
         if (canRevealOverlays && !overlayRevealed) {
           event.stopPropagation();
           event.preventDefault();
