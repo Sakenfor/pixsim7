@@ -189,6 +189,17 @@ export function AccountRow({
         </div>
       </td>
 
+      {/* Last Used */}
+      <td className="px-3 py-2 text-sm text-neutral-600 dark:text-neutral-400 whitespace-nowrap">
+        {account.last_used ? (
+          <span title={new Date(account.last_used).toLocaleString()}>
+            {new Date(account.last_used).toLocaleDateString()}
+          </span>
+        ) : (
+          <span className="text-neutral-400 dark:text-neutral-600">—</span>
+        )}
+      </td>
+
       {/* Stats */}
       <td className="px-3 py-2 text-sm text-neutral-600 dark:text-neutral-400">
         <div className="text-xs">Success: {(account.success_rate * 100).toFixed(0)}%</div>
@@ -197,7 +208,7 @@ export function AccountRow({
 
       {/* Actions */}
       <td className="px-3 py-2">
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-nowrap gap-1">
           <button
             type="button"
             onClick={() => onEdit(account)}

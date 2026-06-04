@@ -1,4 +1,4 @@
-import { Button, FormField, Input, useToast, ConfirmModal } from '@pixsim7/shared.ui';
+import { Button, FormField, Input, useToast, ConfirmModal, useSidebarNav, type SidebarNavSection } from '@pixsim7/shared.ui';
 import { useState, useMemo, useEffect } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
@@ -13,8 +13,8 @@ import { useProviderSpecs } from '../hooks/useProviderSpecs';
 import { deleteAccount, toggleAccountStatus, updateAccount } from '../lib/api/accounts';
 import type { AccountUpdate } from '../lib/api/accounts';
 
-import { AccountRow } from './AccountRow';
 import { AccountRoutingManagerModal, type RoutingAccount } from './AccountRoutingManagerModal';
+import { AccountRow } from './AccountRow';
 import { AIProviderSettings } from './AIProviderSettings';
 import { CompactAccountCard } from './CompactAccountCard';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
@@ -327,9 +327,52 @@ export function ProviderSettingsPanel() {
   const [refreshKey, setRefreshKey] = useState(0);
   const { capacity, loading, error, accounts } = useProviderCapacity(refreshKey);
 
-  // Navigation
-  const [selection, setSelection] = useState<SidebarSelection>({ kind: 'overview' });
-  const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
+  // Provider name lookup + list (also feeds the sidebar nav sections).
+  const providerNames = providers.reduce<Record<string, string>>((acc, p) => {
+    acc[p.id] = p.name;
+    return acc;
+  }, {});
+  const providerList = providers.length
+    ? providers.map((p) => ({ id: p.id, name: p.name }))
+    : capacity.map((c) => ({ id: c.provider_id, name: providerNames[c.provider_id] || c.provider_id }));
+
+  // Sidebar selection + expanded state, persisted to localStorage via useSidebarNav.
+  // Each provider is a section with accounts/config children; overview + ai-providers are leaf sections.
+  const navSections = useMemo<SidebarNavSection[]>(
+    () => [
+      { id: 'overview', label: 'Overview' },
+      ...providerList.map((p) => ({
+        id: p.id,
+        label: providerNames[p.id] || p.name || p.id,
+        children: [
+          { id: `${p.id}:accounts`, label: 'Accounts' },
+          { id: `${p.id}:config`, label: 'Configuration' },
+        ],
+      })),
+      { id: 'ai-providers', label: 'AI Providers' },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rebuild only when the provider id set changes
+    [providerList.map((p) => p.id).join(',')],
+  );
+  const nav = useSidebarNav({
+    sections: navSections,
+    initial: 'overview',
+    defaultAllExpanded: false,
+    storageKey: 'providers-panel-sidebar',
+  });
+
+  // Re-derive the existing discriminated-union selection from the nav hook so the
+  // rest of the component (effects, content switch) is unchanged.
+  const selection: SidebarSelection =
+    nav.activeSectionId === 'overview'
+      ? { kind: 'overview' }
+      : nav.activeSectionId === 'ai-providers'
+        ? { kind: 'ai-providers' }
+        : {
+            kind: 'provider',
+            providerId: nav.activeSectionId,
+            sub: nav.activeChildId?.endsWith(':config') ? 'config' : 'accounts',
+          };
 
   // Account editing / deleting
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
@@ -516,16 +559,26 @@ export function ProviderSettingsPanel() {
     }
   };
 
+  // Clickable sortable table header for the list view
+  const renderSortTh = (field: typeof sortBy, label: string, title?: string) => (
+    <th className="px-3 py-2 font-medium">
+      <button
+        type="button"
+        onClick={() => toggleSort(field)}
+        title={title ?? `Sort by ${label.toLowerCase()}`}
+        className={`inline-flex items-center gap-1 transition-colors hover:text-neutral-700 dark:hover:text-neutral-200 ${
+          sortBy === field ? 'text-blue-600 dark:text-blue-400' : ''
+        }`}
+      >
+        {label}
+        <span className="inline-block w-2 text-[10px]">
+          {sortBy === field ? (sortDesc ? '↓' : '↑') : ''}
+        </span>
+      </button>
+    </th>
+  );
+
   // --- Derived state ---
-
-  const providerNames = providers.reduce<Record<string, string>>((acc, p) => {
-    acc[p.id] = p.name;
-    return acc;
-  }, {});
-
-  const providerList = providers.length
-    ? providers.map((p) => ({ id: p.id, name: p.name }))
-    : capacity.map((c) => ({ id: c.provider_id, name: providerNames[c.provider_id] || c.provider_id }));
 
   const activeProvider = selection.kind === 'provider' ? selection.providerId : null;
   const { specs: activeProviderSpecs } = useProviderSpecs(activeProvider ?? undefined);
@@ -731,17 +784,6 @@ export function ProviderSettingsPanel() {
     );
   }
 
-  // --- Content title ---
-
-  const contentTitle =
-    selection.kind === 'overview'
-      ? 'Overview'
-      : selection.kind === 'ai-providers'
-        ? 'AI Providers'
-        : selection.sub === 'accounts'
-          ? `${providerNames[selection.providerId] || selection.providerId} \u2014 Accounts`
-          : `${providerNames[selection.providerId] || selection.providerId} \u2014 Configuration`;
-
   // --- Render ---
 
   return (
@@ -761,7 +803,7 @@ export function ProviderSettingsPanel() {
         <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {/* Overview */}
           <button
-            onClick={() => setSelection({ kind: 'overview' })}
+            onClick={() => nav.navigate('overview')}
             className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs rounded-md transition-colors ${
               selection.kind === 'overview'
                 ? 'bg-blue-500 text-white'
@@ -781,27 +823,17 @@ export function ProviderSettingsPanel() {
                 providerName={providerNames[tab.id] || tab.name || tab.id}
                 activeCount={cap?.active_accounts ?? 0}
                 totalCount={cap?.total_accounts ?? 0}
-                isExpanded={expandedProviders.has(tab.id)}
+                isExpanded={nav.expandedSectionIds.has(tab.id)}
                 selection={selection}
-                onToggleExpand={() => {
-                  setExpandedProviders((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(tab.id)) next.delete(tab.id);
-                    else next.add(tab.id);
-                    return next;
-                  });
-                }}
-                onSelect={(sub) => {
-                  setSelection({ kind: 'provider', providerId: tab.id, sub });
-                  setExpandedProviders((prev) => new Set(prev).add(tab.id));
-                }}
+                onToggleExpand={() => nav.toggleExpand(tab.id)}
+                onSelect={(sub) => nav.navigate(`${tab.id}:${sub}`)}
               />
             );
           })}
 
           {/* AI Providers */}
           <button
-            onClick={() => setSelection({ kind: 'ai-providers' })}
+            onClick={() => nav.navigate('ai-providers')}
             className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs rounded-md transition-colors ${
               selection.kind === 'ai-providers'
                 ? 'bg-blue-500 text-white'
@@ -815,30 +847,22 @@ export function ProviderSettingsPanel() {
 
       {/* Content area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Content header */}
-        <div className="flex-shrink-0 border-b border-neutral-200 dark:border-neutral-700 px-4 py-3">
-          <h2 className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
-            {contentTitle}
-          </h2>
-        </div>
-
         {/* Content body */}
-        <div className="flex-1 overflow-auto" key={refreshKey}>
+        <div className="flex-1 min-h-0 flex flex-col" key={refreshKey}>
           {/* Overview */}
           {selection.kind === 'overview' && (
-            <OverviewContent
-              capacity={capacity}
-              providerNames={providerNames}
-              onNavigate={(providerId) => {
-                setSelection({ kind: 'provider', providerId, sub: 'accounts' });
-                setExpandedProviders((prev) => new Set(prev).add(providerId));
-              }}
-            />
+            <div className="flex-1 overflow-auto">
+              <OverviewContent
+                capacity={capacity}
+                providerNames={providerNames}
+                onNavigate={(providerId) => nav.navigate(`${providerId}:accounts`)}
+              />
+            </div>
           )}
 
           {/* AI Providers */}
           {selection.kind === 'ai-providers' && (
-            <div className="p-4">
+            <div className="p-4 flex-1 overflow-auto">
               <div className="max-w-2xl">
                 <h3 className="text-lg font-medium text-neutral-800 dark:text-neutral-200 mb-2">
                   AI Providers
@@ -869,7 +893,9 @@ export function ProviderSettingsPanel() {
 
           {/* Provider — Accounts */}
           {selection.kind === 'provider' && selection.sub === 'accounts' && providerData && (
-            <div className="p-4">
+            <div className="flex-1 min-h-0 flex flex-col">
+              {/* Fixed header: summary + maintenance + sort controls */}
+              <div className="flex-shrink-0 px-4 pt-4 border-b border-neutral-200 dark:border-neutral-800">
               {/* Provider summary + maintenance — compact strip */}
               <div className="flex items-center gap-3 mb-3 px-1 flex-wrap">
                 {/* Stats */}
@@ -1078,27 +1104,33 @@ export function ProviderSettingsPanel() {
               </div>
 
               {/* Sort Controls */}
-              <div className="flex items-center gap-2 mb-4 flex-wrap">
-                <span className="text-xs text-neutral-500 dark:text-neutral-400">Sort by:</span>
-                {[
-                  { key: 'lastUsed', label: 'Last Used' },
-                  { key: 'name', label: 'Name' },
-                  { key: 'credits', label: 'Credits' },
-                  { key: 'status', label: 'Status' },
-                  { key: 'success', label: 'Success Rate' },
-                ].map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => toggleSort(key as typeof sortBy)}
-                    className={`px-3 py-1.5 text-xs rounded-md transition-all ${
-                      sortBy === key
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                    }`}
-                  >
-                    {label} {sortBy === key && (sortDesc ? '\u2193' : '\u2191')}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                {/* Card view has no column headers, so expose sort as buttons.
+                    In list view the table headers are the sort controls. */}
+                {viewMode === 'cards' && (
+                  <>
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400">Sort by:</span>
+                    {[
+                      { key: 'lastUsed', label: 'Last Used' },
+                      { key: 'name', label: 'Name' },
+                      { key: 'credits', label: 'Credits' },
+                      { key: 'status', label: 'Status' },
+                      { key: 'success', label: 'Success Rate' },
+                    ].map(({ key, label }) => (
+                      <button
+                        key={key}
+                        onClick={() => toggleSort(key as typeof sortBy)}
+                        className={`px-3 py-1.5 text-xs rounded-md transition-all ${
+                          sortBy === key
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                        }`}
+                      >
+                        {label} {sortBy === key && (sortDesc ? '\u2193' : '\u2191')}
+                      </button>
+                    ))}
+                  </>
+                )}
                 <div className="flex-1" />
                 <div className="flex rounded-full overflow-hidden border border-neutral-200 dark:border-neutral-700">
                   {([
@@ -1124,7 +1156,10 @@ export function ProviderSettingsPanel() {
                   {displayedSortedAccounts.length} account{displayedSortedAccounts.length !== 1 ? 's' : ''}
                 </span>
               </div>
+              </div>
 
+              {/* Scrollable accounts list */}
+              <div className="flex-1 overflow-auto p-4">
               {/* Accounts — Card View */}
               {viewMode === 'cards' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1159,15 +1194,16 @@ export function ProviderSettingsPanel() {
               {/* Accounts — List View */}
               {viewMode === 'list' && (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left">
+                  <table className="w-full min-w-max text-left">
                     <thead>
                       <tr className="border-b dark:border-neutral-700 text-xs text-neutral-500 dark:text-neutral-400">
-                        <th className="px-3 py-2 font-medium">Name / Email</th>
-                        <th className="px-3 py-2 font-medium">Status</th>
-                        <th className="px-3 py-2 font-medium">Credits</th>
+                        {renderSortTh('name', 'Name / Email')}
+                        {renderSortTh('status', 'Status')}
+                        {renderSortTh('credits', 'Credits')}
                         <th className="px-3 py-2 font-medium">Capacity</th>
                         <th className="px-3 py-2 font-medium">Badges</th>
-                        <th className="px-3 py-2 font-medium">Stats</th>
+                        {renderSortTh('lastUsed', 'Last Used')}
+                        {renderSortTh('success', 'Stats', 'Sort by success rate')}
                         <th className="px-3 py-2 font-medium">Actions</th>
                       </tr>
                     </thead>
@@ -1208,12 +1244,13 @@ export function ProviderSettingsPanel() {
                   No accounts found for this provider
                 </div>
               )}
+              </div>
             </div>
           )}
 
           {/* Provider — Configuration */}
           {selection.kind === 'provider' && selection.sub === 'config' && providerSettings && (
-            <div className="p-4">
+            <div className="p-4 flex-1 overflow-auto">
               <div className="max-w-2xl">
                 <h3 className="text-lg font-medium text-neutral-800 dark:text-neutral-200 mb-2">
                   {providerNames[activeProvider!] || activeProvider} Configuration

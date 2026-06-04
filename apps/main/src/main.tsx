@@ -24,6 +24,10 @@ import '@features/appearance/panelSkins.registrations'
 // before the first <Ticker /> mounts. See `stores-registry-canon`.
 import '@features/ticker/sources.registrations'
 
+// Side-effect import: declares ownership of per-panel useSidebarNav keys
+// (active sidebar tab persistence). See `stores-registry-canon`.
+import '@lib/stores/sidebarNav.registrations'
+
 // Side-effect import: attaches the asset-engagement view/play tracking
 // subscriptions to the assetEvents bus at boot, so "played" signals are
 // captured even before the Recent strip first mounts.
