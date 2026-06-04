@@ -8,7 +8,7 @@ Game-owned tables are excluded from autogenerate diffs — they are managed
 by the separate game migration chain (alembic_game.ini).
 """
 from logging.config import fileConfig
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from alembic import context
 
@@ -91,6 +91,9 @@ def do_run_migrations(connection: Connection) -> None:
     )
 
     with context.begin_transaction():
+        # Fail fast instead of queuing behind a lock — a blocked DDL otherwise
+        # stalls all reads on the table and can exhaust the connection pool.
+        connection.execute(text("SET LOCAL lock_timeout = '5s'"))
         context.run_migrations()
 
 
