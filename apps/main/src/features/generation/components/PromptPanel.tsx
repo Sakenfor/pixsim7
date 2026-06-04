@@ -494,9 +494,17 @@ export function PromptPanel(props: QuickGenPanelProps) {
       display={{
         variant: resolvedPromptSettings.variant,
         showCounter: resolvedPromptSettings.showCounter,
-        counterAccessory: (
-          <PromptModerationChip prompt={promptValue} imageAssetId={primaryAssetId} />
-        ),
+        // Read-time default: older persisted settings predate this key, so it
+        // hydrates as `undefined` — treat anything but an explicit `false` as on,
+        // else the chip silently vanishes for anyone who saved prompt settings
+        // before it existed. (See "createBackendStorage clear gotcha".)
+        counterAccessory: resolvedPromptSettings.showModerationChip !== false ? (
+          <PromptModerationChip
+            prompt={promptValue}
+            imageAssetId={primaryAssetId}
+            grain={resolvedPromptSettings.moderationGrain ?? 'auto'}
+          />
+        ) : undefined,
         resizable: resolvedPromptSettings.resizable,
         minHeight: resolvedPromptSettings.minHeight,
         historyScopeKey: promptHistoryScopeKey,

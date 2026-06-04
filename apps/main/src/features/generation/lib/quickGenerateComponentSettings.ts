@@ -4,6 +4,8 @@ export const QUICKGEN_PROMPT_COMPONENT_ID = 'quickgen-prompt';
 
 export type QuickGenPromptHistoryScope = 'provider-operation' | 'operation' | 'global';
 
+export type QuickGenModerationGrain = 'auto' | 'prompt';
+
 export interface QuickGenPromptSettings {
   showCounter: boolean;
   resizable: boolean;
@@ -11,6 +13,10 @@ export interface QuickGenPromptSettings {
   variant: 'compact' | 'default';
   historyScope: QuickGenPromptHistoryScope;
   historyMaxEntries: number;
+  /** Show the render-moderation success-rate chip next to the char counter. */
+  showModerationChip: boolean;
+  /** Which scope drives the chip's headline number. */
+  moderationGrain: QuickGenModerationGrain;
 }
 
 export const QUICKGEN_PROMPT_DEFAULTS: QuickGenPromptSettings = {
@@ -20,6 +26,8 @@ export const QUICKGEN_PROMPT_DEFAULTS: QuickGenPromptSettings = {
   variant: 'compact',
   historyScope: 'provider-operation',
   historyMaxEntries: 80,
+  showModerationChip: true,
+  moderationGrain: 'auto',
 };
 
 export interface QuickGenSettingsPanelSettings {

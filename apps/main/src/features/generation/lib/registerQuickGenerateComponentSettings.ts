@@ -61,6 +61,33 @@ export function registerQuickGenerateComponentSettings() {
           ],
         },
         {
+          id: "prompt-moderation",
+          title: "Render-moderation chip",
+          fields: [
+            {
+              id: "showModerationChip",
+              label: "Show render-moderation chip",
+              description:
+                "A pass-rate chip next to the char counter, showing how often this prompt clears the provider's render-time moderation.",
+              type: "toggle",
+              defaultValue: QUICKGEN_PROMPT_DEFAULTS.showModerationChip,
+            },
+            {
+              id: "moderationGrain",
+              label: "Stat scope",
+              description:
+                "Auto prefers the prompt + input-image track record; Prompt only always shows the broader prompt-only rate.",
+              type: "select",
+              options: [
+                { value: "auto", label: "Auto (prompt + image)" },
+                { value: "prompt", label: "Prompt only" },
+              ],
+              defaultValue: QUICKGEN_PROMPT_DEFAULTS.moderationGrain,
+              showWhen: (values) => values.showModerationChip !== false,
+            },
+          ],
+        },
+        {
           id: "prompt-history",
           title: "Draft History",
           fields: [
