@@ -60,10 +60,27 @@ package grammar
 // ── operator vocabulary ─────────────────────────────────────────────────────
 // Surfaced to the editor's click-to-edit popover via /meta/operator-vocabulary.
 // Backend stays authoritative on what's swap-eligible and the run-length cap.
+//
+// `swap_targets` + `max_run_length` are the global defaults. `contexts`
+// declares per-line_kind overrides — the operator-layer analog of
+// op_signature_registry's per-signature contracts. A context inherits any
+// field it doesn't override from the global default. Keyed by the same
+// line_kind the popover reports (chain | colon | angle_bracket |
+// freestanding). Permissive still: this scopes the *suggested* swaps and the
+// run-length stepper cap, not what the grammar will parse.
+
+#OperatorContextKind: "chain" | "colon" | "angle_bracket" | "freestanding"
+
+#OperatorContextDef: {
+    line_kind:       #OperatorContextKind
+    swap_targets?:   [...string]
+    max_run_length?: int & >=1
+}
 
 #OperatorVocabularyDef: {
     swap_targets:   [...string]  // suggested operator chars the user can swap to
     max_run_length: int & >=1    // cap on consecutive op chars in a run
+    contexts?:      [...#OperatorContextDef]  // per-line_kind overrides
 }
 
 // ── top-level grammar rules schema ─────────────────────────────────────────

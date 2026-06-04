@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "token_kinds": [
     "IDENT",
     "NUMBER",
@@ -63,7 +63,36 @@
     ]
   },
   "operator_vocabulary": {
-    "swap_targets": ["=", "<", ">", ":", "?"],
-    "max_run_length": 12
+    "swap_targets": [
+      "=",
+      "<",
+      ">",
+      ":",
+      "?"
+    ],
+    "max_run_length": 12,
+    "contexts": [
+      {
+        "line_kind": "chain",
+        "max_run_length": 12
+      },
+      {
+        "line_kind": "colon",
+        "swap_targets": [
+          ":",
+          "=",
+          ">"
+        ],
+        "max_run_length": 1
+      },
+      {
+        "line_kind": "angle_bracket",
+        "max_run_length": 1
+      },
+      {
+        "line_kind": "freestanding",
+        "max_run_length": 1
+      }
+    ]
   }
 }

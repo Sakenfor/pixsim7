@@ -49,9 +49,10 @@ package recipes
     // Only meaningful for `line_kind: "chain"`.
     prev_kind?:  #ChainElementKind
     next_kind?:  #ChainElementKind
-    // Reserved freeform semantic-kind tags ("ACTOR", "SCENE", etc.) for
-    // future richer matching. Declared but not consumed by current
-    // recipes — leave them in the schema as headroom.
+    // Freeform semantic-kind tags ("ACTOR", "SCENE", etc.) — the var's
+    // name family with any trailing index stripped (ACTOR1 → ACTOR). A
+    // recipe that declares these matches only when both operands are vars
+    // of the named kinds (most-specific tier in matchRecipe / find_recipe).
     lhs_kind?:   string
     rhs_kind?:   string
 }

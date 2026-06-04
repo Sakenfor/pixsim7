@@ -11,7 +11,7 @@ package grammar
 // vs. >) belongs to the recipe layer, not here.
 
 grammar_rules: #GrammarRules & {
-    version: "1.0.0"
+    version: "1.1.0"
 
     token_kinds: [
         "IDENT",     // [A-Za-z][A-Za-z0-9_]*  (underscore stays in IDENT when adjacent to letters)
@@ -91,5 +91,18 @@ grammar_rules: #GrammarRules & {
     operator_vocabulary: {
         swap_targets:   ["=", "<", ">", ":", "?"]
         max_run_length: 12
+
+        // Per-line_kind overrides. Chain relations use the full intensity
+        // range; header shapes are single-operator by nature, so a run
+        // stepper past 1 is meaningless there (`CAMERA::` is not "more of
+        // a header"). Inherit swap_targets from the global default unless
+        // a context narrows it (the colon header only meaningfully swaps
+        // to `=`/`>` to re-key the section as a chain).
+        contexts: [
+            {line_kind: "chain", max_run_length: 12},
+            {line_kind: "colon", swap_targets: [":", "=", ">"], max_run_length: 1},
+            {line_kind: "angle_bracket", max_run_length: 1},
+            {line_kind: "freestanding", max_run_length: 1},
+        ]
     }
 }

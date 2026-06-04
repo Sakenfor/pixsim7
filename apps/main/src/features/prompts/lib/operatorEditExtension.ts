@@ -7,6 +7,7 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 
+import { varSemanticKind } from '../hooks/useRelationRecipes';
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 
 /**
@@ -41,6 +42,13 @@ export interface OperatorRange {
   prevKind?: 'var' | 'prose';
   /** Element kind immediately after this operator (chain only). */
   nextKind?: 'var' | 'prose';
+  /**
+   * Semantic-kind family of the var immediately before/after the operator
+   * (chain only; only set when that element is a `var`). e.g. `ACTOR1` →
+   * `ACTOR`. Feeds recipe matching's `lhs_kind` / `rhs_kind`.
+   */
+  prevVarKind?: string;
+  nextVarKind?: string;
 }
 
 export interface OperatorEditCallbacks {
@@ -89,13 +97,17 @@ function collectOperatorRanges(
         const from = op.op_start;
         const to = op.op_end;
         if (from < to && from >= 0 && to <= docLength) {
+          const prevEl = line.elements[i];
+          const nextEl = line.elements[i + 1];
           out.push({
             from, to,
             raw: op.op,
             run: op.run,
             context: 'chain',
-            prevKind: line.elements[i]?.kind,
-            nextKind: line.elements[i + 1]?.kind,
+            prevKind: prevEl?.kind,
+            nextKind: nextEl?.kind,
+            prevVarKind: prevEl?.kind === 'var' ? varSemanticKind(prevEl.text) : undefined,
+            nextVarKind: nextEl?.kind === 'var' ? varSemanticKind(nextEl.text) : undefined,
           });
         }
       }

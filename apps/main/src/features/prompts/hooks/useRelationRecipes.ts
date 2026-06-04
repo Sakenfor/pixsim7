@@ -39,7 +39,14 @@ export interface RelationRecipeContext {
   prev_kind?: ChainElementKind;
   /** Element kind immediately after the clicked operator (chain only). */
   next_kind?: ChainElementKind;
-  /** Reserved freeform semantic-kind tags — declared but not consumed today. */
+  /**
+   * Semantic-kind of the var immediately before/after the operator — the
+   * name family of the variable with any trailing index stripped
+   * (`ACTOR1`/`ACTOR2` → `ACTOR`). Recipes that declare these match *only*
+   * when both sides are vars of the named kinds, letting a relation like
+   * `ACTOR ===> ACTOR` carry different semantics than the generic
+   * var→var chain. See `varSemanticKind`.
+   */
   lhs_kind?: string;
   rhs_kind?: string;
 }
@@ -103,10 +110,27 @@ export function useRelationRecipes(): RelationRecipesPayload {
 }
 
 /**
- * Find the best-matching recipe for a given context. Resolution:
- *   1. (line_kind, prev_kind, next_kind) exact
- *   2. line_kind alone (no prev/next constraints)
- *   3. null (caller falls back to grammar's universal swap_targets)
+ * Normalize a variable's text to its semantic-kind family: uppercase and
+ * strip a trailing numeric index (with optional separating underscore).
+ * `ACTOR1` → `ACTOR`, `ACTOR_2` → `ACTOR`, `SCENE` → `SCENE`. Returns
+ * `undefined` for empty/index-only input so callers can treat it as
+ * "no semantic kind".
+ */
+export function varSemanticKind(text: string | null | undefined): string | undefined {
+  if (!text) return undefined;
+  const family = text.trim().toUpperCase().replace(/_?\d+$/, '');
+  return family || undefined;
+}
+
+/**
+ * Find the best-matching recipe for a given context. Resolution
+ * (most-specific first):
+ *   1. (line_kind, prev_kind, next_kind, lhs_kind, rhs_kind) — typed
+ *      relation; only when the context supplies both var kinds.
+ *   2. (line_kind, prev_kind, next_kind) exact, on recipes that do NOT
+ *      declare lhs/rhs (those are tier-1 only).
+ *   3. line_kind alone (no prev/next constraints)
+ *   4. null (caller falls back to grammar's universal swap_targets)
  */
 export function matchRecipe(
   recipes: RelationRecipe[],
@@ -114,17 +138,37 @@ export function matchRecipe(
     line_kind: RecipeLineKind;
     prev_kind?: ChainElementKind;
     next_kind?: ChainElementKind;
+    lhs_kind?: string;
+    rhs_kind?: string;
   },
 ): RelationRecipe | null {
+  // Tier 1: fully-typed relation (both sides are vars of named kinds).
+  if (context.prev_kind && context.next_kind && context.lhs_kind && context.rhs_kind) {
+    const typed = recipes.find(
+      (r) =>
+        r.context.line_kind === context.line_kind &&
+        r.context.prev_kind === context.prev_kind &&
+        r.context.next_kind === context.next_kind &&
+        r.context.lhs_kind === context.lhs_kind &&
+        r.context.rhs_kind === context.rhs_kind,
+    );
+    if (typed) return typed;
+  }
+  // Tier 2: prev/next exact, ignoring var kinds — but skip recipes that
+  // declare lhs/rhs (a typed recipe must not be chosen for a non-matching
+  // pair of vars).
   if (context.prev_kind && context.next_kind) {
     const exact = recipes.find(
       (r) =>
         r.context.line_kind === context.line_kind &&
         r.context.prev_kind === context.prev_kind &&
-        r.context.next_kind === context.next_kind,
+        r.context.next_kind === context.next_kind &&
+        !r.context.lhs_kind &&
+        !r.context.rhs_kind,
     );
     if (exact) return exact;
   }
+  // Tier 3: line_kind alone.
   return (
     recipes.find(
       (r) =>

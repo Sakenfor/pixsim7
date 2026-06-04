@@ -313,6 +313,18 @@ def _normalize_authoring_audience(audience: Optional[str]) -> Optional[str]:
     return normalized
 
 
+class OperatorContext(BaseModel):
+    """Per-line_kind override of the global operator vocabulary.
+
+    A context inherits any field it omits from the global default. Keyed by
+    the same line_kind the popover reports (chain | colon | angle_bracket |
+    freestanding).
+    """
+    line_kind: str
+    swap_targets: Optional[List[str]] = None
+    max_run_length: Optional[int] = None
+
+
 class OperatorVocabularyResponse(BaseModel):
     """Operator vocabulary surfaced to the editor's click-to-edit popover.
 
@@ -326,6 +338,10 @@ class OperatorVocabularyResponse(BaseModel):
     max_run_length: int = Field(
         ...,
         description="Cap on consecutive operator chars in a run (e.g. 12 → up to '============').",
+    )
+    contexts: List[OperatorContext] = Field(
+        default_factory=list,
+        description="Per-line_kind overrides; a context inherits omitted fields from the global default.",
     )
 
 
@@ -525,9 +541,10 @@ class RelationRecipeContext(BaseModel):
     # for chain lines; "var" or "prose".
     prev_kind: Optional[str] = None
     next_kind: Optional[str] = None
-    # Reserved freeform semantic-kind tags ("ACTOR", "SCENE", etc.) for
-    # future richer matching. Declared but not consumed by current
-    # recipes — kept as headroom.
+    # Freeform semantic-kind tags ("ACTOR", "SCENE", etc.) — the var's name
+    # family with any trailing index stripped (ACTOR1 -> ACTOR). A recipe
+    # declaring these matches only when both operands are vars of the named
+    # kinds (most-specific tier in matchRecipe / find_recipe).
     lhs_kind: Optional[str] = None
     rhs_kind: Optional[str] = None
 

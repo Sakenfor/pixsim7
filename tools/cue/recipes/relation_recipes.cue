@@ -7,7 +7,7 @@ package recipes
 // label recognised shapes and seed the type-swap UI.
 
 relation_recipes: #RelationRecipes & {
-    version: "2.0.0"
+    version: "2.1.0"
 
     recipes: [
         // ── var = body | var > body | var < body ──────────────────────
@@ -98,6 +98,66 @@ relation_recipes: #RelationRecipes & {
                     model: "pixverse-i2v-v6"
                     date:  "2026-04-27"
                     tags: ["seed", "i2v"]
+                },
+            ]
+        },
+
+        // ── ACTOR <op> ACTOR (typed character relation) ───────────────
+        // A var→var chain where both sides normalize to the ACTOR kind
+        // (`ACTOR1 ===> ACTOR2`). More specific than `chain_var_to_var`:
+        // matched only when both operands are ACTOR-family vars, so a
+        // character-to-character interaction carries social/physical
+        // semantics rather than the generic "directed action toward".
+        // Demonstrates the lhs_kind/rhs_kind typed-matching tier; clone
+        // this shape for ACTOR→SCENE, SCENE→ACTOR, etc.
+        {
+            id:    "chain_actor_to_actor"
+            label: "Character interaction"
+            context: {
+                line_kind: "chain"
+                prev_kind: "var"
+                next_kind: "var"
+                lhs_kind:  "ACTOR"
+                rhs_kind:  "ACTOR"
+            }
+            operators: [
+                {
+                    op:      ">"
+                    meaning: "acts on / directs toward the other character"
+                    run_semantics: {
+                        "1": "engages"
+                        "3": "assertive"
+                        "5": "forceful / dominant"
+                        "7": "overwhelming"
+                    }
+                    swap_targets: [">", "<", "=", "?"]
+                },
+                {
+                    op:      "<"
+                    meaning: "yields to / is acted on by the other character"
+                    run_semantics: {
+                        "1": "responds"
+                        "3": "submits"
+                        "5": "fully yields"
+                    }
+                    swap_targets: ["<", ">", "=", "?"]
+                },
+                {
+                    op:      "="
+                    meaning: "mutual / paired with the other character"
+                    run_semantics: {
+                        "1": "paired"
+                        "5": "deeply entwined"
+                    }
+                    swap_targets: ["=", ">", "<"]
+                },
+            ]
+            notes: [
+                {
+                    text:  "Typed ACTOR↔ACTOR relation. Run-length semantics framed for character interaction intensity; refine with i2v testing."
+                    model: "pixverse-i2v-v6"
+                    date:  "2026-06-02"
+                    tags: ["seed", "i2v", "typed-relation"]
                 },
             ]
         },

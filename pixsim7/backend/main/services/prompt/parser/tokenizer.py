@@ -34,15 +34,30 @@ _HEADER_PATTERNS: dict[str, dict] = {
 def get_operator_vocabulary() -> dict:
     """Return the operator vocabulary block from grammar_rules.json.
 
-    Shape: {"swap_targets": ["=","<",...], "max_run_length": 12}
-    Defaults are returned if the field is missing.
+    Shape::
+
+        {
+            "swap_targets": ["=","<",...],     # global default
+            "max_run_length": 12,              # global default
+            "contexts": [                       # per-line_kind overrides
+                {"line_kind": "colon", "swap_targets": [":","=",">"],
+                 "max_run_length": 1},
+                ...
+            ],
+        }
+
+    ``contexts`` narrows the suggested swaps / run-length cap per line_kind;
+    a context inherits any field it omits from the global default. Defaults
+    are returned if a field is missing.
     """
     raw = _GRAMMAR_RULES.get("operator_vocabulary") or {}
     swap_targets = raw.get("swap_targets")
     max_run = raw.get("max_run_length")
+    contexts = raw.get("contexts")
     return {
         "swap_targets": list(swap_targets) if isinstance(swap_targets, list) else ["=", "<", ">"],
         "max_run_length": int(max_run) if isinstance(max_run, int) else 12,
+        "contexts": list(contexts) if isinstance(contexts, list) else [],
     }
 
 # ── token kinds ────────────────────────────────────────────────────────────
