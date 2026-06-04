@@ -128,6 +128,7 @@ class SyntheticGenerationService:
             canonical_params=gen_data["canonical_params"],
             inputs=gen_data["inputs"],
             reproducible_hash=gen_data["reproducible_hash"],
+            prompt_text_hash=Generation.prompt_text_hash_from_params(gen_data["canonical_params"]),
             prompt_version_id=gen_data["prompt_version_id"],
             final_prompt=gen_data["final_prompt"],
             status=GenerationStatus.COMPLETED,

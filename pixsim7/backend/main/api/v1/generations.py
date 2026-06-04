@@ -1933,24 +1933,30 @@ async def get_prompt_stats(
     filtered_code = GenerationErrorCode.CONTENT_RENDER_MODERATED.value
     asset_ref = f"asset:{body.image_asset_id}" if body.image_asset_id is not None else None
 
-    # IMPORTANT: a WHERE on canonical_params['prompt'] has no index and
-    # full-scans the whole generations table (~30s on 150k+ rows), which the
-    # chip would fire every few seconds and saturate the DB. Instead, scan only
-    # the most-recent N rows by id (PK-indexed — fast) and match the prompt in
-    # Python. Covers recent history; very old prompts fall outside the window.
-    # (A complete fix would index a stored prompt-group hash — see TODO.)
+    # Seek this prompt's history directly via the indexed prompt_text_hash
+    # column (SHA256 of the stripped prompt — written at generation creation and
+    # backfilled for old rows). This replaced an unindexed WHERE on
+    # canonical_params['prompt'] that full-scanned the whole generations table
+    # (~120s on 150k+ rows) and, fired every few seconds by the chip, saturated
+    # the DB connection pool and lagged the whole app. The image scope can't be
+    # folded into the hash (it's prompt-only), so it's still narrowed in Python
+    # from `inputs`. RECENT_WINDOW bounds the worst case of a heavily-reused
+    # prompt; 400 recent attempts is far more than the chip needs.
     RECENT_WINDOW = 400
+    prompt_hash = _GenerationModel.compute_prompt_text_hash(prompt)
+    if prompt_hash is None:
+        return PromptStatsResponse(prompt_only=empty, prompt_image=None, streak=0, cap=cap)
     stmt = (
         select(
             _GenerationModel.status,
             _GenerationModel.error_code,
             _GenerationModel.inputs,
-            _GenerationModel.canonical_params["prompt"].as_string().label("prompt"),
         )
+        .where(_GenerationModel.prompt_text_hash == prompt_hash)
         .order_by(_GenerationModel.id.desc())
         .limit(RECENT_WINDOW)
     )
-    rows = [r for r in (await db.execute(stmt)).all() if r.prompt == prompt]
+    rows = (await db.execute(stmt)).all()
 
     def _matches_image(inputs: Any) -> bool:
         if asset_ref is None or not isinstance(inputs, list):

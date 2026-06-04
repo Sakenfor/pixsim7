@@ -103,6 +103,18 @@ class Generation(SQLModel, table=True):
         max_length=64,
         index=True,
     )
+    # Prompt-ONLY grouping hash (SHA256 of the stripped prompt text). Indexed so
+    # the prompt-stats chip can seek a prompt's history directly instead of
+    # scanning. NOTE: distinct from ``seed_agnostic_prompt_group_hash`` (workers),
+    # which keys on the FULL request — prompt + inputs + params. This one ignores
+    # the image so it serves the "prompt-only" success-rate scope; the image scope
+    # is still narrowed in Python from ``inputs``.
+    prompt_text_hash: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        index=True,
+        description="SHA256 of the stripped prompt text; grouping key for prompt-only stats.",
+    )
 
     # Prompt versioning (legacy + new structured config)
     prompt_version_id: Optional[UUID] = Field(
@@ -369,6 +381,30 @@ class Generation(SQLModel, table=True):
             )
 
         return digest
+
+    @staticmethod
+    def compute_prompt_text_hash(prompt: Optional[str]) -> Optional[str]:
+        """Stable SHA256 over just the whitespace-stripped prompt text.
+
+        The grouping key for prompt-only success-rate stats (the prompt-stats
+        chip). Both the write side (generation creation / backfill) and the read
+        side (the stats query) MUST go through this one helper so the
+        normalization stays identical — a divergence would silently break
+        matching. Returns ``None`` for an empty/missing prompt.
+        """
+        if not prompt or not isinstance(prompt, str):
+            return None
+        norm = prompt.strip()
+        if not norm:
+            return None
+        return hashlib.sha256(norm.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def prompt_text_hash_from_params(canonical_params: Any) -> Optional[str]:
+        """Convenience: pull ``canonical_params['prompt']`` and hash it."""
+        if not isinstance(canonical_params, dict):
+            return None
+        return Generation.compute_prompt_text_hash(canonical_params.get("prompt"))
 
 
 class GenerationBatchItemManifest(SQLModel, table=True):

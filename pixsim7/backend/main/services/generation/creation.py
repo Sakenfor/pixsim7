@@ -383,6 +383,7 @@ class GenerationCreationService:
         reproducible_hash = Generation.compute_hash(
             canonical_params, inputs, include_seed=False
         )
+        prompt_text_hash = Generation.prompt_text_hash_from_params(canonical_params)
         _hash_dur_ms = (time.perf_counter() - _hash_t0) * 1000
         if _hash_dur_ms > 50:
             # Outer wall time of the pair. Pair with `compute_hash_internal_slow`
@@ -572,6 +573,7 @@ class GenerationCreationService:
             run_context=run_context,
             inputs=inputs,
             reproducible_hash=reproducible_hash,
+            prompt_text_hash=prompt_text_hash,
             prompt_version_id=prompt_version_id,
             final_prompt=final_prompt,
             workspace_id=workspace_id,
