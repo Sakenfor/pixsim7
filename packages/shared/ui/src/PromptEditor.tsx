@@ -30,6 +30,8 @@ export interface PromptEditorProps {
   className?: string;
   variant?: 'default' | 'compact';
   showCounter?: boolean;
+  /** Optional node rendered next to the character counter (e.g. a status chip). */
+  counterAccessory?: React.ReactNode;
   resizable?: boolean;
   minHeight?: number;
   enforceLimit?: boolean;
@@ -96,6 +98,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
   className,
   variant = 'default',
   showCounter = true,
+  counterAccessory,
   resizable = false,
   minHeight,
   enforceLimit = false,
@@ -288,18 +291,21 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
         )}
       />
       {showCounter && (
-        <div className="mt-1 flex justify-between items-center text-xs">
+        <div className="mt-1 flex justify-between items-center text-xs gap-2">
           {isOverLimit && (
             <span className="text-red-600 dark:text-red-400 font-medium">
               Over limit by {Math.abs(remaining)} chars
             </span>
           )}
-          <span className={clsx(
-            'tabular-nums ml-auto',
-            isOverLimit ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-neutral-500',
-          )}>
-            {value.length} / {maxChars}
-          </span>
+          <div className="ml-auto flex items-center gap-2">
+            {counterAccessory}
+            <span className={clsx(
+              'tabular-nums',
+              isOverLimit ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-neutral-500',
+            )}>
+              {value.length} / {maxChars}
+            </span>
+          </div>
         </div>
       )}
     </div>

@@ -23,8 +23,9 @@ import {
 import { Spinner } from './MaintenanceSpinner';
 
 const SURFACE = 'settings:error-catalog';
-const CATALOG_KEY = '/api/v1/generations/error-catalog';
-const OVERRIDES_PATH = '/api/v1/generations/error-catalog/overrides';
+// pixsimClient (via maintGet/maintPatch) already prepends /api/v1.
+const CATALOG_KEY = '/generations/error-catalog';
+const OVERRIDES_PATH = '/generations/error-catalog/overrides';
 
 // ── Types (mirror backend ErrorCatalogResponse) ───────────────────────────
 

@@ -39,10 +39,12 @@ import {
 } from '@features/panels';
 import { PromptComposerSurface, useQuickGenerateController } from '@features/prompts';
 
+
 import { useMaskOverlayStore } from '@/components/media/viewer/overlays/builtins/maskOverlayStore';
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
+import { PromptModerationChip } from './PromptModerationChip';
 import { type QuickGenPanelProps } from './quickGenPanelTypes';
 
 function parseAssetReferenceId(value: unknown): number | null {
@@ -489,6 +491,9 @@ export function PromptPanel(props: QuickGenPanelProps) {
       display={{
         variant: resolvedPromptSettings.variant,
         showCounter: resolvedPromptSettings.showCounter,
+        counterAccessory: (
+          <PromptModerationChip prompt={promptValue} imageAssetId={primaryAssetId} />
+        ),
         resizable: resolvedPromptSettings.resizable,
         minHeight: resolvedPromptSettings.minHeight,
         historyScopeKey: promptHistoryScopeKey,

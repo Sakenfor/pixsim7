@@ -547,21 +547,18 @@ function useQuickGenerateControllerImpl() {
         || lowerError.includes('input is too long')
       );
 
-    // Render-time moderation: the provider accepted the prompt at submit but
-    // moderated the generated video (no usable output). Prompt-driven, so it
-    // surfaces here like a prompt rejection — with a message that makes the
-    // submit-passed / render-failed distinction clear.
-    const isRenderModerated = errorCode === 'content_render_moderated';
-
-    if (!isPromptRejection && !isPromptTooLong && !isRenderModerated) return;
+    // Note: content_render_moderated is intentionally NOT surfaced here. It's
+    // retryable (auto-retries a few times, capped per-prompt), so a transient
+    // first-fail must not pop a prompt-box error. Its signal lives in the
+    // prompt success-rate chip (rate / fail-streak) and the "Render-time
+    // filtered" warning strip — same silent-retry treatment as content_filtered.
+    if (!isPromptRejection && !isPromptTooLong) return;
 
     // Mark as shown before setting error
     errorShownForRef.current = generationId;
 
     if (isPromptTooLong) {
       setError('Prompt too long: Your prompt exceeds the provider\'s character limit. Please shorten it and try again.');
-    } else if (isRenderModerated) {
-      setError('Filtered at render: the provider accepted the prompt but moderated the generated video (no output). Try revising the prompt.');
     } else {
       setError('Content filtered: Your prompt may contain sensitive content. Please revise and try again.');
     }

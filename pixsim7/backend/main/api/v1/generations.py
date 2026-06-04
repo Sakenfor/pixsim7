@@ -1882,3 +1882,117 @@ async def patch_error_overrides(
         {k: current[k] for k in current},
     )
     return await _build_error_catalog(db)
+
+
+# ─────────────────────────── Prompt moderation stats ─────────────────────
+# Per-prompt (and per prompt+image) success rate vs render-time moderation,
+# plus the current consecutive-fail streak — surfaced next to the prompt-box
+# char cap so a user can see how viable a prompt is before/while generating.
+
+from pixsim7.backend.main.domain.enums import GenerationStatus as _GenStatus  # noqa: E402
+
+
+class PromptOutcomeStats(BaseModel):
+    passed: int          # completed (produced a video)
+    filtered: int        # content_render_moderated (fast-filtered, no video)
+    rate: Optional[float]  # passed / (passed + filtered); None when no history
+
+
+class PromptStatsRequest(BaseModel):
+    prompt: str
+    image_asset_id: Optional[int] = None
+
+
+class PromptStatsResponse(BaseModel):
+    prompt_only: PromptOutcomeStats
+    prompt_image: Optional[PromptOutcomeStats]  # None when no image given
+    streak: int  # leading consecutive render-moderated (prompt+image scope if image given)
+    cap: int     # render_moderated_retry_cap — auto-retry stops at this streak
+
+
+def _rate(passed: int, filtered: int) -> Optional[float]:
+    denom = passed + filtered
+    return round(passed / denom, 4) if denom else None
+
+
+@router.post("/generations/prompt-stats", response_model=PromptStatsResponse)
+async def get_prompt_stats(
+    body: PromptStatsRequest,
+    user: CurrentUser,
+    db: DatabaseSession,
+) -> PromptStatsResponse:
+    """Pass-vs-render-filtered stats for a prompt (and prompt+image), + streak."""
+    from pixsim7.backend.main.workers.worker_concurrency import render_moderated_retry_cap
+
+    cap = render_moderated_retry_cap()
+    prompt = (body.prompt or "").strip()
+    empty = PromptOutcomeStats(passed=0, filtered=0, rate=None)
+    if not prompt:
+        return PromptStatsResponse(prompt_only=empty, prompt_image=None, streak=0, cap=cap)
+
+    filtered_code = GenerationErrorCode.CONTENT_RENDER_MODERATED.value
+    asset_ref = f"asset:{body.image_asset_id}" if body.image_asset_id is not None else None
+
+    # IMPORTANT: a WHERE on canonical_params['prompt'] has no index and
+    # full-scans the whole generations table (~30s on 150k+ rows), which the
+    # chip would fire every few seconds and saturate the DB. Instead, scan only
+    # the most-recent N rows by id (PK-indexed — fast) and match the prompt in
+    # Python. Covers recent history; very old prompts fall outside the window.
+    # (A complete fix would index a stored prompt-group hash — see TODO.)
+    RECENT_WINDOW = 400
+    stmt = (
+        select(
+            _GenerationModel.status,
+            _GenerationModel.error_code,
+            _GenerationModel.inputs,
+            _GenerationModel.canonical_params["prompt"].as_string().label("prompt"),
+        )
+        .order_by(_GenerationModel.id.desc())
+        .limit(RECENT_WINDOW)
+    )
+    rows = [r for r in (await db.execute(stmt)).all() if r.prompt == prompt]
+
+    def _matches_image(inputs: Any) -> bool:
+        if asset_ref is None or not isinstance(inputs, list):
+            return False
+        return any(isinstance(i, dict) and i.get("asset") == asset_ref for i in inputs)
+
+    p_passed = p_filtered = 0
+    pi_passed = pi_filtered = 0
+    streak = 0
+    streak_open = True
+    for r in rows:
+        if r.status == _GenStatus.COMPLETED:
+            outcome = "passed"
+        elif r.error_code == filtered_code:
+            outcome = "filtered"
+        else:
+            outcome = "other"
+        in_image = _matches_image(r.inputs)
+
+        if outcome == "passed":
+            p_passed += 1
+            if in_image:
+                pi_passed += 1
+        elif outcome == "filtered":
+            p_filtered += 1
+            if in_image:
+                pi_filtered += 1
+
+        # Streak = consecutive render-moderated since the last success, ignoring
+        # unrelated outcomes (quota etc.). Scoped to prompt+image when given.
+        if streak_open and (in_image if asset_ref is not None else True):
+            if outcome == "filtered":
+                streak += 1
+            elif outcome == "passed":
+                streak_open = False
+
+    return PromptStatsResponse(
+        prompt_only=PromptOutcomeStats(passed=p_passed, filtered=p_filtered, rate=_rate(p_passed, p_filtered)),
+        prompt_image=(
+            PromptOutcomeStats(passed=pi_passed, filtered=pi_filtered, rate=_rate(pi_passed, pi_filtered))
+            if asset_ref is not None else None
+        ),
+        streak=streak,
+        cap=cap,
+    )

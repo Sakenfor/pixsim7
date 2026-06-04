@@ -51,7 +51,7 @@ import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
 import { useCmReferenceInput } from '../hooks/useCmReferenceInput';
-import { useOperatorVocabulary } from '../hooks/useOperatorVocabulary';
+import { resolveOperatorContract, useOperatorVocabulary } from '../hooks/useOperatorVocabulary';
 import { usePromptHistory } from '../hooks/usePromptHistory';
 import { usePromptVariables } from '../hooks/usePromptVariables';
 import { matchOperator, matchRecipe, useRelationRecipes } from '../hooks/useRelationRecipes';
@@ -227,6 +227,9 @@ export interface PromptComposerProps {
   className?: string;
   variant?: 'default' | 'compact';
   showCounter?: boolean;
+  /** Optional node rendered next to the character counter (e.g. a prompt
+   *  success-rate chip). Only consumed by the top-level composer footer. */
+  counterAccessory?: React.ReactNode;
   resizable?: boolean;
   minHeight?: number;
   historyScopeKey?: string | null;
@@ -333,6 +336,7 @@ export function PromptComposer({
   className,
   variant = 'default',
   showCounter = true,
+  counterAccessory,
   resizable = false,
   minHeight,
   historyScopeKey,
@@ -2186,6 +2190,7 @@ export function PromptComposer({
                     disabled={disabled}
                     variant={variant}
                     showCounter={showCounter}
+                    counterAccessory={counterAccessory}
                     resizable={resizable}
                     minHeight={minHeight}
                     transparent={!!ghostSource}
@@ -2234,10 +2239,16 @@ export function PromptComposer({
                   >
                     {cmOperatorPopover && (() => {
                       const op = cmOperatorPopover.operator;
+                      // Scope suggested swaps + run-length cap to this line
+                      // kind's operator contract (per-context override of the
+                      // global vocabulary).
+                      const contract = resolveOperatorContract(operatorVocabulary, op.context);
                       const recipe = matchRecipe(relationRecipes.recipes, {
                         line_kind: op.context,
                         prev_kind: op.prevKind,
                         next_kind: op.nextKind,
+                        lhs_kind: op.prevVarKind,
+                        rhs_kind: op.nextVarKind,
                       });
                       // Match by raw op so `===>` finds the `>` entry via the
                       // last-char fallback inside matchOperator.
@@ -2245,8 +2256,8 @@ export function PromptComposer({
                       return (
                         <OperatorEditPopover
                           operator={op}
-                          swapTargets={operatorVocabulary.swapTargets}
-                          maxRunLength={operatorVocabulary.maxRunLength}
+                          swapTargets={contract.swapTargets}
+                          maxRunLength={contract.maxRunLength}
                           recipe={recipe}
                           recipeOp={recipeOp}
                           onCancel={() => setCmOperatorPopover(null)}
@@ -2333,6 +2344,7 @@ export function PromptComposer({
                   disabled={disabled}
                   variant={variant}
                   showCounter={showCounter}
+                  counterAccessory={counterAccessory}
                   resizable={resizable}
                   minHeight={minHeight}
                 />
@@ -2355,6 +2367,7 @@ export function PromptComposer({
               disabled={disabled}
               variant={variant}
               showCounter={showCounter}
+              counterAccessory={counterAccessory}
               resizable={resizable}
               minHeight={minHeight}
               textareaRef={promptTextareaRef}

@@ -23,6 +23,7 @@ export interface PromptComposerStateAdapter {
 export interface PromptComposerSurfaceDisplay {
   variant?: PromptComposerProps['variant'];
   showCounter?: PromptComposerProps['showCounter'];
+  counterAccessory?: PromptComposerProps['counterAccessory'];
   resizable?: PromptComposerProps['resizable'];
   minHeight?: PromptComposerProps['minHeight'];
   historyScopeKey?: PromptComposerProps['historyScopeKey'];
@@ -88,6 +89,7 @@ export function PromptComposerSurface({ adapter, display }: PromptComposerSurfac
           disabled={adapter.disabled}
           variant={display?.variant}
           showCounter={display?.showCounter}
+          counterAccessory={display?.counterAccessory}
           resizable={display?.resizable}
           minHeight={display?.minHeight}
           historyScopeKey={display?.historyScopeKey}
