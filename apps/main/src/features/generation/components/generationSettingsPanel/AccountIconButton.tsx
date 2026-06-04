@@ -1,6 +1,6 @@
 import { IconButton, Popover } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -11,6 +11,8 @@ import {
 import { countActivePromotions } from '@features/generation/components/accountDisplayUtils';
 import { AccountRoutingManagerModal, type RoutingAccount } from '@features/providers';
 
+import { usePersistentState } from '@/hooks/usePersistentState';
+
 import { AUTO_BRAND, DROPDOWN_ITEM_CLS } from './constants';
 
 interface AccountOption {
@@ -18,13 +20,24 @@ interface AccountOption {
   provider_id?: string;
   nickname?: string | null;
   email: string;
+  max_concurrent_jobs?: number;
+  current_processing_jobs?: number;
   promotions?: Record<string, unknown>;
   plan_tier?: number;
   priority?: number;
   routing_allow_patterns?: string[] | null;
   routing_deny_patterns?: string[] | null;
   routing_priority_overrides?: Record<string, number> | null;
+  last_used?: string | null;
+  total_videos_generated?: number;
 }
+
+interface LocalAccountUsage {
+  count: number;
+  lastSelectedAt: number;
+}
+
+const ACCOUNT_USAGE_STORAGE_KEY = 'quickgen:account-usage-v1';
 
 function accountDisplayName(account: AccountOption): string {
   return account.nickname ? `${account.nickname} (${account.email})` : account.email;
@@ -64,7 +77,26 @@ export function AccountIconButton({
   const [searchQuery, setSearchQuery] = useState('');
   const [routingTarget, setRoutingTarget] = useState<{ accountId: number; providerId?: string; anchor: DOMRect } | null>(null);
   const [localAccountUpdates, setLocalAccountUpdates] = useState<Record<number, Partial<AccountOption>>>({});
+  const [localUsageByAccountId, setLocalUsageByAccountId] = usePersistentState<Record<string, LocalAccountUsage>>(
+    ACCOUNT_USAGE_STORAGE_KEY,
+    {},
+  );
   const triggerRef = useRef<HTMLButtonElement>(null);
+
+  const recordAccountUsage = useCallback((accountId: number) => {
+    const now = Date.now();
+    setLocalUsageByAccountId((prev) => {
+      const key = String(accountId);
+      const existing = prev[key];
+      return {
+        ...prev,
+        [key]: {
+          count: (existing?.count ?? 0) + 1,
+          lastSelectedAt: now,
+        },
+      };
+    });
+  }, [setLocalUsageByAccountId]);
 
   const mergedAccounts = useMemo(
     () => accounts.map((account) => ({ ...account, ...(localAccountUpdates[account.id] || {}) })),
@@ -76,22 +108,61 @@ export function AccountIconButton({
     [mergedAccounts, selectedAccountId],
   );
   const selectedToken = accountToken(selectedAccount, selectedAccountId);
+  const selectedConcurrencyCap = useMemo(() => {
+    const cap = selectedAccount?.max_concurrent_jobs;
+    if (typeof cap !== 'number' || !Number.isFinite(cap) || cap < 0) return null;
+    return cap;
+  }, [selectedAccount]);
+
+  const rankedAccounts = useMemo(() => {
+    return mergedAccounts
+      .map((account, index) => {
+        const localUsage = localUsageByAccountId[String(account.id)];
+        const lastUsedAtMs = account.last_used ? new Date(account.last_used).getTime() : 0;
+        return {
+          account,
+          index,
+          localLastSelectedAt: localUsage?.lastSelectedAt ?? 0,
+          localSelectionCount: localUsage?.count ?? 0,
+          backendLastUsedAt: Number.isFinite(lastUsedAtMs) ? lastUsedAtMs : 0,
+          backendGeneratedCount: account.total_videos_generated ?? 0,
+        };
+      })
+      .sort((a, b) => {
+        if (a.localLastSelectedAt !== b.localLastSelectedAt) {
+          return b.localLastSelectedAt - a.localLastSelectedAt;
+        }
+        if (a.localSelectionCount !== b.localSelectionCount) {
+          return b.localSelectionCount - a.localSelectionCount;
+        }
+        if (a.backendLastUsedAt !== b.backendLastUsedAt) {
+          return b.backendLastUsedAt - a.backendLastUsedAt;
+        }
+        if (a.backendGeneratedCount !== b.backendGeneratedCount) {
+          return b.backendGeneratedCount - a.backendGeneratedCount;
+        }
+        return a.index - b.index;
+      })
+      .map((entry) => entry.account);
+  }, [mergedAccounts, localUsageByAccountId]);
 
   const wheelValues = useMemo(
-    () => [undefined as number | undefined, ...mergedAccounts.map((account) => account.id)],
-    [mergedAccounts],
+    () => [undefined as number | undefined, ...rankedAccounts.map((account) => account.id)],
+    [rankedAccounts],
   );
   const filteredAccounts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return mergedAccounts;
-    return mergedAccounts.filter((account) => {
+    if (!query) return rankedAccounts;
+    return rankedAccounts.filter((account) => {
       const name = accountDisplayName(account).toLowerCase();
       return name.includes(query) || String(account.id).includes(query);
     });
-  }, [mergedAccounts, searchQuery]);
+  }, [rankedAccounts, searchQuery]);
 
   const title = selectedAccount
-    ? `Account: ${accountDisplayName(selectedAccount)}`
+    ? `Account: ${accountDisplayName(selectedAccount)}${selectedConcurrencyCap != null
+      ? ` | Gen concurrency: ${selectedAccount.current_processing_jobs ?? 0}/${selectedConcurrencyCap}`
+      : ''}`
     : selectedAccountId != null
       ? `Account: Pinned #${selectedAccountId} (inactive)`
       : 'Account: Auto';
@@ -118,12 +189,20 @@ export function AccountIconButton({
         ref={triggerRef}
         bg={selectedAccountId != null ? '#4B5563' : AUTO_BRAND.color}
         size="lg"
+        tapExpand={false}
         icon={
-          selectedAccountId != null ? (
-            <span className="text-[10px] font-bold">{selectedToken}</span>
-          ) : (
-            <Icon name="users" size={12} />
-          )
+          <span className="relative inline-flex h-full w-full items-center justify-center">
+            {selectedAccountId != null ? (
+              <span className="text-[10px] font-bold">{selectedToken}</span>
+            ) : (
+              <Icon name="users" size={12} />
+            )}
+            {selectedConcurrencyCap != null && (
+              <span className="absolute -top-1 -right-1 inline-flex min-w-[12px] h-3 items-center justify-center rounded-full border border-neutral-300 bg-white px-1 text-[8px] font-bold leading-none text-neutral-700 shadow-sm dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100">
+                {selectedConcurrencyCap}
+              </span>
+            )}
+          </span>
         }
         onClick={() => setOpen((current) => !current)}
         onWheel={(e: React.WheelEvent) => {
@@ -134,7 +213,11 @@ export function AccountIconButton({
           const nextIndex = e.deltaY > 0
             ? (index + 1) % wheelValues.length
             : (index - 1 + wheelValues.length) % wheelValues.length;
-          onSelect(wheelValues[nextIndex]);
+          const nextValue = wheelValues[nextIndex];
+          if (nextValue != null) {
+            recordAccountUsage(nextValue);
+          }
+          onSelect(nextValue);
         }}
         disabled={disabled}
         title={title}
@@ -210,6 +293,7 @@ export function AccountIconButton({
                   <button
                     type="button"
                     onClick={() => {
+                      recordAccountUsage(account.id);
                       onSelect(account.id);
                       setOpen(false);
                     }}
