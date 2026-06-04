@@ -36,6 +36,7 @@ import {
   ViewerAssetInputProvider,
   QuickGenWidget,
   useGenerationSettingsStore,
+  useQuickGenStagingStore,
   type QuickGenWidgetRenderContext,
 } from '@features/generation';
 import { DOCK_IDS } from '@features/panels/lib/panelIds';
@@ -179,7 +180,12 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
   const controlCenterOpen = useDockState(DOCK_IDS.controlCenter, (dock) => dock.open);
   const openViewer = useAssetViewerStore((s) => s.openViewer);
   const setViewerMode = useAssetViewerStore((s) => s.setMode);
-  const [isExpanded, setIsExpanded] = useState(alwaysExpanded);
+  // Auto-expand when a "Load to Quick Gen" was staged from a surface with no
+  // live widget (e.g. the mobile gallery): opening the asset here should reveal
+  // Quick Gen and let it drain the staged load, not sit collapsed.
+  const [isExpanded, setIsExpanded] = useState(
+    () => alwaysExpanded || useQuickGenStagingStore.getState().pending !== null,
+  );
   // Mode is managed at top level to determine scope before rendering the toggle
   const [mode, setMode] = useState<GenerationSourceMode>('user');
 

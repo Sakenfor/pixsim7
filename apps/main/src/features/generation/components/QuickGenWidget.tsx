@@ -9,9 +9,11 @@
  */
 
 import { Ref } from '@pixsim7/shared.ref.core';
+import { useToastStore } from '@pixsim7/shared.ui';
 import type { DockviewApi } from 'dockview-core';
 import {
   forwardRef,
+  useEffect,
   useMemo,
   type ReactNode,
   type Dispatch,
@@ -32,9 +34,12 @@ import type { OperationType } from '@/types/operations';
 import { GenerationScopeProvider } from '../hooks/useGenerationScope';
 import { useGenerationScopeStores } from '../hooks/useGenerationScope';
 import { useProvideGenerationWidget } from '../hooks/useProvideGenerationWidget';
+import { GenerationControllerProvider } from '../hooks/useQuickGenerateController';
 import { useQuickGenPanelLayout } from '../hooks/useQuickGenPanelLayout';
 import { useQuickGenScopeSync } from '../hooks/useQuickGenScopeSync';
+import { loadAssetToQuickGen } from '../lib/assetGenerationActions';
 import type { InputItem } from '../stores/generationInputStore';
+import { useQuickGenStagingStore } from '../stores/quickGenStagingStore';
 
 import {
   QuickGenPanelHost,
@@ -141,11 +146,21 @@ export const QuickGenWidget = forwardRef<QuickGenPanelHostRef, QuickGenWidgetPro
     // SuppressScopeWrapping prevents ScopeHost from double-wrapping inner
     // quickgen panels (quickgen-asset, quickgen-prompt, quickgen-settings)
     // with a second GenerationScopeProvider — they should all share this one.
+    //
+    // GenerationControllerProvider mounts useQuickGenerateController ONCE for
+    // this scope (between scope provider and the panel host). All descendant
+    // consumers — QuickGenWidgetInner's own useProvideGenerationWidget call,
+    // PromptPanel, useAssetPanelState, SettingsBlocksPanels — share that
+    // mount via context, instead of each running the 1800-line hook body
+    // independently. See the comment block at the bottom of
+    // hooks/useQuickGenerateController.ts.
     return (
       <GenerationScopeProvider scopeId={scopeInstanceId} label={scopeLabel} inheritParentScope={false}>
-        <SuppressScopeWrapping scopes={['generation']}>
-          <QuickGenWidgetInner {...props} ref={ref} />
-        </SuppressScopeWrapping>
+        <GenerationControllerProvider>
+          <SuppressScopeWrapping scopes={['generation']}>
+            <QuickGenWidgetInner {...props} ref={ref} />
+          </SuppressScopeWrapping>
+        </GenerationControllerProvider>
       </GenerationScopeProvider>
     );
   },
@@ -199,6 +214,30 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
       isOpen,
       setOpen,
     });
+
+    // Drain a staged "Load to Quick Gen" request once this widget is open.
+    // Issued from surfaces with no live widget (e.g. the mobile gallery); the
+    // first widget to open consumes it (consume() is atomic, so multiple
+    // mounted widgets don't double-load) and hydrates its own scoped stores.
+    const stagedLoad = useQuickGenStagingStore((s) => s.pending);
+    useEffect(() => {
+      if (!isOpen || !stagedLoad) return;
+      const staged = useQuickGenStagingStore.getState().consume();
+      if (!staged) return;
+      void loadAssetToQuickGen(staged.asset, operationType, {
+        scopeId,
+        setOpen,
+        setOperationType,
+        withoutSeed: staged.withoutSeed,
+      }).catch((err) => {
+        console.error('Failed to load staged asset into Quick Gen:', err);
+        useToastStore.getState().addToast({
+          type: 'error',
+          message: 'Failed to load the queued generation settings.',
+          duration: 4000,
+        });
+      });
+    }, [isOpen, stagedLoad, operationType, scopeId, setOpen, setOperationType]);
 
     // Step 4: Panel layout — panels, defaultLayout, resolvePanelPosition
     const layout = useQuickGenPanelLayout({ panelIds });

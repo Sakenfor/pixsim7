@@ -21,6 +21,7 @@ import {
   getGenerationInputStore,
   getGenerationSessionStore,
   getGenerationSettingsStore,
+  useQuickGenStagingStore,
 } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
 import { buildCompositionAssetsFromAssetIds, buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
@@ -328,15 +329,28 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
 
   const handleLoadToQuickGen = useCallback(async (options?: { withoutSeed?: boolean }) => {
     if (!loadToQuickGenDescriptor.isVisible(inputAsset) || isLoadingSource) return;
-    const widget = requireWidget();
-    if (!widget) return;
+    const withoutSeed = options?.withoutSeed === true;
+
+    // No live Quick Gen widget to receive the load (e.g. mobile gallery, where
+    // the Control Center — and its QuickGenWidget — isn't mounted). Stash the
+    // request so the next Quick Gen surface to open hydrates from it, instead
+    // of bailing with "not available". See quickGenStagingStore.
+    if (!widgetContext) {
+      useQuickGenStagingStore.getState().stage({ asset: inputAsset, withoutSeed });
+      useToastStore.getState().addToast({
+        type: 'info',
+        message: 'Queued for Quick Gen — it will load when you open Quick Gen.',
+        duration: 3500,
+      });
+      return;
+    }
 
     setIsLoadingSource(true);
     try {
       await loadToQuickGenDescriptor.execute(
         inputAsset,
-        { widget, fallbackOperationType: operationType, scopeId: scopedScopeId },
-        { withoutSeed: options?.withoutSeed === true },
+        { widget: widgetContext, fallbackOperationType: operationType, scopeId: scopedScopeId },
+        { withoutSeed },
       );
     } catch (error) {
       console.error('Failed to load generation into Quick Generate:', error);
@@ -352,7 +366,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     inputAsset,
     isLoadingSource,
     operationType,
-    requireWidget,
+    widgetContext,
     scopedScopeId,
   ]);
 

@@ -171,10 +171,18 @@ export async function patchAssetToWidget(
 // ─── Load to Quick Gen (restore original generation setup) ───────────────────
 
 export interface LoadAssetToQuickGenOptions {
-  /** The generation widget to hydrate. */
-  widget: GenerationWidgetContext;
+  /**
+   * The generation widget to hydrate. Optional: when absent (e.g. a staged
+   * load drained by a freshly-opened widget), pass `scopeId` + `setOpen` +
+   * `setOperationType` explicitly instead.
+   */
+  widget?: GenerationWidgetContext;
   /** Scope ID for store resolution (from widget or hook context). */
   scopeId?: string;
+  /** Open/reveal the surface after hydration (defaults to widget.setOpen). */
+  setOpen?: (open: boolean) => void;
+  /** Update the surface's operation type (defaults to widget.setOperationType). */
+  setOperationType?: (operationType: OperationType) => void;
   /** Strip seed from params before hydration. */
   withoutSeed?: boolean;
 }
@@ -185,13 +193,19 @@ export interface LoadAssetToQuickGenOptions {
  * source assets back into the widget's input slots. Unlike
  * `patchAssetToWidget`, the asset itself is NOT used as input —
  * the inputs are the source assets that originally produced it.
+ *
+ * Works both against a live widget context and, when none is available, a
+ * plain scope id + setters (used to drain a staged "Load to Quick Gen" into a
+ * widget that has just mounted/opened).
  */
 export async function loadAssetToQuickGen(
   asset: AssetModel,
   fallbackOperationType: OperationType,
   options: LoadAssetToQuickGenOptions,
 ): Promise<void> {
-  const { widget, scopeId, withoutSeed = false } = options;
+  const { widget, withoutSeed = false } = options;
+  const setOpen = widget?.setOpen ?? options.setOpen;
+  const setOperationType = widget?.setOperationType ?? options.setOperationType;
 
   const { getGenerationSessionStore, getGenerationSettingsStore, getGenerationInputStore } =
     await import('../stores/generationScopeStores');
@@ -210,7 +224,7 @@ export async function loadAssetToQuickGen(
       .filter((a): a is AssetModel => !!a);
   }
 
-  const targetScopeId = widget.scopeId ?? scopeId;
+  const targetScopeId = widget?.scopeId ?? options.scopeId;
   const sessionStore = targetScopeId
     ? getGenerationSessionStore(targetScopeId).getState()
     : null;
@@ -228,7 +242,7 @@ export async function loadAssetToQuickGen(
     }
     sessionStore.setPrompt(prompt);
   }
-  widget.setOperationType?.(operationType);
+  setOperationType?.(operationType);
 
   if (settingsStore) {
     settingsStore.setActiveOperationType(operationType);
@@ -242,5 +256,5 @@ export async function loadAssetToQuickGen(
     }
   }
 
-  widget.setOpen(true);
+  setOpen?.(true);
 }

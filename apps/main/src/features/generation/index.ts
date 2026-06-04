@@ -111,6 +111,8 @@ export type {
   GenerationPresetActions,
 } from './stores/generationPresetStore';
 export { useFanoutPresetStore } from './stores/fanoutPresetStore';
+export { useQuickGenStagingStore } from './stores/quickGenStagingStore';
+export type { QuickGenStagedLoad } from './stores/quickGenStagingStore';
 export { useGenerationHistoryStore } from './stores/generationHistoryStore';
 export type {
   AssetHistoryEntry,
