@@ -220,6 +220,37 @@ describe('assetViewerStore scope re-registration stability', () => {
     expect(state.currentAsset?.id).toBe(401);
     expect(state.pendingHeadId).toBeNull();
   });
+
+  it('reclaims the preferred scope after a fallback stole active (refresh-churn repro)', () => {
+    const current = makeViewerVideo({ id: 501 });
+    // Simulate post-refresh: the user's preferred scope is "recent", but on
+    // reload it briefly registers then unregisters (viewer-open flicker / empty
+    // cache) while "probes" stays registered.
+    useAssetViewerStore.setState({
+      currentAsset: current,
+      mode: 'side',
+      preferredScopeId: 'recent',
+      activeScopeId: 'recent',
+      scopes: {},
+      assetList: [],
+      currentIndex: -1,
+    });
+
+    const probes = [makeViewerVideo({ id: 502 }), makeViewerVideo({ id: 501 })];
+    useAssetViewerStore.getState().registerScope('probes', 'Probes (2)', probes);
+    const recent = [makeViewerVideo({ id: 503 }), makeViewerVideo({ id: 501 })];
+    useAssetViewerStore.getState().registerScope('recent', 'Recent (2)', recent);
+
+    // recent flickers out → fallback must NOT permanently hand active to probes.
+    useAssetViewerStore.getState().unregisterScope('recent');
+    expect(useAssetViewerStore.getState().activeScopeId).toBe('probes');
+
+    // recent comes back → it must reclaim active because it's the preferred scope.
+    useAssetViewerStore.getState().registerScope('recent', 'Recent (2)', recent);
+    const state = useAssetViewerStore.getState();
+    expect(state.activeScopeId).toBe('recent');
+    expect(state.preferredScopeId).toBe('recent');
+  });
 });
 
 describe('assetViewerStore follow-latest respects explicit navigation', () => {

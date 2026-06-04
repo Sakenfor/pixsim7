@@ -116,6 +116,15 @@ interface AssetViewerState {
   scopes: Record<string, NavigationScope>;
   /** Currently active scope id */
   activeScopeId: string | null;
+  /**
+   * The user's INTENDED scope — set only by explicit selection (switchScope /
+   * open-with-scope), persisted across reloads. Distinct from `activeScopeId`,
+   * which must always point at a *registered* scope and may fall back during
+   * startup churn. When the preferred scope (re)registers, it reclaims active —
+   * so a refresh restores the user's choice instead of sticking on whichever
+   * scope happened to register first. NOT cleared by fallbacks.
+   */
+  preferredScopeId: string | null;
   /** Head asset id that arrived while follow-latest was suppressed by active media interaction */
   pendingHeadId: string | number | null;
 
@@ -210,6 +219,7 @@ export const useAssetViewerStore = create<AssetViewerState>()(
       showMetadata: false,
       scopes: {},
       activeScopeId: null,
+      preferredScopeId: null,
       pendingHeadId: null,
 
       openViewer: (asset, assetList, scopeId) => {
@@ -217,6 +227,9 @@ export const useAssetViewerStore = create<AssetViewerState>()(
         const list = assetList || [asset];
 
         viewerOpenEvents.emit(asset);
+        // Deliberate open → engagement "seen". (Auto-follow / rehydration set
+        // currentAsset elsewhere and intentionally do NOT count.)
+        assetEvents.emitAssetViewed(asset.id);
 
         // Lock-respecting branch: when scope is locked and we already have an
         // active scope, don't swap scope out from under the user. Register the
@@ -258,6 +271,9 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           showMetadata: settings.showMetadata,
           scopes: nextScopes,
           activeScopeId: nextActiveId,
+          // Opening explicitly into a scope is a user choice — make it the
+          // sticky preference so a later refresh restores it.
+          ...(scopeId ? { preferredScopeId: scopeId } : {}),
         });
       },
 
@@ -295,6 +311,7 @@ export const useAssetViewerStore = create<AssetViewerState>()(
             currentIndex: newIndex,
             currentAsset: list[newIndex],
           });
+          assetEvents.emitAssetViewed(list[newIndex].id);
         }
       },
 
@@ -311,6 +328,7 @@ export const useAssetViewerStore = create<AssetViewerState>()(
             currentIndex: newIndex,
             currentAsset: list[newIndex],
           });
+          assetEvents.emitAssetViewed(list[newIndex].id);
         }
       },
 
@@ -326,6 +344,7 @@ export const useAssetViewerStore = create<AssetViewerState>()(
             currentAsset: next,
             ...(clearsPending ? { pendingHeadId: null } : null),
           });
+          assetEvents.emitAssetViewed(next.id);
         }
       },
 
@@ -342,6 +361,7 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           currentAsset: next,
           ...(clearsPending ? { pendingHeadId: null } : null),
         });
+        assetEvents.emitAssetViewed(next.id);
       },
 
       toggleMetadata: () => {
@@ -368,7 +388,7 @@ export const useAssetViewerStore = create<AssetViewerState>()(
       },
 
       registerScope: (id, label, assets) => {
-        const { scopes, activeScopeId, currentAsset, settings } = get();
+        const { scopes, activeScopeId, currentAsset, settings, preferredScopeId } = get();
         const isActiveScope = id === activeScopeId;
         const previousScope = scopes[id];
         const scopeChanged =
@@ -481,8 +501,11 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           }
         }
 
-        // If no active scope yet, activate this one
-        if (!activeScopeId) {
+        // Claim active when (a) nothing is active yet, or (b) this scope is the
+        // user's preferred one re-registering after startup churn handed active
+        // to a fallback. (b) is what makes a refresh snap back to the chosen
+        // scope (e.g. Recent) instead of sticking on whatever registered first.
+        if (activeScopeId !== id && (!activeScopeId || id === preferredScopeId)) {
           updates.activeScopeId = id;
           updates.assetList = assets;
           if (currentAsset) {
@@ -497,7 +520,7 @@ export const useAssetViewerStore = create<AssetViewerState>()(
       },
 
       unregisterScope: (id) => {
-        const { scopes, activeScopeId } = get();
+        const { scopes, activeScopeId, preferredScopeId } = get();
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { [id]: _removed, ...remaining } = scopes;
         const updates: Partial<AssetViewerState> = { scopes: remaining };
@@ -505,7 +528,11 @@ export const useAssetViewerStore = create<AssetViewerState>()(
         if (id === activeScopeId) {
           const remainingIds = Object.keys(remaining);
           if (remainingIds.length > 0) {
-            const fallbackId = remainingIds[0];
+            // Prefer the user's intended scope if it's still around; else fall
+            // back to the first remaining. (Avoids clobbering the choice when a
+            // transient scope unregisters mid-session.)
+            const fallbackId =
+              preferredScopeId && remaining[preferredScopeId] ? preferredScopeId : remainingIds[0];
             const fallbackScope = remaining[fallbackId];
             updates.activeScopeId = fallbackId;
             updates.assetList = fallbackScope.assets;
@@ -530,6 +557,9 @@ export const useAssetViewerStore = create<AssetViewerState>()(
 
         const updates: Partial<AssetViewerState> = {
           activeScopeId: id,
+          // Explicit user pick → sticky preference (survives refresh + reclaims
+          // on re-register).
+          preferredScopeId: id,
           assetList: scope.assets,
         };
 
@@ -559,9 +589,11 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           : state.currentAsset,
         mode: state.mode,
         showMetadata: state.showMetadata,
-        // Persist activeScopeId so refreshes keep the user's selected strip scope
-        // while app-level scopes re-register asynchronously.
-        activeScopeId: state.activeScopeId,
+        // Persist the user's PREFERRED scope (not the live activeScopeId, which
+        // can fall back during startup churn). On reload, activeScopeId starts
+        // null and the preferred scope reclaims active as soon as it
+        // re-registers — so the user's choice survives a refresh.
+        preferredScopeId: state.preferredScopeId,
         // Note: assetList, currentIndex, and scopes are not
         // persisted as the list can be large. Navigation context is
         // reconstructed when the user interacts with the gallery again.
@@ -592,20 +624,6 @@ hmrSingleton('assetViewerStore:subscription', () => {
     useAssetViewerStore.setState({
       currentAsset: { ...currentAsset, _assetModel: fromAssetResponse(response) },
     });
-  });
-  return true; // sentinel
-});
-
-// Emit a "viewed" engagement signal whenever the current asset changes —
-// regardless of how it changed (strip click, wheel, prev/next, follow-latest).
-// Fires raw on every change; the engagement store debounces so scroll-through
-// doesn't inflate counts. Decoupled via the event bus (no engagement-store
-// import) to keep this store free of cycles.
-hmrSingleton('assetViewerStore:viewTracking', () => {
-  useAssetViewerStore.subscribe((state, prev) => {
-    const id = state.currentAsset?.id;
-    if (id == null || prev.currentAsset?.id === id) return;
-    assetEvents.emitAssetViewed(id);
   });
   return true; // sentinel
 });
