@@ -19,6 +19,7 @@ import {
   setCapturedFrame,
 } from '@lib/media/capturedFrameStore';
 import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
+import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 
 import { claimAudio, registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
 
@@ -439,6 +440,18 @@ export function VideoScrubWidgetRenderer({
       setIsPlaying(false);
     }
   }, [isPlaying]);
+
+  // Touch/coarse-pointer auto-play. On a finger there is no `mousemove`, so the
+  // still-timer in handleMouseMove that normally kicks off playback never
+  // fires, and scrubbing is unavailable anyway. So on coarse pointers treat
+  // "revealed/hovered" as "play": loop the video as soon as it's loaded,
+  // matching the desktop hover preview. Without this the timeline appears but
+  // the video sits paused on its first frame.
+  const isCoarsePointer = useIsCoarsePointer();
+  useEffect(() => {
+    if (!isCoarsePointer || !isHovering || !isVideoLoaded) return;
+    startPlaying();
+  }, [isCoarsePointer, isHovering, isVideoLoaded, startPlaying]);
 
   // Find mark near a given time (within threshold)
   const findNearbyMark = useCallback(
@@ -1187,6 +1200,7 @@ export function VideoScrubWidgetRenderer({
           data-show-timeline={showTimeline ? 'true' : 'false'}
           src={effectiveUrl}
           preload="metadata"
+          playsInline
           muted={hoverSound && isHovering ? false : muted}
           crossOrigin={effectiveUrl?.startsWith('http') ? 'anonymous' : undefined}
           onLoadedMetadata={handleLoadedMetadata}
