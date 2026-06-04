@@ -119,14 +119,15 @@ export function ChevronButton({
     return () => el.removeEventListener('wheel', onWheel);
   }, [prev, next, commitTarget]);
 
-  // Tooltips per cohort so users know what they're walking.
-  const titleNoNeighbor = isSetMode
-    ? side === 'left'
-      ? 'No earlier member in this set'
-      : 'No later member in this set'
-    : side === 'left'
-      ? 'No earlier asset for this operation'
-      : 'No later asset for this operation';
+  // Nothing to walk to in this direction (e.g. a single-asset folder, or the
+  // end of a cohort): hide the chevron rather than show a dead, dimmed one.
+  // Placed after all hooks so hook order stays stable. `isLoading` keeps it
+  // visible while a neighbor is still resolving.
+  if (disabled) return null;
+
+  // Tooltip per cohort so users know what they're walking. (The no-neighbor
+  // case is handled by hiding the chevron above, so only the active tooltip
+  // is needed here.)
   const titleActive = isSetMode
     ? side === 'left'
       ? 'Previous set member  ·  pins on click  ·  [ key'
@@ -138,14 +139,14 @@ export function ChevronButton({
   const buttonClass = compact
     ? `
       flex h-6 w-6 items-center justify-center
-      rounded text-white/90
+      rounded text-white/90 tap-target
       hover:text-white
       disabled:cursor-default
       transition-colors
     `
     : `
       flex h-9 w-7 items-center justify-center
-      rounded-md bg-black/55 text-white/90
+      rounded-md bg-black/55 text-white/90 tap-target
       backdrop-blur-sm shadow-md
       hover:bg-black/75 hover:text-white
       disabled:cursor-default
@@ -159,9 +160,9 @@ export function ChevronButton({
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={handleClick}
-        disabled={disabled || isLoading}
+        disabled={isLoading}
         className={buttonClass}
-        title={isLoading ? 'Loading neighbor…' : disabled ? titleNoNeighbor : titleActive}
+        title={isLoading ? 'Loading neighbor…' : titleActive}
         aria-label={side === 'left' ? 'Previous asset' : 'Next asset'}
       >
         <Icon name={side === 'left' ? 'chevronLeft' : 'chevronRight'} size={compact ? 14 : 16} />
