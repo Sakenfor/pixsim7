@@ -716,11 +716,19 @@ function GenerationStatusGridCard({
         type="button"
         onClick={onStatusClick ? (e) => { e.stopPropagation(); onStatusClick(granularStatus); } : undefined}
         className={`text-[10px] font-semibold uppercase tracking-wide ${
-          onStatusClick
-            ? 'text-accent hover:underline cursor-pointer'
-            : 'text-neutral-500 dark:text-neutral-400 cursor-default'
+          granularStatus === 'refiltering'
+            ? 'text-orange-500 dark:text-orange-400 hover:underline cursor-pointer'
+            : onStatusClick
+              ? 'text-accent hover:underline cursor-pointer'
+              : 'text-neutral-500 dark:text-neutral-400 cursor-default'
         }`}
-        title={onStatusClick ? `Filter by "${granularLabel}"` : undefined}
+        title={
+          granularStatus === 'refiltering'
+            ? 'Render-moderation retry — this prompt rendered then got moderated away (fast-filtered) and is auto-retrying.'
+            : onStatusClick
+              ? `Filter by "${granularLabel}"`
+              : undefined
+        }
       >
         {granularLabel}
       </button>

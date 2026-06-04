@@ -307,11 +307,16 @@ export function getStatusLabel(status: GenerationStatus): string {
 /** Fine-grained status derived from base status + submission/wait metadata. */
 export type GranularStatus =
   | 'starting' | 'submitting' | 'polling'           // from processing
+  | 'refiltering'                                    // retrying a render-moderated (fast-filtered) attempt
   | 'yielding' | 'cooldown' | 'retrying'            // from pending/queued
   | 'accepted' | 'submitted' | 'queued'             // from pending/queued
   | 'paused'                                         // paused (hold)
   | 'cancelling' | 'pausing'                         // deferred-action in flight
   | 'completed' | 'failed' | 'cancelled';           // terminal
+
+/** Error code a render-time (post-submit) moderation filter sets — the prompt
+ *  rendered then got moderated away. Mirrors the backend GenerationErrorCode. */
+export const RENDER_MODERATED_ERROR_CODE = 'content_render_moderated';
 
 /**
  * Resolve a generation's fine-grained status from its base status and metadata.
@@ -319,7 +324,7 @@ export type GranularStatus =
  */
 export function resolveGranularStatus(g: Pick<
   GenerationModel,
-  'status' | 'retryCount' | 'attemptCount' | 'latestSubmissionPayload' | 'latestSubmissionProviderJobId' | 'waitReason' | 'deferredAction'
+  'status' | 'retryCount' | 'attemptCount' | 'latestSubmissionPayload' | 'latestSubmissionProviderJobId' | 'waitReason' | 'deferredAction' | 'errorCode'
 >): GranularStatus {
   // Deferred cancel/pause: backend keeps status='processing' (or pending) until
   // the poller honours the request, but the user has already asked for it to
@@ -339,6 +344,10 @@ export function resolveGranularStatus(g: Pick<
   }
 
   if (g.status === 'pending' || g.status === 'queued') {
+    // Render-moderation (fast-filter) retry takes priority over the generic
+    // retry/cooldown labels — it's the signal worth seeing at a glance: the
+    // prompt rendered then got moderated away and is bouncing through retries.
+    if (g.retryCount > 0 && g.errorCode === RENDER_MODERATED_ERROR_CODE) return 'refiltering';
     if (g.waitReason && /yield/i.test(g.waitReason)) return 'yielding';
     if (g.waitReason && /concurrent|capacity|adaptive|cooldown/i.test(g.waitReason)) return 'cooldown';
     if (g.retryCount > 0) return 'retrying';
@@ -355,6 +364,7 @@ const GRANULAR_STATUS_LABELS: Record<GranularStatus, string> = {
   starting: 'Starting',
   submitting: 'Submitting',
   polling: 'Polling',
+  refiltering: 'Refiltering',
   yielding: 'Yielding',
   cooldown: 'Cooldown',
   retrying: 'Retrying',

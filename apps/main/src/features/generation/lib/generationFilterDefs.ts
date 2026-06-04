@@ -20,7 +20,7 @@ const ALL_TERMINAL = '__all_terminal__';
 
 const ACTIVE_STATUSES: GranularStatus[] = [
   'starting', 'submitting', 'polling',
-  'queued', 'submitted', 'accepted', 'cooldown', 'yielding', 'retrying',
+  'queued', 'submitted', 'accepted', 'cooldown', 'yielding', 'retrying', 'refiltering',
   'cancelling', 'pausing',
 ];
 const TERMINAL_STATUSES: GranularStatus[] = ['completed', 'failed', 'cancelled'];
@@ -47,6 +47,7 @@ const GRANULAR_STATUS_OPTIONS: StatusOption[] = [
   { value: 'cooldown', label: 'Cooldown', group: 'active', groupLabel: 'Active' },
   { value: 'yielding', label: 'Yielding', group: 'active', groupLabel: 'Active' },
   { value: 'retrying', label: 'Retrying', group: 'active', groupLabel: 'Active' },
+  { value: 'refiltering', label: 'Refiltering (moderation)', group: 'active', groupLabel: 'Active' },
   // Active — deferred action in flight
   { value: 'cancelling', label: 'Cancelling', group: 'active', groupLabel: 'Active' },
   { value: 'pausing', label: 'Pausing', group: 'active', groupLabel: 'Active' },

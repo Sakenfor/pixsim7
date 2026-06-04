@@ -17,6 +17,7 @@ type GranularInput = Pick<
   | 'latestSubmissionProviderJobId'
   | 'waitReason'
   | 'deferredAction'
+  | 'errorCode'
 >;
 
 function input(overrides: Partial<GranularInput> = {}): GranularInput {
@@ -28,6 +29,7 @@ function input(overrides: Partial<GranularInput> = {}): GranularInput {
     latestSubmissionProviderJobId: 'job-1',
     waitReason: null,
     deferredAction: null,
+    errorCode: null,
     ...overrides,
   };
 }
@@ -126,5 +128,51 @@ describe('resolveGranularStatus — base behaviour preserved', () => {
   it("passes terminal statuses through unchanged", () => {
     expect(resolveGranularStatus(input({ status: 'completed' }))).toBe('completed');
     expect(resolveGranularStatus(input({ status: 'failed' }))).toBe('failed');
+  });
+});
+
+describe('resolveGranularStatus — render-moderation (fast-filter) retries', () => {
+  it("returns 'refiltering' when a pending retry carries the render-moderated error code", () => {
+    expect(
+      resolveGranularStatus(
+        input({ status: 'pending', retryCount: 1, errorCode: 'content_render_moderated' }),
+      ),
+    ).toBe('refiltering');
+  });
+
+  it("takes priority over a cooldown wait reason on the same retry", () => {
+    expect(
+      resolveGranularStatus(
+        input({
+          status: 'pending',
+          retryCount: 2,
+          errorCode: 'content_render_moderated',
+          waitReason: 'adaptive cooldown',
+        }),
+      ),
+    ).toBe('refiltering');
+  });
+
+  it("stays 'retrying' when the retry is for a different error", () => {
+    expect(
+      resolveGranularStatus(
+        input({ status: 'pending', retryCount: 1, errorCode: 'provider_timeout' }),
+      ),
+    ).toBe('retrying');
+  });
+
+  it("does not fire on the first attempt (retryCount 0) even with the error code set", () => {
+    expect(
+      resolveGranularStatus(
+        input({
+          status: 'pending',
+          retryCount: 0,
+          errorCode: 'content_render_moderated',
+          attemptCount: null,
+          latestSubmissionPayload: null,
+          latestSubmissionProviderJobId: null,
+        }),
+      ),
+    ).toBe('queued');
   });
 });
