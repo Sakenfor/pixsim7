@@ -29,10 +29,18 @@ export const GROUP_BY_OPTIONS: Array<{ value: GenerationGroupBy; label: string }
   { value: 'asset', label: 'Asset' },
 ];
 
-/** Normalize a prompt string to a stable grouping key (first 120 chars, lowercased). */
+/**
+ * Normalize a prompt string to a stable grouping key.
+ *
+ * Keys on the FULL prompt (lower-cased + trimmed), NOT a prefix: a previous
+ * 120-char slice collapsed distinct prompts that differed only past the first
+ * 120 chars, so editing a few words deep in a long prompt re-used the old
+ * group. Truncation is for the display label only (see promptLabel).
+ */
 function promptKey(prompt: string | null): string {
   if (!prompt) return '__no_prompt__';
-  return prompt.slice(0, 120).toLowerCase().trim();
+  const norm = prompt.trim().toLowerCase();
+  return norm || '__no_prompt__';
 }
 
 /** Build a display label for a prompt group. */
