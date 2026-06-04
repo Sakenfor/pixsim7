@@ -74,6 +74,8 @@ export { useAroundTimeScope } from './hooks/useAroundTimeScope';
 
 export { useSamePromptScope } from './hooks/useSamePromptScope';
 
+export { useSameFolderScope } from './hooks/useSameFolderScope';
+
 export { useResolvedAssetSet } from './hooks/useResolvedAssetSet';
 export type { UseResolvedAssetSetResult } from './hooks/useResolvedAssetSet';
 
@@ -126,6 +128,12 @@ export { useAssetSettingsStore } from './stores/assetSettingsStore';
 export { useLocalFolderSettingsStore } from './stores/localFolderSettingsStore';
 
 export { useDeleteModalStore } from './stores/deleteModalStore';
+
+export {
+  useAssetEngagementStore,
+  useAssetEngagement,
+  type AssetEngagement,
+} from './stores/assetEngagementStore';
 
 export {
   useAssetViewerStore,

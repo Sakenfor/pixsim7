@@ -8,15 +8,39 @@
 import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
 import { useRef, useState } from 'react';
 
-import { Icon } from '@lib/icons';
+import { Icon, type IconName } from '@lib/icons';
 
 import type { FitMode } from './MediaDisplay';
+
+/**
+ * Per-scope icon, keyed by the stable `scopeId` each scope registers under.
+ * Cohort scopes mirror the input-slot CohortPill glyphs (clock / messageSquare
+ * / folder). A scope id without an entry simply renders no icon. Add a scope's
+ * icon here, or set `ScopeItem.icon` to override per-registration.
+ */
+const SCOPE_ICONS: Partial<Record<string, IconName>> = {
+  'around-time': 'clock',
+  'same-prompt': 'messageSquare',
+  'same-folder': 'folder',
+  recent: 'sparkles',
+  history: 'history',
+  probes: 'flask',
+  gallery: 'image',
+  local: 'folder',
+  'mini-gallery': 'image',
+  generation: 'wand',
+};
+
+const scopeIconFor = (item: { id: string; icon?: IconName }): IconName | undefined =>
+  item.icon ?? SCOPE_ICONS[item.id];
 
 export interface ScopeItem {
   id: string;
   label: string;
   count: number;
   active: boolean;
+  /** Optional per-registration icon override; falls back to SCOPE_ICONS[id]. */
+  icon?: IconName;
 }
 
 interface MediaControlBarProps {
@@ -132,6 +156,11 @@ export function MediaControlBar({
                   title={scopeLocked ? 'Navigation scope (locked)' : 'Navigation scope'}
                 >
                   {scopeLocked && <Icon name="lock" size={10} />}
+                  {(() => {
+                    const active = scopes?.find((s) => s.active);
+                    const icon = active ? scopeIconFor(active) : undefined;
+                    return icon ? <Icon name={icon} size={11} /> : null;
+                  })()}
                   <span className="truncate max-w-[140px]">{scopeLabel}</span>
                   <Icon name="chevronDown" size={10} />
                 </button>
@@ -143,18 +172,32 @@ export function MediaControlBar({
                     minWidth="160px"
                     triggerRef={scopeTriggerRef}
                   >
-                    {scopes.map((scope) => (
-                      <DropdownItem
-                        key={scope.id}
-                        onClick={() => {
-                          onSwitchScope?.(scope.id);
-                          setScopeDropdownOpen(false);
-                        }}
-                        icon={scope.active ? <Icon name="check" size={10} /> : <span className="w-[10px]" />}
-                      >
-                        {scope.label}
-                      </DropdownItem>
-                    ))}
+                    {scopes.map((scope) => {
+                      const scopeIcon = scopeIconFor(scope);
+                      return (
+                        <DropdownItem
+                          key={scope.id}
+                          onClick={() => {
+                            onSwitchScope?.(scope.id);
+                            setScopeDropdownOpen(false);
+                          }}
+                          // Active row shows a check; inactive rows show the
+                          // scope's own icon (the active scope's icon still
+                          // shows in the trigger above).
+                          icon={
+                            scope.active ? (
+                              <Icon name="check" size={10} />
+                            ) : scopeIcon ? (
+                              <Icon name={scopeIcon} size={10} />
+                            ) : (
+                              <span className="w-[10px]" />
+                            )
+                          }
+                        >
+                          {scope.label}
+                        </DropdownItem>
+                      );
+                    })}
                     {(onToggleFollowLatest || onToggleScopeLock) && <DropdownDivider />}
                     {onToggleFollowLatest && (
                       <DropdownItem
