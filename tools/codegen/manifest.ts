@@ -69,9 +69,12 @@ export const CODEGEN_TASKS: CodegenTask[] = [
   // Scoped openapi-* tasks below are tag-filtered smoke-checks. They write into
   // the same shared output dir as `openapi`, so they're constrained to --check
   // (checkOnly: true) — running them as Generate would silently overwrite the
-  // canonical types with just their slice. Coverage policy: each backend tag
-  // belongs to exactly one scoped task. Together with `openapi` they cover the
-  // full schema; full `openapi` remains the only generator.
+  // canonical types with just their slice. Coverage policy: the five scopes form
+  // an EXHAUSTIVE, NON-OVERLAPPING partition of every tag in the live spec — each
+  // backend tag belongs to exactly one scoped task. Together with `openapi` they
+  // cover the full schema; full `openapi` remains the only generator. When you
+  // add a backend router tag, assign it to exactly one scope here (re-audit with
+  // tools/codegen/check-openapi-tag-partition.ts against a running main-api).
   {
     id: 'openapi-assets',
     description: 'Scoped OpenAPI smoke-check for assets/providers/media tags',
@@ -91,7 +94,7 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     script: 'tools/codegen/generate-openapi-types.ts',
     args: [
       '--include-tags',
-      'prompts,prompt-packs,prompt-tools,prompts-git,templates,block-templates,block-fit,authoring-modes,vocabulary,semantic-packs,semantic-surface,latin-enhancer,ontology',
+      'prompts,prompt-operations,prompt-packs,prompt-tools,prompts-git,templates,block-templates,block-fit,authoring-modes,vocabulary,semantic-packs,semantic-surface,latin-enhancer,ontology',
     ],
     requires: 'main-api',
     supportsCheck: true,
@@ -117,7 +120,7 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     script: 'tools/codegen/generate-openapi-types.ts',
     args: [
       '--include-tags',
-      'runtime,automation,testing,contracts,device-agents,agent-profiles,agent-tokens,sync,multi-server,server,service-management,services,accounts,users,auth,identity',
+      'runtime,automation,testing,contracts,device-agents,agent-profiles,agent-tokens,sync,multi-server,server,service-management,services,Health,Version,accounts,users,auth,identity',
     ],
     requires: 'main-api',
     supportsCheck: true,
@@ -130,8 +133,23 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     script: 'tools/codegen/generate-openapi-types.ts',
     args: [
       '--include-tags',
-      'dev,devtools,admin,codegen,plugins,logs,migrations,meta,plans,files,notifications,analyzers,analyses,analysis,analytics,ai,assistants,cache,llm,llm-cache,models,diagnostics,debug,performance,audit,stats,tools,sql,database,docs,ui-catalog,app-map,architecture,introspection,inspector,preview,metadata,git,versioning,import',
+      'dev,devtools,admin,codegen,plugins,logs,migrations,meta,plans,files,notifications,chat,chat-tabs,community,analyzers,analyses,analysis,analytics,ai,assistants,cache,llm,llm-cache,models,diagnostics,debug,performance,audit,stats,tools,sql,database,docs,ui-catalog,app-map,architecture,introspection,inspector,preview,metadata,git,versioning,import',
     ],
+    requires: 'main-api',
+    supportsCheck: true,
+    checkOnly: true,
+    groups: ['types', 'openapi'],
+  },
+  {
+    // Audit task (writes nothing): asserts the five openapi-* scopes above stay
+    // an exhaustive, non-overlapping partition of the live spec's tags. Named
+    // WITHOUT an `openapi-` prefix on purpose — the output-stats resolver
+    // prefix-walks `openapi-*` ids back to the canonical openapi dir, which would
+    // attribute that dir's file stats to this task. No output to attribute here.
+    id: 'tag-partition',
+    description:
+      'Audit: scoped openapi-* tasks form an exhaustive, non-overlapping tag partition of the live spec',
+    script: 'tools/codegen/check-openapi-tag-partition.ts',
     requires: 'main-api',
     supportsCheck: true,
     checkOnly: true,

@@ -717,7 +717,11 @@ function CodegenTaskDetail({
         )}
         {task.check_only && (
           <span className="text-[10px] text-gray-500 italic">
-            Check-only — full <span className="font-mono">openapi</span> task is the only generator.
+            {isOpenapiScoped ? (
+              <>Check-only — full <span className="font-mono">openapi</span> task is the only generator.</>
+            ) : (
+              <>Check-only — verifies an invariant; it doesn&apos;t generate output.</>
+            )}
           </span>
         )}
         {task.timeout_ms && (
