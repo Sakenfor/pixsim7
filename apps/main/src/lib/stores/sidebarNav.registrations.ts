@@ -27,7 +27,7 @@ const SIDEBAR_NAV_KEYS = [
   'content-map:nav',
   'dev-tools:nav',
   'doc-browser:nav',
-  'game-panel:sidebar',
+  'game-panel:nav',
   'game-world-editor:nav',
   'performance-panel:nav',
   'plans-panel:nav',

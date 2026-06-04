@@ -136,7 +136,7 @@ export function Game2D() {
   const nav = useSidebarNav<string, string>({
     sections: NAV_SECTIONS,
     initial: 'play',
-    storageKey: 'game-panel:sidebar',
+    storageKey: 'game-panel:nav',
   });
 
   // ========================================
@@ -1279,7 +1279,7 @@ export function Game2D() {
         sidebarTitle={<span className="truncate text-sm">Game</span>}
         collapsible
         resizable
-        persistKey="game-panel:sidebar"
+        persistKey="game-panel-sidebar"
         autoHideTitle
       >
         {nav.activeId === 'play' ? (
