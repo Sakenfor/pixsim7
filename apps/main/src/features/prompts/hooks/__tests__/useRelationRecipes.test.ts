@@ -86,3 +86,54 @@ describe('matchRecipe tiers', () => {
     expect(matchRecipe(recipes, { line_kind: 'freestanding' })).toBeNull();
   });
 });
+
+describe('matchRecipe generation-scope gates', () => {
+  const typed: RelationRecipe = {
+    id: 'chain_actor_to_actor',
+    context: { line_kind: 'chain', prev_kind: 'var', next_kind: 'var', lhs_kind: 'ACTOR', rhs_kind: 'ACTOR' },
+    operators: [{ op: '>', swap_targets: ['>'] }],
+  };
+  const generic: RelationRecipe = {
+    id: 'chain_var_to_var',
+    context: { line_kind: 'chain', prev_kind: 'var', next_kind: 'var' },
+    operators: [{ op: '>', swap_targets: ['>'] }],
+  };
+  const scopedOp: RelationRecipe = {
+    id: 'chain_var_to_var_i2v',
+    context: { line_kind: 'chain', prev_kind: 'var', next_kind: 'var', operation_types: ['image_to_video'] },
+    operators: [{ op: '>', swap_targets: ['>'] }],
+  };
+  const scopedModel: RelationRecipe = {
+    id: 'chain_var_to_var_pixverse',
+    context: { line_kind: 'chain', prev_kind: 'var', next_kind: 'var', models: ['pixverse-i2v-v6'] },
+    operators: [{ op: '>', swap_targets: ['>'] }],
+  };
+  const recipes = [scopedOp, scopedModel, generic, typed];
+  const varVar = { line_kind: 'chain', prev_kind: 'var', next_kind: 'var' } as const;
+
+  it('prefers an operation-scoped recipe when the operation matches', () => {
+    expect(matchRecipe(recipes, { ...varVar, operation_type: 'image_to_video' })).toBe(scopedOp);
+  });
+
+  it('prefers a model-scoped recipe when the model matches', () => {
+    expect(matchRecipe(recipes, { ...varVar, model_id: 'pixverse-i2v-v6' })).toBe(scopedModel);
+  });
+
+  it('falls back to the unscoped recipe when no scope matches', () => {
+    expect(matchRecipe(recipes, { ...varVar, operation_type: 'text_to_image' })).toBe(generic);
+    expect(matchRecipe(recipes, varVar)).toBe(generic);
+  });
+
+  it('keeps structural specificity primary (typed beats a scoped generic)', () => {
+    // ACTOR↔ACTOR on i2v still resolves to the typed recipe, not the
+    // operation-scoped generic var→var.
+    expect(
+      matchRecipe(recipes, {
+        ...varVar,
+        lhs_kind: 'ACTOR',
+        rhs_kind: 'ACTOR',
+        operation_type: 'image_to_video',
+      }),
+    ).toBe(typed);
+  });
+});

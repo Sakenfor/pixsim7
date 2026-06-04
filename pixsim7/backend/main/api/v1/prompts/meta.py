@@ -547,6 +547,12 @@ class RelationRecipeContext(BaseModel):
     # kinds (most-specific tier in matchRecipe / find_recipe).
     lhs_kind: Optional[str] = None
     rhs_kind: Optional[str] = None
+    # Generation-scope gates (operator-layer analog of an op signature's
+    # allowed_modalities). A recipe declaring these is eligible only when the
+    # active model / operation is in the list; absent = matches any. A scoped
+    # recipe is preferred over an unscoped one within the same structural tier.
+    models: Optional[List[str]] = None
+    operation_types: Optional[List[str]] = None
 
 
 class RelationRecipe(BaseModel):

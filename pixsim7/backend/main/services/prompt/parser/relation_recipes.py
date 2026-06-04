@@ -75,6 +75,28 @@ def var_semantic_kind(text: Optional[str]) -> Optional[str]:
     return family or None
 
 
+def _recipe_model_eligible(
+    recipe: Dict[str, Any],
+    model_id: Optional[str],
+    operation_type: Optional[str],
+) -> bool:
+    """True when the active model/operation passes a recipe's scope gates."""
+    ctx = recipe.get("context") or {}
+    models = ctx.get("models") or []
+    op_types = ctx.get("operation_types") or []
+    if models and not (model_id and model_id in models):
+        return False
+    if op_types and not (operation_type and operation_type in op_types):
+        return False
+    return True
+
+
+def _recipe_is_scoped(recipe: Dict[str, Any]) -> bool:
+    """True when a recipe declares any generation-scope gate."""
+    ctx = recipe.get("context") or {}
+    return bool(ctx.get("models") or ctx.get("operation_types"))
+
+
 def find_recipe(
     line_kind: str,
     *,
@@ -82,16 +104,21 @@ def find_recipe(
     next_kind: Optional[str] = None,
     lhs_kind: Optional[str] = None,
     rhs_kind: Optional[str] = None,
+    model_id: Optional[str] = None,
+    operation_type: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Match a recipe to the given context.
 
-    Resolution order (most-specific first):
+    Structural specificity is the primary axis; generation-scope is the
+    tiebreaker within each tier. Resolution order (most-specific first):
       1. (line_kind, prev_kind, next_kind, lhs_kind, rhs_kind) — typed
          relation; only when both var kinds are supplied.
       2. (line_kind, prev_kind, next_kind) exact, on recipes that do NOT
          declare lhs/rhs (those are tier-1 only).
       3. line_kind only (no prev/next constraints)
       4. None (caller falls back to grammar.operator_vocabulary)
+    Recipes excluded by their model/operation gates are dropped up front; a
+    scoped recipe beats an unscoped one within the same tier.
 
     Mirror of the frontend ``matchRecipe`` (useRelationRecipes.ts); kept in
     sync for parity. `line_kind` values follow tokenizer line node kinds:
@@ -101,42 +128,49 @@ def find_recipe(
       - "freestanding"   — bare UPPER_IDENT line (no operator)
     """
     recipes: List[Dict[str, Any]] = _RAW.get("recipes", []) or []
+    eligible = [r for r in recipes if _recipe_model_eligible(r, model_id, operation_type)]
+
+    def pick(pred) -> Optional[Dict[str, Any]]:
+        candidates = [r for r in eligible if pred(r)]
+        scoped = next((r for r in candidates if _recipe_is_scoped(r)), None)
+        if scoped is not None:
+            return scoped
+        return next((r for r in candidates if not _recipe_is_scoped(r)), None)
 
     # Tier 1: fully-typed relation (both sides are vars of named kinds).
     if prev_kind is not None and next_kind is not None and lhs_kind and rhs_kind:
-        for r in recipes:
-            ctx = r.get("context") or {}
-            if (
-                ctx.get("line_kind") == line_kind
-                and ctx.get("prev_kind") == prev_kind
-                and ctx.get("next_kind") == next_kind
-                and ctx.get("lhs_kind") == lhs_kind
-                and ctx.get("rhs_kind") == rhs_kind
-            ):
-                return r
+        hit = pick(
+            lambda r: (
+                (r.get("context") or {}).get("line_kind") == line_kind
+                and (r.get("context") or {}).get("prev_kind") == prev_kind
+                and (r.get("context") or {}).get("next_kind") == next_kind
+                and (r.get("context") or {}).get("lhs_kind") == lhs_kind
+                and (r.get("context") or {}).get("rhs_kind") == rhs_kind
+            )
+        )
+        if hit is not None:
+            return hit
 
     # Tier 2: prev/next exact, ignoring var kinds — skip recipes that declare
     # lhs/rhs (a typed recipe must not be chosen for a non-matching var pair).
     if prev_kind is not None and next_kind is not None:
-        for r in recipes:
-            ctx = r.get("context") or {}
-            if (
-                ctx.get("line_kind") == line_kind
-                and ctx.get("prev_kind") == prev_kind
-                and ctx.get("next_kind") == next_kind
-                and not ctx.get("lhs_kind")
-                and not ctx.get("rhs_kind")
-            ):
-                return r
+        hit = pick(
+            lambda r: (
+                (r.get("context") or {}).get("line_kind") == line_kind
+                and (r.get("context") or {}).get("prev_kind") == prev_kind
+                and (r.get("context") or {}).get("next_kind") == next_kind
+                and not (r.get("context") or {}).get("lhs_kind")
+                and not (r.get("context") or {}).get("rhs_kind")
+            )
+        )
+        if hit is not None:
+            return hit
 
     # Tier 3: line_kind alone.
-    for r in recipes:
-        ctx = r.get("context") or {}
-        if (
-            ctx.get("line_kind") == line_kind
-            and not ctx.get("prev_kind")
-            and not ctx.get("next_kind")
-        ):
-            return r
-
-    return None
+    return pick(
+        lambda r: (
+            (r.get("context") or {}).get("line_kind") == line_kind
+            and not (r.get("context") or {}).get("prev_kind")
+            and not (r.get("context") or {}).get("next_kind")
+        )
+    )

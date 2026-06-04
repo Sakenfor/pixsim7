@@ -18,6 +18,7 @@ export interface PromptComposerStateAdapter {
   runContextSeed?: Record<string, unknown>;
   onPromptToolRunContextPatch?: PromptComposerProps['onPromptToolRunContextPatch'];
   onSpanProvenanceChange?: PromptComposerProps['onSpanProvenanceChange'];
+  recipeContext?: PromptComposerProps['recipeContext'];
 }
 
 export interface PromptComposerSurfaceDisplay {
@@ -86,6 +87,7 @@ export function PromptComposerSurface({ adapter, display }: PromptComposerSurfac
           runContextSeed={adapter.runContextSeed}
           onPromptToolRunContextPatch={adapter.onPromptToolRunContextPatch}
           onSpanProvenanceChange={adapter.onSpanProvenanceChange}
+          recipeContext={adapter.recipeContext}
           disabled={adapter.disabled}
           variant={display?.variant}
           showCounter={display?.showCounter}

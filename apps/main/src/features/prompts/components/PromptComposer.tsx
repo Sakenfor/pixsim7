@@ -248,6 +248,10 @@ export interface PromptComposerProps {
    *  hold the most-recent snapshot and ship it with the prompt-save payload
    *  so PromptVersion.span_provenance gets persisted. */
   onSpanProvenanceChange?: (entries: SpanProvenanceEntry[]) => void;
+  /** Active generation scope, used to pick model/operation-scoped operator
+   *  recipes in the click-to-edit popover. Omit when the composer isn't bound
+   *  to a model (e.g. library editing) — matching falls back to unscoped. */
+  recipeContext?: { modelId?: string; operationType?: string };
 }
 
 function truncate(text: string, maxLen: number) {
@@ -347,6 +351,7 @@ export function PromptComposer({
   runContextSeed,
   onPromptToolRunContextPatch,
   onSpanProvenanceChange,
+  recipeContext,
 }: PromptComposerProps) {
   const composerId = useId();
   const api = useApi();
@@ -2249,6 +2254,8 @@ export function PromptComposer({
                         next_kind: op.nextKind,
                         lhs_kind: op.prevVarKind,
                         rhs_kind: op.nextVarKind,
+                        model_id: recipeContext?.modelId,
+                        operation_type: recipeContext?.operationType,
                       });
                       // Match by raw op so `===>` finds the `>` entry via the
                       // last-char fallback inside matchOperator.

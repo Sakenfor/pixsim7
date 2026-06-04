@@ -49,6 +49,14 @@ export interface RelationRecipeContext {
    */
   lhs_kind?: string;
   rhs_kind?: string;
+  /**
+   * Generation-scope gates (operator-layer analog of an op signature's
+   * allowed_modalities). A recipe declaring these is eligible only when the
+   * active model / operation is in the list; absent = matches any. A scoped
+   * recipe is preferred over an unscoped one within the same structural tier.
+   */
+  models?: string[];
+  operation_types?: string[];
 }
 
 export interface RelationRecipe {
@@ -122,15 +130,36 @@ export function varSemanticKind(text: string | null | undefined): string | undef
   return family || undefined;
 }
 
+/** True when the active generation model/operation passes a recipe's gates. */
+function recipeModelEligible(
+  recipe: RelationRecipe,
+  modelId: string | undefined,
+  operationType: string | undefined,
+): boolean {
+  const { models, operation_types } = recipe.context;
+  if (models && models.length > 0 && !(modelId && models.includes(modelId))) return false;
+  if (operation_types && operation_types.length > 0 && !(operationType && operation_types.includes(operationType))) {
+    return false;
+  }
+  return true;
+}
+
+/** True when a recipe declares any generation-scope gate. */
+function recipeIsScoped(recipe: RelationRecipe): boolean {
+  return !!(recipe.context.models?.length || recipe.context.operation_types?.length);
+}
+
 /**
- * Find the best-matching recipe for a given context. Resolution
- * (most-specific first):
- *   1. (line_kind, prev_kind, next_kind, lhs_kind, rhs_kind) — typed
- *      relation; only when the context supplies both var kinds.
- *   2. (line_kind, prev_kind, next_kind) exact, on recipes that do NOT
- *      declare lhs/rhs (those are tier-1 only).
- *   3. line_kind alone (no prev/next constraints)
- *   4. null (caller falls back to grammar's universal swap_targets)
+ * Find the best-matching recipe for a given context. Structural specificity is
+ * the primary axis; generation-scope is the tiebreaker within each tier.
+ * Resolution (most-specific first):
+ *   1. (line_kind, prev_kind, next_kind, lhs_kind, rhs_kind) — typed relation.
+ *   2. (line_kind, prev_kind, next_kind) on recipes that do NOT declare lhs/rhs.
+ *   3. line_kind alone (no prev/next constraints).
+ *   4. null (caller falls back to grammar's universal swap_targets).
+ * Recipes whose model/operation gates exclude the active context are dropped
+ * up front; within each tier a model/operation-scoped recipe beats an unscoped
+ * one (so an i2v overlay overrides the generic chain for that operation only).
  */
 export function matchRecipe(
   recipes: RelationRecipe[],
@@ -140,11 +169,22 @@ export function matchRecipe(
     next_kind?: ChainElementKind;
     lhs_kind?: string;
     rhs_kind?: string;
+    model_id?: string;
+    operation_type?: string;
   },
 ): RelationRecipe | null {
+  const eligible = recipes.filter((r) =>
+    recipeModelEligible(r, context.model_id, context.operation_type),
+  );
+  // Within a structural candidate set, prefer a generation-scoped recipe.
+  const pick = (pred: (r: RelationRecipe) => boolean): RelationRecipe | null => {
+    const candidates = eligible.filter(pred);
+    return candidates.find(recipeIsScoped) ?? candidates.find((r) => !recipeIsScoped(r)) ?? null;
+  };
+
   // Tier 1: fully-typed relation (both sides are vars of named kinds).
   if (context.prev_kind && context.next_kind && context.lhs_kind && context.rhs_kind) {
-    const typed = recipes.find(
+    const typed = pick(
       (r) =>
         r.context.line_kind === context.line_kind &&
         r.context.prev_kind === context.prev_kind &&
@@ -158,7 +198,7 @@ export function matchRecipe(
   // declare lhs/rhs (a typed recipe must not be chosen for a non-matching
   // pair of vars).
   if (context.prev_kind && context.next_kind) {
-    const exact = recipes.find(
+    const exact = pick(
       (r) =>
         r.context.line_kind === context.line_kind &&
         r.context.prev_kind === context.prev_kind &&
@@ -169,13 +209,11 @@ export function matchRecipe(
     if (exact) return exact;
   }
   // Tier 3: line_kind alone.
-  return (
-    recipes.find(
-      (r) =>
-        r.context.line_kind === context.line_kind &&
-        !r.context.prev_kind &&
-        !r.context.next_kind,
-    ) ?? null
+  return pick(
+    (r) =>
+      r.context.line_kind === context.line_kind &&
+      !r.context.prev_kind &&
+      !r.context.next_kind,
   );
 }
 

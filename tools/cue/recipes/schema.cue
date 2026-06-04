@@ -55,6 +55,15 @@ package recipes
     // of the named kinds (most-specific tier in matchRecipe / find_recipe).
     lhs_kind?:   string
     rhs_kind?:   string
+    // Generation-scope gates — the operator-layer analog of an op signature's
+    // `allowed_modalities`. A recipe that declares `models` / `operation_types`
+    // is eligible only when the active generation model / operation is in the
+    // list; absent = matches any. Within each structural tier (typed →
+    // prev/next → line_kind) a scoped recipe is preferred over an unscoped one,
+    // so e.g. an i2v-tuned run_semantics table can override the generic chain
+    // for one model while every other model falls back to the unscoped recipe.
+    models?:          [...string]
+    operation_types?: [...string]
 }
 
 // ── recipe ──────────────────────────────────────────────────────────────

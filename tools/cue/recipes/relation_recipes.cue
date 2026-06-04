@@ -7,7 +7,7 @@ package recipes
 // label recognised shapes and seed the type-swap UI.
 
 relation_recipes: #RelationRecipes & {
-    version: "2.1.0"
+    version: "2.3.0"
 
     recipes: [
         // ── var = body | var > body | var < body ──────────────────────
@@ -66,8 +66,11 @@ relation_recipes: #RelationRecipes & {
                     meaning: "directed action toward"
                     run_semantics: {
                         "1": "default"
+                        "2": "firm"
                         "3": "intense"
+                        "4": "strong"
                         "5": "very strong / abrupt"
+                        "6": "severe"
                         "7": "extreme / forceful"
                     }
                     swap_targets: [">", "<", "=", "?"]
@@ -87,6 +90,9 @@ relation_recipes: #RelationRecipes & {
                     meaning: "identification / role binding"
                     run_semantics: {
                         "1": "binding"
+                        "2": "firm binding"
+                        "3": "strong binding"
+                        "4": "tight binding"
                         "5": "emphatic binding"
                     }
                     swap_targets: ["=", ">", "<"]
@@ -98,6 +104,60 @@ relation_recipes: #RelationRecipes & {
                     model: "pixverse-i2v-v6"
                     date:  "2026-04-27"
                     tags: ["seed", "i2v"]
+                },
+            ]
+        },
+
+        // ── var <op> var — i2v motion-tuned overlay ───────────────────
+        // Same structural shape as `chain_var_to_var`, but scoped to the
+        // image_to_video operation: run-length reads as *motion intensity*
+        // rather than the generic "directed action". For any non-i2v model
+        // this recipe is ineligible and matching falls back to the unscoped
+        // `chain_var_to_var`. Demonstrates context.operation_types scoping —
+        // add `models: [...]` the same way to gate on a specific model id.
+        {
+            id:    "chain_var_to_var_i2v"
+            label: "Relation chain (i2v motion)"
+            context: {
+                line_kind:       "chain"
+                prev_kind:       "var"
+                next_kind:       "var"
+                operation_types: ["image_to_video"]
+            }
+            operators: [
+                {
+                    op:      ">"
+                    meaning: "drives motion toward (run length = motion intensity)"
+                    run_semantics: {
+                        "1": "drifts toward"
+                        "2": "moves toward"
+                        "3": "pushes toward"
+                        "4": "drives toward"
+                        "5": "surges toward"
+                        "6": "charges toward"
+                        "7": "slams toward"
+                    }
+                    swap_targets: [">", "<", "=", "?"]
+                },
+                {
+                    op:      "<"
+                    meaning: "is driven back by (run length = motion intensity)"
+                    run_semantics: {
+                        "1": "eases back"
+                        "2": "gives ground"
+                        "3": "recoils"
+                        "4": "reels back"
+                        "5": "is flung back"
+                    }
+                    swap_targets: ["<", ">", "=", "?"]
+                },
+            ]
+            notes: [
+                {
+                    text:  "i2v-scoped run_semantics overlay — motion-intensity framing. Falls back to chain_var_to_var for non-i2v ops."
+                    model: "pixverse-i2v-v6"
+                    date:  "2026-06-02"
+                    tags: ["seed", "i2v", "model-scoped"]
                 },
             ]
         },
@@ -126,8 +186,11 @@ relation_recipes: #RelationRecipes & {
                     meaning: "acts on / directs toward the other character"
                     run_semantics: {
                         "1": "engages"
+                        "2": "presses"
                         "3": "assertive"
+                        "4": "commanding"
                         "5": "forceful / dominant"
+                        "6": "domineering"
                         "7": "overwhelming"
                     }
                     swap_targets: [">", "<", "=", "?"]
@@ -137,7 +200,9 @@ relation_recipes: #RelationRecipes & {
                     meaning: "yields to / is acted on by the other character"
                     run_semantics: {
                         "1": "responds"
+                        "2": "defers"
                         "3": "submits"
+                        "4": "gives way"
                         "5": "fully yields"
                     }
                     swap_targets: ["<", ">", "=", "?"]
@@ -147,6 +212,9 @@ relation_recipes: #RelationRecipes & {
                     meaning: "mutual / paired with the other character"
                     run_semantics: {
                         "1": "paired"
+                        "2": "close"
+                        "3": "bonded"
+                        "4": "intertwined"
                         "5": "deeply entwined"
                     }
                     swap_targets: ["=", ">", "<"]
