@@ -165,12 +165,30 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     groups: ['prompt', 'cue'],
   },
   {
+    id: 'cue-grammar',
+    description: 'Generate grammar_rules.json (tokenizer grammar) from CUE sources',
+    // Also writes packages/core/prompt/src/grammar_rules.json (TS copy); the
+    // backend parser copy is surfaced here as the canonical output.
+    script: 'tools/codegen/generate-grammar-rules.ts',
+    outputPath: 'pixsim7/backend/main/services/prompt/parser/grammar_rules.json',
+    supportsCheck: true,
+    groups: ['prompt', 'cue'],
+  },
+  {
     id: 'cue-projection-corpus',
     description: 'Regenerate primitive-projection eval corpus from CUE variants',
     script: 'tools/codegen/generate-primitive-projection-corpus.ts',
     outputPath: 'pixsim7/backend/tests/blocks/evals/primitive_projection/eval_corpus_autogen.json',
     supportsCheck: true,
     groups: ['prompt', 'cue', 'tests'],
+  },
+  {
+    id: 'cue-recipes',
+    description: 'Generate relation_recipes.json (operator semantics) from CUE sources',
+    script: 'tools/codegen/generate-relation-recipes.ts',
+    outputPath: 'pixsim7/backend/main/services/prompt/parser/relation_recipes.json',
+    supportsCheck: true,
+    groups: ['prompt', 'cue'],
   },
   {
     id: 'app-map',
