@@ -124,8 +124,8 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver impor
 )
 from pixsim7.backend.main.workers.worker_concurrency import (
     seed_agnostic_prompt_group_hash,
-    bump_render_moderated_count,
-    clear_render_moderated_count,
+    bump_filtered_retry_count,
+    clear_filtered_retry_count,
 )
 from pixsim7.backend.main.services.provider.pixverse_image_recovery import (
     RearmStatus,
@@ -1802,11 +1802,12 @@ async def _poll_single_generation(
                     # Mark generation as completed
                     await generation_service.mark_completed(generation.id, asset.id)
 
-                    # Render-moderation retry cap: a clean completion proves this
-                    # prompt CAN pass — reset its consecutive-fail streak so
-                    # auto-retry is fully restored.
-                    await clear_render_moderated_count(
+                    # Filtered-retry cap: a clean completion proves this prompt
+                    # CAN pass for this operation — reset its consecutive-fail
+                    # streak so auto-retry is fully restored.
+                    await clear_filtered_retry_count(
                         submission.provider_id,
+                        getattr(generation_model.operation_type, "value", generation_model.operation_type),
                         seed_agnostic_prompt_group_hash(generation_model),
                     )
 
@@ -1936,14 +1937,21 @@ async def _poll_single_generation(
                     else:
                         error_code = None
 
-                    # Render-moderation retry cap: bump the consecutive-fail
-                    # streak for this prompt+image. The auto-retry handler reads
-                    # this streak and suppresses AUTO-retry once it crosses the
-                    # cap (the job stays FAILED — still manually retryable, never
-                    # paused). A success clears the streak (COMPLETED branch).
-                    if error_code == GenerationErrorCode.CONTENT_RENDER_MODERATED.value:
-                        await bump_render_moderated_count(
+                    # Filtered-retry cap: bump the consecutive-fail streak for
+                    # this prompt+image, per operation. The auto-retry handler
+                    # reads this streak and (when the operation has a configured
+                    # cap) suppresses AUTO-retry once it crosses the cap (the job
+                    # stays FAILED — still manually retryable, never paused). A
+                    # success clears the streak (COMPLETED branch). Tracked for
+                    # both filtered codes; whether a cap/backoff actually applies
+                    # is decided per-operation by resolve_filtered_retry_policy.
+                    if error_code in (
+                        GenerationErrorCode.CONTENT_RENDER_MODERATED.value,
+                        GenerationErrorCode.CONTENT_FILTERED.value,
+                    ):
+                        await bump_filtered_retry_count(
                             submission.provider_id,
+                            getattr(generation_model.operation_type, "value", generation_model.operation_type),
                             seed_agnostic_prompt_group_hash(generation_model),
                             gen_logger=logger,
                         )

@@ -502,6 +502,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
           <PromptModerationChip
             prompt={promptValue}
             imageAssetId={primaryAssetId}
+            operationType={operationType}
             grain={resolvedPromptSettings.moderationGrain ?? 'auto'}
           />
         ) : undefined,

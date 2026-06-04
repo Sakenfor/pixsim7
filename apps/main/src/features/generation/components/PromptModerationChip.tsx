@@ -11,16 +11,22 @@
  *
  * Hovering opens a richer breakdown (both scopes, the streak-vs-cap explanation,
  * and what "fast-filtered" means). The popover has hover-intent: it stays open
- * while you move onto it and only closes after a short grace delay, so it no
- * longer snaps shut the instant the pointer leaves the badge.
+ * while you move onto it and only closes after a short grace delay.
+ *
+ * `operationType` scopes the stats to one operation (i2v vs i2i etc.) and, for
+ * admins, unlocks an inline gear to tweak that operation's filtered-retry policy
+ * (cap + backoff) without leaving the prompt box.
  *
  * `grain` controls which scope drives the inline number:
  *  - 'auto'   — prefer prompt+image stats, fall back to prompt-only (default)
  *  - 'prompt' — always show the broader prompt-only track record
  */
+import { isAdminUser, useAuthStore } from '@pixsim7/shared.auth.core';
 import { Badge } from '@pixsim7/shared.ui';
 import { useEffect, useRef, useState } from 'react';
 
+import { pixsimClient } from '@lib/api';
+import { Icon } from '@lib/icons';
 
 import { usePromptModerationStats } from '../hooks/usePromptModerationStats';
 
@@ -35,19 +41,25 @@ function pct(rate: number | null): number {
 export function PromptModerationChip({
   prompt,
   imageAssetId,
+  operationType = null,
   grain = 'auto',
 }: {
   prompt: string;
   imageAssetId: number | null;
+  operationType?: string | null;
   grain?: PromptModerationGrain;
 }) {
   // Self-contained: fetching here (rather than via a parent hook) means the
   // chip's own updates re-render only the chip, never the heavy composer.
-  const stats = usePromptModerationStats(prompt, imageAssetId);
+  const stats = usePromptModerationStats(prompt, imageAssetId, operationType);
+  const isAdmin = useAuthStore((s) => isAdminUser(s.user));
 
   // Hover-intent: open immediately, but defer close so the pointer can travel
   // the gap onto the popover (a descendant of the wrapper) without it vanishing.
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  // Optimistic local copy of cap/defer after a save (avoids a settings refetch).
+  const [localPolicy, setLocalPolicy] = useState<{ cap: number; defer: number } | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const cancelClose = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -58,6 +70,7 @@ export function PromptModerationChip({
     setOpen(true);
   };
   const scheduleClose = () => {
+    if (editing) return; // never auto-close mid-edit (keyboard may leave the box)
     cancelClose();
     closeTimer.current = setTimeout(() => setOpen(false), CLOSE_GRACE_MS);
   };
@@ -84,8 +97,10 @@ export function PromptModerationChip({
 
   const ratePct = pct(headline.rate);
   const hasStreak = stats.streak >= 1;
-  const atCap = stats.streak >= stats.cap;
-  const near = stats.streak >= Math.ceil(stats.cap * 0.6);
+  const cap = localPolicy?.cap ?? stats.cap;
+  const defer = localPolicy?.defer ?? stats.defer_seconds;
+  const atCap = stats.streak >= cap;
+  const near = stats.streak >= Math.ceil(cap * 0.6);
   const empty = total === 0 && !hasStreak;
 
   // Streak severity drives the color while failing; otherwise the rate does.
@@ -104,7 +119,7 @@ export function PromptModerationChip({
           : 'red';
 
   // Inline label: rate + raw counts so confidence is visible without hovering.
-  const streakPrefix = hasStreak ? `⟳${stats.streak}/${stats.cap} ` : '';
+  const streakPrefix = hasStreak ? `⟳${stats.streak}/${cap} ` : '';
   const label = empty ? '—' : `${streakPrefix}✓${ratePct}% ${headline.passed}/${total}`;
 
   const headerColor = hasStreak
@@ -118,6 +133,8 @@ export function PromptModerationChip({
         : ratePct >= 25
           ? 'text-yellow-300'
           : 'text-red-300';
+
+  const canEditPolicy = isAdmin && !!operationType;
 
   return (
     <span
@@ -140,8 +157,21 @@ export function PromptModerationChip({
         >
           <div className="rounded-lg border border-gray-700 bg-gray-900/95 px-3 py-2 text-left
                           text-xs text-white shadow-xl backdrop-blur-md space-y-1.5">
-            <div className={`font-semibold ${headerColor}`}>
-              Render-moderation track record
+            <div className="flex items-center justify-between gap-2">
+              <span className={`font-semibold ${headerColor}`}>
+                Render-moderation track record
+              </span>
+              {canEditPolicy && !editing && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setEditing(true)}
+                  title="Tune this operation's auto-retry cap + backoff"
+                  className="text-neutral-400 hover:text-white transition-colors"
+                >
+                  <Icon name="sliders" size={13} />
+                </button>
+              )}
             </div>
 
             {empty ? (
@@ -173,8 +203,31 @@ export function PromptModerationChip({
             {hasStreak && (
               <div className="leading-snug">
                 {atCap
-                  ? `⚠ Fast-filtered ${stats.streak}× in a row — auto-retry has stopped (cap ${stats.cap}). Edit the prompt to reset.`
-                  : `Fast-filtered ${stats.streak}× in a row — auto-retry stops at ${stats.cap}. Editing the prompt resets it.`}
+                  ? `⚠ Fast-filtered ${stats.streak}× in a row — auto-retry has stopped (cap ${cap}). Edit the prompt to reset.`
+                  : `Fast-filtered ${stats.streak}× in a row — auto-retry stops at ${cap}. Editing the prompt resets it.`}
+              </div>
+            )}
+
+            {/* Per-operation auto-retry policy (admin-editable via the gear). */}
+            {operationType && (
+              <div className="border-t border-white/15 pt-1">
+                {editing ? (
+                  <PolicyEditor
+                    operationType={operationType}
+                    initialCap={cap}
+                    initialDefer={defer}
+                    onSaved={(next) => {
+                      setLocalPolicy(next);
+                      setEditing(false);
+                    }}
+                    onCancel={() => setEditing(false)}
+                  />
+                ) : (
+                  <div className="flex justify-between gap-3 tabular-nums opacity-70">
+                    <span>Auto-retry</span>
+                    <span>cap {cap} · backoff {defer}s</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -186,5 +239,100 @@ export function PromptModerationChip({
         </div>
       )}
     </span>
+  );
+}
+
+/** Inline editor for one operation's filtered-retry policy (admin only). */
+function PolicyEditor({
+  operationType,
+  initialCap,
+  initialDefer,
+  onSaved,
+  onCancel,
+}: {
+  operationType: string;
+  initialCap: number;
+  initialDefer: number;
+  onSaved: (next: { cap: number; defer: number }) => void;
+  onCancel: () => void;
+}) {
+  const [capStr, setCapStr] = useState(String(initialCap));
+  const [deferStr, setDeferStr] = useState(String(initialDefer));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    const cap = Math.round(Number(capStr));
+    const defer = Math.round(Number(deferStr));
+    if (!Number.isFinite(cap) || cap < 1 || cap > 100 || !Number.isFinite(defer) || defer < 1 || defer > 600) {
+      setError('cap 1–100, backoff 1–600s');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await pixsimClient.patch(
+        `/admin/generation-worker/filtered-retry/${operationType}`,
+        { cap, defer_seconds: defer },
+      );
+      onSaved({ cap, defer });
+    } catch {
+      setError('Save failed');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <label className="flex items-center gap-1">
+          <span className="opacity-70">cap</span>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={capStr}
+            onChange={(e) => setCapStr(e.target.value)}
+            className="w-12 rounded bg-gray-800 border border-gray-600 px-1 py-0.5 text-white tabular-nums"
+          />
+        </label>
+        <label className="flex items-center gap-1">
+          <span className="opacity-70">backoff</span>
+          <input
+            type="number"
+            min={1}
+            max={600}
+            value={deferStr}
+            onChange={(e) => setDeferStr(e.target.value)}
+            className="w-14 rounded bg-gray-800 border border-gray-600 px-1 py-0.5 text-white tabular-nums"
+          />
+          <span className="opacity-70">s</span>
+        </label>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={saving}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={save}
+          className="rounded bg-accent/80 hover:bg-accent px-2 py-0.5 text-white disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onCancel}
+          className="rounded bg-gray-700 hover:bg-gray-600 px-2 py-0.5 text-white"
+        >
+          Cancel
+        </button>
+        {error && <span className="text-red-400">{error}</span>}
+      </div>
+      <div className="opacity-50 leading-snug">
+        Applies to <span className="font-mono">{operationType}</span> auto-retries
+        (per prompt+image). i2i is opt-in — saving here enables its backoff/cap.
+      </div>
+    </div>
   );
 }

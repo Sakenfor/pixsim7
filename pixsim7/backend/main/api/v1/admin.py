@@ -833,6 +833,61 @@ async def update_generation_worker_config(
     return ws
 
 
+class FilteredRetryOverrideUpdate(BaseModel):
+    """Per-operation filtered-retry override. Omit/null a field to leave it unset
+    (cap omitted → backoff-only); send an empty body to clear the operation."""
+    cap: int | None = Field(default=None, ge=1, le=100)
+    defer_seconds: int | None = Field(default=None, ge=1, le=600)
+
+
+@router.patch(
+    "/admin/generation-worker/filtered-retry/{operation_type}",
+    response_model=GenerationWorkerSettings,
+)
+async def update_filtered_retry_override(
+    operation_type: str,
+    body: FilteredRetryOverrideUpdate,
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+):
+    """Set/clear the per-operation filtered-retry override (admin only, persisted).
+
+    An empty/all-null body clears the override for ``operation_type`` (falls back
+    to defaults). Mirrors the per-error-code override flow in generations.py.
+    """
+    from pixsim7.backend.main.services.system_config import patch_config, apply_namespace
+    from pixsim7.backend.main.domain.enums import OperationType
+
+    op = (operation_type or "").strip().lower()
+    try:
+        OperationType(op)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid operation_type: {operation_type}")
+
+    settings = get_worker_settings()
+    current = dict(settings.filtered_retry_overrides or {})
+    entry = {
+        k: v
+        for k, v in {"cap": body.cap, "defer_seconds": body.defer_seconds}.items()
+        if v is not None
+    }
+    if entry:
+        current[op] = entry
+    else:
+        current.pop(op, None)
+
+    row = await patch_config(db, "generation_worker", {"filtered_retry_overrides": current}, admin.id)
+    apply_namespace("generation_worker", row.data)
+    ws = get_worker_settings()
+    ws.reload()
+
+    logger.info(
+        "Filtered-retry override updated by admin %s: %s -> %s",
+        admin.username, op, entry or "cleared",
+    )
+    return ws
+
+
 # ===== PROVIDER CONCURRENCY HEALTH (adaptive cap + spurious-500044 quarantine) =====
 
 class ProviderConcurrencyAccount(BaseModel):

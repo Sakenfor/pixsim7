@@ -1901,13 +1901,15 @@ class PromptOutcomeStats(BaseModel):
 class PromptStatsRequest(BaseModel):
     prompt: str
     image_asset_id: Optional[int] = None
+    operation_type: Optional[str] = None  # scope stats + cap/defer to one operation
 
 
 class PromptStatsResponse(BaseModel):
     prompt_only: PromptOutcomeStats
     prompt_image: Optional[PromptOutcomeStats]  # None when no image given
-    streak: int  # leading consecutive render-moderated (prompt+image scope if image given)
-    cap: int     # render_moderated_retry_cap — auto-retry stops at this streak
+    streak: int  # leading consecutive filtered (prompt+image scope if image given)
+    cap: int     # filtered-retry cap for this operation — auto-retry stops at this streak
+    defer_seconds: int  # backoff before the next auto-retry for this operation
 
 
 def _rate(passed: int, filtered: int) -> Optional[float]:
@@ -1921,16 +1923,37 @@ async def get_prompt_stats(
     user: CurrentUser,
     db: DatabaseSession,
 ) -> PromptStatsResponse:
-    """Pass-vs-render-filtered stats for a prompt (and prompt+image), + streak."""
-    from pixsim7.backend.main.workers.worker_concurrency import render_moderated_retry_cap
+    """Pass-vs-filtered stats for a prompt (and prompt+image), + streak.
 
-    cap = render_moderated_retry_cap()
+    Optionally scoped to one operation_type — render-moderation is i2v/t2v-only
+    while content_filtered is the i2i filter, so a per-operation rate is far more
+    meaningful than blending them. cap/defer reflect that operation's resolved
+    filtered-retry policy (per-op override or the global default)."""
+    from pixsim7.backend.main.workers.worker_concurrency import (
+        render_moderated_retry_cap,
+        render_moderated_retry_defer_seconds,
+    )
+    from pixsim7.backend.main.services.generation.worker_settings import get_worker_settings
+
+    op = (body.operation_type or "").strip().lower() or None
+    _ov = (get_worker_settings().filtered_retry_overrides or {}).get(op) if op else None
+    _ov = _ov if isinstance(_ov, dict) else {}
+    cap = _ov.get("cap") if isinstance(_ov.get("cap"), int) and _ov.get("cap") > 0 else render_moderated_retry_cap()
+    defer_seconds = (
+        _ov.get("defer_seconds") if isinstance(_ov.get("defer_seconds"), int) and _ov.get("defer_seconds") > 0
+        else render_moderated_retry_defer_seconds()
+    )
     prompt = (body.prompt or "").strip()
     empty = PromptOutcomeStats(passed=0, filtered=0, rate=None)
     if not prompt:
-        return PromptStatsResponse(prompt_only=empty, prompt_image=None, streak=0, cap=cap)
+        return PromptStatsResponse(prompt_only=empty, prompt_image=None, streak=0, cap=cap, defer_seconds=defer_seconds)
 
-    filtered_code = GenerationErrorCode.CONTENT_RENDER_MODERATED.value
+    # "Filtered" covers BOTH the i2v render-moderation code and the i2i
+    # content_filtered code, so the chip is meaningful for either operation.
+    filtered_codes = {
+        GenerationErrorCode.CONTENT_RENDER_MODERATED.value,
+        GenerationErrorCode.CONTENT_FILTERED.value,
+    }
     asset_ref = f"asset:{body.image_asset_id}" if body.image_asset_id is not None else None
 
     # Seek this prompt's history directly via the indexed prompt_text_hash
@@ -1956,6 +1979,8 @@ async def get_prompt_stats(
         .order_by(_GenerationModel.id.desc())
         .limit(RECENT_WINDOW)
     )
+    if op:
+        stmt = stmt.where(_GenerationModel.operation_type == op)
     rows = (await db.execute(stmt)).all()
 
     def _matches_image(inputs: Any) -> bool:
@@ -1970,7 +1995,7 @@ async def get_prompt_stats(
     for r in rows:
         if r.status == _GenStatus.COMPLETED:
             outcome = "passed"
-        elif r.error_code == filtered_code:
+        elif r.error_code in filtered_codes:
             outcome = "filtered"
         else:
             outcome = "other"
@@ -2001,4 +2026,5 @@ async def get_prompt_stats(
         ),
         streak=streak,
         cap=cap,
+        defer_seconds=defer_seconds,
     )

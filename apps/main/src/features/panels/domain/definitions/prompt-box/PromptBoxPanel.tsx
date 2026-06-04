@@ -6,6 +6,7 @@ import { Icon } from '@lib/icons';
 
 import { CAP_ASSET_SELECTION, useCapability } from '@features/contextHub';
 import type { AssetSelection } from '@features/contextHub';
+import { PromptModerationChip } from '@features/generation/components/PromptModerationChip';
 import { PromptAnalysisLayout } from '@features/prompts/components/PromptAnalysisLayout';
 import { PromptCodeMirrorViewer } from '@features/prompts/components/PromptCodeMirrorViewer';
 import { PromptInlineViewer } from '@features/prompts/components/PromptInlineViewer';
@@ -20,6 +21,7 @@ export function PromptBoxPanel() {
   const setViewerEngine = usePromptSettingsStore((s) => s.setViewerEngine);
 
   const [prompt, setPrompt] = useState<string | null>(null);
+  const [operationType, setOperationType] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastRequestIdRef = useRef(0);
@@ -50,9 +52,11 @@ export function PromptBoxPanel() {
         if (requestId !== lastRequestIdRef.current) return;
         const text = (ctx as { final_prompt?: string }).final_prompt ?? '';
         setPrompt(text);
+        setOperationType((ctx as { operation_type?: string }).operation_type ?? null);
       } catch {
         if (requestId === lastRequestIdRef.current) {
           setPrompt(null);
+          setOperationType(null);
           setError('No prompt metadata available for this asset.');
         }
       } finally {
@@ -88,7 +92,7 @@ export function PromptBoxPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <PanelHeader engine={viewerEngine} onEngineChange={setViewerEngine} />
+      <PanelHeader prompt={prompt} operationType={operationType} engine={viewerEngine} onEngineChange={setViewerEngine} />
       <div className="flex-1 min-h-0">
         <PromptAnalysisLayout
           analysis={analysis}
@@ -121,15 +125,25 @@ export function PromptBoxPanel() {
 }
 
 function PanelHeader({
+  prompt,
+  operationType,
   engine,
   onEngineChange,
 }: {
+  prompt: string;
+  operationType: string | null;
   engine: 'inline' | 'codemirror';
   onEngineChange: (next: 'inline' | 'codemirror') => void;
 }) {
   return (
-    <div className="flex items-center justify-end gap-1 px-2 py-1 border-b border-neutral-200 dark:border-neutral-800 text-xs">
-      <span className="mr-auto text-neutral-500 dark:text-neutral-400">Prompt</span>
+    <div className="flex items-center gap-2 px-2 py-1 border-b border-neutral-200 dark:border-neutral-800 text-xs">
+      {/* The bare "Prompt" caption is redundant next to the prompt text below, so
+          pair it with this prompt's render-moderation track record (prompt-only —
+          we're inspecting a stored asset, not composing with a live input image). */}
+      <div className="mr-auto flex items-center gap-2">
+        <span className="text-neutral-500 dark:text-neutral-400">Prompt</span>
+        <PromptModerationChip prompt={prompt} imageAssetId={null} operationType={operationType} />
+      </div>
       <EngineButton
         active={engine === 'inline'}
         onClick={() => onEngineChange('inline')}

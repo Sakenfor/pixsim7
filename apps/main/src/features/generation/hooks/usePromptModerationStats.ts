@@ -27,8 +27,9 @@ export interface PromptOutcomeStats {
 export interface PromptModerationStats {
   prompt_only: PromptOutcomeStats;
   prompt_image: PromptOutcomeStats | null;
-  streak: number; // consecutive render-moderated for the current prompt(+image)
-  cap: number; // auto-retry stops at this streak
+  streak: number; // consecutive filtered for the current prompt(+image)
+  cap: number; // auto-retry stops at this streak (for this operation)
+  defer_seconds: number; // backoff before the next auto-retry (for this operation)
 }
 
 const ENDPOINT = '/generations/prompt-stats';
@@ -38,6 +39,7 @@ const REFRESH_THROTTLE_MS = 4000;
 export function usePromptModerationStats(
   prompt: string,
   imageAssetId: number | null,
+  operationType?: string | null,
 ): PromptModerationStats | null {
   const [stats, setStats] = useState<PromptModerationStats | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -71,6 +73,7 @@ export function usePromptModerationStats(
         .post<PromptModerationStats>(ENDPOINT, {
           prompt: trimmed,
           image_asset_id: imageAssetId ?? null,
+          operation_type: operationType ?? null,
         })
         .then((res) => {
           if (reqId.current === id) setStats(res);
@@ -80,7 +83,7 @@ export function usePromptModerationStats(
         });
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer.current);
-  }, [prompt, imageAssetId, refreshTick]);
+  }, [prompt, imageAssetId, operationType, refreshTick]);
 
   return stats;
 }

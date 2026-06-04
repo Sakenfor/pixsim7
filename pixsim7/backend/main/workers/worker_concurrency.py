@@ -10,7 +10,7 @@ Also contains pinned-generation sibling counting and concurrent-defer planning.
 import json
 import random
 from datetime import datetime, timezone, timedelta
-from typing import Any
+from typing import Any, NamedTuple, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -693,9 +693,12 @@ def _render_moderated_count_ttl_seconds() -> int:
     return _settings_int("render_moderated_count_ttl_seconds", 3600, minimum=60)
 
 
-def _render_moderated_count_key(provider_id: str, prompt_group_hash: str) -> str:
+def _filtered_retry_count_key(
+    provider_id: str, operation_type: str | None, prompt_group_hash: str
+) -> str:
     safe_provider = (provider_id or "unknown").strip().lower() or "unknown"
-    return f"generation:render_moderated_count:{safe_provider}:{prompt_group_hash}"
+    safe_op = (operation_type or "unknown").strip().lower() or "unknown"
+    return f"generation:filtered_retry_count:{safe_provider}:{safe_op}:{prompt_group_hash}"
 
 
 def render_moderated_retry_cap() -> int:
@@ -711,48 +714,114 @@ def render_moderated_retry_defer_seconds() -> int:
     return _settings_int("render_moderated_retry_defer_seconds", 20, minimum=1)
 
 
-async def bump_render_moderated_count(
+class FilteredRetryPolicy(NamedTuple):
+    """Resolved per-operation filtered-retry policy.
+
+    ``cap`` is the consecutive-fail circuit-breaker threshold (auto-retry stops
+    once the streak reaches it); ``None`` means no per-prompt cap — back off but
+    keep retrying (still bounded by the global ``auto_retry_max_attempts``).
+    ``defer_seconds`` is the backoff before the next auto-retry.
+    """
+
+    cap: Optional[int]
+    defer_seconds: int
+
+
+def resolve_filtered_retry_policy(
+    operation_type: Optional[str],
+    error_code: Optional[str],
+) -> Optional[FilteredRetryPolicy]:
+    """Resolve the filtered-retry policy for an (operation, error_code), or None.
+
+    - ``content_render_moderated`` (pixverse i2v/t2v): a per-operation override
+      from ``filtered_retry_overrides`` if present, else the global
+      ``render_moderated_retry_*`` defaults. ALWAYS active (preserves today's
+      behavior).
+    - ``content_filtered`` (i2i & friends): OPT-IN — only when a per-operation
+      override exists for that operation. ``cap`` defaults to None (no circuit
+      breaker, backoff only) when the override omits it; ``defer_seconds``
+      defaults to the global render-moderated backoff.
+    - any other code: None.
+    """
+    from pixsim7.backend.main.domain.enums import GenerationErrorCode
+
+    op = (operation_type or "").strip().lower()
+    overrides = getattr(_ws(), "filtered_retry_overrides", {}) or {}
+    raw = overrides.get(op) if isinstance(overrides, dict) else None
+    has_override = isinstance(raw, dict)
+    ov_cap = raw.get("cap") if has_override else None
+    ov_defer = raw.get("defer_seconds") if has_override else None
+
+    def _int_or(value, fallback):
+        return int(value) if isinstance(value, int) and value > 0 else fallback
+
+    if error_code == GenerationErrorCode.CONTENT_RENDER_MODERATED.value:
+        cap = _int_or(ov_cap, render_moderated_retry_cap())
+        defer = _int_or(ov_defer, render_moderated_retry_defer_seconds())
+        return FilteredRetryPolicy(cap=cap, defer_seconds=defer)
+
+    if error_code == GenerationErrorCode.CONTENT_FILTERED.value:
+        if not has_override:
+            return None
+        # cap is opt-in for content_filtered: omit it for backoff-only.
+        cap = int(ov_cap) if isinstance(ov_cap, int) and ov_cap > 0 else None
+        defer = _int_or(ov_defer, render_moderated_retry_defer_seconds())
+        return FilteredRetryPolicy(cap=cap, defer_seconds=defer)
+
+    return None
+
+
+async def bump_filtered_retry_count(
     provider_id: str,
+    operation_type: str | None,
     prompt_group_hash: str | None,
     *,
     gen_logger=None,
 ) -> int:
-    """Increment + return the consecutive render-moderated count for a request."""
+    """Increment + return the consecutive filtered-fail count for a request.
+
+    Keyed per (provider, operation_type, request hash) so a prompt's i2v streak
+    is tracked independently from the same prompt's i2i streak.
+    """
     if not prompt_group_hash:
         return 0
     try:
         from pixsim7.backend.main.infrastructure.redis import get_redis
 
         redis_client = await get_redis()
-        key = _render_moderated_count_key(provider_id, prompt_group_hash)
+        key = _filtered_retry_count_key(provider_id, operation_type, prompt_group_hash)
         count = await redis_client.incr(key)
         await redis_client.expire(key, _render_moderated_count_ttl_seconds())
         return max(0, int(count))
     except Exception as e:
         if gen_logger:
-            gen_logger.debug("render_moderated_count_bump_failed", error=str(e))
+            gen_logger.debug("filtered_retry_count_bump_failed", error=str(e))
         return 0
 
 
-async def get_render_moderated_count(
+async def get_filtered_retry_count(
     provider_id: str,
+    operation_type: str | None,
     prompt_group_hash: str | None,
 ) -> int:
-    """Read the current consecutive render-moderated count (0 if none)."""
+    """Read the current consecutive filtered-fail count (0 if none)."""
     if not prompt_group_hash:
         return 0
     try:
         from pixsim7.backend.main.infrastructure.redis import get_redis
 
         redis_client = await get_redis()
-        raw = await redis_client.get(_render_moderated_count_key(provider_id, prompt_group_hash))
+        raw = await redis_client.get(
+            _filtered_retry_count_key(provider_id, operation_type, prompt_group_hash)
+        )
         return max(0, int(raw)) if raw is not None else 0
     except Exception:
         return 0
 
 
-async def clear_render_moderated_count(
+async def clear_filtered_retry_count(
     provider_id: str,
+    operation_type: str | None,
     prompt_group_hash: str | None,
 ) -> None:
     """Reset the streak (called on a clean success)."""
@@ -762,7 +831,9 @@ async def clear_render_moderated_count(
         from pixsim7.backend.main.infrastructure.redis import get_redis
 
         redis_client = await get_redis()
-        await redis_client.delete(_render_moderated_count_key(provider_id, prompt_group_hash))
+        await redis_client.delete(
+            _filtered_retry_count_key(provider_id, operation_type, prompt_group_hash)
+        )
     except Exception:
         pass
 

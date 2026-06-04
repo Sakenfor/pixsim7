@@ -209,6 +209,19 @@ class GenerationWorkerSettings(SettingsBase):
         20, ge=1, le=600,
         description="Backoff before auto-retrying a CONTENT_RENDER_MODERATED job (same account, no rotation) — prevents instant re-queue churn",
     )
+    filtered_retry_overrides: dict[str, dict] = Field(
+        default_factory=dict,
+        description=(
+            "Per-OperationType filtered-retry overrides keyed by OperationType value "
+            "(e.g. 'image_to_video', 'image_to_image'). Each value: "
+            "{cap: int|null, defer_seconds: int|null}. "
+            "For content_render_moderated, a missing key falls back to the "
+            "render_moderated_retry_* globals (always active). For content_filtered "
+            "the override is OPT-IN: with no entry for the operation, no extra "
+            "per-prompt cap or backoff is applied (i2i keeps its existing behavior). "
+            "A null cap means back off without a per-prompt circuit breaker."
+        ),
+    )
 
 
 def get_worker_settings() -> GenerationWorkerSettings:

@@ -164,29 +164,36 @@ async def handle_event(event: Event) -> None:
                 )
                 return
 
-            # Render-moderation retry cap: stop AUTO-retrying once this prompt +
-            # image has failed render-moderation too many times in a row. The
-            # job stays FAILED (still manually retryable, never paused); a
-            # success resets the streak and editing the prompt gets a fresh
-            # count. Checked before the claim so a capped prompt is never
-            # re-queued. Fresh user submissions are unaffected (this only gates
-            # the auto-retry path).
-            if generation.error_code == GenerationErrorCode.CONTENT_RENDER_MODERATED.value:
-                from pixsim7.backend.main.workers.worker_concurrency import (
-                    seed_agnostic_prompt_group_hash,
-                    get_render_moderated_count,
-                    render_moderated_retry_cap,
-                )
-                _rm_count = await get_render_moderated_count(
+            # Filtered-retry circuit breaker: stop AUTO-retrying once this prompt
+            # + image has been filtered too many times in a row for THIS
+            # operation. Per-operation policy (resolve_filtered_retry_policy):
+            # render-moderated always has a cap (global default unless
+            # overridden); content_filtered only when a per-op override sets one.
+            # The job stays FAILED (still manually retryable, never paused); a
+            # success resets the streak and editing the prompt gets a fresh count.
+            # Checked before the claim so a capped prompt is never re-queued.
+            # Fresh user submissions are unaffected (this only gates auto-retry).
+            from pixsim7.backend.main.workers.worker_concurrency import (
+                resolve_filtered_retry_policy,
+                seed_agnostic_prompt_group_hash,
+                get_filtered_retry_count,
+            )
+            _op_value = getattr(generation.operation_type, "value", generation.operation_type)
+            _filtered_policy = resolve_filtered_retry_policy(_op_value, generation.error_code)
+            if _filtered_policy is not None and _filtered_policy.cap is not None:
+                _fr_count = await get_filtered_retry_count(
                     generation.provider_id,
+                    _op_value,
                     seed_agnostic_prompt_group_hash(generation),
                 )
-                if _rm_count >= render_moderated_retry_cap():
+                if _fr_count >= _filtered_policy.cap:
                     logger.info(
-                        "auto_retry_render_moderated_cap_reached",
+                        "auto_retry_filtered_cap_reached",
                         generation_id=generation_id,
-                        consecutive=_rm_count,
-                        cap=render_moderated_retry_cap(),
+                        error_code=generation.error_code,
+                        operation_type=_op_value,
+                        consecutive=_fr_count,
+                        cap=_filtered_policy.cap,
                     )
                     return
 
@@ -219,15 +226,14 @@ async def handle_event(event: Event) -> None:
                     retry_count=generation.retry_count or 0,
                 )
 
-            # Render-time moderation: back off before retrying (same account, no
-            # rotation — the prompt, not the account, is filtered). Without this
-            # the retryable code would re-queue instantly and churn until the
-            # per-prompt circuit breaker quarantines it.
-            if generation.error_code == GenerationErrorCode.CONTENT_RENDER_MODERATED.value:
-                from pixsim7.backend.main.workers.worker_concurrency import (
-                    render_moderated_retry_defer_seconds,
-                )
-                defer_seconds = render_moderated_retry_defer_seconds()
+            # Filtered: back off before retrying (same account, no rotation — the
+            # prompt, not the account, is filtered). Render-moderated always backs
+            # off; content_filtered does so only when a per-op override is set.
+            # Applied as the base defer here; the content_filtered fairness-yield
+            # branch below may override with its larger multiplied value. Reuses
+            # the policy resolved above for the cap check.
+            if _filtered_policy is not None:
+                defer_seconds = _filtered_policy.defer_seconds
 
             if _is_poll_time_content_filtered(generation):
                 is_pinned = _is_pinned_generation(generation)
