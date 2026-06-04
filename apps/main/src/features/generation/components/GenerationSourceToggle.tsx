@@ -201,6 +201,7 @@ export function GenerationSourceToggle({
         ref={triggerRef}
         bg={current.color}
         size="lg"
+        tapExpand={false}
         icon={loading
           ? <Icons.loader size={14} className="animate-spin" />
           : <Icon name={current.icon as any} size={14} />

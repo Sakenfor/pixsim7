@@ -52,6 +52,7 @@ export function OperationIconButton({
         ref={triggerRef}
         bg={textMode ? undefined : color}
         size="lg"
+        tapExpand={false}
         icon={<Icon name={icon} size={14} />}
         onClick={() => setOpen(o => !o)}
         onWheel={(e: React.WheelEvent) => {

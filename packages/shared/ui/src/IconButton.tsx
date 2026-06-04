@@ -10,6 +10,12 @@ export interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonEl
   size?: 'xs' | 'sm' | 'md' | 'lg'
   /** Corner rounding (default: 'lg') */
   rounded?: 'md' | 'lg' | 'full'
+  /**
+   * Expand the tap target to 44px on coarse (touch) pointers (default: true).
+   * Set false in dense control strips where the 44px minimum makes buttons
+   * inconsistent with neighbouring fixed-size controls and wastes space.
+   */
+  tapExpand?: boolean
 }
 
 const SIZES: Record<NonNullable<IconButtonProps['size']>, string> = {
@@ -26,7 +32,7 @@ const ROUNDED: Record<NonNullable<IconButtonProps['rounded']>, string> = {
 }
 
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { icon, bg, size = 'md', rounded = 'lg', className, style, ...rest },
+  { icon, bg, size = 'md', rounded = 'lg', tapExpand = true, className, style, ...rest },
   ref,
 ) {
   return (
@@ -37,8 +43,9 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(f
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
         'disabled:opacity-50 disabled:pointer-events-none',
         // Touch-primary devices: enlarge tap target to 44px (icon stays the same
-        // visual size — extra space comes as padding via min-w/min-h).
-        'coarse:min-w-11 coarse:min-h-11',
+        // visual size — extra space comes as padding via min-w/min-h). Opt out
+        // in dense rows via tapExpand={false}.
+        tapExpand && 'coarse:min-w-11 coarse:min-h-11',
         bg && 'shadow-sm',
         SIZES[size],
         ROUNDED[rounded],

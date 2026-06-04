@@ -27,6 +27,7 @@ export function ProviderIconButton({
         ref={triggerRef}
         bg={brand.color}
         size="lg"
+        tapExpand={false}
         icon={<span className="text-[10px] font-bold">{brand.short}</span>}
         onClick={() => setOpen(o => !o)}
         onWheel={(e: React.WheelEvent) => {

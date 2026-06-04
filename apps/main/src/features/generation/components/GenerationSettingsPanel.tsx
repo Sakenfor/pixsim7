@@ -808,11 +808,13 @@ export function GenerationSettingsPanel({
         </div>
 
       </div>
-      {/* Action area — flows directly under the controls. Was pinned to the
-          panel bottom via the flex-1 scroll spacer, which left a large empty
-          gap when the controls were short; now it scrolls with the content so
-          Go sits right below them. */}
-      <div className="gen-panel-footer flex flex-col gap-1 px-1.5 pb-1.5 pt-1">
+      {/* Action area — sticky to the bottom of the scroll viewport so Go is
+          always reachable, especially on short mobile screens with a long
+          param list. Sticky (not a flex-1 spacer) means no forced empty gap
+          when the controls are short: it then just sits right below them. The
+          panel-matching background + top border occlude content scrolling
+          underneath. */}
+      <div className="gen-panel-footer sticky bottom-0 z-10 flex flex-col gap-1 px-1.5 pb-1.5 pt-1 bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-200/70 dark:border-neutral-800">
         {/* Queue progress */}
         {queueProgress && (
           <div className="flex items-center gap-2 text-[10px] text-accent">
