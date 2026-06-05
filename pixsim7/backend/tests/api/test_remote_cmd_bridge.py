@@ -860,3 +860,138 @@ class TestResolveTaskPersistenceDispatchStash:
         assert len(bridge._active_tasks) == 1
         (task_info,) = bridge._active_tasks.values()
         assert task_info["prompt"] == "Hello world"
+
+
+class TestPoolStatusHandshakeRebuild:
+    """update_bridge_pool_status rebuilds _active_tasks on bridge reconnect.
+
+    This is the server side of the restart-recovery chain: after a backend
+    restart wipes _active_tasks, a reconnecting bridge re-reports its in-flight
+    task_ids via the pool_status handshake, and we rebuild the dispatch state so
+    _handle_reconnect (and its bridge-return grace wait) can stream the eventual
+    result. Plan: launcher-health-probe-stability.
+    """
+
+    def _status(self, *tasks: dict) -> dict:
+        return {"ready": 1, "busy": 1, "active_tasks": list(tasks)}
+
+    def test_rebuilds_active_task_from_pool_status(self):
+        bridge = RemoteCommandBridge()
+        agent = _make_agent(user_id=7, bridge_id="bridge-xyz")
+        bridge._agents["test-agent"] = agent
+
+        bridge.update_bridge_pool_status("test-agent", self._status(
+            {"task_id": "task-live", "bridge_session_id": "sess-1",
+             "action": "tool_use", "detail": "Reading"},
+        ))
+
+        assert "task-live" in bridge._active_tasks
+        row = bridge._active_tasks["task-live"]
+        assert row["bridge_id"] == "bridge-xyz"
+        assert row["bridge_client_id"] == "test-agent"
+        assert row["user_id"] == 7
+        assert row["action"] == "tool_use"
+        assert row["detail"] == "Reading"
+        # Handshake-replayed tasks carry no prompt — resolve_task falls back to
+        # a placeholder user_message rather than dropping the row.
+        assert row["prompt"] == ""
+        assert "task-live" in agent.current_task_ids
+        # pool_status is stored verbatim for the frontend pill.
+        assert agent.pool_status["active_tasks"][0]["task_id"] == "task-live"
+
+    @pytest.mark.asyncio
+    async def test_creates_pending_future_so_resolve_can_wake_reconnect(self):
+        # Under a running loop the rebuild creates a pending future, so a later
+        # resolve_task (the bridge's eventual result) wakes a reconnect handler
+        # currently awaiting it.
+        bridge = RemoteCommandBridge()
+        agent = _make_agent()
+        bridge._agents["test-agent"] = agent
+
+        bridge.update_bridge_pool_status("test-agent", self._status(
+            {"task_id": "task-live"},
+        ))
+
+        assert "task-live" in bridge._pending_tasks
+        assert isinstance(bridge._pending_tasks["task-live"], asyncio.Future)
+
+    def test_rebuilds_multiple_tasks(self):
+        bridge = RemoteCommandBridge()
+        agent = _make_agent()
+        bridge._agents["test-agent"] = agent
+
+        bridge.update_bridge_pool_status("test-agent", self._status(
+            {"task_id": "task-a"},
+            {"task_id": "task-b"},
+        ))
+
+        assert {"task-a", "task-b"} <= set(bridge._active_tasks)
+        assert {"task-a", "task-b"} <= agent.current_task_ids
+
+    def test_skips_already_completed_task(self):
+        # The bridge will replay a finished task's buffered result; re-registering
+        # it as active would strand a future that never resolves.
+        bridge = RemoteCommandBridge()
+        agent = _make_agent()
+        bridge._agents["test-agent"] = agent
+        bridge._completed_results["task-done"] = ({"response": "done"}, 0.0)
+
+        bridge.update_bridge_pool_status("test-agent", self._status(
+            {"task_id": "task-done"},
+        ))
+
+        assert "task-done" not in bridge._active_tasks
+
+    def test_does_not_clobber_already_tracked_task(self):
+        # A task still alive from this backend instance keeps its richer row
+        # (real prompt, live heartbeat ts) — the handshake must not overwrite it.
+        bridge = RemoteCommandBridge()
+        agent = _make_agent()
+        bridge._agents["test-agent"] = agent
+        original = {
+            "_ts": datetime.now(timezone.utc),
+            "prompt": "original prompt",
+            "action": "thinking",
+        }
+        bridge._active_tasks["task-live"] = original
+
+        bridge.update_bridge_pool_status("test-agent", self._status(
+            {"task_id": "task-live", "action": "tool_use"},
+        ))
+
+        assert bridge._active_tasks["task-live"] is original
+        assert bridge._active_tasks["task-live"]["prompt"] == "original prompt"
+
+    def test_unknown_agent_is_noop(self):
+        bridge = RemoteCommandBridge()
+        bridge.update_bridge_pool_status("ghost-agent", self._status(
+            {"task_id": "task-x"},
+        ))
+        assert bridge._active_tasks == {}
+
+    def test_malformed_entries_are_ignored(self):
+        bridge = RemoteCommandBridge()
+        agent = _make_agent()
+        bridge._agents["test-agent"] = agent
+
+        bridge.update_bridge_pool_status("test-agent", {
+            "active_tasks": [
+                "not-a-dict",
+                {"no_task_id": True},
+                {"task_id": ""},
+                {"task_id": "   "},
+                {"task_id": "task-good"},
+            ],
+        })
+
+        assert list(bridge._active_tasks) == ["task-good"]
+
+    def test_missing_active_tasks_key_is_noop(self):
+        bridge = RemoteCommandBridge()
+        agent = _make_agent()
+        bridge._agents["test-agent"] = agent
+
+        bridge.update_bridge_pool_status("test-agent", {"ready": 2, "busy": 0})
+
+        assert bridge._active_tasks == {}
+        assert agent.pool_status == {"ready": 2, "busy": 0}
