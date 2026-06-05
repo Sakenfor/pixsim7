@@ -138,13 +138,30 @@ export function PromptModerationChip({
 
   return (
     <span
-      className="relative inline-flex"
+      className="relative inline-flex items-center gap-1"
       onMouseEnter={openNow}
       onMouseLeave={scheduleClose}
     >
       <Badge color={color} className="cursor-default">
         {label}
       </Badge>
+
+      {/* Quick-tune gear right on the chip (admins only) — one click jumps
+          straight into the per-operation cap/backoff editor in the popover. */}
+      {canEditPolicy && (
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            openNow();
+            setEditing(true);
+          }}
+          title="Tune this operation's auto-retry cap + backoff"
+          className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
+        >
+          <Icon name="sliders" size={12} />
+        </button>
+      )}
 
       {open && (
         <div
@@ -161,17 +178,6 @@ export function PromptModerationChip({
               <span className={`font-semibold ${headerColor}`}>
                 Render-moderation track record
               </span>
-              {canEditPolicy && !editing && (
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setEditing(true)}
-                  title="Tune this operation's auto-retry cap + backoff"
-                  className="text-neutral-400 hover:text-white transition-colors"
-                >
-                  <Icon name="sliders" size={13} />
-                </button>
-              )}
             </div>
 
             {empty ? (
