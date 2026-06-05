@@ -1,0 +1,12 @@
+{
+  "id": "generation-retry",
+  "category": "services",
+  "type": "worker",
+  "name": "Worker (Generation Retry)",
+  "description": "Deferred/retry generation worker — consumes the generation-retry queue",
+  "module": "arq",
+  "args": ["pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings"],
+  "depends_on": ["db"],
+  "auto_start": false,
+  "enabled": true
+}

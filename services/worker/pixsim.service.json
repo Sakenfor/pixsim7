@@ -1,9 +1,9 @@
 {
   "id": "worker",
-  "category": "core",
+  "category": "services",
   "type": "worker",
-  "name": "Worker (ARQ)",
-  "description": "Background task worker (generation/analysis/retries)",
+  "name": "Worker (Generation)",
+  "description": "Background task worker — main generation/analysis family (retries run in the separate generation-retry service)",
   "module": "arq",
   "args": ["pixsim7.backend.main.workers.arq_worker.WorkerSettings"],
   "depends_on": ["db"],
