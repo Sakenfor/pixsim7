@@ -536,3 +536,83 @@ def test_default_service_is_single_local_tier(monkeypatch):
     finally:
         set_storage_service(None)
         reset_root_specs_cache()
+
+
+# --------------------------------------------------------------------------- #
+# Phase H — health probe (offline vs deleted) + relocation module canonicality
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_probe_root_local_online():
+    tier = TieredStorageService(
+        {LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp())}
+    )
+    probe = await tier.probe_root(LOCAL_ROOT_ID)
+    assert probe["online"] is True and probe["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_probe_root_nonlocal_health_check_pass_and_fail():
+    class _HealthyStub(_NonLocalStub):
+        async def health_check(self):
+            return None
+
+    class _DownStub(_NonLocalStub):
+        async def health_check(self):
+            raise ConnectionError("connection refused")
+
+    tier = TieredStorageService(
+        {
+            LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp()),
+            "healthy": _HealthyStub(),
+            "down": _DownStub(),
+        }
+    )
+    assert (await tier.probe_root("healthy"))["online"] is True
+    down = await tier.probe_root("down")
+    assert down["online"] is False
+    assert "refused" in down["error"]
+
+
+@pytest.mark.asyncio
+async def test_probe_root_no_health_check_is_unknown():
+    # _NonLocalStub has no health_check() -> online is None (unknown), not False.
+    tier = TieredStorageService(
+        {LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp()), "archive": _NonLocalStub()}
+    )
+    probe = await tier.probe_root("archive")
+    assert probe["online"] is None and probe["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_archive_miss_classifies_offline_vs_deleted():
+    from pixsim7.backend.main.api.v1.media import _archive_miss
+
+    class _OfflineStorage:
+        async def probe_root(self, root_id):
+            return {"online": False, "error": "unreachable"}
+
+    class _UpStorage:
+        async def probe_root(self, root_id):
+            return {"online": True, "error": None}
+
+    offline = await _archive_miss(_OfflineStorage(), "u/1/content/ab/x.mp4", "archive")
+    assert offline.status_code == 503
+    assert offline.headers.get("X-Media-State") == "archived-offline"
+
+    deleted = await _archive_miss(_UpStorage(), "u/1/content/ab/x.mp4", "archive")
+    assert deleted.status_code == 404
+
+
+def test_s3_has_health_check():
+    # head_bucket-based probe exists on the real S3 backend (no live call here).
+    assert callable(getattr(_s3(), "health_check"))
+
+
+def test_relocation_module_is_canonical_source():
+    # The tool re-exports from the shared backend module, not vice-versa.
+    import tools.relocate_media as tool
+    from pixsim7.backend.main.services.storage import relocation
+
+    assert tool.relocate_blob is relocation.relocate_blob
+    assert tool.relocate_one is relocation.relocate_one

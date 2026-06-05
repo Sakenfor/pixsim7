@@ -368,6 +368,28 @@ def _archive_serve_mode() -> str:
     return mode if mode in ("redirect", "proxy") else "redirect"
 
 
+async def _archive_miss(storage, key: str, root_id: str) -> HTTPException:
+    """
+    Classify a "can't serve this archived original" miss.
+
+    Distinguishes *archived-but-offline* (the storage root is unreachable —
+    503, a clear retryable state) from *deleted* (the root is reachable but the
+    object is gone — 404). Returns the HTTPException to raise. See plan
+    media-storage-tiering Phase H.
+    """
+    probe = await storage.probe_root(root_id)
+    if probe.get("online") is False:
+        logger.warning(
+            "archive_offline", key=key, root_id=root_id, error=probe.get("error")
+        )
+        return HTTPException(
+            status_code=503,
+            detail="Media archive offline — file is archived but the store is unreachable",
+            headers={"X-Media-State": "archived-offline", "Retry-After": "30"},
+        )
+    return HTTPException(status_code=404, detail="File not found")
+
+
 async def _proxy_archive_stream(storage, key: str, root_id: str, request: Request):
     """Stream a non-local object through the backend (proxy fallback)."""
     range_header = request.headers.get("range")
@@ -376,7 +398,8 @@ async def _proxy_archive_stream(storage, key: str, root_id: str, request: Reques
             key, root_id=root_id, range_header=range_header
         )
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="File not found")
+        # Could be offline (store down) or deleted (object gone) — classify.
+        raise await _archive_miss(storage, key, root_id)
     except NotImplementedError:
         raise HTTPException(status_code=500, detail="Archive backend cannot stream")
     return StreamingResponse(
@@ -456,6 +479,18 @@ async def serve_media(
         if _archive_serve_mode() == "proxy":
             return await _proxy_archive_stream(storage, key, root_id, request)
         # Default: redirect to a short-lived presigned URL (direct stream).
+        # Presigning is purely local (no network), so by itself it can't tell an
+        # offline archive from a deleted object — the browser would just get a
+        # failed redirect. When the health probe is enabled, verify the object
+        # exists first (one HEAD) so we can return a clear 503/404 instead.
+        if getattr(app_settings, "media_archive_health_probe", True):
+            try:
+                present = await storage.exists(key, root_id=root_id)
+            except Exception as e:  # noqa: BLE001 — treat probe failure as unreachable
+                logger.warning("archive_exists_check_failed", key=key, root_id=root_id, error=str(e))
+                raise await _archive_miss(storage, key, root_id)
+            if not present:
+                raise await _archive_miss(storage, key, root_id)
         try:
             url = storage.get_url(key, root_id=root_id)
         except Exception as e:  # noqa: BLE001
@@ -525,9 +560,18 @@ async def head_media(
 
     root_id = await _resolve_storage_root_id(db, user.id, key)
 
-    # Check if file exists
-    metadata = await storage.get_metadata(key, root_id=root_id)
+    # Check if file exists. For non-local (archive) roots a transport error means
+    # the store is offline, not that the object is gone — classify accordingly.
+    try:
+        metadata = await storage.get_metadata(key, root_id=root_id)
+    except Exception as e:  # noqa: BLE001
+        if storage.is_local(root_id):
+            raise
+        logger.warning("head_archive_metadata_failed", key=key, root_id=root_id, error=str(e))
+        raise await _archive_miss(storage, key, root_id)
     if not metadata:
+        if not storage.is_local(root_id):
+            raise await _archive_miss(storage, key, root_id)
         raise HTTPException(status_code=404, detail="File not found")
 
     # Set headers

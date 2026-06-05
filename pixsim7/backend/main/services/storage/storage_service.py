@@ -590,6 +590,16 @@ class S3StorageService(StorageService):
         await self.store_from_path(key, source_path)
         return key
 
+    async def health_check(self) -> None:
+        """Cheap reachability probe — ``head_bucket``. Raises if unreachable.
+
+        Used to tell "archive offline" (store down) from "object deleted" (store
+        up, key gone) on the serve path and in the storage overview, instead of
+        surfacing a bare 404 for both. See plan ``media-storage-tiering`` Phase H.
+        """
+        async with self._client() as client:
+            await client.head_bucket(Bucket=self._bucket)
+
     async def open_stream(self, key, range_header: Optional[str] = None):
         """
         Open a streaming GET for proxying through the backend.
@@ -681,6 +691,29 @@ class TieredStorageService(StorageService):
 
     def is_local(self, root_id: Optional[str] = None) -> bool:
         return isinstance(self._backend(root_id), LocalStorageService)
+
+    async def probe_root(self, root_id: Optional[str] = None) -> dict:
+        """
+        Reachability probe for a single root. Returns ``{"online", "error"}``.
+
+        Local roots are online when their root directory exists. Non-local
+        backends are probed via their ``health_check()`` (S3 ``head_bucket``);
+        a backend without one reports ``online=None`` (unknown). Never raises —
+        a failed probe is reported as ``online=False`` with the error string.
+        Used by the serve path (offline vs deleted) and the storage overview.
+        """
+        backend = self._backend(root_id)
+        if isinstance(backend, LocalStorageService):
+            ok = backend.root_path.exists()
+            return {"online": ok, "error": None if ok else "local root path missing"}
+        pinger = getattr(backend, "health_check", None)
+        if pinger is None:
+            return {"online": None, "error": None}
+        try:
+            await pinger()
+            return {"online": True, "error": None}
+        except Exception as exc:  # noqa: BLE001 — report, never raise
+            return {"online": False, "error": str(exc)}
 
     def local_path_if_local(self, key, root_id=None) -> Optional[str]:
         """

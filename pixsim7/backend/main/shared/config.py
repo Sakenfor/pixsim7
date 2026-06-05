@@ -251,6 +251,17 @@ class Settings(BaseSettings):
             "See plan media-storage-tiering."
         ),
     )
+    media_archive_health_probe: bool = Field(
+        default=True,
+        description=(
+            "When serving an archived (non-local) original that can't be reached, "
+            "probe the storage root to tell 'archive offline' (store unreachable → "
+            "503, a clear retryable state) from 'deleted' (store up, object gone → "
+            "404). In 'redirect' serve mode this adds one HEAD before the presigned "
+            "redirect; set False to keep the redirect path probe-free. See plan "
+            "media-storage-tiering Phase H."
+        ),
+    )
 
     # ===== PROVIDERS =====
     pixverse_timeout: int = Field(

@@ -18,6 +18,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, DatabaseSession
+from pixsim7.backend.main.services.storage import get_storage_service
+from pixsim7.backend.main.services.storage.roots import LOCAL_ROOT_ID, get_root_specs
 from pixsim7.backend.main.shared.path_registry import get_path_registry
 from pixsim_logging import get_logger
 
@@ -82,6 +84,26 @@ class CleanupOpportunity(BaseModel):
     action_endpoint: Optional[str] = None
 
 
+class StorageRootInfo(BaseModel):
+    """Per-root placement summary for the tiered storage system.
+
+    Sizes are the *logical* bytes of assets whose ``storage_root_id`` resolves
+    to this root (summed ``file_size_bytes`` from the DB), not a live object-store
+    scan — cheap and accurate enough for the dashboard. ``online`` is an optional
+    reachability probe (None = not probed / unknown). See plan media-storage-tiering.
+    """
+    id: str
+    kind: str  # 'local' | 's3'
+    label: str
+    detail: Optional[str] = None  # e.g. 'endpoint/bucket' or local path
+    asset_count: int
+    size_bytes: int
+    size_human: str
+    is_archive_target: bool  # where the placement policy WANTS video originals
+    online: Optional[bool] = None
+    error: Optional[str] = None
+
+
 class StorageOverviewResponse(BaseModel):
     total_size_bytes: int
     total_size_human: str
@@ -96,6 +118,9 @@ class StorageOverviewResponse(BaseModel):
 
     db_total_bytes: int
     db_total_human: str
+
+    storage_roots: list[StorageRootInfo]
+    tiering_enabled: bool
 
 
 class CleanupOrphanedResponse(BaseModel):
@@ -345,6 +370,92 @@ async def _query_db_total_size(db: AsyncSession) -> int:
     return result.scalar() or 0
 
 
+async def _query_root_aggregates(db: AsyncSession, user_id: int) -> dict[str, tuple[int, int]]:
+    """Per-root (count, total_bytes) for the user's assets, keyed by root id.
+
+    ``storage_root_id`` NULL collapses to the implicit ``'local'`` root.
+    """
+    result = await db.execute(text("""
+        SELECT
+            COALESCE(storage_root_id, :local) AS root_id,
+            COUNT(*) AS cnt,
+            COALESCE(SUM(file_size_bytes), 0) AS total_bytes
+        FROM assets
+        WHERE user_id = :uid AND stored_key IS NOT NULL
+        GROUP BY COALESCE(storage_root_id, :local)
+    """), {"uid": user_id, "local": LOCAL_ROOT_ID})
+    return {r.root_id: (r.cnt, r.total_bytes) for r in result.fetchall()}
+
+
+def _root_detail(spec) -> Optional[str]:
+    """Short human descriptor for a root (endpoint/bucket for s3, path for local)."""
+    cfg = spec.config or {}
+    if spec.kind == "s3":
+        endpoint = str(cfg.get("endpoint_url", "")).rstrip("/")
+        bucket = cfg.get("bucket", "")
+        # Strip scheme for compactness: http://10.243.1.2:9000 -> 10.243.1.2:9000
+        host = endpoint.split("://", 1)[-1]
+        return f"{host}/{bucket}" if bucket else host or None
+    if spec.kind == "local":
+        path = cfg.get("path")
+        return str(path) if path else "media_root"
+    return None
+
+
+async def _build_storage_roots(
+    db: AsyncSession, user_id: int, probe_health: bool
+) -> list[StorageRootInfo]:
+    """Merge the configured roots registry with per-root DB aggregates.
+
+    Surfaces every configured root (even empty ones) plus any root id that
+    appears in asset rows but is no longer configured (so orphaned placements
+    are still visible). Optionally probes each non-local root's reachability.
+    """
+    from pixsim7.backend.main.services.storage.placement import ARCHIVE_ROOT_ID
+
+    specs = get_root_specs()
+    aggregates = await _query_root_aggregates(db, user_id)
+    storage = get_storage_service()
+
+    labels = {LOCAL_ROOT_ID: "Local (hot)", ARCHIVE_ROOT_ID: "Archive"}
+
+    # Union of configured ids and ids actually present on asset rows.
+    root_ids = list(specs.keys())
+    for rid in aggregates:
+        if rid not in specs:
+            root_ids.append(rid)
+
+    roots: list[StorageRootInfo] = []
+    for rid in root_ids:
+        spec = specs.get(rid)
+        kind = spec.kind if spec else "unknown"
+        count, total_bytes = aggregates.get(rid, (0, 0))
+
+        online: Optional[bool] = None
+        error: Optional[str] = None
+        if probe_health and spec is not None:
+            probe = await storage.probe_root(rid)
+            online, error = probe["online"], probe["error"]
+
+        detail = _root_detail(spec) if spec else "configured root missing"
+        roots.append(StorageRootInfo(
+            id=rid,
+            kind=kind,
+            label=labels.get(rid, rid.title()),
+            detail=detail,
+            asset_count=count,
+            size_bytes=total_bytes,
+            size_human=_human_size(total_bytes),
+            is_archive_target=(rid == ARCHIVE_ROOT_ID and rid in specs),
+            online=online,
+            error=error,
+        ))
+
+    # Largest footprint first, but keep 'local' pinned at the top.
+    roots.sort(key=lambda r: (r.id != LOCAL_ROOT_ID, -r.size_bytes))
+    return roots
+
+
 # ---------------------------------------------------------------------------
 # Cleanup opportunity computation
 # ---------------------------------------------------------------------------
@@ -431,10 +542,14 @@ async def get_storage_overview(
     admin: CurrentAdminUser,
     db: DatabaseSession,
     force: bool = Query(False, description="Bypass cache"),
+    probe_health: bool = Query(
+        True, description="Probe each non-local storage root for reachability"
+    ),
 ):
     """
     System-wide storage overview: filesystem sizes, media breakdown,
-    database table sizes, unused indexes, and cleanup opportunities.
+    database table sizes, unused indexes, cleanup opportunities, and per-root
+    placement summary (tiered storage).
     """
     global _cache
 
@@ -459,6 +574,10 @@ async def get_storage_overview(
         await asyncio.gather(fs_task, media_task, tables_task, indexes_task, db_size_task)
     )
 
+    # Per-root placement summary (after the DB gather — health probes touch the
+    # network and shouldn't block the rest of the scan).
+    storage_roots = await _build_storage_roots(db, admin.id, probe_health)
+
     cleanup = _compute_cleanup_opportunities(directories, media_types, unused_indexes)
 
     total_size = sum(d.size_bytes for d in directories)
@@ -476,6 +595,9 @@ async def get_storage_overview(
         cleanup_opportunities=cleanup,
         db_total_bytes=db_total,
         db_total_human=_human_size(db_total),
+        storage_roots=storage_roots,
+        # >1 root configured == tiering is actually in play.
+        tiering_enabled=len(get_root_specs()) > 1,
     )
 
     _cache = (time.monotonic(), response)
@@ -613,4 +735,162 @@ async def rotate_logs(
         freed_human=_human_size(freed),
         details=details,
         dry_run=dry_run,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Relocate videos to the archive (tiered storage, plan media-storage-tiering H)
+# ---------------------------------------------------------------------------
+
+class RelocateStatsResponse(BaseModel):
+    archive_configured: bool
+    archive_root_id: str
+    candidate_count: int
+    candidate_bytes: int
+    candidate_human: str
+
+
+class RelocateVideosResponse(BaseModel):
+    archive_configured: bool
+    dry_run: bool
+    moved: int
+    skipped: int
+    errors: int
+    freed_bytes: int
+    freed_human: str
+    would_move_bytes: int
+    would_move_human: str
+    error_ids: list[int]
+
+
+@router.get("/relocate-stats", response_model=RelocateStatsResponse)
+async def get_relocate_stats(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    min_size_mb: float = Query(0.0, ge=0, description="Only assets >= this size (MB)"),
+):
+    """Count of video originals still on the local root that the placement
+    policy wants on the archive. Drives the 'Relocate videos' action."""
+    from sqlalchemy import func as _func, select as _select
+
+    from pixsim7.backend.main.services.storage.placement import (
+        ARCHIVE_ROOT_ID,
+        archive_configured,
+    )
+    from pixsim7.backend.main.services.storage.relocation import candidate_query
+
+    min_bytes = int(min_size_mb * 1024 * 1024)
+    base = candidate_query(min_bytes, admin.id).subquery()
+    row = (
+        await db.execute(
+            _select(
+                _func.count().label("cnt"),
+                _func.coalesce(_func.sum(base.c.file_size_bytes), 0).label("total_bytes"),
+            ).select_from(base)
+        )
+    ).one()
+
+    return RelocateStatsResponse(
+        archive_configured=archive_configured(),
+        archive_root_id=ARCHIVE_ROOT_ID,
+        candidate_count=row.cnt,
+        candidate_bytes=row.total_bytes,
+        candidate_human=_human_size(row.total_bytes),
+    )
+
+
+@router.post("/relocate-videos", response_model=RelocateVideosResponse)
+async def relocate_videos(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    limit: int = Query(50, ge=1, le=500, description="Max assets to process per batch"),
+    min_size_mb: float = Query(0.0, ge=0, description="Only assets >= this size (MB)"),
+    dry_run: bool = Query(True, description="Preview without uploading/moving"),
+    verify_hash: bool = Query(
+        False, description="Re-hash the archive copy and compare to asset.sha256 (slower)"
+    ),
+):
+    """
+    Move video originals from the local (hot) root to the configured ``archive``
+    root, batch by batch. Wraps the same core logic as ``tools/relocate_media.py``.
+
+    Each asset: upload to archive under the same key (idempotent), verify size
+    (and optionally hash), flip ``storage_root_id``, then delete the local blob
+    when no sibling still references it. Commits per-asset so a mid-batch failure
+    keeps prior successes. ``--apply`` requires a configured archive root.
+    """
+    global _cache
+
+    from pixsim7.backend.main.services.storage.placement import (
+        ARCHIVE_ROOT_ID,
+        archive_configured,
+    )
+    from pixsim7.backend.main.services.storage.relocation import (
+        candidate_query,
+        relocate_one,
+    )
+
+    configured = archive_configured()
+    if not dry_run and not configured:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Archive root '{ARCHIVE_ROOT_ID}' is not configured in "
+                "settings.media_storage_roots — cannot relocate."
+            ),
+        )
+
+    storage = get_storage_service()
+    min_bytes = int(min_size_mb * 1024 * 1024)
+
+    stmt = candidate_query(min_bytes, admin.id).limit(limit)
+    assets = (await db.execute(stmt)).scalars().all()
+
+    moved = skipped = errors = 0
+    freed = 0
+    would_bytes = 0
+    error_ids: list[int] = []
+
+    for asset in assets:
+        try:
+            res = await relocate_one(
+                db, storage, asset,
+                archive_root=ARCHIVE_ROOT_ID,
+                apply=not dry_run,
+                verify_hash=verify_hash,
+            )
+        except Exception as exc:  # noqa: BLE001 — report per-asset, keep going
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            errors += 1
+            error_ids.append(asset.id)
+            logger.warning("relocate_video_failed", asset_id=asset.id, error=str(exc))
+            continue
+
+        status = res["status"]
+        if status == "moved":
+            moved += 1
+            freed += res["freed_bytes"]
+        elif status == "would_move":
+            moved += 1
+            would_bytes += res["bytes"]
+        else:
+            skipped += 1
+
+    if not dry_run and moved:
+        _cache = None  # storage placement changed — invalidate overview cache
+
+    return RelocateVideosResponse(
+        archive_configured=configured,
+        dry_run=dry_run,
+        moved=moved,
+        skipped=skipped,
+        errors=errors,
+        freed_bytes=freed,
+        freed_human=_human_size(freed),
+        would_move_bytes=would_bytes,
+        would_move_human=_human_size(would_bytes),
+        error_ids=error_ids[:20],
     )
