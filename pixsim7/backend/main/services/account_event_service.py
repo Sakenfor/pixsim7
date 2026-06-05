@@ -1,7 +1,9 @@
 """Fire-and-forget service for recording account lifecycle events.
 
 Writes are non-blocking and go through :class:`SatelliteTableHandler`.
-If the handler is not initialized (no DB URL), calls are silently dropped.
+If the handler is not initialized (no log DB configured), calls are dropped —
+but a single warning is logged the first time so the gap isn't invisible
+(otherwise every selected/exhausted/reactivated event vanishes silently).
 """
 from __future__ import annotations
 
@@ -10,7 +12,10 @@ from typing import Any, Optional
 
 from sqlalchemy import Column, Integer, String, DateTime, JSON
 
+from pixsim_logging import get_logger
 from pixsim_logging.satellite_handler import SatelliteTableHandler, create_satellite_handler_from_env
+
+logger = get_logger()
 
 
 _ACCOUNT_EVENTS_COLUMNS = [
@@ -35,6 +40,24 @@ class AccountEventService:
     """Singleton service for recording account events."""
 
     _handler: SatelliteTableHandler | None = None
+    _disabled_warning_emitted: bool = False
+
+    @classmethod
+    def _warn_disabled_once(cls, where: str) -> None:
+        """Log exactly once (per process) that event recording is a no-op."""
+        if cls._disabled_warning_emitted:
+            return
+        cls._disabled_warning_emitted = True
+        logger.warning(
+            "account_event_logging_disabled",
+            where=where,
+            detail=(
+                "AccountEventService has no satellite handler (log DB not "
+                "configured via env) — account lifecycle events "
+                "(selected/exhausted/reactivated/cooldown/...) are being "
+                "dropped. Configure the log DB to enable account_events."
+            ),
+        )
 
     @classmethod
     def initialize(cls) -> None:
@@ -45,6 +68,10 @@ class AccountEventService:
             table_name="account_events",
             columns=_ACCOUNT_EVENTS_COLUMNS,
         )
+        if cls._handler is None:
+            # Env not configured — surface the gap once instead of silently
+            # dropping every event for the life of the process.
+            cls._warn_disabled_once("initialize")
 
     @classmethod
     def record(
@@ -65,6 +92,9 @@ class AccountEventService:
     ) -> None:
         """Record an account event (fire-and-forget, non-blocking)."""
         if cls._handler is None:
+            # Covers processes that never call initialize() (e.g. the API),
+            # so the dropped-events gap is still surfaced once.
+            cls._warn_disabled_once("record")
             return
         now = datetime.now(timezone.utc)
         row: dict[str, Any] = {
