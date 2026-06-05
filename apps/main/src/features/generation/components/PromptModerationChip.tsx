@@ -76,6 +76,15 @@ export function PromptModerationChip({
   };
   useEffect(() => cancelClose, []);
 
+  // The optimistic policy is scoped to ONE operation — drop it whenever the
+  // operation (or prompt/image) changes, so each scope shows its own fetched
+  // cap/defer instead of carrying the last edit's value across. Without this,
+  // editing i2i then switching to i2v would show i2i's cap, looking shared.
+  useEffect(() => {
+    setLocalPolicy(null);
+    setEditing(false);
+  }, [operationType, prompt, imageAssetId]);
+
   if (!stats) {
     return (
       <Badge color="gray" title="No render-moderation history for this prompt yet.">
