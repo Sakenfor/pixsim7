@@ -296,6 +296,9 @@ function CodegenSection() {
         id: `task:${parentId}`,
         label: children ? `${parentId} (${children.length})` : parentId,
         icon: taskIcon(t),
+        // Keep parent rows selectable without forcing expand/collapse. Chevron
+        // remains the explicit expand/collapse affordance.
+        toggleOnClickIfExpandable: false,
         children: children?.map((c) => ({
           id: `task:${c.id}`,
           label: c.id.replace(new RegExp(`^${parentId}-`), ''),
