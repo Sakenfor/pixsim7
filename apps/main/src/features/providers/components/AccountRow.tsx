@@ -159,6 +159,18 @@ export function AccountRow({
               JWT EXPIRED
             </span>
           )}
+          {(account as any).session_invalid && (
+            <span
+              className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400 rounded w-fit"
+              title={`Session/JWT invalid${
+                (account as any).session_invalid_reason
+                  ? ` — ${(account as any).session_invalid_reason}`
+                  : ''
+              } • credits/plan may be stale, re-sync this account`}
+            >
+              SESSION EXPIRED
+            </span>
+          )}
           {accountStats && accountStats.invited_count > 0 && (
             <span
               className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded w-fit cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-800/40"

@@ -82,6 +82,14 @@ def account_to_response(
     if provider_metadata.get("auth_method") == PixverseAuthMethod.GOOGLE.value:
         is_google_account = True
 
+    # Session health (set by the provider session manager on unrecoverable
+    # JWT/session failures; cleared on the next successful op).
+    session_health = provider_metadata.get("session_health") or {}
+    session_invalid = session_health.get("state") == "invalid"
+    session_invalid_reason = (
+        session_health.get("error_reason") if session_invalid else None
+    )
+
     routing_allow_patterns = _normalize_route_pattern_list(
         getattr(account, "routing_allow_patterns", None)
     )
@@ -123,6 +131,8 @@ def account_to_response(
         has_api_key_paid=has_openapi_key,
         has_cookies=bool(account.cookies),
         is_google_account=is_google_account,
+        session_invalid=session_invalid,
+        session_invalid_reason=session_invalid_reason,
         api_keys=sanitized_api_keys,
         # Credits (normalized) - derive total from dict for guaranteed consistency
         credits=credits_dict,

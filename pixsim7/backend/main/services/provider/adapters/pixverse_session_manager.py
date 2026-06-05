@@ -46,6 +46,68 @@ def is_reauth_locked(account_id: int) -> bool:
     return lock.locked() if lock else False
 
 
+async def _persist_session_health(
+    account_id: int,
+    *,
+    ok: bool,
+    error_reason: str | None = None,
+    error_code: str | None = None,
+) -> None:
+    """Record session health on the account's provider_metadata.
+
+    Runs in its OWN db session so it survives the caller's rollback-on-error
+    (run_with_session rolls back the request session before raising). Only
+    writes on a state transition so we don't churn the row on every call.
+
+    ``session_health`` shape: ``{"state": "ok"|"invalid", "error_reason",
+    "error_code", "at"}``. The accounts API surfaces this as ``session_invalid``
+    so the panel can badge an account whose JWT/session died and can't
+    auto-recover (e.g. Google logins, or any account where reauth failed).
+    """
+    from datetime import datetime, timezone
+    from pixsim7.backend.main.infrastructure.database.session import get_db
+
+    try:
+        async for db in get_db():
+            try:
+                account = await db.get(ProviderAccount, account_id)
+                if account is None:
+                    return
+                meta = dict(account.provider_metadata or {})
+                current = meta.get("session_health") or {}
+                current_state = current.get("state")
+                if ok:
+                    if current_state != "invalid":
+                        return  # already healthy — nothing to clear
+                    meta["session_health"] = {
+                        "state": "ok",
+                        "at": datetime.now(timezone.utc).isoformat(),
+                    }
+                else:
+                    # Skip redundant writes for the same failure signature.
+                    if current_state == "invalid" and current.get("error_code") == error_code:
+                        return
+                    meta["session_health"] = {
+                        "state": "invalid",
+                        "error_reason": error_reason,
+                        "error_code": error_code,
+                        "at": datetime.now(timezone.utc).isoformat(),
+                    }
+                account.provider_metadata = meta
+                await db.commit()
+            finally:
+                await db.close()
+            return
+    except Exception as exc:  # never let health bookkeeping break the caller
+        logger.warning(
+            "pixverse_session_health_persist_failed",
+            account_id=account_id,
+            ok=ok,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+
+
 class PixverseSessionManager:
     """Centralized session management for the Pixverse provider."""
 
@@ -128,7 +190,9 @@ class PixverseSessionManager:
         )
 
         try:
-            return await operation(session)
+            result = await operation(session)
+            await self._note_session_ok(account)
+            return result
         except Exception as exc:
             outcome = self.classify_error(exc, context=op_name)
 
@@ -143,6 +207,12 @@ class PixverseSessionManager:
                 # Rollback before raising to clean up session state
                 await self._rollback_db_session(account)
                 if outcome.is_session_error:
+                    await _persist_session_health(
+                        account.id,
+                        ok=False,
+                        error_reason=outcome.error_reason,
+                        error_code=outcome.error_code,
+                    )
                     raise outcome.original_error or exc
                 raise exc
 
@@ -151,6 +221,15 @@ class PixverseSessionManager:
                 # Rollback before raising - auto_reauth already rolled back,
                 # but do it again to be safe
                 await self._rollback_db_session(account)
+                # Session is dead and could not be auto-recovered (e.g. Google
+                # login, or reauth failed) — flag it so the UI can prompt a
+                # manual re-sync instead of silently serving stale data.
+                await _persist_session_health(
+                    account.id,
+                    ok=False,
+                    error_reason=outcome.error_reason,
+                    error_code=outcome.error_code,
+                )
                 raise outcome.original_error or exc
 
         # Second (and final) attempt after successful re-auth
@@ -168,12 +247,35 @@ class PixverseSessionManager:
             previous_cookies=previous_cookies,
         )
         result = await operation(session)
+        await self._note_session_ok(account)
         logger.info(
             "pixverse_session_retry_success",
             account_id=account.id,
             context=op_name,
         )
         return result
+
+    async def _note_session_ok(self, account: ProviderAccount) -> None:
+        """Clear a stale session-invalid marker after a successful operation.
+
+        Mutates the marker on the caller's own account object (rather than an
+        autonomous write) so the clear rides the caller's commit. An autonomous
+        write here would be clobbered by the caller's later ``provider_metadata``
+        write (e.g. the credit sweep stamping ``credits_synced_at``), which
+        would silently re-introduce the stale flag. Gated on the in-memory
+        marker so a healthy account is never touched on its hot path.
+        """
+        from datetime import datetime, timezone
+
+        meta = getattr(account, "provider_metadata", None) or {}
+        if (meta.get("session_health") or {}).get("state") != "invalid":
+            return
+        new_meta = dict(meta)
+        new_meta["session_health"] = {
+            "state": "ok",
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+        account.provider_metadata = new_meta
 
     async def _rollback_db_session(self, account: ProviderAccount) -> None:
         """Rollback the database session to clean state."""

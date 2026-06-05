@@ -70,6 +70,11 @@ class AccountResponse(BaseModel):
     has_api_key_paid: bool  # True if any API key of kind 'openapi' exists
     has_cookies: bool
     is_google_account: bool  # True if authenticated via Google Sign-In
+    # Session health: True if the JWT/session died and could not auto-recover
+    # (provider couldn't reauth — Google login or a failed password reauth).
+    # The stored credit/plan values may be stale until a manual re-sync.
+    session_invalid: bool = False
+    session_invalid_reason: Optional[str] = None
 
     # API keys (for displaying in UI)
     api_keys: Optional[list[dict]] = None
