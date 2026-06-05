@@ -22,6 +22,7 @@ from .types import (
     ProcessEvent
 )
 from .paths import CONSOLE_LOG_DIR
+from .worker_detection import scan_pids
 
 # Import Windows Job Objects for robust process tree management
 try:
@@ -727,77 +728,13 @@ class ProcessManager:
     def _detect_worker_pids(self, service_key: str) -> List[int]:
         """Detect headless service PIDs by scanning process command lines.
 
-        Uses PowerShell Get-CimInstance on Windows (wmic is deprecated).
+        Delegates to the shared worker_detection scanner so the cmdline
+        selectors stay identical to HealthManager's (a mismatch cross-matches
+        worker processes — see launcher/core/worker_detection.py).
         """
-        pids: List[int] = []
-        # Each arq worker needs a selector that uniquely identifies it among
-        # its peers — they all run `python -m arq ...`, so broad substrings
-        # like `-m arq` or bare `arq_worker` cross-match across workers and
-        # cause one worker card's stale-kill to sweep up the others. Keep these
-        # in sync with health_manager._detect_headless_service.
-        patterns = {
-            'worker': ['arq_worker.WorkerSettings'],
-            'generation-retry': ['GenerationRetryWorkerSettings'],
-            'simulation-worker': ['SimulationWorkerSettings'],
-            'automation-worker': ['AutomationWorkerSettings'],
-            'ai-client': ['pixsim7.client', '-m pixsim7.client'],
-        }
-        # Fall back to matching the module from the service definition
-        search_terms = patterns.get(service_key)
-        if not search_terms:
-            defn = self.services.get(service_key)
-            if defn and defn.args:
-                # Match on "-m <module>" args (e.g. ["-m", "pixsim7.client", ...])
-                search_terms = [' '.join(defn.args[:2])] if len(defn.args) >= 2 else [service_key]
-            else:
-                search_terms = [service_key]
-
-        try:
-            if os.name == 'nt':
-                ps_cmd = (
-                    "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" "
-                    "| ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }"
-                )
-                result = subprocess.run(
-                    ['powershell', '-NoProfile', '-Command', ps_cmd],
-                    capture_output=True, text=True, timeout=10,
-                )
-                if result.returncode == 0:
-                    for line in result.stdout.splitlines():
-                        line = line.strip()
-                        if '|' not in line:
-                            continue
-                        pid_str, cmdline = line.split('|', 1)
-                        if any(term in cmdline for term in search_terms):
-                            try:
-                                pid = int(pid_str.strip())
-                                if pid != os.getpid():
-                                    pids.append(pid)
-                            except ValueError:
-                                pass
-            else:
-                result = subprocess.run(
-                    ['ps', 'aux'], capture_output=True, text=True, timeout=5,
-                )
-                if result.returncode == 0:
-                    for line in result.stdout.splitlines():
-                        if any(term in line for term in search_terms):
-                            parts = line.split()
-                            if len(parts) >= 2:
-                                try:
-                                    pid = int(parts[1])
-                                    if pid != os.getpid():
-                                        pids.append(pid)
-                                except ValueError:
-                                    pass
-        except Exception as e:
-            logger.debug(
-                "detect_headless_pids_failed service=%s error_type=%s error=%s",
-                service_key,
-                type(e).__name__,
-                str(e),
-            )
-        return pids
+        defn = self.services.get(service_key)
+        definition_args = getattr(defn, "args", None) if defn else None
+        return scan_pids(service_key, definition_args=definition_args)
 
     def _is_pid_alive(self, pid: Optional[int]) -> bool:
         """Cross-platform check whether a PID currently exists."""

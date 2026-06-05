@@ -15,18 +15,16 @@ import urllib.request
 import logging
 from typing import Any, Dict, Optional, Callable
 from .types import HealthStatus, HealthEvent, ServiceState, ServiceStatus
+# Worker cmdline selectors + the arq-worker key set live in worker_detection,
+# the single source of truth shared with ProcessManager (a mismatch
+# cross-matches worker processes between cards).
+from .worker_detection import ARQ_WORKER_KEYS, scan_pids
 
 logger = logging.getLogger("launcher.core.health")
 
 # Stop counting after this many consecutive failures.
 MAX_FAILURE_COUNT = 50
 HEALTH_ERROR_PREFIX = "Health check failed: "
-
-# Service ids that run as `python -m arq <WorkerSettings>`. They share the
-# Redis-backed health logic (PID liveness + Redis reachability), and need
-# unique command-line selectors in _detect_headless_service so the broad
-# `-m arq` fallback doesn't cross-match between them.
-ARQ_WORKER_KEYS = frozenset({'worker', 'generation-retry', 'simulation-worker', 'automation-worker'})
 
 
 class HealthManager:
@@ -433,68 +431,13 @@ class HealthManager:
     def _detect_headless_service(self, key: str, definition) -> Optional[int]:
         """Detect an externally-started headless service by scanning process command lines.
 
-        Returns the PID if found, None otherwise. Uses the same pattern matching
-        as ProcessManager._detect_worker_pids.
+        Returns the first matching PID, or None. Delegates to the shared
+        worker_detection scanner so selectors stay identical to
+        ProcessManager._detect_worker_pids (a mismatch cross-matches workers).
         """
-        # Each arq worker needs a selector that uniquely identifies it among
-        # peers — they all run `python -m arq ...`, so substrings like
-        # `-m arq` or bare `arq_worker` would cross-match across workers.
-        patterns = {
-            'worker': ['arq_worker.WorkerSettings'],
-            'generation-retry': ['GenerationRetryWorkerSettings'],
-            'simulation-worker': ['SimulationWorkerSettings'],
-            'automation-worker': ['AutomationWorkerSettings'],
-            'ai-client': ['pixsim7.client', '-m pixsim7.client'],
-        }
-        search_terms = patterns.get(key)
-        if not search_terms:
-            args = getattr(definition, 'args', []) or []
-            if len(args) >= 2:
-                search_terms = [' '.join(args[:2])]
-            else:
-                return None
-
-        try:
-            if os.name == 'nt':
-                ps_cmd = (
-                    "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" "
-                    "| ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }"
-                )
-                result = subprocess.run(
-                    ['powershell', '-NoProfile', '-Command', ps_cmd],
-                    capture_output=True, text=True, timeout=10,
-                )
-                if result.returncode == 0:
-                    for line in result.stdout.splitlines():
-                        line = line.strip()
-                        if '|' not in line:
-                            continue
-                        pid_str, cmdline = line.split('|', 1)
-                        if any(term in cmdline for term in search_terms):
-                            try:
-                                pid = int(pid_str.strip())
-                                if pid != os.getpid():
-                                    return pid
-                            except ValueError:
-                                pass
-            else:
-                result = subprocess.run(
-                    ['ps', 'aux'], capture_output=True, text=True, timeout=5,
-                )
-                if result.returncode == 0:
-                    for line in result.stdout.splitlines():
-                        if any(term in line for term in search_terms):
-                            parts = line.split()
-                            if len(parts) >= 2:
-                                try:
-                                    pid = int(parts[1])
-                                    if pid != os.getpid():
-                                        return pid
-                                except ValueError:
-                                    pass
-        except Exception:
-            pass
-        return None
+        definition_args = getattr(definition, "args", None)
+        pids = scan_pids(key, definition_args=definition_args)
+        return pids[0] if pids else None
 
     def _is_pid_alive(self, pid: Optional[int]) -> bool:
         """Check whether a PID currently exists."""
