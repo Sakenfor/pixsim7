@@ -14,6 +14,7 @@ import asyncio
 import hashlib
 import json
 import os
+import random
 import shutil
 import subprocess as sp
 import sys
@@ -51,6 +52,24 @@ from pixsim7.client.token_manager import (
 # inside ``pixsim_mcp_config_dir()``. Rewriting the same file is what
 # makes ``%TEMP%``-sweep recovery free — no fresh path to invalidate
 # any cache against.
+
+
+def _reconnect_backoff_delay(consecutive_failures: int) -> float:
+    """Delay (seconds) before the next WS reconnect attempt.
+
+    Backend restarts are the common cause of a dropped bridge WS, so the FIRST
+    reconnect attempt is near-immediate: the old flat ``5 * consecutive_failures``
+    floor meant the browser panel (which reconnects in ~1s) always beat the
+    bridge back and the user saw a spurious "Task not found" for any in-flight
+    task. Later attempts back off linearly to a 30s cap. Jitter spreads many
+    bridges so they don't stampede a still-booting backend in lockstep.
+    Plan: launcher-health-probe-stability / ws-drop-root-cause.
+    """
+    if consecutive_failures <= 1:
+        # Near-immediate first retry — assume a quick backend restart.
+        return 0.5 + random.uniform(0.0, 0.5)
+    base = min(5 * (consecutive_failures - 1), 30)  # 5s, 10s, 15s... cap 30s
+    return base + random.uniform(0.0, 2.0)
 
 
 def _sanitize_for_filename(value: str, max_length: int = 40) -> str:
@@ -457,7 +476,7 @@ class Bridge:
                         get_logger().info("shutdown_requested", reason="reconnect_suppressed")
                         break
                     consecutive_failures += 1
-                    delay = min(5 * consecutive_failures, 30)  # 5s, 10s, 15s... max 30s
+                    delay = _reconnect_backoff_delay(consecutive_failures)
                     # Plan: launcher-health-probe-stability / ws-drop-root-cause —
                     # str(e) on websockets exceptions is just "no close frame
                     # received or sent" without the originating cause. Surface

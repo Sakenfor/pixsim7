@@ -13,6 +13,7 @@ TEST_SUITE = {
     "order": 33,
 }
 
+import asyncio
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1088,13 +1089,25 @@ class TestWsChatReconnect:
         mock_bridge = MagicMock()
         mock_bridge.get_completed_result.return_value = None
         mock_bridge._active_tasks = {}
+        mock_bridge.connected_count = 0  # no bridge → grace wait then give up
         patches = _debug_patches(user_id=1)
-        with patches[0], patches[1], patches[2], patch(_BRIDGE, mock_bridge):
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patch(_BRIDGE, mock_bridge),
+            patch("pixsim7.backend.main.api.v1.ws_chat._RECONNECT_BRIDGE_RETURN_WAIT_S", 0.1),
+        ):
             with client.websocket_connect("/api/v1/ws/chat") as ws:
                 ws.receive_text()  # welcome
                 ws.send_text(json.dumps({
                     "type": "reconnect", "tab_id": "t1", "task_id": "task-gone",
                 }))
+                # Fix A: the reconnect is held open (recovering heartbeat) while
+                # we wait for a bridge to return before failing.
+                hb = json.loads(ws.receive_text())
+                assert hb["type"] == "heartbeat"
+                assert hb["action"] == "recovering"
                 data = json.loads(ws.receive_text())
                 assert data["type"] == "error"
                 assert "not found" in data["error"].lower()
@@ -1171,6 +1184,7 @@ class TestWsChatReconnect:
             patches[1],
             patches[2],
             patch(_BRIDGE, mock_bridge),
+            patch("pixsim7.backend.main.api.v1.ws_chat._RECONNECT_BRIDGE_RETURN_WAIT_S", 0.1),
             patch("pixsim7.backend.main.api.v1.ws_chat._recover_session_tail_response", recover),
         ):
             with client.websocket_connect("/api/v1/ws/chat") as ws:
@@ -1181,6 +1195,11 @@ class TestWsChatReconnect:
                     "task_id": "task-gone",
                     "bridge_session_id": "sess-tail",
                 }))
+                # No bridge present → recovering heartbeat while we wait, then
+                # fall through to the persisted session-tail recovery.
+                hb = json.loads(ws.receive_text())
+                assert hb["type"] == "heartbeat"
+                assert hb["action"] == "recovering"
                 data = json.loads(ws.receive_text())
                 assert data["type"] == "result"
                 assert data["ok"] is True
@@ -1189,6 +1208,172 @@ class TestWsChatReconnect:
                 assert data["reconnected"] is True
 
         recover.assert_awaited_once_with("sess-tail", user_id=1)
+
+    def test_reconnect_inflight_holds_open_for_bridge_then_recovers(self):
+        """Fix A: panel reconnects before the bridge does after a restart.
+
+        Reproduces the field report — user sent a message, then restarted the
+        backend within a few seconds. The browser panel reconnects almost
+        instantly, but the agent bridge is still in its reconnect backoff, so
+        it hasn't re-reported its in-flight task via the ``pool_status``
+        handshake yet. At that instant the backend knows nothing about the task
+        and ``connected_count == 0``.
+
+        Rather than instantly failing with ``task_not_found``, the reconnect is
+        now held open (a ``recovering`` heartbeat is sent) while we wait for a
+        bridge to return. Here the bridge comes back and replays the result,
+        so the panel recovers instead of seeing a spurious failure.
+        """
+        app = _app()
+        client = TestClient(app)
+        mock_bridge = MagicMock()
+        mock_bridge._active_tasks = {}
+        mock_bridge.connected_count = 0  # bridge still in reconnect backoff
+        # tier-1 cache miss, then the replayed result lands once the bridge is
+        # back and the held-open replay-wait polls again.
+        mock_bridge.get_completed_result.side_effect = [
+            None,
+            {"response": "replayed answer", "bridge_session_id": "sess-back"},
+        ]
+        # Simulate the bridge returning during the grace wait.
+        wait_return = AsyncMock(return_value=True)
+        patches = _debug_patches(user_id=1)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patch(_BRIDGE, mock_bridge),
+            patch("pixsim7.backend.main.api.v1.ws_chat._wait_for_bridge_return", wait_return),
+            patch("pixsim7.backend.main.api.v1.ws_chat._RECONNECT_REPLAY_WAIT_S", 0.2),
+            patch("pixsim7.backend.main.api.v1.ws_chat._RECONNECT_REPLAY_POLL_S", 0.01),
+        ):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "reconnect",
+                    "tab_id": "t1",
+                    "task_id": "task-inflight",
+                    "bridge_session_id": "sess-pending",
+                }))
+                # First frame: recovering heartbeat (reconnect held open).
+                hb = json.loads(ws.receive_text())
+                assert hb["type"] == "heartbeat"
+                assert hb["action"] == "recovering"
+                assert hb["detail"] == "Waiting for agent to reconnect"
+                # Then the second recovering heartbeat for the replay-wait.
+                hb2 = json.loads(ws.receive_text())
+                assert hb2["type"] == "heartbeat"
+                assert hb2["detail"] == "Waiting for bridge replay"
+                # Finally the replayed result.
+                data = json.loads(ws.receive_text())
+                assert data["type"] == "result"
+                assert data["ok"] is True
+                assert data["response"] == "replayed answer"
+                assert data["reconnected"] is True
+        wait_return.assert_awaited_once()
+
+    def test_reconnect_inflight_gives_up_after_grace_when_bridge_never_returns(self):
+        """Fix A: the held-open reconnect still fails (gracefully) if no bridge
+        comes back and nothing was persisted — but only after the grace wait,
+        and after surfacing a ``recovering`` heartbeat first."""
+        app = _app()
+        client = TestClient(app)
+        mock_bridge = MagicMock()
+        mock_bridge.get_completed_result.return_value = None
+        mock_bridge._active_tasks = {}
+        mock_bridge.connected_count = 0
+        recover = AsyncMock(return_value=None)  # nothing persisted yet
+        patches = _debug_patches(user_id=1)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patch(_BRIDGE, mock_bridge),
+            patch("pixsim7.backend.main.api.v1.ws_chat._RECONNECT_BRIDGE_RETURN_WAIT_S", 0.1),
+            patch("pixsim7.backend.main.api.v1.ws_chat._recover_session_tail_response", recover),
+        ):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "reconnect",
+                    "tab_id": "t1",
+                    "task_id": "task-inflight",
+                    "bridge_session_id": "sess-pending",
+                }))
+                hb = json.loads(ws.receive_text())
+                assert hb["type"] == "heartbeat"
+                assert hb["action"] == "recovering"
+                data = json.loads(ws.receive_text())
+                assert data["type"] == "error"
+                assert data["error_code"] == "task_not_found"
+
+
+# ── Bridge-return grace wait (Fix A) ─────────────────────────────
+
+class TestWaitForBridgeReturn:
+    """Unit tests for the bounded bridge-return wait used by reconnect."""
+
+    @staticmethod
+    def _bridge(connected_count=0, active=None):
+        return SimpleNamespace(
+            connected_count=connected_count,
+            _active_tasks=active if active is not None else {},
+            get_completed_result=lambda _tid: None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_true_immediately_when_bridge_present(self):
+        from pixsim7.backend.main.api.v1 import ws_chat
+        bridge = self._bridge(connected_count=1)
+        assert await ws_chat._wait_for_bridge_return("t", bridge=bridge) is True
+
+    @pytest.mark.asyncio
+    async def test_returns_true_when_bridge_reconnects_mid_wait(self):
+        from pixsim7.backend.main.api.v1 import ws_chat
+        bridge = self._bridge(connected_count=0)
+
+        async def flip():
+            await asyncio.sleep(0.02)
+            bridge.connected_count = 1
+
+        with (
+            patch.object(ws_chat, "_RECONNECT_BRIDGE_RETURN_WAIT_S", 1.0),
+            patch.object(ws_chat, "_RECONNECT_REPLAY_POLL_S", 0.01),
+        ):
+            flipper = asyncio.create_task(flip())
+            result = await ws_chat._wait_for_bridge_return("t", bridge=bridge)
+            await flipper
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_returns_true_when_task_rebuilt_mid_wait(self):
+        from pixsim7.backend.main.api.v1 import ws_chat
+        active: dict = {}
+        bridge = self._bridge(connected_count=0, active=active)
+
+        async def rebuild():
+            await asyncio.sleep(0.02)
+            active["t"] = {"_ts": None}
+
+        with (
+            patch.object(ws_chat, "_RECONNECT_BRIDGE_RETURN_WAIT_S", 1.0),
+            patch.object(ws_chat, "_RECONNECT_REPLAY_POLL_S", 0.01),
+        ):
+            rebuilder = asyncio.create_task(rebuild())
+            result = await ws_chat._wait_for_bridge_return("t", bridge=bridge)
+            await rebuilder
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_no_bridge_returns(self):
+        from pixsim7.backend.main.api.v1 import ws_chat
+        bridge = self._bridge(connected_count=0)
+        with (
+            patch.object(ws_chat, "_RECONNECT_BRIDGE_RETURN_WAIT_S", 0.1),
+            patch.object(ws_chat, "_RECONNECT_REPLAY_POLL_S", 0.01),
+        ):
+            result = await ws_chat._wait_for_bridge_return("t", bridge=bridge)
+        assert result is False
 
 
 # ── Auth ─────────────────────────────────────────────────────────

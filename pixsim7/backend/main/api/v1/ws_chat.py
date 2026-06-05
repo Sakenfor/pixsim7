@@ -50,6 +50,54 @@ router = APIRouter()
 _RECONNECT_REPLAY_WAIT_S = 8.0
 _RECONNECT_REPLAY_POLL_S = 0.25
 
+# After a backend restart the browser panel reconnects far faster than the
+# agent bridge (which is on its own reconnect backoff). Hold an unknown-task
+# reconnect open this long for a bridge to (re)connect and re-report its
+# in-flight task via the pool_status handshake, instead of instantly failing
+# the panel with task_not_found. Plan: launcher-health-probe-stability.
+_RECONNECT_BRIDGE_RETURN_WAIT_S = 10.0
+
+
+def _bridge_present(bridge: Any) -> bool:
+    """True if at least one agent bridge is currently connected."""
+    count = getattr(bridge, "connected_count", 0)
+    return isinstance(count, int) and count > 0
+
+
+async def _wait_for_bridge_return(task_id: str, *, bridge: Any) -> bool:
+    """Wait briefly for an agent bridge to (re)connect after a restart.
+
+    The browser panel reconnects far faster than the agent bridge, so right
+    after a backend restart the panel can ask to reattach before any bridge is
+    back. Rather than instantly failing with ``task_not_found``, hold the
+    reconnect open until a bridge connects (and can re-report its in-flight
+    task via the ``pool_status`` handshake) or a bounded deadline passes.
+
+    Returns ``True`` if a bridge is present by the time it returns, or early if
+    the task itself surfaces (rebuilt into ``_active_tasks`` or landed in the
+    completed cache) while waiting.
+    """
+    if _bridge_present(bridge):
+        return True
+
+    wait_s = max(float(_RECONNECT_BRIDGE_RETURN_WAIT_S), 0.0)
+    if wait_s <= 0:
+        return _bridge_present(bridge)
+
+    poll_s = max(float(_RECONNECT_REPLAY_POLL_S), 0.05)
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + wait_s
+
+    while loop.time() < deadline:
+        if _bridge_present(bridge):
+            return True
+        if task_id in getattr(bridge, "_active_tasks", {}):
+            return True
+        if bridge.get_completed_result(task_id):
+            return True
+        await asyncio.sleep(poll_s)
+    return _bridge_present(bridge)
+
 
 async def _resolve_user_id(token: str | None, db) -> int | None:
     """Resolve user ID from JWT token.
@@ -1284,9 +1332,30 @@ async def _handle_reconnect(
             return
 
     # Backend may have restarted while the bridge still has buffered result
-    # (or is mid-flight and about to report it via pool_status).
-    connected_count = getattr(remote_cmd_bridge, "connected_count", 0)
-    if isinstance(connected_count, int) and connected_count > 0:
+    # (or is mid-flight and about to report it via pool_status). The agent
+    # bridge reconnects on its own backoff — slower than the browser panel —
+    # so it may not be back yet. Hold the reconnect open for it to return
+    # rather than instantly failing with task_not_found (the restart race).
+    bridge_present = _bridge_present(remote_cmd_bridge)
+    if not bridge_present:
+        await websocket.send_json({
+            "type": "heartbeat",
+            "tab_id": tab_id,
+            "task_id": task_id,
+            "action": "recovering",
+            "detail": "Waiting for agent to reconnect",
+        })
+        bridge_present = await _wait_for_bridge_return(task_id, bridge=remote_cmd_bridge)
+        # The handshake may have rebuilt the task straight into _active_tasks
+        # while we waited — stream it directly.
+        if task_id in remote_cmd_bridge._active_tasks:
+            if await _stream_active_task(
+                websocket, tab_id=tab_id, task_id=task_id, bridge=remote_cmd_bridge,
+                user_id=user_id,
+            ):
+                return
+
+    if bridge_present:
         await websocket.send_json({
             "type": "heartbeat",
             "tab_id": tab_id,
