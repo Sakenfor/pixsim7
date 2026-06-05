@@ -590,6 +590,46 @@ class S3StorageService(StorageService):
         await self.store_from_path(key, source_path)
         return key
 
+    async def open_stream(self, key, range_header: Optional[str] = None):
+        """
+        Open a streaming GET for proxying through the backend.
+
+        Returns ``(status_code, headers, content_type, async_iter)`` where status
+        is 206 for a satisfied Range request else 200. The returned async iterator
+        OWNS the S3 client connection and closes it when fully consumed — callers
+        must iterate it to completion (FastAPI's StreamingResponse does).
+        """
+        params = {"Bucket": self._bucket, "Key": self._safe_key(key)}
+        if range_header:
+            params["Range"] = range_header
+        cm = self._client()
+        client = await cm.__aenter__()
+        try:
+            resp = await client.get_object(**params)
+        except BotoClientError as exc:
+            await cm.__aexit__(None, None, None)
+            if self._is_not_found(exc):
+                raise FileNotFoundError(key) from exc
+            raise
+
+        status = 206 if resp.get("ContentRange") else 200
+        headers = {"Accept-Ranges": "bytes"}
+        if resp.get("ContentLength") is not None:
+            headers["Content-Length"] = str(resp["ContentLength"])
+        if resp.get("ContentRange"):
+            headers["Content-Range"] = resp["ContentRange"]
+        content_type = resp.get("ContentType") or "application/octet-stream"
+        body = resp["Body"]
+
+        async def _iter():
+            try:
+                async for chunk in body.iter_chunks(1024 * 1024):
+                    yield chunk
+            finally:
+                await cm.__aexit__(None, None, None)
+
+        return status, headers, content_type, _iter()
+
     def _get_presign_client(self):
         if self._presign_client is None:
             import botocore.session
@@ -703,6 +743,16 @@ class TieredStorageService(StorageService):
         return self._backends[LOCAL_ROOT_ID].get_content_addressed_key(
             user_id, sha256, extension
         )
+
+    async def open_stream(self, key, root_id=None, range_header: Optional[str] = None):
+        """Open a proxy stream from the backend for ``root_id`` (non-local only)."""
+        backend = self._backend(root_id)
+        opener = getattr(backend, "open_stream", None)
+        if opener is None:
+            raise NotImplementedError(
+                f"backend for root '{root_id}' does not support streaming proxy"
+            )
+        return await opener(key, range_header=range_header)
 
     async def ensure_local_copy(self, key, root_id=None):
         """

@@ -340,6 +340,98 @@ async def test_relocate_blob_size_mismatch_raises(tmp_path):
         await relocate_blob(tier, key, str(src), "archive")
 
 
+# --------------------------------------------------------------------------- #
+# Phase D — serve-path resolution + streaming
+# --------------------------------------------------------------------------- #
+
+
+class _FakeResult:
+    def __init__(self, value):
+        self._value = value
+
+    def scalar_one_or_none(self):
+        return self._value
+
+
+class _FakeDB:
+    def __init__(self, value):
+        self._value = value
+        self.executed = False
+
+    async def execute(self, *a, **k):
+        self.executed = True
+        return _FakeResult(self._value)
+
+
+@pytest.mark.asyncio
+async def test_resolve_root_derivative_fastpath_no_db():
+    from pixsim7.backend.main.api.v1.media import _resolve_storage_root_id
+
+    db = _FakeDB("archive")  # would return archive IF queried
+    assert await _resolve_storage_root_id(db, 1, "u/1/thumbnails/ab/x.jpg") == LOCAL_ROOT_ID
+    assert await _resolve_storage_root_id(db, 1, "u/1/previews/x.jpg") == LOCAL_ROOT_ID
+    assert db.executed is False  # fast-path never hit the DB
+
+
+@pytest.mark.asyncio
+async def test_resolve_root_content_key_from_db():
+    from pixsim7.backend.main.api.v1.media import _resolve_storage_root_id
+
+    assert await _resolve_storage_root_id(_FakeDB("archive"), 1, "u/1/content/ab/x.mp4") == "archive"
+    # NULL placement -> local
+    assert await _resolve_storage_root_id(_FakeDB(None), 1, "u/1/content/ab/x.mp4") == LOCAL_ROOT_ID
+
+
+def test_archive_serve_mode_default_and_override(monkeypatch):
+    from pixsim7.backend.main.api.v1 import media as media_mod
+
+    monkeypatch.setattr(media_mod.app_settings, "media_archive_serve_mode", "redirect", raising=False)
+    assert media_mod._archive_serve_mode() == "redirect"
+    monkeypatch.setattr(media_mod.app_settings, "media_archive_serve_mode", "proxy", raising=False)
+    assert media_mod._archive_serve_mode() == "proxy"
+    monkeypatch.setattr(media_mod.app_settings, "media_archive_serve_mode", "garbage", raising=False)
+    assert media_mod._archive_serve_mode() == "redirect"  # invalid -> safe default
+
+
+@pytest.mark.asyncio
+async def test_tiered_open_stream_routes_and_guards():
+    class _StreamBackend(StorageService):
+        async def open_stream(self, key, range_header=None):
+            async def _it():
+                yield b"abc"
+            return (206 if range_header else 200), {"Accept-Ranges": "bytes"}, "video/mp4", _it()
+
+    tier = TieredStorageService(
+        {LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp()), "archive": _StreamBackend()}
+    )
+    status, headers, ct, body = await tier.open_stream("k", root_id="archive", range_header="bytes=0-9")
+    assert status == 206 and ct == "video/mp4"
+    assert b"".join([chunk async for chunk in body]) == b"abc"
+    # local backend has no open_stream -> NotImplementedError
+    with pytest.raises(NotImplementedError):
+        await tier.open_stream("k", root_id=LOCAL_ROOT_ID)
+
+
+@pytest.mark.asyncio
+async def test_proxy_archive_stream_returns_streaming_response():
+    from starlette.responses import StreamingResponse
+
+    from pixsim7.backend.main.api.v1.media import _proxy_archive_stream
+
+    class _Req:
+        headers = {"range": "bytes=0-"}
+
+    class _Storage:
+        async def open_stream(self, key, root_id=None, range_header=None):
+            async def _it():
+                yield b"x"
+            return 206, {"Content-Range": "bytes 0-0/1"}, "video/mp4", _it()
+
+    resp = await _proxy_archive_stream(_Storage(), "u/1/content/ab/x.mp4", "archive", _Req())
+    assert isinstance(resp, StreamingResponse)
+    assert resp.status_code == 206
+
+
 @pytest.mark.asyncio
 async def test_relocate_blob_hash_verify(tmp_path):
     import hashlib

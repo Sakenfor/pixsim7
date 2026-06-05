@@ -227,6 +227,16 @@ class Settings(BaseSettings):
         default=500,
         description="Max file size for uploads (MB)"
     )
+    media_archive_serve_mode: str = Field(
+        default="redirect",
+        description=(
+            "How media on a non-local (S3/MinIO) root is served: 'redirect' issues "
+            "a 307 to a short-lived presigned URL so the client streams directly "
+            "from the store (fast; requires the client to reach the store endpoint, "
+            "e.g. over ZeroTier); 'proxy' streams the bytes through the backend "
+            "(works for any client, but double-hops). See plan media-storage-tiering."
+        ),
+    )
     media_storage_roots: Optional[str] = Field(
         default=None,
         description=(

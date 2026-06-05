@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, Response
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession, MediaUser
@@ -23,6 +23,8 @@ from pixsim7.backend.main.services.asset import AssetIngestionService
 from pixsim7.backend.main.services.media import get_media_settings
 from pixsim7.backend.main.services.media.settings import MediaSettings
 from pixsim7.backend.main.services.storage import get_storage_service
+from pixsim7.backend.main.services.storage.roots import LOCAL_ROOT_ID
+from pixsim7.backend.main.shared.config import settings as app_settings
 from pixsim7.backend.main.shared.path_registry import get_path_registry
 from pixsim_logging import get_logger
 
@@ -334,6 +336,50 @@ async def _try_regenerate_derivative(
         return False
 
 
+async def _resolve_storage_root_id(db, user_id: int, key: str) -> str:
+    """
+    Resolve which storage root a media key lives on (plan media-storage-tiering).
+
+    Fast path: derivative keys (``/thumbnails/``, ``/previews/``) always live on
+    the local root — no DB hit. Content originals are looked up by ``stored_key``
+    to read their ``storage_root_id`` (NULL → local). Unknown keys → local.
+    """
+    if "/thumbnails/" in key or "/previews/" in key:
+        return LOCAL_ROOT_ID
+    from sqlalchemy import select
+    from pixsim7.backend.main.domain.assets.models import Asset
+
+    root = (
+        await db.execute(
+            select(Asset.storage_root_id)
+            .where(Asset.user_id == user_id, Asset.stored_key == key)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return root or LOCAL_ROOT_ID
+
+
+def _archive_serve_mode() -> str:
+    mode = getattr(app_settings, "media_archive_serve_mode", "redirect")
+    return mode if mode in ("redirect", "proxy") else "redirect"
+
+
+async def _proxy_archive_stream(storage, key: str, root_id: str, request: Request):
+    """Stream a non-local object through the backend (proxy fallback)."""
+    range_header = request.headers.get("range")
+    try:
+        status, headers, content_type, body_iter = await storage.open_stream(
+            key, root_id=root_id, range_header=range_header
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
+    except NotImplementedError:
+        raise HTTPException(status_code=500, detail="Archive backend cannot stream")
+    return StreamingResponse(
+        body_iter, status_code=status, media_type=content_type, headers=headers
+    )
+
+
 class MediaTokenResponse(BaseModel):
     """Short-lived token for streaming media via element ``src`` query string."""
     token: str = Field(description="Short-lived media token (carry as ?token=)")
@@ -367,6 +413,7 @@ async def serve_media(
     key: str,
     user: MediaUser,
     db: DatabaseSession,
+    request: Request,
     response: Response,
 ):
     """
@@ -380,6 +427,11 @@ async def serve_media(
     Security: Files are served only if they belong to the authenticated user.
     The key format is "u/{user_id}/..." so we validate ownership.
 
+    Storage tiering: media on a non-local root (S3/MinIO archive) is served by
+    redirecting to a short-lived presigned URL (default — direct stream), or
+    proxy-streamed through the backend (``media_archive_serve_mode='proxy'``).
+    Local media is served via FileResponse as before.
+
     Auto-regeneration: If a thumbnail/preview is missing, automatically
     queues regeneration in background and returns 202 Accepted.
     """
@@ -392,8 +444,23 @@ async def serve_media(
         # For now, only allow own files
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # Check if file exists
-    if not await storage.exists(key):
+    # Resolve which root this key lives on (derivatives fast-path to local).
+    root_id = await _resolve_storage_root_id(db, user.id, key)
+
+    # Non-local (archive) originals: ownership is already validated above.
+    if not storage.is_local(root_id):
+        if _archive_serve_mode() == "proxy":
+            return await _proxy_archive_stream(storage, key, root_id, request)
+        # Default: redirect to a short-lived presigned URL (direct stream).
+        try:
+            url = storage.get_url(key, root_id=root_id)
+        except Exception as e:  # noqa: BLE001
+            logger.error("archive_presign_failed", key=key, root_id=root_id, error=str(e))
+            raise HTTPException(status_code=502, detail="Archive storage unavailable")
+        return RedirectResponse(url, status_code=307)
+
+    # Check if file exists (local root)
+    if not await storage.exists(key, root_id=root_id):
         # Auto-regenerate missing thumbnails/previews
         if "/thumbnails/" in key or "/previews/" in key:
             regenerated = await _try_regenerate_derivative(
@@ -408,12 +475,12 @@ async def serve_media(
         raise HTTPException(status_code=404, detail="File not found")
 
     # Get file metadata
-    metadata = await storage.get_metadata(key)
+    metadata = await storage.get_metadata(key, root_id=root_id)
     if not metadata:
         raise HTTPException(status_code=404, detail="File not found")
 
     # Get local path for FileResponse
-    file_path = storage.get_path(key)
+    file_path = storage.get_path(key, root_id=root_id)
 
     # Set caching headers
     max_age = settings.cache_control_max_age_seconds
@@ -435,13 +502,15 @@ async def serve_media(
 async def head_media(
     key: str,
     user: MediaUser,
+    db: DatabaseSession,
     response: Response,
 ):
     """
     HEAD request for media files.
 
     Returns headers without body, useful for checking existence and getting
-    metadata for conditional requests.
+    metadata for conditional requests. Resolves the storage root so archived
+    (S3/MinIO) originals report metadata too.
     """
     storage = get_storage_service()
     settings = get_media_settings()
@@ -450,8 +519,10 @@ async def head_media(
     if not key.startswith(f"u/{user.id}/"):
         raise HTTPException(status_code=403, detail="Access denied")
 
+    root_id = await _resolve_storage_root_id(db, user.id, key)
+
     # Check if file exists
-    metadata = await storage.get_metadata(key)
+    metadata = await storage.get_metadata(key, root_id=root_id)
     if not metadata:
         raise HTTPException(status_code=404, detail="File not found")
 
