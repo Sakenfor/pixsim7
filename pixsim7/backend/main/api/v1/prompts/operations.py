@@ -10,8 +10,21 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
+from pixsim7.backend.main.domain.prompt import PromptFamily
 from pixsim7.backend.main.services.prompt import PromptVersionService
+from pixsim7.backend.main.services.prompt.family_candidates import (
+    DEFAULT_COSINE_FLOOR,
+    DEFAULT_K,
+    DEFAULT_LARGE_CLUSTER_SIZE,
+    DEFAULT_LEXICAL_FLOOR,
+    DEFAULT_MAX_CLUSTERS,
+    DEFAULT_MIN_SIZE,
+    PromptFamilyCandidateService,
+    _LEXICAL_METHODS,
+)
 from pixsim7.backend.main.services.analysis.analyzer_defaults import (
     DEFAULT_PROMPT_ANALYZER_ID,
     normalize_analyzer_id_for_target,
@@ -216,6 +229,7 @@ async def find_similar_prompts(
     threshold: float = 0.5,
     family_id: Optional[UUID] = None,
     mode: str = "text",
+    rank: str = "similarity",
     db: AsyncSession = Depends(get_db),
     user = Depends(get_current_user),
 ):
@@ -229,6 +243,9 @@ async def find_similar_prompts(
         - family_id: Optional family filter
         - mode: "text" (lexical, default) or "vector" (pgvector semantic
           search over PromptVersion embeddings)
+        - rank: "similarity" (default) or "hybrid" — vector mode only; blends
+          semantic similarity with a successful_assets boost so proven prompts
+          rank higher among comparably-similar matches.
 
     Returns versions ranked by similarity score.
     """
@@ -244,6 +261,11 @@ async def find_similar_prompts(
             status_code=400,
             detail="mode must be 'text' or 'vector'"
         )
+    if rank not in ("similarity", "hybrid"):
+        raise HTTPException(
+            status_code=400,
+            detail="rank must be 'similarity' or 'hybrid'"
+        )
 
     service = PromptVersionService(db)
     similar = await service.find_similar_prompts(
@@ -252,6 +274,7 @@ async def find_similar_prompts(
         threshold=threshold,
         family_id=family_id,
         mode=mode,
+        rank=rank,
     )
 
     return {
@@ -260,8 +283,144 @@ async def find_similar_prompts(
         "threshold": threshold,
         "family_id": str(family_id) if family_id else None,
         "mode": mode,
+        "rank": rank,
         "results": similar,
         "result_count": len(similar)
+    }
+
+
+# ===== Family Candidates (clustering) =====
+
+_MEMBER_PREVIEW_CHARS = 280
+
+
+@router.get("/family-candidates")
+async def find_family_candidates(
+    cosine_floor: float = DEFAULT_COSINE_FLOOR,
+    lexical_floor: float = DEFAULT_LEXICAL_FLOOR,
+    lexical_method: str = "jaccard",
+    k: int = DEFAULT_K,
+    seed_limit: int = 0,
+    include_grouped: bool = False,
+    min_size: int = DEFAULT_MIN_SIZE,
+    max_clusters: int = DEFAULT_MAX_CLUSTERS,
+    large_cluster_size: int = DEFAULT_LARGE_CLUSTER_SIZE,
+    member_limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Candidate prompt families — clusters of near-duplicate / minor-tweak versions.
+
+    Two-signal clustering (embedding k-NN + lexical confirm) ranked by groupable
+    success. Review-only; confirming a cluster into a real family is a separate
+    write endpoint. See plan prompt-family-candidates.
+
+    Query params:
+        - cosine_floor: min embedding cosine similarity for a candidate edge (0-1)
+        - lexical_floor: min lexical similarity to confirm a "tweak" edge (0-1)
+        - lexical_method: 'jaccard' (default, fast) | 'combined' | 'sequence' | 'ngram'
+        - k: neighbors fetched per seed from the index
+        - seed_limit: only seed from N newest ungrouped versions (0 = all)
+        - include_grouped: also seed from versions that already have a family
+        - min_size: minimum cluster size to report
+        - max_clusters: cap on returned clusters (ranked by success)
+        - large_cluster_size: size at/above which a cluster is labeled template_cluster
+        - member_limit: max member previews returned per cluster (rep always first)
+
+    NOTE: computed on demand. A full-library run (seed_limit=0) can take a while;
+    the planned precompute cache is the escape hatch if it gets too slow.
+    """
+    if not 0.0 <= cosine_floor <= 1.0:
+        raise HTTPException(status_code=400, detail="cosine_floor must be between 0 and 1")
+    if not 0.0 <= lexical_floor <= 1.0:
+        raise HTTPException(status_code=400, detail="lexical_floor must be between 0 and 1")
+    if lexical_method not in _LEXICAL_METHODS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"lexical_method must be one of {list(_LEXICAL_METHODS)}",
+        )
+
+    k = max(1, min(k, 50))
+    max_clusters = max(1, min(max_clusters, 200))
+    min_size = max(2, min_size)
+    member_limit = max(1, min(member_limit, 200))
+    seed = seed_limit if seed_limit and seed_limit > 0 else None
+
+    service = PromptFamilyCandidateService(db)
+    candidates = await service.find_candidates(
+        cosine_floor=cosine_floor,
+        lexical_floor=lexical_floor,
+        lexical_method=lexical_method,
+        k=k,
+        seed_limit=seed,
+        include_grouped=include_grouped,
+        min_size=min_size,
+        max_clusters=max_clusters,
+        large_cluster_size=large_cluster_size,
+    )
+
+    # Resolve titles for any existing families surfaced in the clusters.
+    fam_ids = {fid for c in candidates for fid, _ in c.existing_families}
+    titles: dict = {}
+    if fam_ids:
+        rows = (
+            await db.execute(
+                select(PromptFamily.id, PromptFamily.title).where(
+                    PromptFamily.id.in_(fam_ids)
+                )
+            )
+        ).all()
+        titles = {r.id: r.title for r in rows}
+
+    def _shape_member(m, *, is_rep: bool) -> dict:
+        preview = " ".join((m.prompt_text or "").split())
+        return {
+            "version_id": str(m.version_id),
+            "prompt_preview": preview[:_MEMBER_PREVIEW_CHARS],
+            "successful_assets": m.successful_assets,
+            "generation_count": m.generation_count,
+            "family_id": str(m.family_id) if m.family_id else None,
+            "is_representative": is_rep,
+        }
+
+    out = []
+    for c in candidates:
+        rep_id = c.representative.version_id
+        shown = c.members[:member_limit]
+        out.append(
+            {
+                "label": c.label,
+                "size": c.size,
+                "total_successful_assets": c.total_successful_assets,
+                "total_generation_count": c.total_generation_count,
+                "suggested_title": c.suggested_title,
+                "representative_version_id": str(rep_id),
+                "existing_families": [
+                    {"family_id": str(fid), "title": titles.get(fid), "count": cnt}
+                    for fid, cnt in c.existing_families
+                ],
+                "members": [
+                    _shape_member(m, is_rep=(m.version_id == rep_id)) for m in shown
+                ],
+                "members_truncated": c.size > len(shown),
+            }
+        )
+
+    return {
+        "params": {
+            "cosine_floor": cosine_floor,
+            "lexical_floor": lexical_floor,
+            "lexical_method": lexical_method,
+            "k": k,
+            "seed_limit": seed,
+            "include_grouped": include_grouped,
+            "min_size": min_size,
+            "max_clusters": max_clusters,
+            "large_cluster_size": large_cluster_size,
+        },
+        "count": len(out),
+        "candidates": out,
     }
 
 
