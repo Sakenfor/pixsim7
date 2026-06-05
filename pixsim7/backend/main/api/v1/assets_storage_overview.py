@@ -953,6 +953,28 @@ class StorageRootTestResponse(BaseModel):
     error: Optional[str] = None
 
 
+class StorageRootsListResponse(BaseModel):
+    """Per-root placement summary for the dedicated Storage Tiering panel.
+
+    Same StorageRootInfo as the storage-overview, but WITHOUT the expensive
+    filesystem walk — a DB group-by plus an optional health probe. Cheap enough
+    to load the panel on its own.
+    """
+    roots: list[StorageRootInfo]
+    tiering_enabled: bool
+
+
+@router.get("/storage-roots", response_model=StorageRootsListResponse)
+async def list_storage_roots(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    probe_health: bool = Query(True, description="Probe each non-local root for reachability"),
+):
+    """Per-root sizes + online state for the Storage Tiering panel (no FS scan)."""
+    roots = await _build_storage_roots(db, admin.id, probe_health)
+    return StorageRootsListResponse(roots=roots, tiering_enabled=len(get_root_specs()) > 1)
+
+
 def _mask_root(entry: dict) -> StorageRootConfigItem:
     return StorageRootConfigItem(
         id=str(entry.get("id", "")),
