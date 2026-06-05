@@ -10,8 +10,8 @@
  * mirroring NotificationActivityBarWidget). Click-to-open, consistent with
  * the notifications bell.
  */
-import { Badge, useToast } from '@pixsim7/shared.ui';
-import { useMemo } from 'react';
+import { useToast } from '@pixsim7/shared.ui';
+import { useMemo, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -22,7 +22,7 @@ import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import { useBatchGenerationActions, type BatchActionKind } from '../hooks/useBatchGenerationActions';
 import { groupGenerations, type GenerationGroupBy } from '../lib/generationGrouping';
-import { isActiveStatus, type GenerationModel } from '../models';
+import { isActiveStatus, resolveGranularStatus, type GenerationModel } from '../models';
 import { useGenerationsStore } from '../stores/generationsStore';
 
 interface GenerationActivityFlyoutProps {
@@ -85,20 +85,35 @@ export function GenerationActivityFlyout({
   const toast = useToast();
   const { runBatch, isRunning } = useBatchGenerationActions();
   const generations = useGenerationsStore((s) => s.generations);
+  const [countMode, setCountMode] = useState<'active' | 'paused'>('active');
+  const allGenerations = useMemo(() => Array.from(generations.values()), [generations]);
 
-  const groups = useMemo(() => {
-    const all = Array.from(generations.values());
-    const built = groupGenerations(all, [groupBy]) ?? [];
-    // Only surface groups that still have something in flight — this is an
-    // activity view, not the full history.
-    return built
-      .filter((grp) => grp.items.some((g) => isActiveStatus(g.status) || g.status === 'paused'))
-      .slice(0, 20);
-  }, [generations, groupBy]);
-
-  const totalActive = useMemo(
-    () => groups.reduce((sum, grp) => sum + grp.activeCount, 0),
-    [groups],
+  const totalActive = useMemo(() => {
+    let count = 0;
+    for (const g of allGenerations) {
+      if (isActiveStatus(g.status)) count++;
+    }
+    return count;
+  }, [allGenerations]);
+  const pausedCount = useMemo(() => {
+    let count = 0;
+    for (const g of allGenerations) {
+      if (g.status === 'paused') count++;
+    }
+    return count;
+  }, [allGenerations]);
+  const headerCount = countMode === 'active' ? totalActive : pausedCount;
+  const headerLabel = countMode === 'active' ? 'active' : 'paused';
+  const visibleGenerations = useMemo(
+    () =>
+      allGenerations.filter((g) =>
+        countMode === 'active' ? isActiveStatus(g.status) : g.status === 'paused',
+      ),
+    [allGenerations, countMode],
+  );
+  const groups = useMemo(
+    () => (groupGenerations(visibleGenerations, [groupBy]) ?? []).slice(0, 20),
+    [visibleGenerations, groupBy],
   );
 
   async function handleGroupAction(kind: BatchActionKind, ids: number[]) {
@@ -106,6 +121,12 @@ export function GenerationActivityFlyout({
     const result = await runBatch(kind, ids);
     if (result.failed > 0) {
       toast.error(`${ACTION_LABEL[kind]}: ${result.succeeded} ok, ${result.failed} failed`);
+    } else if (result.reconciled > 0) {
+      // Some rows had already moved on (stale snapshot) — reconciled, not failed.
+      const acted = result.succeeded - result.reconciled;
+      toast.success(
+        `${ACTION_LABEL[kind]} ${acted} generation(s) · ${result.reconciled} already updated`,
+      );
     } else {
       toast.success(`${ACTION_LABEL[kind]} ${result.succeeded} generation(s)`);
     }
@@ -116,12 +137,21 @@ export function GenerationActivityFlyout({
       {/* Header */}
       <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-neutral-700/40">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-neutral-200">Active generations</span>
-          {totalActive > 0 && (
-            <Badge color="blue" className="text-[10px]">
-              {totalActive} active
-            </Badge>
-          )}
+          <span className="text-sm font-medium text-neutral-200">Generation activity</span>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setCountMode((prev) => (prev === 'active' ? 'paused' : 'active'))}
+            className={`px-1.5 h-4 inline-flex items-center justify-center rounded-full text-[10px] font-semibold leading-none whitespace-nowrap transition-colors ${
+              countMode === 'active'
+                ? 'bg-blue-900/40 text-blue-300 hover:bg-blue-900/60'
+                : 'bg-amber-900/40 text-amber-300 hover:bg-amber-900/60'
+            }`}
+            title={`Showing ${headerLabel} count. Click to toggle active/paused.`}
+            aria-label={`Showing ${headerLabel} count. Click to toggle active or paused count.`}
+          >
+            {headerCount} {headerLabel}
+          </button>
         </div>
         <div className="flex items-center gap-1">
           <div className="flex rounded bg-neutral-800 p-0.5 text-[10px]">
@@ -166,7 +196,7 @@ export function GenerationActivityFlyout({
       <div className="flex-1 overflow-y-auto">
         {groups.length === 0 ? (
           <div className="flex items-center justify-center h-24 text-xs text-neutral-500">
-            No active generations
+            {countMode === 'active' ? 'No active generations' : 'No paused generations'}
           </div>
         ) : (
           <div className="divide-y divide-neutral-800/50">
@@ -175,6 +205,13 @@ export function GenerationActivityFlyout({
               const cancel = cancellableIds(grp.items);
               const resume = resumableIds(grp.items);
               const retry = retryableIds(grp.items);
+              // How many items in this prompt/asset group are bouncing through
+              // render-moderation (fast-filter) retries — the at-a-glance signal
+              // for "this prompt keeps getting filtered".
+              const refilteringCount = grp.items.reduce(
+                (n, g) => (resolveGranularStatus(g) === 'refiltering' ? n + 1 : n),
+                0,
+              );
               return (
                 <div key={grp.key} className="px-3 py-2">
                   <div className="flex items-start justify-between gap-2">
@@ -186,8 +223,24 @@ export function GenerationActivityFlyout({
                         {grp.label}
                       </span>
                     </span>
-                    <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-900/40 text-blue-300">
-                      {grp.activeCount}/{grp.items.length}
+                    <span className="flex-shrink-0 flex items-center gap-1">
+                      {refilteringCount > 0 && (
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap bg-orange-900/50 text-orange-300"
+                          title={`${refilteringCount} attempt(s) here keep hitting render-time moderation (fast-filtered) and are auto-retrying.`}
+                        >
+                          ⟳ {refilteringCount} filtered
+                        </span>
+                      )}
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${
+                          countMode === 'active'
+                            ? 'bg-blue-900/40 text-blue-300'
+                            : 'bg-amber-900/40 text-amber-300'
+                        }`}
+                      >
+                        {grp.items.length} {headerLabel}
+                      </span>
                     </span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1">

@@ -1,19 +1,23 @@
 /**
  * Batch cancel hook for generations.
  *
- * Cancels multiple active generations via Promise.allSettled,
- * updating the store for each successful cancellation.
+ * Cancels multiple active generations, updating the store for each. A 409
+ * Conflict (the row already left the cancellable state — common during the
+ * content-filter retry loop, where the store snapshot goes stale) is reconciled
+ * against server truth rather than reported as a failure. See
+ * {@link runLifecycleActionWithReconcile}.
  */
 import { useCallback, useState } from 'react';
 
 import { cancelGeneration } from '@lib/api/generations';
 
-import { fromGenerationResponse } from '../models';
-import { useGenerationsStore } from '../stores/generationsStore';
+import { runLifecycleActionWithReconcile, tallyLifecycleOutcomes } from './lifecycleReconcile';
 
 export interface BatchCancelResult {
   succeeded: number;
   failed: number;
+  /** Subset of `succeeded` that were stale snapshots reconciled from the server. */
+  reconciled: number;
   errors: string[];
 }
 
@@ -24,26 +28,12 @@ export function useBatchCancelGenerations() {
   const batchCancel = useCallback(async (ids: number[]): Promise<BatchCancelResult> => {
     setIsCancelling(true);
     try {
-      const results = await Promise.allSettled(
-        ids.map(id => cancelGeneration(id))
+      // runLifecycleActionWithReconcile never rejects (409s fold into a store
+      // reconcile), so a plain Promise.all is safe here.
+      const outcomes = await Promise.all(
+        ids.map((id) => runLifecycleActionWithReconcile(cancelGeneration, id)),
       );
-
-      let succeeded = 0;
-      let failed = 0;
-      const errors: string[] = [];
-
-      for (let i = 0; i < results.length; i++) {
-        const result = results[i];
-        if (result.status === 'fulfilled') {
-          succeeded++;
-          useGenerationsStore.getState().addOrUpdate(fromGenerationResponse(result.value));
-        } else {
-          failed++;
-          errors.push(`ID ${ids[i]}: ${result.reason?.message ?? 'Unknown error'}`);
-        }
-      }
-
-      const summary: BatchCancelResult = { succeeded, failed, errors };
+      const summary: BatchCancelResult = tallyLifecycleOutcomes(outcomes);
       setLastResult(summary);
       return summary;
     } finally {

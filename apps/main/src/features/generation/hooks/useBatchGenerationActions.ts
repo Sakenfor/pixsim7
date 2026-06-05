@@ -6,6 +6,11 @@
  * GenerationResponse which is fed back into the store so the UI reflects the
  * new state immediately, without waiting for the WebSocket round-trip.
  *
+ * A 409 Conflict (the row already left the actionable state — common during
+ * the content-filter retry loop, where the store snapshot goes stale) is not
+ * treated as a failure: {@link runLifecycleActionWithReconcile} refetches the
+ * authoritative row and reconciles the store instead.
+ *
  * Sibling of useBatchCancelGenerations (kept separate because it is consumed
  * elsewhere); this hook generalizes the same pattern for the activity flyout.
  */
@@ -19,8 +24,7 @@ import {
   type GenerationResponse,
 } from '@lib/api/generations';
 
-import { fromGenerationResponse } from '../models';
-import { useGenerationsStore } from '../stores/generationsStore';
+import { runLifecycleActionWithReconcile, tallyLifecycleOutcomes } from './lifecycleReconcile';
 
 export type BatchActionKind = 'pause' | 'cancel' | 'resume' | 'retry';
 
@@ -35,6 +39,8 @@ export interface BatchActionResult {
   kind: BatchActionKind;
   succeeded: number;
   failed: number;
+  /** Subset of `succeeded` that were stale snapshots reconciled from the server. */
+  reconciled: number;
   errors: string[];
 }
 
@@ -47,24 +53,12 @@ export function useBatchGenerationActions() {
       const fn = ACTION_FNS[kind];
       setPendingKind(kind);
       try {
-        const results = await Promise.allSettled(ids.map((id) => fn(id)));
-
-        let succeeded = 0;
-        let failed = 0;
-        const errors: string[] = [];
-
-        for (let i = 0; i < results.length; i++) {
-          const result = results[i];
-          if (result.status === 'fulfilled') {
-            succeeded++;
-            useGenerationsStore.getState().addOrUpdate(fromGenerationResponse(result.value));
-          } else {
-            failed++;
-            errors.push(`ID ${ids[i]}: ${result.reason?.message ?? 'Unknown error'}`);
-          }
-        }
-
-        const summary: BatchActionResult = { kind, succeeded, failed, errors };
+        // runLifecycleActionWithReconcile never rejects (it folds 409s into a
+        // store reconcile), so a plain Promise.all is safe here.
+        const outcomes = await Promise.all(
+          ids.map((id) => runLifecycleActionWithReconcile(fn, id)),
+        );
+        const summary: BatchActionResult = { kind, ...tallyLifecycleOutcomes(outcomes) };
         setLastResult(summary);
         return summary;
       } finally {

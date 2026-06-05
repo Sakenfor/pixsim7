@@ -7,7 +7,7 @@
  * NotificationActivityBarWidget for consistency.
  */
 import { useHoverExpand } from '@pixsim7/shared.ui';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
@@ -15,30 +15,58 @@ import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 import { NavIcon } from '@/components/navigation/ActivityBar';
 
 import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
+import { syncGenerationsFromApi } from '../hooks/useRecentGenerations';
 import type { GenerationGroupBy } from '../lib/generationGrouping';
-import { isActiveStatus } from '../models';
+import { isActiveStatus, resolveGranularStatus } from '../models';
 import { useGenerationsStore } from '../stores/generationsStore';
 
 import { GenerationActivityFlyout } from './GenerationActivityFlyout';
 
-function useActiveGenerationCount(): number {
-  return useGenerationsStore((s) => {
-    let count = 0;
-    for (const g of s.generations.values()) {
-      if (isActiveStatus(g.status)) count++;
-    }
-    return count;
-  });
+/** Recency window reconciled from the API each time the flyout opens. */
+const FLYOUT_RECONCILE_LIMIT = 100;
+
+type BadgeMode = 'active' | 'total' | 'polling';
+
+interface GenerationWidgetStats {
+  activeCount: number;
+  totalCount: number;
+  pollingCount: number;
+  refilteringCount: number;
+}
+
+function formatBadgeCount(value: number): string {
+  return value > 99 ? '99+' : String(value);
+}
+
+function nextBadgeMode(current: BadgeMode): BadgeMode {
+  if (current === 'active') return 'total';
+  if (current === 'total') return 'polling';
+  return 'active';
 }
 
 export function GenerationActivityBarWidget() {
   const { isConnected, forceReconnect } = useGenerationWebSocket();
-  const activeCount = useActiveGenerationCount();
+  const generations = useGenerationsStore((s) => s.generations);
+  const { activeCount, totalCount, pollingCount, refilteringCount } = useMemo<GenerationWidgetStats>(() => {
+    let active = 0;
+    let total = 0;
+    let polling = 0;
+    let refiltering = 0;
+    for (const g of generations.values()) {
+      total++;
+      if (isActiveStatus(g.status)) active++;
+      const granular = resolveGranularStatus(g);
+      if (granular === 'polling') polling++;
+      if (granular === 'refiltering') refiltering++;
+    }
+    return { activeCount: active, totalCount: total, pollingCount: polling, refilteringCount: refiltering };
+  }, [generations]);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const triggerRef = useRef<HTMLDivElement>(null);
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [groupBy, setGroupBy] = useState<GenerationGroupBy>('prompt');
+  const [badgeMode, setBadgeMode] = useState<BadgeMode>('active');
 
   const { isExpanded: hovered, handlers } = useHoverExpand({
     expandDelay: 400,
@@ -47,6 +75,27 @@ export function GenerationActivityBarWidget() {
 
   const handleClick = useCallback(() => {
     setPanelOpen((prev) => !prev);
+  }, []);
+
+  // Reconcile on open. The flyout renders purely from the store, which is fed
+  // by best-effort WebSocket events (no delivery/ordering guarantee). A single
+  // authoritative refetch on open corrects any rows that drifted — dropped
+  // events during a reconnect gap, or out-of-order refetches from the
+  // content-filter retry loop — so stale "active" rows don't show dead actions.
+  // (The full GenerationsPanel already does this on mount; this covers the
+  // lighter flyout.) Best-effort: a failure leaves the last-known store state.
+  const reconcileInFlightRef = useRef(false);
+  useEffect(() => {
+    if (!panelOpen || reconcileInFlightRef.current) return;
+    reconcileInFlightRef.current = true;
+    void syncGenerationsFromApi(FLYOUT_RECONCILE_LIMIT)
+      .catch(() => { /* keep last-known store state */ })
+      .finally(() => { reconcileInFlightRef.current = false; });
+  }, [panelOpen]);
+
+  const handleBadgeClick = useCallback((e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    setBadgeMode((prev) => nextBadgeMode(prev));
   }, []);
 
   const handleClose = useCallback(() => {
@@ -59,6 +108,28 @@ export function GenerationActivityBarWidget() {
   }, [openFloatingPanel]);
 
   const isActive = activeCount > 0;
+  const hasAnyGenerations = totalCount > 0;
+  const modeLabel = badgeMode === 'active' ? 'active' : badgeMode === 'total' ? 'total' : 'polling';
+  const modeTitle = badgeMode === 'active'
+    ? 'Active generations'
+    : badgeMode === 'total'
+      ? 'Tracked generations'
+      : 'Polling generations';
+
+  const badgeValue = badgeMode === 'active'
+    ? formatBadgeCount(activeCount)
+    : badgeMode === 'total'
+      ? formatBadgeCount(totalCount)
+      : pollingCount > 0
+        ? formatBadgeCount(pollingCount)
+        : 'idle';
+  const badgeToneClass = badgeMode === 'active'
+    ? (activeCount > 0 ? 'bg-amber-500 text-white' : 'bg-neutral-600 text-neutral-200')
+    : badgeMode === 'total'
+      ? 'bg-blue-500 text-white'
+      : pollingCount > 0
+        ? 'bg-emerald-500 text-white'
+        : 'bg-neutral-600 text-neutral-200';
 
   return (
     <div
@@ -87,19 +158,39 @@ export function GenerationActivityBarWidget() {
           } ${isActive && isConnected ? 'animate-pulse-subtle' : ''}`}
         />
 
-        {/* Active count badge */}
-        {isActive && (
-          <div className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-amber-500 text-[10px] font-semibold text-white leading-none">
-            {activeCount > 99 ? '99+' : activeCount}
-          </div>
+        {/* Fast-filter dot — top-left (free corner) when prompts are bouncing
+            through render-moderation retries; the count lives in the tooltip. */}
+        {refilteringCount > 0 && (
+          <div
+            className="absolute top-1.5 left-1.5 w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"
+            title={`${refilteringCount} attempt(s) re-filtering (render-moderation retries)`}
+          />
         )}
       </button>
+      {hasAnyGenerations && (
+        <button
+          type="button"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={handleBadgeClick}
+          className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full text-[10px] font-semibold leading-none transition-[transform,filter] hover:brightness-110 hover:scale-105 ${badgeToneClass}`}
+          title={`${modeTitle}: ${badgeValue}. Click to cycle metric.`}
+          aria-label={`${modeTitle}: ${badgeValue}. Click to cycle metric.`}
+        >
+          {badgeValue}
+        </button>
+      )}
 
       {/* Tooltip (only when panel is closed) */}
       {hovered && !panelOpen && triggerRef.current && (
         <GenerationTooltip
           triggerRef={triggerRef}
           activeCount={activeCount}
+          totalCount={totalCount}
+          pollingCount={pollingCount}
+          refilteringCount={refilteringCount}
+          badgeMode={badgeMode}
+          badgeValue={badgeValue}
+          modeLabel={modeLabel}
           isConnected={isConnected}
         />
       )}
@@ -126,10 +217,22 @@ export function GenerationActivityBarWidget() {
 function GenerationTooltip({
   triggerRef,
   activeCount,
+  totalCount,
+  pollingCount,
+  refilteringCount,
+  badgeMode,
+  badgeValue,
+  modeLabel,
   isConnected,
 }: {
   triggerRef: React.RefObject<HTMLDivElement | null>;
   activeCount: number;
+  totalCount: number;
+  pollingCount: number;
+  refilteringCount: number;
+  badgeMode: BadgeMode;
+  badgeValue: string;
+  modeLabel: string;
   isConnected: boolean;
 }) {
   const rect = triggerRef.current?.getBoundingClientRect();
@@ -147,6 +250,19 @@ function GenerationTooltip({
       <span>
         {activeCount > 0 ? `${activeCount} generating` : 'No active generations'}
       </span>
+      <span className="text-neutral-400">
+        Badge: {modeLabel} ({badgeValue}) - click to cycle
+      </span>
+      {badgeMode !== 'total' && (
+        <span className="text-neutral-500">
+          Tracked: {formatBadgeCount(totalCount)} | Polling: {pollingCount > 0 ? formatBadgeCount(pollingCount) : 'idle'}
+        </span>
+      )}
+      {refilteringCount > 0 && (
+        <span className="text-orange-400">
+          ⟳ {formatBadgeCount(refilteringCount)} re-filtering (moderation retries)
+        </span>
+      )}
       {!isConnected && <span className="text-red-400">Disconnected</span>}
     </div>,
     document.body,
