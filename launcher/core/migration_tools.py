@@ -351,14 +351,14 @@ class MigrationNode:
             return "Pending"
 
 
-def parse_heads() -> tuple[list[MigrationHead], Optional[str]]:
+def parse_heads(config: str | None = None) -> tuple[list[MigrationHead], Optional[str]]:
     """
     Parse alembic heads output to detect multiple branches.
 
     Returns:
         Tuple of (list of MigrationHead objects, error message if any)
     """
-    code, out, err = _run_alembic('heads')
+    code, out, err = _run_alembic('heads', config=config)
     if code != 0:
         return [], f"Cannot check heads: {err.strip() or out.strip()}"
 
@@ -515,7 +515,7 @@ def _extract_revision_id(text: str) -> Optional[str]:
     return None
 
 
-def parse_migration_history() -> tuple[list[MigrationNode], Optional[str]]:
+def parse_migration_history(config: str | None = None) -> tuple[list[MigrationNode], Optional[str]]:
     """
     Parse alembic history into structured MigrationNode objects.
 
@@ -523,7 +523,7 @@ def parse_migration_history() -> tuple[list[MigrationNode], Optional[str]]:
         Tuple of (list of MigrationNode objects ordered from oldest to newest, error message if any)
     """
     # Get current revision
-    code, current_out, err = _run_alembic('current')
+    code, current_out, err = _run_alembic('current', config=config)
     if code != 0:
         return [], f"Cannot get current revision: {err.strip() or current_out.strip()}"
 
@@ -531,14 +531,14 @@ def parse_migration_history() -> tuple[list[MigrationNode], Optional[str]]:
     current_rev = _extract_revision_id(current_filtered)
 
     # Get heads
-    heads_list, heads_err = parse_heads()
+    heads_list, heads_err = parse_heads(config=config)
     if heads_err:
         return [], heads_err
 
     head_revisions = {h.revision for h in heads_list}
 
     # Get full history with verbose output
-    code, history_out, err = _run_alembic('history', '--verbose')
+    code, history_out, err = _run_alembic('history', '--verbose', config=config)
     if code != 0:
         return [], f"Cannot get history: {err.strip() or history_out.strip()}"
 
@@ -614,14 +614,14 @@ def parse_migration_history() -> tuple[list[MigrationNode], Optional[str]]:
     return list(reversed(migrations)), None  # Return oldest to newest
 
 
-def get_pending_migrations_detailed() -> tuple[list[MigrationNode], Optional[str]]:
+def get_pending_migrations_detailed(config: str | None = None) -> tuple[list[MigrationNode], Optional[str]]:
     """
     Get detailed list of pending migrations that haven't been applied yet.
 
     Returns:
         Tuple of (list of pending MigrationNode objects, error message if any)
     """
-    migrations, err = parse_migration_history()
+    migrations, err = parse_migration_history(config=config)
     if err:
         return [], err
 

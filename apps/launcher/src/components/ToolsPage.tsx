@@ -41,6 +41,9 @@ export interface BuildProgress {
 export function ToolsPage() {
   const [activeSection, setActiveSection] = useState<Section>('codegen')
   const [buildProgress, setBuildProgress] = useState<BuildProgress>({ kind: 'idle' })
+  // Pending-migration count across all databases, lifted out of DatabasesSection
+  // so the top-level "Databases" tab can flag it without the user drilling in.
+  const [dbPending, setDbPending] = useState(0)
 
   const sections: { id: Section; label: string }[] = [
     { id: 'codegen', label: 'Codegen' },
@@ -65,13 +68,14 @@ export function ToolsPage() {
           >
             <span>{s.label}</span>
             {s.id === 'buildables' && <TabBuildProgress progress={buildProgress} />}
+            {s.id === 'databases' && dbPending > 0 && <TabPendingBadge count={dbPending} />}
           </button>
         ))}
       </div>
 
       <div className="flex-1 overflow-hidden relative">
         <div className={`h-full overflow-auto ${activeSection === 'codegen' ? '' : 'hidden'}`}><CodegenSection /></div>
-        <div className={`h-full overflow-auto ${activeSection === 'databases' ? '' : 'hidden'}`}><DatabasesSection /></div>
+        <div className={`h-full overflow-auto ${activeSection === 'databases' ? '' : 'hidden'}`}><DatabasesSection onPendingCountChange={setDbPending} /></div>
         <div className={`h-full overflow-auto ${activeSection === 'buildables' ? '' : 'hidden'}`}>
           <BuildablesSection progress={buildProgress} setProgress={setBuildProgress} />
         </div>
@@ -96,6 +100,18 @@ function TabBuildProgress({ progress }: { progress: BuildProgress }) {
       className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"
       title={progress.pkg ? `Building ${progress.pkg}` : 'Building'}
     />
+  )
+}
+
+/** Amber count chip on the Databases tab when any DB has pending migrations. */
+function TabPendingBadge({ count }: { count: number }) {
+  return (
+    <span
+      className="text-[10px] font-mono text-amber-300 bg-amber-500/15 ring-1 ring-amber-400/30 rounded px-1 py-0.5 leading-none"
+      title={`${count} pending migration${count === 1 ? '' : 's'}`}
+    >
+      {count}
+    </span>
   )
 }
 
@@ -790,22 +806,26 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
-function DatabasesSection() {
+function DatabasesSection({ onPendingCountChange }: { onPendingCountChange?: (n: number) => void }) {
   const [databases, setDatabases] = useState<MigrationDatabase[]>([])
   const [statuses, setStatuses] = useState<Record<string, MigrationStatus>>({})
   const [backupInfo, setBackupInfo] = useState<Record<string, DbBackupInfo>>({})
   const [backups, setBackups] = useState<DbBackupEntry[]>([])
   const [busy, setBusy] = useState<{ dbId: string; kind: 'migration' | 'backup' } | null>(null)
+  const [statusRefreshing, setStatusRefreshing] = useState(false)
   const [lastMigResult, setLastMigResult] = useState<MigrationResult | null>(null)
   const [lastBackupResult, setLastBackupResult] = useState<DbBackupResult | null>(null)
 
   const refreshStatus = useCallback(async (dbId: string) => {
+    setStatusRefreshing(true)
     try {
       invalidateMigrationStatus(dbId)
       const s = await getMigrationStatus(dbId, true)
       setStatuses((prev) => ({ ...prev, [dbId]: s }))
     } catch {
       // ignore — detail panel will show '—'
+    } finally {
+      setStatusRefreshing(false)
     }
   }, [])
 
@@ -872,6 +892,13 @@ function DatabasesSection() {
     })
   }, [databases, statuses])
 
+  // Report the total pending count up so the parent tab can badge it.
+  const totalPending = useMemo(
+    () => Object.values(statuses).reduce((sum, s) => sum + (s.pending?.length ?? 0), 0),
+    [statuses],
+  )
+  useEffect(() => { onPendingCountChange?.(totalPending) }, [totalPending, onPendingCountChange])
+
   const nav = useSidebarNav({ sections, storageKey: 'launcher-databases-active' })
 
   // Resolve the active database from the rail state (`db:<id>` namespace).
@@ -881,6 +908,17 @@ function DatabasesSection() {
   const selectedInfo = selected ? backupInfo[selected.id] : undefined
   const selectedBackups = selected ? backups.filter((b) => b.db_id === selected.id) : []
   const dbBusy = busy?.dbId === selected?.id
+
+  // Migration verdict — `alembic current` appends "(head)" only when the DB is
+  // at head, so it's a robust at-head signal even if the verbose-history parse
+  // (which feeds `pending`) ever fails. Pending count wins when present.
+  const selectedPendingCount = selectedStatus?.pending?.length ?? 0
+  const selectedAtHead = !!selectedStatus?.current_revision?.includes('(head)')
+  const migVerdict: { tone: StatusTone; label: string } | null =
+    !selectedStatus ? null :
+    selectedPendingCount > 0 ? { tone: 'warning', label: `⬆ ${selectedPendingCount} behind` } :
+    selectedAtHead ? { tone: 'success', label: '✓ up to date' } :
+    { tone: 'muted', label: 'unknown' }
 
   const backupModeLabel =
     !selectedInfo ? 'checking…' :
@@ -926,7 +964,12 @@ function DatabasesSection() {
             <div className="border border-border rounded p-2 space-y-2">
               <SectionHeader
                 trailing={
-                  <Button size="xs" variant="ghost" onClick={() => refreshStatus(selected.id)} className="text-gray-400" title="Refresh status">&#x21bb;</Button>
+                  <span className="flex items-center gap-1.5">
+                    {migVerdict && <StatusPill tone={migVerdict.tone} dot size="xs">{migVerdict.label}</StatusPill>}
+                    <Button size="xs" variant="ghost" disabled={statusRefreshing} onClick={() => refreshStatus(selected.id)} className="text-gray-400" title="Refresh status">
+                      <span className={statusRefreshing ? 'inline-block animate-spin' : 'inline-block'}>&#x21bb;</span>
+                    </Button>
+                  </span>
                 }
               >
                 Migrations
@@ -960,7 +1003,7 @@ function DatabasesSection() {
                 </div>
               )}
               <div className="flex gap-1.5 flex-wrap">
-                <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" disabled={dbBusy} onClick={() => runMigration('upgrade', selected.id)}>Upgrade</Button>
+                <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" disabled={dbBusy || (selectedAtHead && selectedPendingCount === 0)} title={selectedAtHead && selectedPendingCount === 0 ? 'Already at head — nothing to upgrade' : undefined} onClick={() => runMigration('upgrade', selected.id)}>Upgrade</Button>
                 <Button size="xs" className="bg-amber-700 hover:bg-amber-600 text-white" disabled={dbBusy} onClick={() => runMigration('downgrade', selected.id)}>Down</Button>
                 <Button size="xs" className="bg-blue-700 hover:bg-blue-600 text-white" disabled={dbBusy} onClick={() => runMigration('stamp', selected.id)}>Stamp</Button>
                 <Button size="xs" className="bg-purple-700 hover:bg-purple-600 text-white" disabled={dbBusy} onClick={() => runMigration('merge', selected.id)}>Merge</Button>
@@ -1687,7 +1730,10 @@ function StatusDot({ state, building }: { state?: string; building?: boolean }) 
   const cls = building
     ? 'bg-blue-400 animate-pulse'
     : state === 'fresh' ? 'bg-green-500'
-    : state === 'stale' ? 'bg-amber-400'
+    // `stale` gets an amber halo + pulse so it reads as "needs attention" at a
+    // glance — a flat 8px amber dot is nearly indistinguishable from the green
+    // `fresh` dot. Used for pending migrations and stale buildables alike.
+    : state === 'stale' ? 'bg-amber-400 ring-2 ring-amber-400/40 shadow-[0_0_4px_rgba(251,191,36,0.7)] animate-pulse'
     : state === 'not_built' ? 'bg-red-500'
     : 'bg-gray-500'
   return <span className={`inline-block w-2 h-2 rounded-full ${cls}`} />

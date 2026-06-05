@@ -49,28 +49,44 @@ async def migration_status(db_id: str = "main"):
     code, out, err = run_alembic('current', config=config)
     current = filter_output(out) if code == 0 else f"error: {err.strip()}"
 
+    # Slug/description for the current revision. The bare ID (e.g. 20260521_0001)
+    # buries the meaningful date prefix behind a per-day counter that resets to
+    # _0001, so we surface the migration's message to make "where am I" obvious.
+    current_message = None
+    if code == 0 and current and not current.startswith("error"):
+        rev_id = current.split()[0] if current.split() else None  # drop "(head)"
+        if rev_id:
+            hcode, hout, _ = run_alembic('history', config=config)
+            if hcode == 0:
+                import re
+                for line in filter_output(hout).splitlines():
+                    if re.search(rf'->\s+{re.escape(rev_id)}\b', line) and ',' in line:
+                        current_message = line.split(',', 1)[1].strip()
+                        break
+
     # Heads
     code, out, err = run_alembic('heads', config=config)
     heads = filter_output(out) if code == 0 else f"error: {err.strip()}"
 
-    # Pending — only works for main db currently (uses get_pending_migrations_detailed)
+    # Pending migrations — computed per-database against this db's own config so
+    # every database (not just main) flags when it's behind head.
     pending_list = []
     pending_error = None
-    if db_id == "main":
-        try:
-            nodes, perr = get_pending()
-            pending_list = [
-                {"revision": n.revision, "message": getattr(n, 'description', '') or getattr(n, 'message', ''), "is_head": n.is_head}
-                for n in (nodes or [])
-            ]
-            pending_error = perr
-        except Exception as e:
-            pending_error = str(e)
+    try:
+        nodes, perr = get_pending(config=config)
+        pending_list = [
+            {"revision": n.revision, "message": getattr(n, 'description', '') or getattr(n, 'message', ''), "is_head": n.is_head}
+            for n in (nodes or [])
+        ]
+        pending_error = perr
+    except Exception as e:
+        pending_error = str(e)
 
     return {
         "db_id": db_id,
         "label": db["label"],
         "current_revision": current or "(no revision)",
+        "current_message": current_message,
         "heads": heads or "(no heads)",
         "pending": pending_list,
         "pending_error": pending_error,
