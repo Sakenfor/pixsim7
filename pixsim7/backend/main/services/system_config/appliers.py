@@ -130,3 +130,17 @@ def _apply_primitive_projection_config(data: dict) -> None:
 
 
 register_applier("primitive_projection", _apply_primitive_projection_config)
+
+
+# ---------------------------------------------------------------------------
+# "storage_roots" — DB/UI-managed media storage roots (tiered storage)
+# ---------------------------------------------------------------------------
+
+def _apply_storage_roots_config(data: dict) -> None:
+    from pixsim7.backend.main.services.storage.storage_service import apply_storage_roots
+
+    # Override the env-configured roots and rebuild the tiered storage service.
+    apply_storage_roots(data)
+
+
+register_applier("storage_roots", _apply_storage_roots_config)

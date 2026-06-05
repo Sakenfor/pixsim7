@@ -881,3 +881,22 @@ def set_storage_service(service: StorageService) -> None:
     """
     global _storage_service
     _storage_service = service
+
+
+def apply_storage_roots(data: Optional[dict]) -> None:
+    """
+    Project a persisted storage-roots config onto the live registry + service.
+
+    ``data`` shape: ``{"roots": [ {id, kind, ...backend config} ]}`` — the same
+    per-entry shape as ``settings.media_storage_roots``. Sets the DB/UI override
+    in the roots registry (authoritative over env) and forces the tiered storage
+    service to rebuild from it on next use. Called by the ``storage_roots``
+    system_config applier at startup and by the Maintenance UI on save.
+    """
+    import json
+
+    from pixsim7.backend.main.services.storage.roots import set_roots_override
+
+    roots = (data or {}).get("roots") or []
+    set_roots_override(json.dumps(roots) if roots else "[]")
+    set_storage_service(None)  # rebuilt from the new registry on next get_storage_service()

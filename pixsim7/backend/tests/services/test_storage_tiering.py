@@ -616,3 +616,48 @@ def test_relocation_module_is_canonical_source():
 
     assert tool.relocate_blob is relocation.relocate_blob
     assert tool.relocate_one is relocation.relocate_one
+
+
+# --------------------------------------------------------------------------- #
+# DB/UI roots override (apply_storage_roots) — UI-managed archive root
+# --------------------------------------------------------------------------- #
+
+def test_apply_storage_roots_overrides_env(monkeypatch):
+    from pixsim7.backend.main.services.storage.roots import set_roots_override
+    from pixsim7.backend.main.services.storage.storage_service import (
+        apply_storage_roots,
+        set_storage_service,
+    )
+
+    # Env declares no extra roots; a DB/UI override should add one and take over.
+    _set_roots_json(monkeypatch, None)
+    set_storage_service(None)
+    try:
+        assert set(get_root_specs()) == {LOCAL_ROOT_ID}
+
+        apply_storage_roots({"roots": [{
+            "id": "archive", "kind": "s3", "endpoint_url": "http://10.0.0.1:9000",
+            "bucket": "b", "access_key": "ak", "secret_key": "sk",
+        }]})
+        specs = get_root_specs()
+        assert set(specs) == {LOCAL_ROOT_ID, "archive"}
+        assert specs["archive"].config["bucket"] == "b"
+
+        # Clearing to an empty set is authoritative (env stays ignored).
+        apply_storage_roots({"roots": []})
+        assert set(get_root_specs()) == {LOCAL_ROOT_ID}
+
+        # Dropping the override entirely falls back to env.
+        set_roots_override(None)
+        assert set(get_root_specs()) == {LOCAL_ROOT_ID}
+    finally:
+        set_roots_override(None)
+        set_storage_service(None)
+        reset_root_specs_cache()
+
+
+def test_storage_roots_applier_registered():
+    from pixsim7.backend.main.services.system_config import appliers  # noqa: F401
+    from pixsim7.backend.main.services.system_config.service import _appliers
+
+    assert "storage_roots" in _appliers

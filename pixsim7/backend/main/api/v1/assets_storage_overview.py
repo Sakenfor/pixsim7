@@ -894,3 +894,204 @@ async def relocate_videos(
         would_move_human=_human_size(would_bytes),
         error_ids=error_ids[:20],
     )
+
+
+# ---------------------------------------------------------------------------
+# Storage roots configuration (add/edit/remove an archive root from the UI)
+# ---------------------------------------------------------------------------
+# Persisted in system_config namespace "storage_roots" as
+# {"roots": [ {id, kind:"s3", endpoint_url, bucket, access_key, secret_key,
+# region, presigned_ttl_seconds} ]}. A DB config row overrides the env-based
+# settings.media_storage_roots (see roots.apply via the storage_roots applier).
+
+_STORAGE_ROOTS_NS = "storage_roots"
+
+
+class StorageRootConfigItem(BaseModel):
+    """An editable extra root, with the secret never exposed."""
+    id: str
+    kind: str
+    endpoint_url: Optional[str] = None
+    bucket: Optional[str] = None
+    access_key: Optional[str] = None
+    region: Optional[str] = None
+    presigned_ttl_seconds: Optional[int] = None
+    has_secret: bool = False
+
+
+class StorageRootsConfigResponse(BaseModel):
+    roots: list[StorageRootConfigItem]
+    # 'db' = UI-managed (editable); 'env' = from .env (saving creates a DB
+    # override that supersedes it); 'none' = no extra roots configured.
+    source: str
+
+
+class StorageRootUpsert(BaseModel):
+    id: str = "archive"
+    kind: str = "s3"
+    endpoint_url: str
+    bucket: str
+    access_key: str
+    # Omit/blank on edit to keep the stored secret.
+    secret_key: Optional[str] = None
+    region: str = "us-east-1"
+    presigned_ttl_seconds: int = 3600
+
+
+class StorageRootTestRequest(BaseModel):
+    endpoint_url: str
+    bucket: str
+    access_key: str
+    secret_key: Optional[str] = None
+    region: str = "us-east-1"
+    # If secret_key is omitted, reuse the stored secret for this root id.
+    id: Optional[str] = None
+
+
+class StorageRootTestResponse(BaseModel):
+    online: bool
+    error: Optional[str] = None
+
+
+def _mask_root(entry: dict) -> StorageRootConfigItem:
+    return StorageRootConfigItem(
+        id=str(entry.get("id", "")),
+        kind=str(entry.get("kind", "s3")),
+        endpoint_url=entry.get("endpoint_url"),
+        bucket=entry.get("bucket"),
+        access_key=entry.get("access_key"),
+        region=entry.get("region"),
+        presigned_ttl_seconds=entry.get("presigned_ttl_seconds"),
+        has_secret=bool(entry.get("secret_key")),
+    )
+
+
+async def _persisted_roots(db) -> list[dict]:
+    from pixsim7.backend.main.services.system_config.service import get_config
+
+    cfg = await get_config(db, _STORAGE_ROOTS_NS)
+    return list(cfg.get("roots", [])) if cfg else []
+
+
+@router.get("/storage-roots-config", response_model=StorageRootsConfigResponse)
+async def get_storage_roots_config(admin: CurrentAdminUser, db: DatabaseSession):
+    """Editable extra-root config for the Maintenance UI (secrets masked)."""
+    persisted = await _persisted_roots(db)
+    if persisted:
+        return StorageRootsConfigResponse(
+            roots=[_mask_root(r) for r in persisted], source="db"
+        )
+    # No DB override — reflect whatever the live registry derived from .env.
+    specs = get_root_specs()
+    env_items = [
+        _mask_root({"id": s.id, "kind": s.kind, **(s.config or {})})
+        for s in specs.values()
+        if s.id != LOCAL_ROOT_ID
+    ]
+    return StorageRootsConfigResponse(
+        roots=env_items, source="env" if env_items else "none"
+    )
+
+
+@router.post("/storage-roots/test", response_model=StorageRootTestResponse)
+async def test_storage_root(
+    body: StorageRootTestRequest,
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+):
+    """Probe an S3/MinIO root's reachability (head_bucket) without saving it."""
+    from pixsim7.backend.main.services.storage.storage_service import S3StorageService
+
+    secret = body.secret_key
+    if not secret and body.id:
+        for r in await _persisted_roots(db):
+            if r.get("id") == body.id:
+                secret = r.get("secret_key")
+                break
+    if not secret:
+        raise HTTPException(status_code=400, detail="secret_key is required to test the connection")
+
+    try:
+        svc = S3StorageService(
+            endpoint_url=body.endpoint_url,
+            bucket=body.bucket,
+            access_key=body.access_key,
+            secret_key=secret,
+            region=body.region,
+        )
+        await svc.health_check()
+        return StorageRootTestResponse(online=True)
+    except Exception as exc:  # noqa: BLE001 — report, never raise
+        return StorageRootTestResponse(online=False, error=str(exc))
+
+
+@router.put("/storage-roots", response_model=StorageRootsConfigResponse)
+async def upsert_storage_root(
+    body: StorageRootUpsert,
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+):
+    """Add or update an extra storage root and hot-reload the registry."""
+    global _cache
+    from pixsim7.backend.main.services.storage.roots import LOCAL_ROOT_ID as _LOCAL
+    from pixsim7.backend.main.services.storage.storage_service import apply_storage_roots
+    from pixsim7.backend.main.services.system_config.service import set_config
+
+    if body.kind != "s3":
+        raise HTTPException(status_code=400, detail="Only 's3' extra roots can be added from the UI")
+    if not body.id or body.id == _LOCAL:
+        raise HTTPException(status_code=400, detail="Invalid root id ('local' is reserved)")
+
+    by_id = {r.get("id"): dict(r) for r in await _persisted_roots(db)}
+    secret = body.secret_key or (by_id.get(body.id) or {}).get("secret_key")
+    if not secret:
+        raise HTTPException(
+            status_code=400,
+            detail="secret_key is required for a new root (or to migrate one from .env)",
+        )
+
+    by_id[body.id] = {
+        "id": body.id,
+        "kind": "s3",
+        "endpoint_url": body.endpoint_url,
+        "bucket": body.bucket,
+        "access_key": body.access_key,
+        "secret_key": secret,
+        "region": body.region,
+        "presigned_ttl_seconds": body.presigned_ttl_seconds,
+    }
+    data = {"roots": list(by_id.values())}
+    await set_config(db, _STORAGE_ROOTS_NS, data, admin.id)
+    apply_storage_roots(data)  # live: override env + rebuild tiered storage
+    _cache = None  # storage roots changed — invalidate the overview scan cache
+
+    return StorageRootsConfigResponse(
+        roots=[_mask_root(r) for r in data["roots"]], source="db"
+    )
+
+
+@router.delete("/storage-roots/{root_id}", response_model=StorageRootsConfigResponse)
+async def delete_storage_root(
+    root_id: str,
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+):
+    """Remove an extra storage root and hot-reload the registry.
+
+    Does NOT touch any assets already placed on that root — they keep their
+    ``storage_root_id`` and will read as archived-offline until the root is
+    restored. Relocate them back first if you want them fully local.
+    """
+    global _cache
+    from pixsim7.backend.main.services.storage.storage_service import apply_storage_roots
+    from pixsim7.backend.main.services.system_config.service import set_config
+
+    remaining = [r for r in await _persisted_roots(db) if r.get("id") != root_id]
+    data = {"roots": remaining}
+    await set_config(db, _STORAGE_ROOTS_NS, data, admin.id)
+    apply_storage_roots(data)
+    _cache = None
+
+    return StorageRootsConfigResponse(
+        roots=[_mask_root(r) for r in remaining], source="db"
+    )

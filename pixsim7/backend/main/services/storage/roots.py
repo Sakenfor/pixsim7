@@ -78,13 +78,35 @@ def _parse_extra_roots(raw: Optional[str]) -> list[RootSpec]:
     return specs
 
 
+# DB/UI override of the env-configured extra roots. When not None it fully
+# replaces ``settings.media_storage_roots`` (the UI manages the whole extra-root
+# set). Populated at startup by the ``storage_roots`` system_config applier and
+# updated live when the Maintenance UI saves a root. None => fall back to env.
+_roots_override_json: Optional[str] = None
+
+
+def set_roots_override(raw: Optional[str]) -> None:
+    """Set (or clear, with None) the DB/UI override of the extra-roots JSON.
+
+    Clears the registry cache so the next ``get_root_specs()`` rebuilds.
+    """
+    global _roots_override_json
+    _roots_override_json = raw
+    get_root_specs.cache_clear()
+
+
+def _effective_extra_roots_raw() -> Optional[str]:
+    """The extra-roots JSON in effect: DB/UI override if set, else env."""
+    return _roots_override_json if _roots_override_json is not None else settings.media_storage_roots
+
+
 @lru_cache(maxsize=1)
 def get_root_specs() -> dict[str, RootSpec]:
     """All configured roots keyed by id. Always includes ``'local'``."""
     roots: dict[str, RootSpec] = {
         LOCAL_ROOT_ID: RootSpec(id=LOCAL_ROOT_ID, kind="local", config={}),
     }
-    for spec in _parse_extra_roots(settings.media_storage_roots):
+    for spec in _parse_extra_roots(_effective_extra_roots_raw()):
         roots[spec.id] = spec
     if len(roots) > 1:
         logger.info(
