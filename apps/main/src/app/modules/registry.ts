@@ -370,7 +370,9 @@ class ModuleRegistry {
       const existing = this.modules.get(incoming.id);
       const wasInitialized = this.initializedModules.has(incoming.id);
 
-      if (existing?.cleanup) {
+      // Only tear down if the old module actually initialized — a cleanup hook
+      // may assume its initialize() ran (e.g. dereference state it set up).
+      if (wasInitialized && existing?.cleanup) {
         try {
           await existing.cleanup();
         } catch (error) {
