@@ -28,6 +28,7 @@ from sqlalchemy.orm import attributes
 from pixsim7.backend.main.domain import Asset
 from pixsim7.backend.main.domain.enums import SyncStatus
 from pixsim7.backend.main.services.storage import get_storage_service
+from pixsim7.backend.main.services.storage.roots import LOCAL_ROOT_ID
 from pixsim7.backend.main.shared.storage_utils import compute_sha256 as shared_compute_sha256
 from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim7.backend.main.services.media.settings import MediaSettings, get_media_settings
@@ -73,6 +74,8 @@ class AssetIngestionService:
         self.db = db
         self.storage = get_storage_service()
         self.settings = get_media_settings()
+        # Temp working copies pulled from non-local roots, cleaned up per job.
+        self._temp_paths: list[str] = []
 
     async def ingest_asset(
         self,
@@ -327,6 +330,9 @@ class AssetIngestionService:
 
             raise
 
+        finally:
+            self._cleanup_temp_files()
+
     # ── Derivatives (async-friendly) ──────────────────────────────────────
 
     async def generate_derivatives(
@@ -354,46 +360,49 @@ class AssetIngestionService:
             generate_previews = self.settings.generate_previews
 
         local_path = await self._ensure_local_file(asset)
-        if not local_path:
-            logger.warning(
-                "derivatives_skipped_no_source",
+        try:
+            if not local_path:
+                logger.warning(
+                    "derivatives_skipped_no_source",
+                    asset_id=asset.id,
+                    detail="No local_path, archived original, or remote_url available",
+                )
+                return asset
+
+            await self._run_derivatives_inline(
+                asset,
+                local_path,
+                force=force,
+                generate_thumbnails=generate_thumbnails,
+                generate_previews=generate_previews,
+            )
+            await self._trigger_signal_analysis(asset)
+
+            attributes.flag_modified(asset, "media_metadata")
+            await self.db.commit()
+            await self.db.refresh(asset)
+
+            await event_bus.publish(
+                ASSET_UPDATED,
+                {
+                    "asset_id": asset.id,
+                    "user_id": asset.user_id,
+                    "source_generation_id": asset.source_generation_id,
+                    "reason": "derivatives_completed",
+                    "thumbnail_generated": asset.thumbnail_generated_at is not None,
+                    "preview_generated": asset.preview_generated_at is not None,
+                },
+            )
+
+            logger.info(
+                "derivatives_completed",
                 asset_id=asset.id,
-                detail="No local_path or remote_url available",
+                thumbnail_key=asset.thumbnail_key,
+                preview_key=asset.preview_key,
             )
             return asset
-
-        await self._run_derivatives_inline(
-            asset,
-            local_path,
-            force=force,
-            generate_thumbnails=generate_thumbnails,
-            generate_previews=generate_previews,
-        )
-        await self._trigger_signal_analysis(asset)
-
-        attributes.flag_modified(asset, "media_metadata")
-        await self.db.commit()
-        await self.db.refresh(asset)
-
-        await event_bus.publish(
-            ASSET_UPDATED,
-            {
-                "asset_id": asset.id,
-                "user_id": asset.user_id,
-                "source_generation_id": asset.source_generation_id,
-                "reason": "derivatives_completed",
-                "thumbnail_generated": asset.thumbnail_generated_at is not None,
-                "preview_generated": asset.preview_generated_at is not None,
-            },
-        )
-
-        logger.info(
-            "derivatives_completed",
-            asset_id=asset.id,
-            thumbnail_key=asset.thumbnail_key,
-            preview_key=asset.preview_key,
-        )
-        return asset
+        finally:
+            self._cleanup_temp_files()
 
     async def _run_derivatives_inline(
         self,
@@ -440,7 +449,13 @@ class AssetIngestionService:
     # ── Private helpers ───────────────────────────────────────────────────
 
     async def _ensure_local_file(self, asset: Asset) -> Optional[str]:
-        """Ensure we have a local file — use existing or download."""
+        """Ensure a local file for processing.
+
+        Order: existing local file → pull from a non-local (archived) root to a
+        temp working copy → canonical local path for a local ``stored_key`` →
+        re-download from ``remote_url``. Temp copies are tracked and removed by
+        ``_cleanup_temp_files`` once the job finishes.
+        """
         if asset.local_path and Path(asset.local_path).exists():
             logger.debug(
                 "using_existing_local_path",
@@ -449,10 +464,52 @@ class AssetIngestionService:
             )
             return asset.local_path
 
+        root_id = asset.storage_root_id or LOCAL_ROOT_ID
+
+        # Archived original (e.g. S3/MinIO): download a temp working copy so the
+        # ffmpeg/PIL steps have a real file to read.
+        if asset.stored_key and not self.storage.is_local(root_id):
+            try:
+                path, is_temp = await self.storage.ensure_local_copy(
+                    asset.stored_key, root_id=root_id
+                )
+            except FileNotFoundError:
+                logger.warning(
+                    "archived_original_unavailable",
+                    asset_id=asset.id,
+                    root_id=root_id,
+                    stored_key=asset.stored_key,
+                )
+                return None
+            if is_temp:
+                self._temp_paths.append(path)
+            logger.debug(
+                "pulled_archived_original",
+                asset_id=asset.id,
+                root_id=root_id,
+                is_temp=is_temp,
+            )
+            return path
+
+        # Local stored_key whose cached local_path was stale/missing.
+        if asset.stored_key and self.storage.is_local(root_id):
+            canonical = self.storage.local_path_if_local(asset.stored_key, root_id)
+            if canonical and Path(canonical).exists():
+                return canonical
+
         if not asset.remote_url:
             return None
 
         return await download_file(asset, self.settings)
+
+    def _cleanup_temp_files(self) -> None:
+        """Remove temp working copies pulled from a non-local root (per job)."""
+        while self._temp_paths:
+            p = self._temp_paths.pop()
+            try:
+                Path(p).unlink(missing_ok=True)
+            except OSError:
+                pass
 
     async def _store_file(self, asset: Asset, local_path: str, sha256: str) -> str:
         """Store file in storage service using content-addressed key."""

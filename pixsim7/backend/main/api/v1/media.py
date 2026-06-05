@@ -299,12 +299,16 @@ async def _try_regenerate_derivative(
             )
             return False
 
-        # Check if source file exists
-        if not asset.local_path or not os.path.exists(asset.local_path):
+        # Source must be obtainable by the derivatives worker: a local file on
+        # disk, an archived original (reachable via stored_key on a non-local
+        # root — the worker pulls a temp copy), or a remote URL to re-download.
+        has_local = bool(asset.local_path and os.path.exists(asset.local_path))
+        if not (has_local or asset.stored_key or asset.remote_url):
             logger.debug(
                 "regenerate_derivative_no_source",
                 asset_id=asset.id,
                 local_path=asset.local_path,
+                stored_key=asset.stored_key,
             )
             return False
 

@@ -299,6 +299,69 @@ def test_s3_get_path_raises():
 
 
 # --------------------------------------------------------------------------- #
+# Phase E — ingestion pulls archived originals to a temp working copy
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_ensure_local_file_pulls_archived_original_to_temp():
+    from types import SimpleNamespace
+
+    from pixsim7.backend.main.services.asset.ingestion import AssetIngestionService
+
+    stub = _NonLocalStub()
+    key = "u/1/content/ab/" + "f" * 64 + ".mp4"
+    await stub.store(key, b"archived-video-bytes")
+    tier = TieredStorageService(
+        {LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp()), "archive": stub}
+    )
+
+    # Build the service without __init__ (avoids DB/settings) and inject storage.
+    svc = AssetIngestionService.__new__(AssetIngestionService)
+    svc.db = None
+    svc.storage = tier
+    svc.settings = None
+    svc._temp_paths = []
+
+    asset = SimpleNamespace(
+        id=1, local_path=None, storage_root_id="archive", stored_key=key, remote_url=None
+    )
+    path = await svc._ensure_local_file(asset)
+    try:
+        assert path is not None and os.path.exists(path)
+        assert path in svc._temp_paths  # tracked for cleanup
+        with open(path, "rb") as f:
+            assert f.read() == b"archived-video-bytes"
+    finally:
+        svc._cleanup_temp_files()
+    assert not os.path.exists(path)  # cleaned up
+    assert svc._temp_paths == []
+
+
+@pytest.mark.asyncio
+async def test_ensure_local_file_archived_missing_returns_none():
+    from types import SimpleNamespace
+
+    from pixsim7.backend.main.services.asset.ingestion import AssetIngestionService
+
+    tier = TieredStorageService(
+        {LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp()), "archive": _NonLocalStub()}
+    )
+    svc = AssetIngestionService.__new__(AssetIngestionService)
+    svc.db = None
+    svc.storage = tier
+    svc.settings = None
+    svc._temp_paths = []
+
+    asset = SimpleNamespace(
+        id=1, local_path=None, storage_root_id="archive",
+        stored_key="u/1/content/ab/missing.mp4", remote_url=None,
+    )
+    # Archived original not present and no remote_url -> None, nothing tracked.
+    assert await svc._ensure_local_file(asset) is None
+    assert svc._temp_paths == []
+
+
+# --------------------------------------------------------------------------- #
 # mover — relocate_blob core (DB-free; archive stand-in is a 2nd local backend)
 # --------------------------------------------------------------------------- #
 
