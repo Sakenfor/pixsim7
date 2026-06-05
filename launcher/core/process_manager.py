@@ -730,9 +730,16 @@ class ProcessManager:
         Uses PowerShell Get-CimInstance on Windows (wmic is deprecated).
         """
         pids: List[int] = []
+        # Each arq worker needs a selector that uniquely identifies it among
+        # its peers — they all run `python -m arq ...`, so broad substrings
+        # like `-m arq` or bare `arq_worker` cross-match across workers and
+        # cause one worker card's stale-kill to sweep up the others. Keep these
+        # in sync with health_manager._detect_headless_service.
         patterns = {
-            'worker': ['arq_worker.WorkerSettings', 'arq_worker', '-m arq'],
-            'simulation-worker': ['SimulationWorkerSettings', 'simulation'],
+            'worker': ['arq_worker.WorkerSettings'],
+            'generation-retry': ['GenerationRetryWorkerSettings'],
+            'simulation-worker': ['SimulationWorkerSettings'],
+            'automation-worker': ['AutomationWorkerSettings'],
             'ai-client': ['pixsim7.client', '-m pixsim7.client'],
         }
         # Fall back to matching the module from the service definition

@@ -26,7 +26,7 @@ HEALTH_ERROR_PREFIX = "Health check failed: "
 # Redis-backed health logic (PID liveness + Redis reachability), and need
 # unique command-line selectors in _detect_headless_service so the broad
 # `-m arq` fallback doesn't cross-match between them.
-ARQ_WORKER_KEYS = frozenset({'worker', 'simulation-worker', 'automation-worker'})
+ARQ_WORKER_KEYS = frozenset({'worker', 'generation-retry', 'simulation-worker', 'automation-worker'})
 
 
 class HealthManager:
@@ -441,6 +441,7 @@ class HealthManager:
         # `-m arq` or bare `arq_worker` would cross-match across workers.
         patterns = {
             'worker': ['arq_worker.WorkerSettings'],
+            'generation-retry': ['GenerationRetryWorkerSettings'],
             'simulation-worker': ['SimulationWorkerSettings'],
             'automation-worker': ['AutomationWorkerSettings'],
             'ai-client': ['pixsim7.client', '-m pixsim7.client'],
