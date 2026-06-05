@@ -55,6 +55,13 @@ from pixsim7.backend.main.workers.health import (
 from pixsim7.backend.main.workers.log_cleanup import cleanup_old_logs
 from pixsim7.backend.main.workers.world_simulation import tick_active_worlds
 from pixsim7.backend.main.shared.config import settings
+from pixsim7.backend.main.workers.worker_families import (
+    BY_ROLE,
+    WORKER_ROLE_AUTOMATION,
+    WORKER_ROLE_MAIN,
+    WORKER_ROLE_RETRY,
+    WORKER_ROLE_SIMULATION,
+)
 from pixsim7.backend.main.infrastructure.queue import (
     GENERATION_FRESH_QUEUE_NAME,
     GENERATION_RETRY_QUEUE_NAME,
@@ -487,6 +494,15 @@ async def automation_shutdown(ctx: dict) -> None:
 _sync_preload_system_config()
 
 
+# Per-family config descriptors (queue, concurrency, timeout, retries) — single
+# source of truth in worker_families. Each WorkerSettings below reads its scalar
+# config from these instead of re-deriving env vars inline.
+_MAIN_FAMILY = BY_ROLE[WORKER_ROLE_MAIN]
+_RETRY_FAMILY = BY_ROLE[WORKER_ROLE_RETRY]
+_SIMULATION_FAMILY = BY_ROLE[WORKER_ROLE_SIMULATION]
+_AUTOMATION_FAMILY = BY_ROLE[WORKER_ROLE_AUTOMATION]
+
+
 class WorkerSettings:
     """
     ARQ worker settings
@@ -501,7 +517,7 @@ class WorkerSettings:
 
     # Redis connection (shared with API via settings.redis_url)
     redis_settings = _redis_settings()
-    queue_name = GENERATION_FRESH_QUEUE_NAME
+    queue_name = _MAIN_FAMILY.queue_name
 
     # Task functions that can be queued
     functions = [
@@ -587,11 +603,12 @@ class WorkerSettings:
     on_startup = startup
     on_shutdown = shutdown
 
-    # Worker configuration
-    max_jobs = settings.arq_max_jobs  # Max concurrent jobs (DB-persisted or env ARQ_MAX_JOBS)
-    job_timeout = int(os.getenv("ARQ_JOB_TIMEOUT", "3600"))  # 1 hour timeout
-    max_tries = int(os.getenv("ARQ_MAX_TRIES", "3"))  # Retry failed jobs 3 times
-    retry_jobs = True
+    # Worker configuration (from worker_families: settings.arq_max_jobs,
+    # ARQ_JOB_TIMEOUT=3600, ARQ_MAX_TRIES=3, retry_jobs=True)
+    max_jobs = _MAIN_FAMILY.resolve_max_jobs()
+    job_timeout = _MAIN_FAMILY.resolve_job_timeout()
+    max_tries = _MAIN_FAMILY.resolve_max_tries()
+    retry_jobs = _MAIN_FAMILY.retry_jobs
 
     # Logging
     log_results = True
@@ -605,7 +622,7 @@ class GenerationRetryWorkerSettings:
     """ARQ worker for deferred/retry generation jobs only."""
 
     redis_settings = _redis_settings()
-    queue_name = GENERATION_RETRY_QUEUE_NAME
+    queue_name = _RETRY_FAMILY.queue_name
 
     functions = [
         process_generation,
@@ -627,10 +644,10 @@ class GenerationRetryWorkerSettings:
     on_startup = retry_startup
     on_shutdown = retry_shutdown
 
-    max_jobs = settings.arq_max_jobs
-    job_timeout = int(os.getenv("ARQ_JOB_TIMEOUT", "3600"))
-    max_tries = int(os.getenv("ARQ_MAX_TRIES", "3"))
-    retry_jobs = True
+    max_jobs = _RETRY_FAMILY.resolve_max_jobs()
+    job_timeout = _RETRY_FAMILY.resolve_job_timeout()
+    max_tries = _RETRY_FAMILY.resolve_max_tries()
+    retry_jobs = _RETRY_FAMILY.retry_jobs
 
     log_results = True
     verbose = True
@@ -641,7 +658,7 @@ class SimulationWorkerSettings:
     """ARQ worker dedicated to periodic world simulation scheduling."""
 
     redis_settings = _redis_settings()
-    queue_name = SIMULATION_SCHEDULER_QUEUE_NAME
+    queue_name = _SIMULATION_FAMILY.queue_name
 
     functions = [
         tick_active_worlds,
@@ -663,10 +680,10 @@ class SimulationWorkerSettings:
     on_startup = simulation_startup
     on_shutdown = simulation_shutdown
 
-    max_jobs = int(os.getenv("ARQ_SIMULATION_MAX_JOBS", "2"))
-    job_timeout = int(os.getenv("ARQ_SIMULATION_JOB_TIMEOUT", "120"))
-    max_tries = 1
-    retry_jobs = False
+    max_jobs = _SIMULATION_FAMILY.resolve_max_jobs()
+    job_timeout = _SIMULATION_FAMILY.resolve_job_timeout()
+    max_tries = _SIMULATION_FAMILY.resolve_max_tries()
+    retry_jobs = _SIMULATION_FAMILY.retry_jobs
 
     log_results = True
     verbose = True
@@ -681,7 +698,7 @@ class AutomationWorkerSettings:
     """
 
     redis_settings = _redis_settings()
-    queue_name = AUTOMATION_QUEUE_NAME
+    queue_name = _AUTOMATION_FAMILY.queue_name
 
     functions = [
         process_automation,
@@ -715,14 +732,14 @@ class AutomationWorkerSettings:
     on_startup = automation_startup
     on_shutdown = automation_shutdown
 
-    # Automation is device-bound — concurrency is limited by physical devices.
-    max_jobs = int(os.getenv("ARQ_AUTOMATION_MAX_JOBS", "5"))
-    # Allow up to 30 minutes for multi-step automation flows.
-    job_timeout = int(os.getenv("ARQ_AUTOMATION_JOB_TIMEOUT", "1800"))
-    # Don't auto-retry — device state is dirty after a mid-run failure.
-    # The loop service handles rescheduling via business logic.
-    max_tries = 1
-    retry_jobs = False
+    # Automation is device-bound — concurrency limited by physical devices
+    # (ARQ_AUTOMATION_MAX_JOBS=5). job_timeout allows 30min multi-step flows
+    # (ARQ_AUTOMATION_JOB_TIMEOUT=1800). Don't auto-retry — device state is
+    # dirty after a mid-run failure; the loop service reschedules.
+    max_jobs = _AUTOMATION_FAMILY.resolve_max_jobs()
+    job_timeout = _AUTOMATION_FAMILY.resolve_job_timeout()
+    max_tries = _AUTOMATION_FAMILY.resolve_max_tries()
+    retry_jobs = _AUTOMATION_FAMILY.retry_jobs
 
     log_results = True
     verbose = True

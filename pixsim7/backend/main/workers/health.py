@@ -19,16 +19,15 @@ from pixsim7.backend.main.infrastructure.queue import (
 
 logger = configure_logging("worker.health").bind(channel="cron")
 
-# Redis keys for health tracking
-WORKER_ROLE_MAIN = "main"
-WORKER_ROLE_RETRY = "retry"
-WORKER_ROLE_SIMULATION = "simulation"
-WORKER_ROLE_AUTOMATION = "automation"
-WORKER_ROLES = (
+# Role constants + the family list come from the worker_families registry
+# (single source of truth). Re-exported here so existing importers of
+# workers.health.WORKER_ROLE_* keep working.
+from pixsim7.backend.main.workers.worker_families import (  # noqa: E402
     WORKER_ROLE_MAIN,
     WORKER_ROLE_RETRY,
     WORKER_ROLE_SIMULATION,
     WORKER_ROLE_AUTOMATION,
+    WORKER_ROLES,
 )
 
 WORKER_HEARTBEAT_KEY_TEMPLATE = "arq:worker:{role}:heartbeat"
