@@ -1284,38 +1284,69 @@ function RootStatusDot({ online }: { online: boolean | null }) {
   return <span className={`w-2 h-2 rounded-full shrink-0 ${cls}`} title={label} />;
 }
 
+const RELOCATE_MEDIA_TYPES: { key: string; label: string }[] = [
+  { key: 'video', label: 'Video' },
+  { key: 'image', label: 'Image' },
+  { key: 'audio', label: 'Audio' },
+  { key: '3d_model', label: '3D' },
+];
+
 function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   const [stats, setStats] = useState<RelocateStats | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [limit, setLimit] = useState(50);
+  // Relocation criteria (AND-ed). Default keeps the prior video-only behavior.
+  const [mediaTypes, setMediaTypes] = useState<string[]>(['video']);
+  const [minSizeMb, setMinSizeMb] = useState(0);
+  const [olderThanDays, setOlderThanDays] = useState(0);
+
+  const criteriaQuery = useCallback(() => {
+    const p = new URLSearchParams();
+    if (mediaTypes.length) p.set('media_types', mediaTypes.join(','));
+    if (minSizeMb > 0) p.set('min_size_mb', String(minSizeMb));
+    if (olderThanDays > 0) p.set('older_than_days', String(olderThanDays));
+    return p.toString();
+  }, [mediaTypes, minSizeMb, olderThanDays]);
 
   const loadStats = useCallback(async () => {
     try {
-      const s = await maintGet<RelocateStats>(RELOCATE_STATS_KEY, SURFACE);
+      const qs = criteriaQuery();
+      const s = await maintGet<RelocateStats>(
+        `${RELOCATE_STATS_KEY}${qs ? `?${qs}` : ''}`,
+        SURFACE,
+      );
       setStats(s);
     } catch {
       /* surfaced via the row above; keep the action quiet */
     }
-  }, []);
+  }, [criteriaQuery]);
 
+  // Re-price the candidate set whenever the criteria change.
   useEffect(() => {
     loadStats();
   }, [loadStats]);
+
+  const toggleType = useCallback((key: string) => {
+    setMediaTypes((prev) =>
+      prev.includes(key) ? prev.filter((t) => t !== key) : [...prev, key],
+    );
+  }, []);
 
   const run = useCallback(
     async (dryRun: boolean) => {
       setBusy(true);
       setResult(null);
       try {
-        const path = `/assets/relocate-videos?limit=${limit}&dry_run=${dryRun}`;
+        const qs = criteriaQuery();
+        const path = `/assets/relocate?limit=${limit}&dry_run=${dryRun}${qs ? `&${qs}` : ''}`;
         const data = await maintPost<RelocateVideosResult>(path, SURFACE);
         if (dryRun) {
           setResult({
             message:
               data.moved > 0
-                ? `Would relocate ${data.moved} video(s) (${data.would_move_human})${data.skipped ? `, ${data.skipped} skipped` : ''}`
-                : 'Nothing to relocate',
+                ? `Would relocate ${data.moved} item(s) (${data.would_move_human})${data.skipped ? `, ${data.skipped} skipped` : ''}`
+                : 'Nothing matches — nothing to relocate',
           });
         } else {
           const parts = [`${data.moved} relocated`];
@@ -1332,14 +1363,14 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
         setBusy(false);
       }
     },
-    [limit, loadStats, onMoved],
+    [criteriaQuery, limit, loadStats, onMoved],
   );
 
   const onApply = useCallback(() => {
     if (
       typeof window !== 'undefined' &&
       !window.confirm(
-        `Relocate up to ${limit} video original(s) to the archive root and delete the local copies (only when no other asset shares the file)? This streams to the archive store.`,
+        `Relocate up to ${limit} matching original(s) to the archive root and delete the local copies (only when no other asset shares the file)? This streams to the archive store.`,
       )
     )
       return;
@@ -1352,18 +1383,71 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   const nothing = stats.candidate_count === 0;
 
   return (
-    <div className="px-3 py-2 space-y-1.5">
+    <div className="px-3 py-2 space-y-2">
       <div className="flex items-center gap-2 text-[11px]">
         <Icon name="archive" size={12} className="text-muted-foreground shrink-0" />
         <span className="text-muted-foreground flex-1">
           {nothing
-            ? 'No local video originals to relocate'
-            : `${fmt(stats.candidate_count)} video original(s) on local (${stats.candidate_human}) eligible for archive`}
+            ? 'No local originals match these criteria'
+            : `${fmt(stats.candidate_count)} original(s) on local (${stats.candidate_human}) match — eligible for archive`}
         </span>
       </div>
+
+      {/* Criteria */}
+      <div className="pl-5 space-y-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1">Types</span>
+          {RELOCATE_MEDIA_TYPES.map((t) => {
+            const active = mediaTypes.includes(t.key);
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => toggleType(t.key)}
+                disabled={busy}
+                className={`h-6 px-2 text-[11px] rounded border transition-colors disabled:opacity-50 ${
+                  active
+                    ? 'border-accent bg-accent text-accent-foreground'
+                    : 'border-border bg-transparent hover:bg-muted/40 text-muted-foreground'
+                }`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="text-[10px] text-muted-foreground">Min size MB</label>
+          <input
+            type="number"
+            min={0}
+            value={minSizeMb}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n)) setMinSizeMb(Math.max(0, Math.floor(n)));
+            }}
+            disabled={busy}
+            className="h-6 w-16 text-[11px] bg-transparent border border-border rounded px-1.5 tabular-nums disabled:opacity-50"
+          />
+          <label className="text-[10px] text-muted-foreground">Older than (days)</label>
+          <input
+            type="number"
+            min={0}
+            value={olderThanDays}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n)) setOlderThanDays(Math.max(0, Math.floor(n)));
+            }}
+            disabled={busy}
+            className="h-6 w-16 text-[11px] bg-transparent border border-border rounded px-1.5 tabular-nums disabled:opacity-50"
+          />
+          <span className="text-[10px] text-muted-foreground/60">0 = any</span>
+        </div>
+      </div>
+
       {noArchive && !nothing && (
         <p className="text-[10px] text-amber-600 dark:text-amber-400 pl-5">
-          No <code>archive</code> root configured — set <code>media_storage_roots</code> to enable relocation.
+          No <code>archive</code> root configured yet — add one below to enable relocation.
         </p>
       )}
       {!nothing && (

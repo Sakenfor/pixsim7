@@ -41,12 +41,49 @@ from pixsim7.backend.main.services.storage.roots import LOCAL_ROOT_ID
 # Candidate selection
 # --------------------------------------------------------------------------- #
 
-def candidate_query(min_size_bytes: int, user_id: Optional[int]):
-    """Build the select for video assets currently on the local root."""
+def _normalize_media_types(media_types) -> list:
+    """Coerce an iterable of MediaType/str into MediaType members.
+
+    None/empty defaults to ``[VIDEO]`` so the legacy callers (the CLI, the
+    /relocate-videos endpoint) keep their video-only behavior. Unknown strings
+    are skipped; an all-invalid input still falls back to video.
+    """
+    if not media_types:
+        return [MediaType.VIDEO]
+    out: list = []
+    for t in media_types:
+        if isinstance(t, MediaType):
+            out.append(t)
+            continue
+        try:
+            out.append(MediaType(str(t).lower()))
+        except ValueError:
+            continue
+    return out or [MediaType.VIDEO]
+
+
+def candidate_query(
+    min_size_bytes: int,
+    user_id: Optional[int],
+    *,
+    media_types=None,
+    older_than_days: Optional[int] = None,
+    content_ratings=None,
+):
+    """Build the select for archive-relocation candidates currently on local.
+
+    Filters (all optional, AND-ed):
+    - ``media_types``: iterable of MediaType/str; None => videos only (back-compat).
+    - ``min_size_bytes``: file_size_bytes >= this.
+    - ``older_than_days``: created_at older than N days ago.
+    - ``content_ratings``: iterable of content_rating strings to include.
+    """
+    from datetime import datetime, timedelta, timezone
+
     from pixsim7.backend.main.domain.assets.models import Asset
 
     stmt = select(Asset).where(
-        Asset.media_type == MediaType.VIDEO,
+        Asset.media_type.in_(_normalize_media_types(media_types)),
         Asset.stored_key.is_not(None),
         or_(Asset.storage_root_id.is_(None), Asset.storage_root_id == LOCAL_ROOT_ID),
     )
@@ -54,6 +91,11 @@ def candidate_query(min_size_bytes: int, user_id: Optional[int]):
         stmt = stmt.where(Asset.file_size_bytes >= min_size_bytes)
     if user_id is not None:
         stmt = stmt.where(Asset.user_id == user_id)
+    if older_than_days and older_than_days > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+        stmt = stmt.where(Asset.created_at <= cutoff)
+    if content_ratings:
+        stmt = stmt.where(Asset.content_rating.in_(list(content_ratings)))
     return stmt.order_by(Asset.id)
 
 

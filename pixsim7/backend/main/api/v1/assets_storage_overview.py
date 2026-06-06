@@ -763,14 +763,35 @@ class RelocateVideosResponse(BaseModel):
     error_ids: list[int]
 
 
+def _csv_list(raw: Optional[str]) -> Optional[list[str]]:
+    """Parse a comma-separated query param into a list (None when empty)."""
+    if not raw:
+        return None
+    items = [x.strip() for x in raw.split(",") if x.strip()]
+    return items or None
+
+
+# Shared criteria query params for the relocate stats + action endpoints.
+_MEDIA_TYPES_Q = Query(
+    None, description="CSV of media types to archive: video,image,audio,3d_model (default: video)"
+)
+_OLDER_THAN_Q = Query(None, ge=0, description="Only assets created more than N days ago")
+_CONTENT_RATINGS_Q = Query(
+    None, description="CSV of content_rating values: general,mature,adult,explicit"
+)
+
+
 @router.get("/relocate-stats", response_model=RelocateStatsResponse)
 async def get_relocate_stats(
     admin: CurrentAdminUser,
     db: DatabaseSession,
     min_size_mb: float = Query(0.0, ge=0, description="Only assets >= this size (MB)"),
+    media_types: Optional[str] = _MEDIA_TYPES_Q,
+    older_than_days: Optional[int] = _OLDER_THAN_Q,
+    content_ratings: Optional[str] = _CONTENT_RATINGS_Q,
 ):
-    """Count of video originals still on the local root that the placement
-    policy wants on the archive. Drives the 'Relocate videos' action."""
+    """Count + bytes of local originals matching the relocation criteria that the
+    archive would receive. Drives the relocate action's live preview."""
     from sqlalchemy import func as _func, select as _select
 
     from pixsim7.backend.main.services.storage.placement import (
@@ -780,7 +801,12 @@ async def get_relocate_stats(
     from pixsim7.backend.main.services.storage.relocation import candidate_query
 
     min_bytes = int(min_size_mb * 1024 * 1024)
-    base = candidate_query(min_bytes, admin.id).subquery()
+    base = candidate_query(
+        min_bytes, admin.id,
+        media_types=_csv_list(media_types),
+        older_than_days=older_than_days,
+        content_ratings=_csv_list(content_ratings),
+    ).subquery()
     row = (
         await db.execute(
             _select(
@@ -799,6 +825,7 @@ async def get_relocate_stats(
     )
 
 
+@router.post("/relocate", response_model=RelocateVideosResponse)
 @router.post("/relocate-videos", response_model=RelocateVideosResponse)
 async def relocate_videos(
     admin: CurrentAdminUser,
@@ -809,15 +836,21 @@ async def relocate_videos(
     verify_hash: bool = Query(
         False, description="Re-hash the archive copy and compare to asset.sha256 (slower)"
     ),
+    media_types: Optional[str] = _MEDIA_TYPES_Q,
+    older_than_days: Optional[int] = _OLDER_THAN_Q,
+    content_ratings: Optional[str] = _CONTENT_RATINGS_Q,
 ):
     """
-    Move video originals from the local (hot) root to the configured ``archive``
+    Move local originals matching the criteria to the configured ``archive``
     root, batch by batch. Wraps the same core logic as ``tools/relocate_media.py``.
 
-    Each asset: upload to archive under the same key (idempotent), verify size
-    (and optionally hash), flip ``storage_root_id``, then delete the local blob
-    when no sibling still references it. Commits per-asset so a mid-batch failure
-    keeps prior successes. ``--apply`` requires a configured archive root.
+    Criteria (all optional, AND-ed): ``media_types`` (default video), ``min_size_mb``,
+    ``older_than_days``, ``content_ratings``. Each asset: upload to archive under the
+    same key (idempotent), verify size (and optionally hash), flip ``storage_root_id``,
+    then delete the local blob when no sibling still references it. Commits per-asset
+    so a mid-batch failure keeps prior successes. Apply requires a configured archive.
+
+    Served at both ``/relocate`` (generic) and ``/relocate-videos`` (legacy alias).
     """
     global _cache
 
@@ -843,7 +876,12 @@ async def relocate_videos(
     storage = get_storage_service()
     min_bytes = int(min_size_mb * 1024 * 1024)
 
-    stmt = candidate_query(min_bytes, admin.id).limit(limit)
+    stmt = candidate_query(
+        min_bytes, admin.id,
+        media_types=_csv_list(media_types),
+        older_than_days=older_than_days,
+        content_ratings=_csv_list(content_ratings),
+    ).limit(limit)
     assets = (await db.execute(stmt)).scalars().all()
 
     moved = skipped = errors = 0

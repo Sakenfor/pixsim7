@@ -661,3 +661,32 @@ def test_storage_roots_applier_registered():
     from pixsim7.backend.main.services.system_config.service import _appliers
 
     assert "storage_roots" in _appliers
+
+
+def test_candidate_query_criteria():
+    from pixsim7.backend.main.domain.enums import MediaType
+    from pixsim7.backend.main.services.storage.relocation import (
+        _normalize_media_types,
+        candidate_query,
+    )
+
+    # media-type normalization: default video, strings -> enums, junk dropped.
+    assert _normalize_media_types(None) == [MediaType.VIDEO]
+    assert _normalize_media_types(["image", "video"]) == [MediaType.IMAGE, MediaType.VIDEO]
+    assert _normalize_media_types(["nope"]) == [MediaType.VIDEO]
+
+    # default (no criteria) is still video-only on the local root.
+    default_sql = str(candidate_query(0, None))
+    assert "media_type IN" in default_sql
+
+    # all criteria AND into the WHERE clause.
+    sql = str(candidate_query(
+        10 * 1024 * 1024, 1,
+        media_types=["image", "video"],
+        older_than_days=30,
+        content_ratings=["adult", "explicit"],
+    ))
+    assert "media_type IN" in sql
+    assert "file_size_bytes" in sql
+    assert "created_at" in sql
+    assert "content_rating IN" in sql
