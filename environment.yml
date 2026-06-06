@@ -26,6 +26,11 @@ dependencies:
   - httpx=0.26.0
   - aiohttp=3.9.1
 
+  # Object storage (S3/MinIO archive root — media-storage-tiering).
+  # Optional at runtime: only imported when an 's3' storage root is configured
+  # (see services/storage/storage_service._import_s3). Pulls botocore.
+  - aiobotocore
+
   # Auth & Security
   - python-jose=3.3.0
   - passlib=1.7.4
