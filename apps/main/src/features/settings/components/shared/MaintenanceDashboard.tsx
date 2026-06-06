@@ -40,8 +40,11 @@ import {
   extractErrorMessage,
   fmt,
   humanBytes,
+  maintDelete,
   maintGet,
+  maintGetRoot,
   maintPost,
+  maintPut,
   readStatsCache,
   writeStatsCache,
 } from './maintenanceShared';
@@ -129,7 +132,8 @@ function HealthHeader() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
 
   useEffect(() => {
-    maintGet<HealthStatus>('/health', SURFACE).then(setHealth).catch(() => {});
+    // `/health` lives at the API root, NOT under /api/v1 — use the root helper.
+    maintGetRoot<HealthStatus>('/health', SURFACE).then(setHealth).catch(() => {});
   }, []);
 
   if (!health) return null;
@@ -161,7 +165,7 @@ function HealthHeader() {
 
 interface RowConfig<S> {
   statsEndpoint: string;
-  /** Endpoint with `{limit}` placeholder for batch size, e.g. `/api/v1/assets/backfill-sha?limit={limit}` */
+  /** Endpoint with `{limit}` placeholder for batch size, e.g. `/assets/backfill-sha?limit={limit}` */
   actionEndpoint: string;
   /** Suggested quick-pick batch sizes (rendered as chips). Default: [50, 100, 200, 500] */
   batchSizes?: number[];
@@ -261,8 +265,8 @@ function useMaintenanceRow<S>(config: RowConfig<S>, batchSize: number) {
 // ---------------------------------------------------------------------------
 
 const shaConfig: RowConfig<SHAStats> = {
-  statsEndpoint: '/api/v1/assets/sha-stats',
-  actionEndpoint: '/api/v1/assets/backfill-sha?limit={limit}',
+  statsEndpoint: '/assets/sha-stats',
+  actionEndpoint: '/assets/backfill-sha?limit={limit}',
   extract: (s) => ({
     done: s.with_sha,
     total: s.total_assets,
@@ -290,8 +294,8 @@ const shaConfig: RowConfig<SHAStats> = {
 };
 
 const storageConfig: RowConfig<StorageSyncStats> = {
-  statsEndpoint: '/api/v1/assets/storage-sync-stats',
-  actionEndpoint: '/api/v1/assets/bulk-sync-storage?limit={limit}',
+  statsEndpoint: '/assets/storage-sync-stats',
+  actionEndpoint: '/assets/bulk-sync-storage?limit={limit}',
   extract: (s) => ({
     done: s.new_storage,
     total: s.total_assets,
@@ -317,8 +321,8 @@ const storageConfig: RowConfig<StorageSyncStats> = {
 };
 
 const contentConfig: RowConfig<ContentBlobStats> = {
-  statsEndpoint: '/api/v1/assets/content-blob-stats',
-  actionEndpoint: '/api/v1/assets/backfill-content-blobs?limit={limit}',
+  statsEndpoint: '/assets/content-blob-stats',
+  actionEndpoint: '/assets/backfill-content-blobs?limit={limit}',
   extract: (s) => ({
     done: s.with_content_id,
     total: s.total_assets,
@@ -352,8 +356,8 @@ const contentConfig: RowConfig<ContentBlobStats> = {
 };
 
 const uploadMethodConfig: RowConfig<UploadMethodStats> = {
-  statsEndpoint: '/api/v1/assets/upload-method-stats',
-  actionEndpoint: '/api/v1/assets/backfill-upload-method?limit={limit}',
+  statsEndpoint: '/assets/upload-method-stats',
+  actionEndpoint: '/assets/backfill-upload-method?limit={limit}',
   defaultBatchSize: 500,
   extract: (s) => ({
     done: s.with_upload_method,
@@ -390,8 +394,8 @@ const uploadMethodConfig: RowConfig<UploadMethodStats> = {
 };
 
 const folderContextConfig: RowConfig<FolderContextStats> = {
-  statsEndpoint: '/api/v1/assets/folder-context-stats',
-  actionEndpoint: '/api/v1/assets/backfill-folder-context?limit={limit}',
+  statsEndpoint: '/assets/folder-context-stats',
+  actionEndpoint: '/assets/backfill-folder-context?limit={limit}',
   defaultBatchSize: 200,
   extract: (s) => ({
     done: s.with_folder_context,
@@ -567,8 +571,8 @@ function SignalBreakdown({ stats }: { stats: SignalScanStats }) {
 }
 
 const signalScanConfig: RowConfig<SignalScanStats> = {
-  statsEndpoint: '/api/v1/assets/signal-scan-stats',
-  actionEndpoint: '/api/v1/assets/backfill-signal-scan?limit={limit}',
+  statsEndpoint: '/assets/signal-scan-stats',
+  actionEndpoint: '/assets/backfill-signal-scan?limit={limit}',
   defaultBatchSize: 200,
   extract: (s) => ({
     done: s.scanned,
@@ -593,8 +597,8 @@ const signalScanConfig: RowConfig<SignalScanStats> = {
 };
 
 const previewBackfillConfig: RowConfig<PreviewBackfillStats> = {
-  statsEndpoint: '/api/v1/assets/preview-backfill-stats',
-  actionEndpoint: '/api/v1/assets/backfill-previews?limit={limit}',
+  statsEndpoint: '/assets/preview-backfill-stats',
+  actionEndpoint: '/assets/backfill-previews?limit={limit}',
   defaultBatchSize: 100,
   extract: (s) => {
     const eligible = s.total_assets - s.not_eligible;
@@ -634,8 +638,8 @@ const previewBackfillConfig: RowConfig<PreviewBackfillStats> = {
 };
 
 const formatConversionConfig: RowConfig<FormatConversionStats> = {
-  statsEndpoint: '/api/v1/assets/format-conversion-stats?target_format=webp',
-  actionEndpoint: '/api/v1/assets/convert-format?target_format=webp&quality=90&limit={limit}',
+  statsEndpoint: '/assets/format-conversion-stats?target_format=webp',
+  actionEndpoint: '/assets/convert-format?target_format=webp&quality=90&limit={limit}',
   defaultBatchSize: 100,
   extract: (s) => {
     const done = s.total_images - s.convertible_count;
@@ -891,7 +895,7 @@ function ThumbnailRow({
     setActing(true);
     setResult(null);
     try {
-      const data = await maintPost<any>('/api/v1/assets/backfill-thumbnails?limit=50&missing_only=true', SURFACE);
+      const data = await maintPost<any>('/assets/backfill-thumbnails?limit=50&missing_only=true', SURFACE);
       if (data.generated > 0 || data.errors > 0) {
         const parts: string[] = [];
         parts.push(`${data.generated} regenerated`);
@@ -1020,6 +1024,19 @@ interface CleanupOpportunityInfo {
   action_endpoint: string | null;
 }
 
+interface StorageRootInfo {
+  id: string;
+  kind: string;
+  label: string;
+  detail: string | null;
+  asset_count: number;
+  size_bytes: number;
+  size_human: string;
+  is_archive_target: boolean;
+  online: boolean | null;
+  error: string | null;
+}
+
 interface StorageOverviewData {
   total_size_bytes: number;
   total_size_human: string;
@@ -1032,6 +1049,55 @@ interface StorageOverviewData {
   cleanup_opportunities: CleanupOpportunityInfo[];
   db_total_bytes: number;
   db_total_human: string;
+  storage_roots: StorageRootInfo[];
+  tiering_enabled: boolean;
+}
+
+interface RelocateStats {
+  archive_configured: boolean;
+  archive_root_id: string;
+  candidate_count: number;
+  candidate_bytes: number;
+  candidate_human: string;
+}
+
+interface RelocateVideosResult {
+  archive_configured: boolean;
+  dry_run: boolean;
+  moved: number;
+  skipped: number;
+  errors: number;
+  freed_bytes: number;
+  freed_human: string;
+  would_move_bytes: number;
+  would_move_human: string;
+  error_ids: number[];
+}
+
+interface StorageRootConfigItem {
+  id: string;
+  kind: string;
+  endpoint_url: string | null;
+  bucket: string | null;
+  access_key: string | null;
+  region: string | null;
+  presigned_ttl_seconds: number | null;
+  has_secret: boolean;
+}
+
+interface StorageRootsConfig {
+  roots: StorageRootConfigItem[];
+  source: 'db' | 'env' | 'none' | string;
+}
+
+interface StorageRootTestResult {
+  online: boolean;
+  error: string | null;
+}
+
+interface StorageRootsList {
+  roots: StorageRootInfo[];
+  tiering_enabled: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1172,12 +1238,590 @@ function SeverityBadge({ severity }: { severity: string }) {
 // StorageOverview
 // ---------------------------------------------------------------------------
 
-const STORAGE_OVERVIEW_KEY = '/api/v1/assets/storage-overview';
+const STORAGE_OVERVIEW_KEY = '/assets/storage-overview';
+const RELOCATE_STATS_KEY = '/assets/relocate-stats';
+
+// The storage overview is an expensive recursive FS walk, so we don't want to
+// re-run it on every panel reopen. Persist the last result to sessionStorage
+// and serve it stale-while-revalidate: show it instantly, only re-scan in the
+// background when it's older than the soft TTL (or the user hits Refresh).
+const STORAGE_OVERVIEW_PERSIST_KEY = 'maintenance:storage-overview:v1';
+const STORAGE_OVERVIEW_SOFT_TTL_MS = 5 * 60 * 1000;
+
+function readPersistedOverview(): { data: StorageOverviewData; at: number } | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_OVERVIEW_PERSIST_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.data && typeof parsed.at === 'number') return parsed;
+  } catch {
+    /* sessionStorage unavailable or corrupt — ignore */
+  }
+  return null;
+}
+
+function writePersistedOverview(data: StorageOverviewData): void {
+  try {
+    sessionStorage.setItem(
+      STORAGE_OVERVIEW_PERSIST_KEY,
+      JSON.stringify({ data, at: Date.now() }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Storage roots (tiered placement) — per-root sizes + online state, plus the
+// "relocate videos to archive" action. Plan media-storage-tiering Phase H.
+// ---------------------------------------------------------------------------
+
+/** Small online/offline/unknown dot for a storage root's reachability. */
+function RootStatusDot({ online }: { online: boolean | null }) {
+  const cls =
+    online === true ? 'bg-emerald-500' : online === false ? 'bg-red-500' : 'bg-neutral-400';
+  const label = online === true ? 'online' : online === false ? 'offline' : 'unknown';
+  return <span className={`w-2 h-2 rounded-full shrink-0 ${cls}`} title={label} />;
+}
+
+function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
+  const [stats, setStats] = useState<RelocateStats | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const [limit, setLimit] = useState(50);
+
+  const loadStats = useCallback(async () => {
+    try {
+      const s = await maintGet<RelocateStats>(RELOCATE_STATS_KEY, SURFACE);
+      setStats(s);
+    } catch {
+      /* surfaced via the row above; keep the action quiet */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  const run = useCallback(
+    async (dryRun: boolean) => {
+      setBusy(true);
+      setResult(null);
+      try {
+        const path = `/assets/relocate-videos?limit=${limit}&dry_run=${dryRun}`;
+        const data = await maintPost<RelocateVideosResult>(path, SURFACE);
+        if (dryRun) {
+          setResult({
+            message:
+              data.moved > 0
+                ? `Would relocate ${data.moved} video(s) (${data.would_move_human})${data.skipped ? `, ${data.skipped} skipped` : ''}`
+                : 'Nothing to relocate',
+          });
+        } else {
+          const parts = [`${data.moved} relocated`];
+          if (data.freed_bytes > 0) parts.push(`${data.freed_human} freed locally`);
+          if (data.skipped) parts.push(`${data.skipped} skipped`);
+          if (data.errors) parts.push(`${data.errors} errors`);
+          setResult({ message: parts.join(', '), isError: data.errors > 0 && data.moved === 0 });
+          onMoved();
+        }
+        await loadStats();
+      } catch (err) {
+        setResult({ message: extractErrorMessage(err) || 'Relocation failed', isError: true });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [limit, loadStats, onMoved],
+  );
+
+  const onApply = useCallback(() => {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `Relocate up to ${limit} video original(s) to the archive root and delete the local copies (only when no other asset shares the file)? This streams to the archive store.`,
+      )
+    )
+      return;
+    run(false);
+  }, [limit, run]);
+
+  if (!stats) return null;
+
+  const noArchive = !stats.archive_configured;
+  const nothing = stats.candidate_count === 0;
+
+  return (
+    <div className="px-3 py-2 space-y-1.5">
+      <div className="flex items-center gap-2 text-[11px]">
+        <Icon name="archive" size={12} className="text-muted-foreground shrink-0" />
+        <span className="text-muted-foreground flex-1">
+          {nothing
+            ? 'No local video originals to relocate'
+            : `${fmt(stats.candidate_count)} video original(s) on local (${stats.candidate_human}) eligible for archive`}
+        </span>
+      </div>
+      {noArchive && !nothing && (
+        <p className="text-[10px] text-amber-600 dark:text-amber-400 pl-5">
+          No <code>archive</code> root configured — set <code>media_storage_roots</code> to enable relocation.
+        </p>
+      )}
+      {!nothing && (
+        <div className="flex items-center gap-2 flex-wrap pl-5">
+          <label className="text-[10px] text-muted-foreground">Batch</label>
+          <input
+            type="number"
+            min={1}
+            max={500}
+            value={limit}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n)) setLimit(Math.max(1, Math.min(500, Math.floor(n))));
+            }}
+            disabled={busy}
+            className="h-6 w-16 text-[11px] bg-transparent border border-border rounded px-1.5 tabular-nums disabled:opacity-50"
+          />
+          <Button onClick={() => run(true)} disabled={busy} variant="outline" size="sm">
+            {busy ? <Spinner className="w-3 h-3" /> : 'Preview'}
+          </Button>
+          <Button onClick={onApply} disabled={busy || noArchive} variant="primary" size="sm">
+            Relocate {fmt(Math.min(limit, stats.candidate_count))}
+          </Button>
+        </div>
+      )}
+      {result && (
+        <div
+          className={`flex items-center gap-1.5 text-[11px] pl-5 ${
+            result.isError ? 'text-red-500' : 'text-green-600 dark:text-green-400'
+          }`}
+        >
+          <Icon name={result.isError ? 'alertCircle' : 'check'} size={12} />
+          {result.message}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const STORAGE_ROOTS_CONFIG_KEY = '/assets/storage-roots-config';
+
+interface RootForm {
+  id: string;
+  endpoint_url: string;
+  bucket: string;
+  access_key: string;
+  secret_key: string;
+  region: string;
+  presigned_ttl_seconds: number;
+}
+
+const EMPTY_ROOT_FORM: RootForm = {
+  id: 'archive',
+  endpoint_url: '',
+  bucket: '',
+  access_key: '',
+  secret_key: '',
+  region: 'us-east-1',
+  presigned_ttl_seconds: 3600,
+};
+
+/** Add / edit / remove an S3-MinIO archive root, with a connection test. */
+function StorageRootEditor({ onChanged }: { onChanged: () => void }) {
+  const [config, setConfig] = useState<StorageRootsConfig | null>(null);
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<RootForm>(EMPTY_ROOT_FORM);
+  const [editingExisting, setEditingExisting] = useState(false);
+  const [testResult, setTestResult] = useState<StorageRootTestResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ActionResult | null>(null);
+
+  const loadConfig = useCallback(async () => {
+    try {
+      setConfig(await maintGet<StorageRootsConfig>(STORAGE_ROOTS_CONFIG_KEY, SURFACE));
+    } catch {
+      /* non-fatal */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadConfig();
+  }, [loadConfig]);
+
+  const startAdd = useCallback(() => {
+    setForm(EMPTY_ROOT_FORM);
+    setEditingExisting(false);
+    setTestResult(null);
+    setResult(null);
+    setOpen(true);
+  }, []);
+
+  const startEdit = useCallback((r: StorageRootConfigItem) => {
+    setForm({
+      id: r.id,
+      endpoint_url: r.endpoint_url ?? '',
+      bucket: r.bucket ?? '',
+      access_key: r.access_key ?? '',
+      secret_key: '', // never returned; blank = keep stored secret
+      region: r.region ?? 'us-east-1',
+      presigned_ttl_seconds: r.presigned_ttl_seconds ?? 3600,
+    });
+    setEditingExisting(true);
+    setTestResult(null);
+    setResult(null);
+    setOpen(true);
+  }, []);
+
+  const patch = useCallback(
+    (p: Partial<RootForm>) => setForm((f) => ({ ...f, ...p })),
+    [],
+  );
+
+  const runTest = useCallback(async () => {
+    setBusy(true);
+    setTestResult(null);
+    setResult(null);
+    try {
+      const res = await maintPost<StorageRootTestResult>('/assets/storage-roots/test', SURFACE, {
+        id: form.id,
+        endpoint_url: form.endpoint_url,
+        bucket: form.bucket,
+        access_key: form.access_key,
+        secret_key: form.secret_key || undefined,
+        region: form.region,
+      });
+      setTestResult(res);
+    } catch (err) {
+      setTestResult({ online: false, error: extractErrorMessage(err) || 'Test failed' });
+    } finally {
+      setBusy(false);
+    }
+  }, [form]);
+
+  const save = useCallback(async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const updated = await maintPut<StorageRootsConfig>(
+        '/assets/storage-roots',
+        {
+          id: form.id || 'archive',
+          kind: 's3',
+          endpoint_url: form.endpoint_url,
+          bucket: form.bucket,
+          access_key: form.access_key,
+          secret_key: form.secret_key || undefined,
+          region: form.region,
+          presigned_ttl_seconds: form.presigned_ttl_seconds,
+        },
+        SURFACE,
+      );
+      setConfig(updated);
+      setOpen(false);
+      setResult({ message: `Saved root '${form.id}'` });
+      onChanged();
+    } catch (err) {
+      setResult({ message: extractErrorMessage(err) || 'Save failed', isError: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [form, onChanged]);
+
+  const remove = useCallback(
+    async (id: string) => {
+      if (typeof window !== 'undefined' && !window.confirm(
+        `Remove storage root '${id}'? Assets already on it keep their placement and will read as archived-offline until the root is restored.`,
+      )) return;
+      setBusy(true);
+      setResult(null);
+      try {
+        const updated = await maintDelete<StorageRootsConfig>(
+          `/assets/storage-roots/${encodeURIComponent(id)}`,
+          SURFACE,
+        );
+        setConfig(updated);
+        setResult({ message: `Removed root '${id}'` });
+        onChanged();
+      } catch (err) {
+        setResult({ message: extractErrorMessage(err) || 'Remove failed', isError: true });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onChanged],
+  );
+
+  const extras = config?.roots ?? [];
+  const envSourced = config?.source === 'env';
+
+  return (
+    <div className="px-3 py-2 space-y-2 border-t border-border/40">
+      <div className="flex items-center gap-2">
+        <Icon name="settings" size={12} className="text-muted-foreground shrink-0" />
+        <span className="text-[11px] text-muted-foreground flex-1">Manage roots</span>
+        {!open && (
+          <Button onClick={startAdd} variant="outline" size="sm">
+            {extras.length ? 'Add another' : 'Add archive root'}
+          </Button>
+        )}
+      </div>
+
+      {/* Existing editable roots (DB-managed) */}
+      {!open && extras.map((r) => (
+        <div key={r.id} className="flex items-center gap-2 text-[11px] pl-5">
+          <span className="font-medium">{r.id}</span>
+          <span className="text-muted-foreground/70 truncate flex-1" title={`${r.endpoint_url ?? ''}/${r.bucket ?? ''}`}>
+            {(r.endpoint_url ?? '').replace(/^https?:\/\//, '')}/{r.bucket ?? ''}
+          </span>
+          {envSourced && <span className="text-[9px] text-amber-600 dark:text-amber-400">from .env</span>}
+          <button
+            type="button"
+            onClick={() => startEdit(r)}
+            className="text-[10px] text-muted-foreground hover:text-foreground hover:underline"
+          >
+            Edit
+          </button>
+          {!envSourced && (
+            <button
+              type="button"
+              onClick={() => remove(r.id)}
+              disabled={busy}
+              className="text-[10px] text-red-500 hover:underline disabled:opacity-50"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      ))}
+
+      {envSourced && !open && (
+        <p className="text-[10px] text-muted-foreground/70 pl-5">
+          Roots are currently from <code>.env</code>. Saving here creates a DB override that supersedes it (re-enter the secret).
+        </p>
+      )}
+
+      {/* Add/edit form */}
+      {open && (
+        <div className="pl-5 space-y-1.5">
+          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-1.5 text-[11px]">
+            <label className="text-muted-foreground">Root id</label>
+            <input
+              value={form.id}
+              onChange={(e) => patch({ id: e.target.value })}
+              disabled={editingExisting || busy}
+              className="h-7 bg-transparent border border-border rounded px-2 disabled:opacity-50"
+            />
+            <label className="text-muted-foreground">Endpoint</label>
+            <input
+              placeholder="http://10.243.1.2:9000"
+              value={form.endpoint_url}
+              onChange={(e) => patch({ endpoint_url: e.target.value })}
+              disabled={busy}
+              className="h-7 bg-transparent border border-border rounded px-2"
+            />
+            <label className="text-muted-foreground">Bucket</label>
+            <input
+              placeholder="pixsim-archive"
+              value={form.bucket}
+              onChange={(e) => patch({ bucket: e.target.value })}
+              disabled={busy}
+              className="h-7 bg-transparent border border-border rounded px-2"
+            />
+            <label className="text-muted-foreground">Access key</label>
+            <input
+              value={form.access_key}
+              onChange={(e) => patch({ access_key: e.target.value })}
+              disabled={busy}
+              className="h-7 bg-transparent border border-border rounded px-2"
+            />
+            <label className="text-muted-foreground">Secret key</label>
+            <input
+              type="password"
+              placeholder={editingExisting ? '•••• (unchanged)' : ''}
+              value={form.secret_key}
+              onChange={(e) => patch({ secret_key: e.target.value })}
+              disabled={busy}
+              className="h-7 bg-transparent border border-border rounded px-2"
+            />
+            <label className="text-muted-foreground">Region</label>
+            <input
+              value={form.region}
+              onChange={(e) => patch({ region: e.target.value })}
+              disabled={busy}
+              className="h-7 bg-transparent border border-border rounded px-2"
+            />
+          </div>
+
+          {testResult && (
+            <div
+              className={`flex items-center gap-1.5 text-[11px] ${
+                testResult.online ? 'text-green-600 dark:text-green-400' : 'text-red-500'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${testResult.online ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              {testResult.online ? 'Connection OK' : `Unreachable: ${testResult.error ?? 'unknown error'}`}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <Button onClick={runTest} disabled={busy || !form.endpoint_url || !form.bucket} variant="outline" size="sm">
+              {busy ? <Spinner className="w-3 h-3" /> : 'Test connection'}
+            </Button>
+            <Button onClick={save} disabled={busy || !form.endpoint_url || !form.bucket || !form.access_key} variant="primary" size="sm">
+              Save
+            </Button>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setTestResult(null); }}
+              disabled={busy}
+              className="text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {result && (
+        <div
+          className={`flex items-center gap-1.5 text-[11px] pl-5 ${
+            result.isError ? 'text-red-500' : 'text-green-600 dark:text-green-400'
+          }`}
+        >
+          <Icon name={result.isError ? 'alertCircle' : 'check'} size={12} />
+          {result.message}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const STORAGE_ROOTS_LIST_KEY = '/assets/storage-roots';
+
+/**
+ * Dedicated "Storage Tiering" panel — its own sidebar section, self-fetching
+ * the cheap /assets/storage-roots endpoint (no FS scan). Hosts the per-root
+ * sizes/health list, the relocate action, and the add/edit-root editor.
+ */
+function StorageTieringPanel() {
+  const [data, setData] = useState<StorageRootsList | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = useCallback(async (force = false) => {
+    if (!force) {
+      const cached = readStatsCache<StorageRootsList>(STORAGE_ROOTS_LIST_KEY);
+      if (cached) {
+        setData(cached);
+        setError(null);
+        return;
+      }
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await maintGet<StorageRootsList>(STORAGE_ROOTS_LIST_KEY, SURFACE);
+      writeStatsCache(STORAGE_ROOTS_LIST_KEY, resp);
+      setData(resp);
+    } catch (err) {
+      setError(extractErrorMessage(err) || 'Failed to load storage roots');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const refresh = useCallback(() => {
+    bustStatsCache(STORAGE_ROOTS_LIST_KEY);
+    // Also bust the overview scan so its roots summary stays in sync.
+    bustStatsCache(STORAGE_OVERVIEW_KEY);
+    fetchData(true);
+  }, [fetchData]);
+
+  const roots = data?.roots ?? [];
+  const maxBytes = Math.max(1, ...roots.map((r) => r.size_bytes));
+
+  return (
+    <div className="flex flex-col gap-4 p-5 max-w-2xl">
+      <header className="flex items-baseline justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">Storage Tiering</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Offload heavy video originals to a remote S3/MinIO archive; images and derivatives stay local.
+          </p>
+        </div>
+        <Button onClick={refresh} disabled={loading} variant="outline" size="sm">
+          {loading ? <LoadingSpinner size="xs" /> : <Icon name="refresh" size={12} />}
+        </Button>
+      </header>
+
+      {error && !data && (
+        <div className="flex items-center gap-2 text-[11px] text-red-500">
+          <Icon name="alertCircle" size={14} /> {error}
+        </div>
+      )}
+
+      {data && (
+        <>
+          {/* Per-root sizes + health */}
+          <section className="rounded-md border border-border/60 bg-muted/20 px-3 py-2.5 space-y-1.5">
+            <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Roots
+            </h3>
+            {roots.map((r) => (
+              <div key={r.id} className="flex items-center gap-2 text-[11px]">
+                <RootStatusDot online={r.online} />
+                <span className="w-[100px] shrink-0 truncate text-muted-foreground" title={r.detail ?? undefined}>
+                  {r.label}
+                </span>
+                <span className="w-[34px] shrink-0 text-[9px] uppercase tracking-wider text-muted-foreground/50">
+                  {r.kind}
+                </span>
+                <span className="w-[60px] shrink-0 text-right tabular-nums">{r.size_human}</span>
+                <MiniBar value={r.size_bytes} total={maxBytes} color={r.id === 'local' ? 'bg-blue-500' : 'bg-emerald-500'} />
+                <span className="w-[60px] shrink-0 text-right text-muted-foreground/60 tabular-nums text-[10px]">
+                  {fmtCount(r.asset_count)} files
+                </span>
+                {r.is_archive_target && (
+                  <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium shrink-0">target</span>
+                )}
+              </div>
+            ))}
+            {roots.some((r) => r.online === false) && (
+              <p className="text-[10px] text-red-500 pt-0.5">
+                An archive root is offline — archived media returns a clear “offline” state until it’s reachable.
+              </p>
+            )}
+            {!data.tiering_enabled && (
+              <p className="text-[10px] text-muted-foreground/70 pt-0.5">
+                Only the local root is configured. Add an archive root below to enable tiering.
+              </p>
+            )}
+          </section>
+
+          {/* Relocate action */}
+          <section className="rounded-md border border-border/60 bg-muted/20">
+            <RelocateVideosAction onMoved={refresh} />
+          </section>
+
+          {/* Add / edit / remove roots */}
+          <section className="rounded-md border border-border/60 bg-muted/20">
+            <StorageRootEditor onChanged={refresh} />
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
 
 function StorageOverview({
   onRefresh,
+  onNavigate,
 }: {
   onRefresh: React.MutableRefObject<(() => Promise<void>)[]>;
+  onNavigate?: (id: string) => void;
 }) {
   const [data, setData] = useState<StorageOverviewData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1185,34 +1829,51 @@ function StorageOverview({
   const [actionResult, setActionResult] = useState<ActionResult | null>(null);
   const [runningAction, setRunningAction] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
-    const cached = readStatsCache<StorageOverviewData>(STORAGE_OVERVIEW_KEY);
-    if (cached) {
-      setData(cached);
+  const fetchData = useCallback(async (force = false) => {
+    // Stale-while-revalidate. Show whatever we already have (memory or
+    // sessionStorage) instantly, and only hit the backend (which runs the FS
+    // walk) when there's nothing cached, the cache is stale, or force=true.
+    const memory = readStatsCache<StorageOverviewData>(STORAGE_OVERVIEW_KEY);
+    const persisted = memory ? { data: memory, at: Date.now() } : readPersistedOverview();
+    if (persisted && !force) {
+      setData(persisted.data);
       setError(null);
-      return;
+      writeStatsCache(STORAGE_OVERVIEW_KEY, persisted.data); // keep memory warm
+      if (Date.now() - persisted.at < STORAGE_OVERVIEW_SOFT_TTL_MS) {
+        return; // fresh enough — no scan
+      }
+      // Stale: fall through and revalidate in the background (no blocking spinner).
     }
-    setLoading(true);
+
+    const hadData = Boolean(persisted);
+    if (!hadData) setLoading(true);
     setError(null);
     try {
-      const resp = await maintGet<StorageOverviewData>(STORAGE_OVERVIEW_KEY, SURFACE);
+      // force re-scans the backend too (bypasses its own 60s cache).
+      const path = force ? `${STORAGE_OVERVIEW_KEY}?force=true` : STORAGE_OVERVIEW_KEY;
+      const resp = await maintGet<StorageOverviewData>(path, SURFACE);
       writeStatsCache(STORAGE_OVERVIEW_KEY, resp);
+      writePersistedOverview(resp);
       setData(resp);
     } catch (err) {
-      setError(extractErrorMessage(err) || 'Failed to load storage overview');
+      // Don't blow away already-shown data on a background-revalidate failure.
+      if (!hadData) setError(extractErrorMessage(err) || 'Failed to load storage overview');
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // Refresh button / global refresh forces a fresh scan.
+  const revalidate = useCallback(() => fetchData(true), [fetchData]);
+
   useEffect(() => {
     const cbs = onRefresh.current;
-    cbs.push(fetchData);
+    cbs.push(revalidate);
     return () => {
-      const idx = cbs.indexOf(fetchData);
+      const idx = cbs.indexOf(revalidate);
       if (idx >= 0) cbs.splice(idx, 1);
     };
-  }, [fetchData, onRefresh]);
+  }, [revalidate, onRefresh]);
 
   useEffect(() => {
     fetchData();
@@ -1227,10 +1888,10 @@ function StorageOverview({
         ? `Dry run: ${result.freed_human || result.deleted_count + ' items'} would be freed`
         : `Done: ${result.freed_human || ''} freed`;
       setActionResult({ message: msg });
-      // Refresh after non-dry-run — bust the cached scan first so it refetches.
+      // Refresh after non-dry-run — force a fresh scan (state actually changed).
       if (!result.dry_run) {
         bustStatsCache(STORAGE_OVERVIEW_KEY);
-        fetchData();
+        fetchData(true);
       }
     } catch (err) {
       setActionResult({ message: extractErrorMessage(err) || 'Action failed', isError: true });
@@ -1296,6 +1957,29 @@ function StorageOverview({
           ))}
         </div>
       </div>
+
+      {/* Storage tiering lives in its own sidebar section now — keep just a
+          compact summary + pointer here so the Overview isn't cluttered. */}
+      {(data.storage_roots?.length ?? 0) > 0 && (
+        <>
+          <div className="h-px bg-border/50 mx-3" />
+          <button
+            type="button"
+            onClick={() => onNavigate?.('storage-tiering')}
+            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] hover:bg-muted/30 transition-colors text-left"
+          >
+            <Icon name="database" size={12} className="text-muted-foreground shrink-0" />
+            <span className="text-muted-foreground">Storage tiering</span>
+            <span className="text-muted-foreground/60 truncate">
+              {data.storage_roots.map((r) => `${r.label} ${r.size_human}`).join(' · ')}
+            </span>
+            {data.storage_roots.some((r) => r.online === false) && (
+              <span className="text-[9px] text-red-500 shrink-0">offline</span>
+            )}
+            <span className="ml-auto text-accent shrink-0">Manage →</span>
+          </button>
+        </>
+      )}
 
       <div className="h-px bg-border/50 mx-3" />
 
@@ -1532,6 +2216,11 @@ export function MaintenanceDashboard() {
       label: 'Overview',
       icon: <Icon name="layers" size={14} />,
     },
+    {
+      id: 'storage-tiering',
+      label: 'Storage Tiering',
+      icon: <Icon name="database" size={14} />,
+    },
     ...STATS_TASK_NAV.map((entry) => {
       const taskEntry = taskMap[entry.id as keyof typeof taskMap];
       const isRunning = byTask[taskEntry.taskId]?.status === 'running';
@@ -1563,8 +2252,11 @@ export function MaintenanceDashboard() {
     },
   ];
 
-  const activeTask =
-    activeId in taskMap ? taskMap[activeId as keyof typeof taskMap] : null;
+  // Each task hook is MaintenanceTask<S> for a different S; the generic detail
+  // components only need a consistent (task.config + task.stats) pairing, so a
+  // single `any` instantiation is sound and avoids a union-vs-generic mismatch.
+  const activeTask: MaintenanceTask<any> | null =
+    activeId in taskMap ? (taskMap[activeId as keyof typeof taskMap] as MaintenanceTask<any>) : null;
 
   return (
     <SidebarContentLayout
@@ -1593,9 +2285,11 @@ export function MaintenanceDashboard() {
         <div className="flex flex-col gap-0">
           <HealthHeader />
           <div className="h-px bg-border mx-3" />
-          <StorageOverview onRefresh={refreshCallbacks} />
+          <StorageOverview onRefresh={refreshCallbacks} onNavigate={setActiveId} />
         </div>
       )}
+
+      {activeId === 'storage-tiering' && <StorageTieringPanel />}
 
       {activeTask && (
         <div className="flex flex-col">

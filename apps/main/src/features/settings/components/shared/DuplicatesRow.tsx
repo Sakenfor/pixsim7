@@ -9,11 +9,23 @@ import { Button, useToast } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useState } from 'react';
 
 import { deleteAsset } from '@lib/api/assets';
-import { BACKEND_BASE } from '@lib/api/client';
-import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
-import { authService } from '@lib/auth';
+import { Icon } from '@lib/icons';
 
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
+
+import {
+  bustStatsCache,
+  extractErrorMessage,
+  fmt,
+  humanBytes,
+  maintGet,
+  readStatsCache,
+  writeStatsCache,
+} from './maintenanceShared';
+import { Spinner } from './MaintenanceSpinner';
+
+const SURFACE = 'settings:duplicates';
+const DUPLICATES_STATS_KEY = '/assets/duplicates-stats';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -50,40 +62,7 @@ interface DuplicatesResponse {
   limit: number;
 }
 
-// ── API helpers ───────────────────────────────────────────────────────
-
-function authHeaders(): Record<string, string> {
-  const token = authService.getStoredToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-async function apiFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${BACKEND_BASE}${path}`, {
-    headers: withCorrelationHeaders(authHeaders(), 'settings:duplicates'),
-  });
-  if (!res.ok) {
-    throw new Error((await res.text()) || res.statusText);
-  }
-  return res.json();
-}
-
 // ── Formatting ────────────────────────────────────────────────────────
-
-function fmt(n: number) {
-  return n.toLocaleString();
-}
-
-function humanBytes(bytes: number): string {
-  if (!bytes) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let v = bytes;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(1)} ${units[i]}`;
-}
 
 function shortDate(iso: string | null): string {
   if (!iso) return '—';
@@ -99,28 +78,6 @@ function shortDate(iso: string | null): string {
 }
 
 // ── Small UI bits ─────────────────────────────────────────────────────
-
-function Spinner({ className = 'w-3.5 h-3.5' }: { className?: string }) {
-  return (
-    <svg className={`${className} animate-spin text-muted-foreground`} fill="none" viewBox="0 0 24 24">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-    </svg>
-  );
-}
-
-function Chevron({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      className={`w-3 h-3 text-muted-foreground/50 transition-transform ${expanded ? 'rotate-90' : ''}`}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-    </svg>
-  );
-}
 
 function DuplicateThumbnail({
   thumbnailUrl,
@@ -264,13 +221,20 @@ export function DuplicatesRow({
   const [groupsError, setGroupsError] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
+    const cached = readStatsCache<DuplicatesStats>(DUPLICATES_STATS_KEY);
+    if (cached) {
+      setStats(cached);
+      setStatsError(null);
+      return;
+    }
     setStatsLoading(true);
     try {
-      const data = await apiFetch<DuplicatesStats>('/api/v1/assets/duplicates-stats');
+      const data = await maintGet<DuplicatesStats>(DUPLICATES_STATS_KEY, SURFACE);
+      writeStatsCache(DUPLICATES_STATS_KEY, data);
       setStats(data);
       setStatsError(null);
     } catch (err) {
-      setStatsError(err instanceof Error ? err.message : 'Failed to load duplicate stats');
+      setStatsError(extractErrorMessage(err) || 'Failed to load duplicate stats');
     } finally {
       setStatsLoading(false);
     }
@@ -279,15 +243,16 @@ export function DuplicatesRow({
   const fetchGroups = useCallback(async (nextOffset: number) => {
     setGroupsLoading(true);
     try {
-      const data = await apiFetch<DuplicatesResponse>(
-        `/api/v1/assets/duplicates?offset=${nextOffset}&limit=${PAGE_SIZE}`
+      const data = await maintGet<DuplicatesResponse>(
+        `/assets/duplicates?offset=${nextOffset}&limit=${PAGE_SIZE}`,
+        SURFACE,
       );
       setGroups((prev) => (nextOffset === 0 ? data.groups : [...prev, ...data.groups]));
       setTotalGroups(data.total_groups);
       setOffset(nextOffset + data.groups.length);
       setGroupsError(null);
     } catch (err) {
-      setGroupsError(err instanceof Error ? err.message : 'Failed to load duplicates');
+      setGroupsError(extractErrorMessage(err) || 'Failed to load duplicates');
     } finally {
       setGroupsLoading(false);
     }
@@ -333,6 +298,9 @@ export function DuplicatesRow({
         }
         return next;
       });
+      // A delete changes the duplicate counts — drop the cached stats so the
+      // refetch reflects the new state instead of the pre-delete snapshot.
+      bustStatsCache(DUPLICATES_STATS_KEY);
       fetchStats();
     },
     [fetchStats]
@@ -361,14 +329,20 @@ export function DuplicatesRow({
         className={`flex items-center gap-3 py-2 px-3 ${canExpand ? 'cursor-pointer hover:bg-muted/30 transition-colors' : ''}`}
         onClick={canExpand ? toggleExpanded : undefined}
       >
-        <div className="w-3 shrink-0">{canExpand && <Chevron expanded={expanded} />}</div>
+        <div className="w-3 shrink-0">
+          {canExpand && (
+            <Icon
+              name="chevronRight"
+              size={12}
+              className={`text-muted-foreground/50 transition-transform ${expanded ? 'rotate-90' : ''}`}
+            />
+          )}
+        </div>
         <span className="text-xs font-medium w-[110px] shrink-0 truncate">Duplicates</span>
         <span className="text-xs text-muted-foreground flex-1 truncate">{headerStatus}</span>
         <div className="w-[130px] shrink-0 flex justify-end">
           {complete ? (
-            <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+            <Icon name="check" size={16} className="text-green-500" />
           ) : (
             <span className="text-[10px] text-muted-foreground">
               {statsLoading ? <Spinner className="w-3 h-3" /> : 'Review'}

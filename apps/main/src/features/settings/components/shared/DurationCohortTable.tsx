@@ -2,9 +2,7 @@
 import { LoadingSpinner } from '@pixsim7/shared.ui';
 import { useEffect, useState } from 'react';
 
-import { BACKEND_BASE } from '@lib/api/client';
-import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
-import { authService } from '@lib/auth';
+import { cachedGet, extractErrorMessage } from './maintenanceShared';
 
 interface CohortBucket {
   count: number;
@@ -32,19 +30,6 @@ interface CohortsResponse {
   min_suspicious_count: number;
   sample_size: number;
   sample_limit: number;
-}
-
-function authHeaders(): Record<string, string> {
-  const token = authService.getStoredToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-async function fetchCohorts(): Promise<CohortsResponse> {
-  const res = await fetch(`${BACKEND_BASE}/api/v1/assets/signal-scan-cohorts`, {
-    headers: withCorrelationHeaders(authHeaders(), 'settings:duration-cohorts'),
-  });
-  if (!res.ok) throw new Error((await res.text()) || res.statusText);
-  return res.json();
 }
 
 function fmtSec(v: number | null): string {
@@ -76,9 +61,9 @@ export function DurationCohortTable() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchCohorts()
+    cachedGet<CohortsResponse>('/assets/signal-scan-cohorts', 'settings:duration-cohorts')
       .then((r) => { if (!cancelled) setData(r); })
-      .catch((e) => { if (!cancelled) setError(String(e?.message ?? e)); })
+      .catch((e) => { if (!cancelled) setError(extractErrorMessage(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
