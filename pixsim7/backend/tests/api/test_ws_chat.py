@@ -24,7 +24,10 @@ try:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from pixsim7.backend.main.api.v1.ws_chat import router
+    from pixsim7.backend.main.api.v1.ws_chat import (
+        router,
+        _recover_session_tail_response,
+    )
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import RemoteAgent
 
     IMPORTS_AVAILABLE = True
@@ -1374,6 +1377,145 @@ class TestWaitForBridgeReturn:
         ):
             result = await ws_chat._wait_for_bridge_return("t", bridge=bridge)
         assert result is False
+
+
+# ── Session-tail recovery (reconnect tier 4) ─────────────────────
+
+_DB_SESSION = "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal"
+
+
+class _FakeResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self._rows
+
+
+class _FakeSession:
+    """Minimal async-session stand-in for _recover_session_tail_response."""
+
+    def __init__(self, get_obj=None, query_rows=None):
+        self._get_obj = get_obj
+        self._query_rows = query_rows or []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def get(self, _model, _key):
+        return self._get_obj
+
+    async def execute(self, _stmt):
+        return _FakeResult(self._query_rows)
+
+
+def _chat_session(messages, user_id=1, cli_session_id="cli-1", row_id="row-1"):
+    return SimpleNamespace(
+        user_id=user_id,
+        cli_session_id=cli_session_id,
+        id=row_id,
+        messages=messages,
+    )
+
+
+class TestRecoverSessionTail:
+    """Direct coverage of the DB tail-recovery used as reconnect's last resort.
+
+    Previously only mocked at the ws_chat layer — the actual session lookup,
+    owner gate, and tail validation were uncovered.
+    """
+
+    @pytest.mark.asyncio
+    async def test_no_hint_returns_none_without_db(self):
+        # No session hint → bail before touching the DB.
+        assert await _recover_session_tail_response("", user_id=1) is None
+        assert await _recover_session_tail_response(None, user_id=1) is None
+
+    @pytest.mark.asyncio
+    async def test_recovers_assistant_tail_found_by_primary_key(self):
+        session = _chat_session(
+            [{"role": "user", "text": "hi"},
+             {"role": "assistant", "text": "hello there"}],
+            cli_session_id="cli-1",
+        )
+        with patch(_DB_SESSION, lambda: _FakeSession(get_obj=session)):
+            result = await _recover_session_tail_response("cli-1", user_id=1)
+        assert result == ("hello there", "cli-1")
+
+    @pytest.mark.asyncio
+    async def test_recovers_via_cli_session_id_fallback_lookup(self):
+        # db.get misses (hint isn't the PK) → fall back to the cli_session_id query.
+        session = _chat_session(
+            [{"role": "assistant", "text": "from fallback"}],
+            cli_session_id="cli-xyz",
+        )
+        with patch(_DB_SESSION, lambda: _FakeSession(get_obj=None, query_rows=[session])):
+            result = await _recover_session_tail_response("cli-xyz", user_id=1)
+        assert result == ("from fallback", "cli-xyz")
+
+    @pytest.mark.asyncio
+    async def test_owner_mismatch_is_rejected(self):
+        session = _chat_session(
+            [{"role": "assistant", "text": "secret"}], user_id=2,
+        )
+        with patch(_DB_SESSION, lambda: _FakeSession(get_obj=session)):
+            result = await _recover_session_tail_response("cli-1", user_id=1)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_system_owned_session_is_allowed(self):
+        # owner_id == 0 (system/shared) is readable by any requester.
+        session = _chat_session(
+            [{"role": "assistant", "text": "shared reply"}], user_id=0,
+        )
+        with patch(_DB_SESSION, lambda: _FakeSession(get_obj=session)):
+            result = await _recover_session_tail_response("cli-1", user_id=1)
+        assert result == ("shared reply", "cli-1")
+
+    @pytest.mark.asyncio
+    async def test_session_not_found_returns_none(self):
+        with patch(_DB_SESSION, lambda: _FakeSession(get_obj=None, query_rows=[])):
+            assert await _recover_session_tail_response("cli-gone", user_id=1) is None
+
+    @pytest.mark.asyncio
+    async def test_empty_messages_returns_none(self):
+        session = _chat_session([])
+        with patch(_DB_SESSION, lambda: _FakeSession(get_obj=session)):
+            assert await _recover_session_tail_response("cli-1", user_id=1) is None
+
+    @pytest.mark.asyncio
+    async def test_tail_not_assistant_returns_none(self):
+        # The agent never replied — last message is still the user's.
+        session = _chat_session([{"role": "user", "text": "are you there?"}])
+        with patch(_DB_SESSION, lambda: _FakeSession(get_obj=session)):
+            assert await _recover_session_tail_response("cli-1", user_id=1) is None
+
+    @pytest.mark.asyncio
+    async def test_empty_assistant_text_returns_none(self):
+        session = _chat_session([{"role": "assistant", "text": "   "}])
+        with patch(_DB_SESSION, lambda: _FakeSession(get_obj=session)):
+            assert await _recover_session_tail_response("cli-1", user_id=1) is None
+
+    @pytest.mark.asyncio
+    async def test_malformed_tail_returns_none(self):
+        session = _chat_session([{"role": "user", "text": "hi"}, "not-a-dict"])
+        with patch(_DB_SESSION, lambda: _FakeSession(get_obj=session)):
+            assert await _recover_session_tail_response("cli-1", user_id=1) is None
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_row_id_when_no_cli_session_id(self):
+        session = _chat_session(
+            [{"role": "assistant", "text": "ok"}], cli_session_id=None, row_id="row-99",
+        )
+        with patch(_DB_SESSION, lambda: _FakeSession(get_obj=session)):
+            result = await _recover_session_tail_response("some-hint", user_id=1)
+        assert result == ("ok", "row-99")
 
 
 # ── Auth ─────────────────────────────────────────────────────────

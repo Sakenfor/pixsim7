@@ -656,17 +656,7 @@ class Bridge:
             get_logger().info("pool_status", ready=self._pool.ready_count, busy=self._pool.busy_count, max=self._pool._max_sessions)
 
             # Replay any buffered results from tasks that completed while WS was dead
-            if self._buffered_results:
-                get_logger().info("replaying_buffered", count=len(self._buffered_results))
-                for task_id, result_msg in list(self._buffered_results.items()):
-                    try:
-                        await ws.send(json.dumps(result_msg))
-                        self._buffered_results.pop(task_id, None)
-                        self._drop_persisted_buffered_result(task_id)
-                        get_logger().debug("buffered_replayed", task=task_id[:8])
-                    except Exception as e:
-                        get_logger().error("buffered_replay_failed", task=task_id[:8], error=str(e))
-                        break  # WS already broken again — stop trying
+            await self._replay_buffered_results(ws)
 
             get_logger().info("waiting_for_tasks")
 
@@ -711,6 +701,29 @@ class Bridge:
                     await idle_hb_task
                 except asyncio.CancelledError:
                     pass
+
+    async def _replay_buffered_results(self, ws) -> None:
+        """Re-send results buffered while the WS was dead, then drop each copy.
+
+        Called right after a (re)connect. A task can complete while the backend
+        WS is down (or mid-restart); the result is held in ``_buffered_results``
+        (and mirrored to disk) so it survives, then replayed here. Each success
+        clears both the in-memory entry and its disk copy so it isn't re-sent.
+        Stops on the first send failure — the WS just broke again, so the rest
+        stay buffered for the next reconnect.
+        """
+        if not self._buffered_results:
+            return
+        get_logger().info("replaying_buffered", count=len(self._buffered_results))
+        for task_id, result_msg in list(self._buffered_results.items()):
+            try:
+                await ws.send(json.dumps(result_msg))
+                self._buffered_results.pop(task_id, None)
+                self._drop_persisted_buffered_result(task_id)
+                get_logger().debug("buffered_replayed", task=task_id[:8])
+            except Exception as e:
+                get_logger().error("buffered_replay_failed", task=task_id[:8], error=str(e))
+                break  # WS already broken again — stop trying
 
     async def _send_pool_status(self, ws) -> None:
         """Send current pool session info to backend."""

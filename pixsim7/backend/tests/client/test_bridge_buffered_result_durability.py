@@ -26,6 +26,7 @@ TEST_SUITE = {
 
 import json
 import os
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -127,3 +128,78 @@ def test_persist_is_atomic_no_tmp_left_behind():
     leftovers = list(b1._buffered_results_dir.glob(".*.tmp"))
     assert leftovers == []
     assert (b1._buffered_results_dir / "task-atomic.json").exists()
+
+
+# ── Replay-on-reconnect ──────────────────────────────────────────
+# The disk buffer above is only useful if it's actually re-sent and then
+# cleared when the WS comes back. These cover _replay_buffered_results, the
+# loop run() invokes right after a (re)connect.
+
+
+def _buffer(bridge: Bridge, task_id: str) -> None:
+    """Add an in-memory + on-disk buffered result for a task."""
+    msg = {"type": "result", "task_id": task_id, "response": f"reply-{task_id}"}
+    bridge._buffered_results[task_id] = msg
+    bridge._persist_buffered_result(task_id, msg)
+
+
+@pytest.mark.asyncio
+async def test_replay_sends_all_and_clears_memory_and_disk():
+    bridge = _make_bridge()
+    _buffer(bridge, "task-a")
+    _buffer(bridge, "task-b")
+    ws = AsyncMock()
+
+    await bridge._replay_buffered_results(ws)
+
+    # Both replayed over the WS...
+    assert ws.send.await_count == 2
+    sent_task_ids = {json.loads(c.args[0])["task_id"] for c in ws.send.await_args_list}
+    assert sent_task_ids == {"task-a", "task-b"}
+    # ...and cleared from memory + disk so they aren't re-sent next reconnect.
+    assert bridge._buffered_results == {}
+    assert list(bridge._buffered_results_dir.glob("*.json")) == []
+
+
+@pytest.mark.asyncio
+async def test_replay_empty_buffer_is_noop():
+    bridge = _make_bridge()
+    ws = AsyncMock()
+
+    await bridge._replay_buffered_results(ws)
+
+    ws.send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_replay_stops_on_send_failure_keeping_remaining():
+    # WS breaks again mid-replay: the first result lands, the rest stay buffered
+    # (memory + disk) for the next reconnect instead of being lost.
+    bridge = _make_bridge()
+    _buffer(bridge, "task-a")
+    _buffer(bridge, "task-b")
+    ws = AsyncMock()
+    ws.send.side_effect = [None, ConnectionError("ws died again")]
+
+    await bridge._replay_buffered_results(ws)
+
+    assert "task-a" not in bridge._buffered_results
+    assert not (bridge._buffered_results_dir / "task-a.json").exists()
+    # task-b survives for a later retry.
+    assert "task-b" in bridge._buffered_results
+    assert (bridge._buffered_results_dir / "task-b.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_replay_first_failure_keeps_everything():
+    bridge = _make_bridge()
+    _buffer(bridge, "task-a")
+    _buffer(bridge, "task-b")
+    ws = AsyncMock()
+    ws.send.side_effect = ConnectionError("ws dead on arrival")
+
+    await bridge._replay_buffered_results(ws)
+
+    # Nothing acknowledged → nothing dropped.
+    assert set(bridge._buffered_results) == {"task-a", "task-b"}
+    assert {p.stem for p in bridge._buffered_results_dir.glob("*.json")} == {"task-a", "task-b"}
