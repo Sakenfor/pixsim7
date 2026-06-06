@@ -679,6 +679,10 @@ def test_candidate_query_criteria():
     default_sql = str(candidate_query(0, None))
     assert "media_type IN" in default_sql
 
+    # Always-on base guards: gallery-content only + skip in-flight ingests.
+    assert "asset_kind" in default_sql
+    assert "ingest_status" in default_sql
+
     # all criteria AND into the WHERE clause.
     sql = str(candidate_query(
         10 * 1024 * 1024, 1,

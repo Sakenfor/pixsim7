@@ -86,6 +86,14 @@ def candidate_query(
         Asset.media_type.in_(_normalize_media_types(media_types)),
         Asset.stored_key.is_not(None),
         or_(Asset.storage_root_id.is_(None), Asset.storage_root_id == LOCAL_ROOT_ID),
+        # Always-on base guards (not user-configurable):
+        # 1. Only genuine gallery assets — never masks/guidance/reference/probe
+        #    (throwaway test gens), which must not be shipped to the archive.
+        Asset.asset_kind == "content",
+        # 2. Skip in-flight/failed ingests; only move settled assets. Allow NULL
+        #    (legacy rows predating ingest tracking) — note NOT IN would drop
+        #    NULLs in SQL, so this is an explicit OR.
+        or_(Asset.ingest_status.is_(None), Asset.ingest_status == "completed"),
     )
     if min_size_bytes > 0:
         stmt = stmt.where(Asset.file_size_bytes >= min_size_bytes)
