@@ -323,11 +323,103 @@ async def _process_embedding_analysis(
     }
 
 
+async def _process_detection_analysis(
+    *,
+    db: AsyncSession,
+    analysis: AssetAnalysis,
+    analysis_service: AnalysisService,
+    analysis_logger,
+) -> dict:
+    """Run an asset detection analysis via the detection service locator.
+
+    Resolves the asset's path (preferring the full-resolution stored file
+    over the thumbnail — detection benefits from native resolution),
+    invokes the daemon, and marks the analysis completed with the resulting
+    zones. Open-vocab labels and score threshold are read from
+    `analysis.params` so different analyzer instances can detect different
+    concepts without backend changes.
+    """
+    from pixsim7.detection.locator import get_detection_service
+    from pixsim7.detection.protocol import DetectRequest, DetectionServiceError
+
+    from pixsim7.backend.main.domain import Asset
+
+    asset = await db.get(Asset, analysis.asset_id)
+    if asset is None:
+        await analysis_service.mark_failed(analysis.id, "asset not found")
+        return {"status": "failed", "reason": "missing_asset"}
+
+    storage = get_storage_service()
+    image_path: str | None = None
+    if asset.stored_key:
+        candidate = storage.get_path(asset.stored_key)
+        if Path(candidate).exists():
+            image_path = candidate
+    if image_path is None and asset.thumbnail_key:
+        candidate = storage.get_path(asset.thumbnail_key)
+        if Path(candidate).exists():
+            image_path = candidate
+
+    if image_path is None:
+        await analysis_service.mark_failed(analysis.id, "no readable asset path")
+        return {"status": "failed", "reason": "no_path"}
+
+    params = analysis.params or {}
+    labels_raw = params.get("labels") or []
+    labels = tuple(s for s in labels_raw if isinstance(s, str) and s.strip())
+    score_threshold_raw = params.get("score_threshold")
+    score_threshold = (
+        float(score_threshold_raw)
+        if isinstance(score_threshold_raw, (int, float))
+        and not isinstance(score_threshold_raw, bool)
+        else None
+    )
+
+    await analysis_service.mark_started(analysis.id)
+    analysis_logger.info(
+        "detection_started",
+        asset_id=asset.id,
+        path=image_path,
+        labels=list(labels),
+    )
+
+    try:
+        result = await get_detection_service().detect(
+            DetectRequest(
+                image_path=image_path,
+                labels=labels,
+                score_threshold=score_threshold,
+            )
+        )
+    except DetectionServiceError as exc:
+        await analysis_service.mark_failed(analysis.id, str(exc))
+        analysis_logger.error("detection_failed", error=str(exc))
+        return {"status": "failed", "reason": "detection_service_error"}
+
+    await analysis_service.mark_completed(
+        analysis.id,
+        {"zones": result.zones, "confidence": result.confidence},
+    )
+    analysis_logger.info(
+        "detection_completed",
+        asset_id=asset.id,
+        zone_count=len(result.zones),
+        model_id=result.model_id,
+    )
+
+    return {
+        "status": "completed",
+        "analysis_id": analysis.id,
+        "zone_count": len(result.zones),
+    }
+
+
 # Maps an AnalyzerTaskFamily to a local-execution handler. Analyzers whose
 # task family is in this table bypass provider/account selection and run on
 # the worker host. Adding a new local task family is just a new entry here.
 _LOCAL_TASK_HANDLERS = {
     AnalyzerTaskFamily.EMBEDDING: _process_embedding_analysis,
+    AnalyzerTaskFamily.DETECTION: _process_detection_analysis,
 }
 
 

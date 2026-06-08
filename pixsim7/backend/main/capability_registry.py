@@ -52,6 +52,10 @@ def all_bindings() -> tuple[CapabilityBinding, ...]:
         bind_embedding_capabilities,
         shutdown_embedding_capabilities,
     )
+    from pixsim7.backend.main.adapters.detection import (
+        bind_detection_capabilities,
+        shutdown_detection_capabilities,
+    )
 
     return (
         CapabilityBinding(
@@ -64,6 +68,12 @@ def all_bindings() -> tuple[CapabilityBinding, ...]:
             name="embedding",
             binder=bind_embedding_capabilities,
             shutdown=shutdown_embedding_capabilities,
+            hosts=frozenset({"main_worker"}),
+        ),
+        CapabilityBinding(
+            name="detection",
+            binder=bind_detection_capabilities,
+            shutdown=shutdown_detection_capabilities,
             hosts=frozenset({"main_worker"}),
         ),
     )
