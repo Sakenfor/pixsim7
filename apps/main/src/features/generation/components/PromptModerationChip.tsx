@@ -121,6 +121,10 @@ export function PromptModerationChip({
   const atCap = stats.streak >= cap;
   const near = stats.streak >= Math.ceil(cap * 0.6);
   const empty = total === 0 && !hasStreak;
+  // Expected attempts per landed clip (geometric mean of the pass rate). Lets a
+  // climbing streak read as "a clip is still coming" rather than pure failure.
+  const expectedTries =
+    headline.rate && headline.rate > 0 ? Math.max(1, Math.round(1 / headline.rate)) : null;
 
   // Streak severity drives the color while failing; otherwise the rate does.
   const color = empty
@@ -138,8 +142,14 @@ export function PromptModerationChip({
           : 'red';
 
   // Inline label: rate + raw counts so confidence is visible without hovering.
+  // A 🎬 trails an active streak when the prompt still lands reliably — signals
+  // "a clip is coming out of these retries" so the climbing streak doesn't read
+  // as pure failure.
   const streakPrefix = hasStreak ? `⟳${stats.streak}/${cap} ` : '';
-  const label = empty ? '—' : `${streakPrefix}✓${ratePct}% ${headline.passed}/${total}`;
+  const landingSoon = hasStreak && !atCap && expectedTries != null;
+  const label = empty
+    ? '—'
+    : `${streakPrefix}✓${ratePct}% ${headline.passed}/${total}${landingSoon ? ' 🎬' : ''}`;
 
   const headerColor = hasStreak
     ? atCap
@@ -229,7 +239,18 @@ export function PromptModerationChip({
               <div className="leading-snug">
                 {atCap
                   ? `⚠ Fast-filtered ${stats.streak}× in a row — auto-retry has stopped (cap ${cap}). Edit the prompt to reset.`
-                  : `Fast-filtered ${stats.streak}× in a row — auto-retry stops at ${cap}. Editing the prompt resets it.`}
+                  : expectedTries != null
+                    ? `Fast-filtered ${stats.streak}× in a row, but this prompt lands ~${ratePct}% of the time — a clip usually arrives within ~${expectedTries} ${expectedTries === 1 ? 'try' : 'tries'}. Auto-retry stops at ${cap}.`
+                    : `Fast-filtered ${stats.streak}× in a row — auto-retry stops at ${cap}. Editing the prompt resets it.`}
+              </div>
+            )}
+
+            {/* Reassure even without an active streak: a healthy rate means clips
+                land despite occasional fast-filters. */}
+            {!hasStreak && !empty && expectedTries != null && total >= 2 && (
+              <div className="leading-snug opacity-80">
+                Lands ~{ratePct}% of the time — about 1 clip per ~{expectedTries}{' '}
+                {expectedTries === 1 ? 'attempt' : 'attempts'}.
               </div>
             )}
 
