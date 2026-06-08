@@ -21,6 +21,10 @@ from pixsim7.backend.main.services.account import AccountService
 from pixsim7.backend.main.services.provider import ProviderService
 from pixsim7.backend.main.services.user import UserService
 from pixsim7.backend.main.services.storage import get_storage_service
+from pixsim7.backend.main.services.prompt.parser import (
+    AnalyzerTaskFamily,
+    analyzer_registry,
+)
 from pixsim7.backend.main.infrastructure.database.session import get_db
 from pixsim7.backend.main.shared.errors import (
     NoAccountAvailableError,
@@ -101,10 +105,13 @@ async def process_analysis(ctx: dict, analysis_id: int) -> dict:
                 analysis_logger.warning("analysis_not_pending", status=status_value)
                 return {"status": "skipped", "reason": f"Analysis status is {status_value}"}
 
-            # Embedding analyses skip the provider/account path entirely —
-            # they're local compute via the embedding service daemon.
-            if analysis.analyzer_id == "asset:embedding":
-                return await _process_embedding_analysis(
+            # Analyzers with local execution (subprocess daemons, in-process
+            # libraries) skip the provider/account path entirely. Dispatch by
+            # AnalyzerTaskFamily so legacy aliases and custom analyzer
+            # definitions route the same as the canonical IDs.
+            local_handler = _resolve_local_handler(analysis.analyzer_id)
+            if local_handler is not None:
+                return await local_handler(
                     db=db,
                     analysis=analysis,
                     analysis_service=analysis_service,
@@ -314,6 +321,27 @@ async def _process_embedding_analysis(
         "analysis_id": analysis.id,
         "dim": result.dim,
     }
+
+
+# Maps an AnalyzerTaskFamily to a local-execution handler. Analyzers whose
+# task family is in this table bypass provider/account selection and run on
+# the worker host. Adding a new local task family is just a new entry here.
+_LOCAL_TASK_HANDLERS = {
+    AnalyzerTaskFamily.EMBEDDING: _process_embedding_analysis,
+}
+
+
+def _resolve_local_handler(analyzer_id: str):
+    """Return a local-execution handler for the analyzer, or None for the provider path.
+
+    Routes via the analyzer registry so legacy aliases and custom analyzer
+    definitions are dispatched the same as the canonical IDs.
+    """
+    canonical_id = analyzer_registry.resolve_legacy(analyzer_id)
+    analyzer = analyzer_registry.get(canonical_id)
+    if analyzer is None:
+        return None
+    return _LOCAL_TASK_HANDLERS.get(analyzer.task_family)
 
 
 async def requeue_pending_analyses(ctx: dict) -> dict:

@@ -253,6 +253,7 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
             kind=AnalyzerKind.VISION,
             target=AnalyzerTarget.ASSET,
             source_plugin_id="core",
+            output_schema_id="detection.v1",
             enabled=True,
             is_default=True,
         ))
