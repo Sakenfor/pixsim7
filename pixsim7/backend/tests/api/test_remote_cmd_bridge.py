@@ -826,6 +826,136 @@ class TestHeartbeatGapTimeout:
         assert asyncio.get_event_loop().time() - start < 4
         await gen.aclose()
 
+    @pytest.mark.asyncio
+    async def test_blind_keepalives_do_not_mask_a_stalled_agent(self):
+        """A hung-but-connected agent emits blind keepalives (``keepalive: True``)
+        forever. Those keep the *connectivity* watchdog satisfied but must NOT
+        reset the *no-progress* watchdog — otherwise the panel receives
+        heartbeats indefinitely, never goes stale, and freezes with no result.
+        Regression for the 'frozen, reply never comes' vitest symptom."""
+        bridge = RemoteCommandBridge()
+        bridge.HEARTBEAT_GAP_TIMEOUT_S = 5.0   # connectivity stays satisfied ...
+        bridge.NO_PROGRESS_TIMEOUT_S = 0.5     # ... but no real progress fails fast
+        agent = self._agent_with_ws(bridge)
+
+        gen = bridge.dispatch_task_streaming(
+            {"prompt": "hi", "engine": "claude"}, timeout=900, bridge_client_id="a1"
+        )
+        first = await asyncio.wait_for(gen.__anext__(), timeout=1)
+        assert first["type"] == "task_created"
+        task_id = next(iter(agent.current_task_ids))
+
+        stop = asyncio.Event()
+
+        async def _flood_keepalives():
+            # Blind keepalives well within the connectivity gap, but never any
+            # real progress — exactly what bridge.send_keepalive does on a hung turn.
+            while not stop.is_set():
+                bridge.record_heartbeat(
+                    "a1",
+                    {"task_id": task_id, "action": "processing_task",
+                     "detail": "working", "keepalive": True},
+                )
+                await asyncio.sleep(0.1)
+
+        ka = asyncio.ensure_future(_flood_keepalives())
+        try:
+            start = asyncio.get_event_loop().time()
+            with pytest.raises(TimeoutError) as excinfo:
+                # Keepalive heartbeats are still yielded; drain them until the
+                # no-progress watchdog fires despite the steady keepalive stream.
+                while True:
+                    evt = await asyncio.wait_for(gen.__anext__(), timeout=5)
+                    assert evt["type"] == "heartbeat"
+            elapsed = asyncio.get_event_loop().time() - start
+            assert "no progress" in str(excinfo.value).lower()
+            assert elapsed < 4, f"stall watchdog should fire ~0.5s, took {elapsed:.1f}s"
+        finally:
+            stop.set()
+            await ka
+            await gen.aclose()
+
+    @pytest.mark.asyncio
+    async def test_real_progress_resets_the_no_progress_watchdog(self):
+        """Genuine progress events (no ``keepalive`` flag) reset the stall
+        watchdog, so a turn making steady real progress is never failed."""
+        bridge = RemoteCommandBridge()
+        bridge.HEARTBEAT_GAP_TIMEOUT_S = 5.0
+        bridge.NO_PROGRESS_TIMEOUT_S = 0.6
+        agent = self._agent_with_ws(bridge)
+
+        gen = bridge.dispatch_task_streaming(
+            {"prompt": "hi", "engine": "claude"}, timeout=900, bridge_client_id="a1"
+        )
+        first = await asyncio.wait_for(gen.__anext__(), timeout=1)
+        assert first["type"] == "task_created"
+        task_id = next(iter(agent.current_task_ids))
+
+        # Two real progress beats spaced past a single no-progress window; if the
+        # watchdog weren't reset by real progress it would have fired between them.
+        async def _real_beats():
+            for _ in range(2):
+                await asyncio.sleep(0.4)  # < 0.6 window, but 0.8 total > window
+                bridge.record_heartbeat(
+                    "a1",
+                    {"task_id": task_id, "action": "tool_use", "detail": "Edit"},
+                )
+
+        beats = asyncio.ensure_future(_real_beats())
+        try:
+            for _ in range(2):
+                evt = await asyncio.wait_for(gen.__anext__(), timeout=2)
+                assert evt["type"] == "heartbeat"  # alive, not raised
+        finally:
+            beats.cancel()
+            await gen.aclose()
+
+    @pytest.mark.asyncio
+    async def test_nonstreaming_dispatch_keepalives_do_not_mask_stall(self):
+        """The non-streaming dispatch path (``_dispatch_to_agent``, used by
+        background plan execution) shares the same watchdog: blind keepalives
+        keep connectivity fresh but must NOT reset the no-progress deadline, so
+        a hung agent is failed instead of extending the deadline forever.
+        Regression for the masking bug the streaming path had."""
+        bridge = RemoteCommandBridge()
+        bridge.HEARTBEAT_GAP_TIMEOUT_S = 5.0   # connectivity stays satisfied ...
+        bridge.NO_PROGRESS_TIMEOUT_S = 0.5     # ... but no real progress fails fast
+        agent = self._agent_with_ws(bridge)
+
+        dispatch = asyncio.ensure_future(
+            bridge._dispatch_to_agent(
+                agent=agent,
+                task_payload={"prompt": "hi", "engine": "claude"},
+                timeout=900,
+            )
+        )
+        # The task registers its id synchronously at dispatch start.
+        for _ in range(50):
+            if agent.current_task_ids:
+                break
+            await asyncio.sleep(0.01)
+        task_id = next(iter(agent.current_task_ids))
+
+        stop = asyncio.Event()
+
+        async def _flood_keepalives():
+            while not stop.is_set():
+                bridge.record_heartbeat(
+                    "a1",
+                    {"task_id": task_id, "action": "processing_task",
+                     "detail": "working", "keepalive": True},
+                )
+                await asyncio.sleep(0.1)
+
+        ka = asyncio.ensure_future(_flood_keepalives())
+        try:
+            with pytest.raises(TimeoutError) as excinfo:
+                await asyncio.wait_for(dispatch, timeout=5)
+            assert "no progress" in str(excinfo.value).lower()
+        finally:
+            stop.set()
+            await ka
+
 
 class TestResolveTaskPersistenceDispatchStash:
     @pytest.mark.asyncio

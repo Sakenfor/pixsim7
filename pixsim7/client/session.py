@@ -951,6 +951,25 @@ class AgentCmdSession:
                             duration_ms=parsed.duration_ms,
                         )
 
+                    # Diagnostic for the "Claude said it'll wait/report, then never
+                    # replies again" symptom. A request/response turn cannot pause
+                    # and resume itself: if the turn ends while a *background* task
+                    # it launched (Bash run_in_background) is still open, nothing
+                    # will ever re-invoke the agent when that task finishes — so the
+                    # promised follow-up never comes. This is NOT a hang (the turn
+                    # completed cleanly); it's the agent over-promising async work.
+                    # Subagents are excluded — they're awaited within the turn and
+                    # cleared on their tool_result. Grep ``turn_ended_with_open_background_task``
+                    # to classify a "never replied" report without watching the spinner.
+                    _open_bg = [v for v in managed_started.values() if v == "background_task"]
+                    if _open_bg:
+                        self._log.warning(
+                            "turn_ended_with_open_background_task",
+                            count=len(_open_bg),
+                            cli_session=self.cli_session_id,
+                            partial_result_len=len(result_text),
+                        )
+
                     # For single-turn protocols, process exits after result → we're done
                     if not self._protocol.is_long_running():
                         self._mark_ready()

@@ -1735,7 +1735,18 @@ class Bridge:
             keepalive_done = asyncio.Event()
 
             async def send_keepalive():
-                """Emit periodic heartbeats so backend does not time out on quiet turns."""
+                """Emit periodic heartbeats so backend does not time out on quiet turns.
+
+                These are BLIND connectivity ticks — they fire every 15s whether
+                or not the agent is making real progress, re-sending the last
+                known ``detail``. They are tagged ``keepalive: True`` so the
+                backend's dispatch watchdog can tell them apart from genuine
+                progress events (``on_progress`` → ``send_progress``): a blind
+                keepalive proves the bridge is alive but must NOT reset the
+                no-progress stall timer, or a hung agent (e.g. a vitest/Bash that
+                never returns) would be masked forever and the panel would freeze
+                with no result. See remote_cmd_bridge.dispatch_task_streaming.
+                """
                 while not keepalive_done.is_set():
                     await asyncio.sleep(15)
                     if keepalive_done.is_set():
@@ -1745,6 +1756,7 @@ class Bridge:
                             **hb_base,
                             "action": "processing_task",
                             "detail": last_detail,
+                            "keepalive": True,
                         }))
                     except Exception:
                         pass

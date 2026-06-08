@@ -164,6 +164,65 @@ class ConfirmationGate:
         self._event.set()
 
 
+class _DispatchWatchdog:
+    """Dual-deadline liveness policy shared by the streaming and non-streaming
+    dispatch paths.
+
+    Two independent deadlines, both bounded by the caller's turn ``timeout``:
+
+    * **connectivity** — reset by ANY heartbeat (including the bridge's blind
+      15s keepalives). Catches a dead/half-open bridge whose keepalive loop
+      stopped.
+    * **progress** — reset ONLY by *real* progress events; blind keepalives
+      (``keepalive: True``) do NOT reset it. Catches a hung-but-connected agent
+      (a Bash/vitest that never returns) that keepalives would otherwise mask
+      forever — the panel would keep receiving heartbeats, never go stale, and
+      freeze with no result.
+
+    Centralising this here keeps both dispatch loops honest: they differ only in
+    how they acquire events (queue-drain+yield vs await-future), not in the
+    liveness rules. See ``HEARTBEAT_GAP_TIMEOUT_S`` / ``NO_PROGRESS_TIMEOUT_S``.
+    """
+
+    def __init__(self, *, timeout: float, gap_timeout: float, progress_timeout: float) -> None:
+        self.timeout = timeout
+        self.gap = min(timeout, gap_timeout)
+        self.progress = min(timeout, progress_timeout)
+        now = asyncio.get_event_loop().time()
+        self._conn_deadline = now + self.gap
+        self._progress_deadline = now + self.progress
+
+    def record(self, *, real_progress: bool) -> None:
+        """Register an event. Any event proves connectivity; only real progress
+        clears the stall watchdog."""
+        now = asyncio.get_event_loop().time()
+        self._conn_deadline = now + self.gap
+        if real_progress:
+            self._progress_deadline = now + self.progress
+
+    def remaining(self) -> float:
+        """Seconds until the nearest deadline (may be negative if expired)."""
+        now = asyncio.get_event_loop().time()
+        return min(self._conn_deadline - now, self._progress_deadline - now)
+
+    def expired_reason(self) -> Optional[str]:
+        """A ``TimeoutError`` message if a deadline has passed, else ``None``.
+        Connectivity takes priority when both have expired."""
+        now = asyncio.get_event_loop().time()
+        if self._conn_deadline - now <= 0:
+            return (
+                f"Remote agent sent no heartbeat for {self.gap}s "
+                f"(turn budget {self.timeout}s) — bridge/agent presumed disconnected"
+            )
+        if self._progress_deadline - now <= 0:
+            return (
+                f"Remote agent made no progress for {self.progress}s "
+                f"(turn budget {self.timeout}s) — agent presumed stalled "
+                f"(e.g. a tool or command that never returned)"
+            )
+        return None
+
+
 class RemoteCommandBridge:
     """Manages remote agent WebSocket connections and task dispatch."""
 
@@ -344,6 +403,21 @@ class RemoteCommandBridge:
     # surface a disconnect. See plan ``launcher-health-probe-stability`` ›
     # ``dispatch-starvation-on-bridge-disconnect``.
     HEARTBEAT_GAP_TIMEOUT_S = 90
+
+    # Max allowed gap with NO *real progress* on an in-flight task. The bridge's
+    # ``send_keepalive`` emits a blind heartbeat every ~15s regardless of whether
+    # the agent is doing anything, so ``HEARTBEAT_GAP_TIMEOUT_S`` above only
+    # detects a dead bridge — never a hung-but-connected agent (a Bash/vitest
+    # that never returns, a frozen tool). Those keepalives are tagged
+    # ``keepalive: True``; only genuine progress events reset this deadline, so a
+    # turn that stops making progress for this long is failed even while
+    # keepalives keep flowing. Without it the panel receives heartbeats forever,
+    # never goes stale, and freezes on the last activity line with no result.
+    # Bounded by the caller's ``timeout`` via ``min(...)``. Trade-off: a single
+    # legitimately long blocking command that emits no progress is also capped
+    # here — run such work in the background (run_in_background) so it surfaces
+    # managed-process progress instead.
+    NO_PROGRESS_TIMEOUT_S = 300
 
     async def _fail_tasks_after_grace(
         self,
@@ -741,6 +815,12 @@ class RemoteCommandBridge:
         loop = asyncio.get_event_loop()
         future: asyncio.Future[Dict[str, Any]] = loop.create_future()
         self._pending_tasks[task_id] = future
+        # A heartbeat queue lets this non-streaming path drive the SAME liveness
+        # watchdog the streaming path uses — including the keepalive vs real-
+        # progress distinction. Without reading the queue we could only poll the
+        # ``_ts`` timestamp, which blind keepalives bump too, so a hung agent
+        # would extend the deadline forever (the masking bug fixed here).
+        self._heartbeat_queues[task_id] = asyncio.Queue(maxsize=64)
 
         try:
             # Send task to agent
@@ -753,26 +833,43 @@ class RemoteCommandBridge:
 
             logger.info("remote_task_dispatched", task_id=task_id, bridge_client_id=agent.bridge_client_id)
 
-            # Wait for result. If heartbeats are still arriving, treat the task as active
-            # and extend the deadline (same behavior as streaming dispatch).
-            deadline = asyncio.get_event_loop().time() + timeout
+            hb_queue = self._heartbeat_queues[task_id]
+            watchdog = _DispatchWatchdog(
+                timeout=timeout,
+                gap_timeout=self.HEARTBEAT_GAP_TIMEOUT_S,
+                progress_timeout=self.NO_PROGRESS_TIMEOUT_S,
+            )
+
+            result: Dict[str, Any]
             while True:
-                remaining = deadline - asyncio.get_event_loop().time()
-                if remaining <= 0:
+                reason = watchdog.expired_reason()
+                if reason is not None:
                     self._pending_tasks.pop(task_id, None)
                     self._active_tasks.pop(task_id, None)
-                    raise TimeoutError(f"Remote agent did not respond within {timeout}s")
+                    raise TimeoutError(reason)
 
-                try:
-                    result = await asyncio.wait_for(asyncio.shield(future), timeout=min(remaining, 10))
+                if future.done():
+                    result = future.result()
                     break
-                except asyncio.TimeoutError:
-                    hb = self._active_tasks.get(task_id, {})
-                    hb_ts = hb.get("_ts")
-                    if isinstance(hb_ts, datetime):
-                        age_s = (datetime.now(timezone.utc) - hb_ts).total_seconds()
-                        if age_s <= timeout:
-                            deadline = asyncio.get_event_loop().time() + timeout
+
+                hb_wait = asyncio.ensure_future(hb_queue.get())
+                done, _pending = await asyncio.wait(
+                    [hb_wait, future],
+                    timeout=min(watchdog.remaining(), 10),
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if hb_wait in done:
+                    hb = hb_wait.result()
+                    # No UI to relay heartbeats to — consume them solely to feed
+                    # the watchdog (keepalives keep connectivity fresh but don't
+                    # reset the stall deadline).
+                    watchdog.record(real_progress=not hb.get("keepalive"))
+                else:
+                    hb_wait.cancel()
+
+                if future in done:
+                    result = future.result()
+                    break
 
             agent.tasks_completed += 1
             self._enrich_result(result, agent, task_payload)
@@ -780,11 +877,16 @@ class RemoteCommandBridge:
 
             return result
 
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as exc:
             self._pending_tasks.pop(task_id, None)
             self._active_tasks.pop(task_id, None)
-            raise TimeoutError(f"Remote agent did not respond within {timeout}s")
+            # Preserve the watchdog's precise reason (disconnected vs stalled);
+            # only synthesize a generic message for a message-less timeout.
+            raise TimeoutError(
+                str(exc) or f"Remote agent did not respond within {timeout}s"
+            )
         finally:
+            self._heartbeat_queues.pop(task_id, None)
             agent.active_tasks = max(0, agent.active_tasks - 1)
             agent.current_task_ids.discard(task_id)
 
@@ -905,20 +1007,18 @@ class RemoteCommandBridge:
             yield {"type": "task_created", "task_id": task_id}
 
             hb_queue = self._heartbeat_queues[task_id]
-            # Fail on a heartbeat *gap*, not the whole turn budget. `min` keeps
-            # tight bounds when a caller deliberately sets a small timeout.
-            gap_timeout = min(timeout, self.HEARTBEAT_GAP_TIMEOUT_S)
-            deadline = asyncio.get_event_loop().time() + gap_timeout
+            watchdog = _DispatchWatchdog(
+                timeout=timeout,
+                gap_timeout=self.HEARTBEAT_GAP_TIMEOUT_S,
+                progress_timeout=self.NO_PROGRESS_TIMEOUT_S,
+            )
 
             while True:
-                remaining = deadline - asyncio.get_event_loop().time()
-                if remaining <= 0:
+                reason = watchdog.expired_reason()
+                if reason is not None:
                     self._pending_tasks.pop(task_id, None)
                     self._active_tasks.pop(task_id, None)
-                    raise TimeoutError(
-                        f"Remote agent sent no heartbeat for {gap_timeout}s "
-                        f"(turn budget {timeout}s) — bridge/agent presumed stalled"
-                    )
+                    raise TimeoutError(reason)
 
                 # Check if result is ready
                 if future.done():
@@ -933,14 +1033,15 @@ class RemoteCommandBridge:
                 hb_wait = asyncio.ensure_future(hb_queue.get())
                 done, pending = await asyncio.wait(
                     [hb_wait, future],
-                    timeout=min(remaining, 10),
+                    timeout=min(watchdog.remaining(), 10),
                     return_when=asyncio.FIRST_COMPLETED,
                 )
 
                 if hb_wait in done:
                     hb = hb_wait.result()
-                    # Each heartbeat resets the gap deadline
-                    deadline = asyncio.get_event_loop().time() + gap_timeout
+                    # Any heartbeat proves connectivity; only a non-keepalive
+                    # event counts as real progress against the stall watchdog.
+                    watchdog.record(real_progress=not hb.get("keepalive"))
 
                     # Confirmation request — yield as distinct event and block until resolved
                     if hb.get("action") == "confirmation_request" and hb.get("confirmation_id"):
@@ -975,8 +1076,9 @@ class RemoteCommandBridge:
                             })
                         except Exception:
                             pass
-                        # Reset gap deadline after confirmation resolved
-                        deadline = asyncio.get_event_loop().time() + gap_timeout
+                        # User just resolved the prompt — that's real activity;
+                        # reset both deadlines (they were paused during gate.wait).
+                        watchdog.record(real_progress=True)
                     else:
                         yield {"type": "heartbeat", **hb}
                 else:
