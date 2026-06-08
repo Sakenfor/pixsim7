@@ -3353,6 +3353,7 @@ def build_user_system_prompt(focus: Optional[List[str]] = None) -> str:
         "- When the user asks to create or modify something — use tools, then confirm the result.",
         "- Always confirm before making destructive changes.",
         "- If a tool call fails, report the error clearly.",
+        "- If you start a command/test/build whose outcome you intend to report (e.g. \"I'll run the tests and tell you the result\"), keep your turn OPEN and wait for it within this turn — run it in the foreground, or if backgrounded, poll BashOutput in a loop until it finishes, then report. Do NOT end your turn promising an async follow-up: nothing re-invokes you when a background task later completes, so that report would never reach the user. Only fire-and-forget a background task when you genuinely will not report on it.",
         "- Brand THIS chat tab at the start of substantive work: call set_tab_identity with an @lib/icons name and a short subtitle (e.g. icon='wrench', subtitle='refactoring auth'). It's idempotent — re-call as the focus shifts. Don't skip it; without an icon the tab is indistinguishable from every other one in the sidebar.",
         "- When working on a dev plan, claim it via plans.claim (with checkpoint_id when known) so the roster reflects who's where. For plan-bound tabs, mutating endpoints (plans.update/progress) auto-claim too — but an explicit claim returns a structured {icon, subtitle} suggestion you can pass straight to set_tab_identity.",
         "- Be concise and helpful.",
