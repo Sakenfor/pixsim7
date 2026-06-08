@@ -31,10 +31,17 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import exists, func, or_, select
 
 from pixsim7.backend.main.domain.enums import MediaType
 from pixsim7.backend.main.services.storage.roots import LOCAL_ROOT_ID
+
+# Tag slug that pins an asset to local storage by excluding it from relocation.
+# Mirrors the frontend FAVORITE_TAG_SLUG (apps/main/.../lib/favoriteTag.ts) and
+# the seeded default tag (seeds/default_tags.py). Favorites are backend-native
+# (a real tag on the asset), so excluding them needs no new schema — just a
+# NOT EXISTS guard on the asset_tag join. See plan media-storage-tiering cp-i.
+FAVORITE_TAG_SLUG = "user:favorite"
 
 
 # --------------------------------------------------------------------------- #
@@ -69,6 +76,7 @@ def candidate_query(
     media_types=None,
     older_than_days: Optional[int] = None,
     content_ratings=None,
+    exclude_tag_slugs=None,
 ):
     """Build the select for archive-relocation candidates currently on local.
 
@@ -77,10 +85,16 @@ def candidate_query(
     - ``min_size_bytes``: file_size_bytes >= this.
     - ``older_than_days``: created_at older than N days ago.
     - ``content_ratings``: iterable of content_rating strings to include.
+    - ``exclude_tag_slugs``: iterable of tag slugs; assets carrying ANY of these
+      tags are excluded (NOT EXISTS on the asset_tag join). This is how curated
+      assets are pinned to local — e.g. pass ``[FAVORITE_TAG_SLUG]`` so favorites
+      are never archived. Backend-native sets (plan cp-i, i2/i3) will feed their
+      membership through this same generic exclusion.
     """
     from datetime import datetime, timedelta, timezone
 
     from pixsim7.backend.main.domain.assets.models import Asset
+    from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
 
     stmt = select(Asset).where(
         Asset.media_type.in_(_normalize_media_types(media_types)),
@@ -104,6 +118,16 @@ def candidate_query(
         stmt = stmt.where(Asset.created_at <= cutoff)
     if content_ratings:
         stmt = stmt.where(Asset.content_rating.in_(list(content_ratings)))
+    slugs = [s for s in (exclude_tag_slugs or []) if s]
+    if slugs:
+        # Exclude assets carrying any pinned tag (e.g. user:favorite). Correlated
+        # NOT EXISTS keeps it a single statement with no row fan-out from the join.
+        pinned = (
+            select(AssetTag.asset_id)
+            .join(Tag, Tag.id == AssetTag.tag_id)
+            .where(AssetTag.asset_id == Asset.id, Tag.slug.in_(slugs))
+        )
+        stmt = stmt.where(~exists(pinned))
     return stmt.order_by(Asset.id)
 
 

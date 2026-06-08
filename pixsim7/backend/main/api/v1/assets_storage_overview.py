@@ -779,6 +779,19 @@ _OLDER_THAN_Q = Query(None, ge=0, description="Only assets created more than N d
 _CONTENT_RATINGS_Q = Query(
     None, description="CSV of content_rating values: general,mature,adult,explicit"
 )
+_EXCLUDE_FAVORITES_Q = Query(
+    False, description="Never archive assets tagged user:favorite (pin favorites to local)"
+)
+
+
+def _exclude_tag_slugs(exclude_favorites: bool) -> Optional[list[str]]:
+    """Map endpoint toggles onto candidate_query's generic exclude_tag_slugs."""
+    from pixsim7.backend.main.services.storage.relocation import FAVORITE_TAG_SLUG
+
+    slugs: list[str] = []
+    if exclude_favorites:
+        slugs.append(FAVORITE_TAG_SLUG)
+    return slugs or None
 
 
 @router.get("/relocate-stats", response_model=RelocateStatsResponse)
@@ -789,6 +802,7 @@ async def get_relocate_stats(
     media_types: Optional[str] = _MEDIA_TYPES_Q,
     older_than_days: Optional[int] = _OLDER_THAN_Q,
     content_ratings: Optional[str] = _CONTENT_RATINGS_Q,
+    exclude_favorites: bool = _EXCLUDE_FAVORITES_Q,
 ):
     """Count + bytes of local originals matching the relocation criteria that the
     archive would receive. Drives the relocate action's live preview."""
@@ -806,6 +820,7 @@ async def get_relocate_stats(
         media_types=_csv_list(media_types),
         older_than_days=older_than_days,
         content_ratings=_csv_list(content_ratings),
+        exclude_tag_slugs=_exclude_tag_slugs(exclude_favorites),
     ).subquery()
     row = (
         await db.execute(
@@ -839,13 +854,15 @@ async def relocate_videos(
     media_types: Optional[str] = _MEDIA_TYPES_Q,
     older_than_days: Optional[int] = _OLDER_THAN_Q,
     content_ratings: Optional[str] = _CONTENT_RATINGS_Q,
+    exclude_favorites: bool = _EXCLUDE_FAVORITES_Q,
 ):
     """
     Move local originals matching the criteria to the configured ``archive``
     root, batch by batch. Wraps the same core logic as ``tools/relocate_media.py``.
 
     Criteria (all optional, AND-ed): ``media_types`` (default video), ``min_size_mb``,
-    ``older_than_days``, ``content_ratings``. Each asset: upload to archive under the
+    ``older_than_days``, ``content_ratings``, ``exclude_favorites`` (pin
+    user:favorite-tagged assets to local). Each asset: upload to archive under the
     same key (idempotent), verify size (and optionally hash), flip ``storage_root_id``,
     then delete the local blob when no sibling still references it. Commits per-asset
     so a mid-batch failure keeps prior successes. Apply requires a configured archive.
@@ -881,6 +898,7 @@ async def relocate_videos(
         media_types=_csv_list(media_types),
         older_than_days=older_than_days,
         content_ratings=_csv_list(content_ratings),
+        exclude_tag_slugs=_exclude_tag_slugs(exclude_favorites),
     ).limit(limit)
     assets = (await db.execute(stmt)).scalars().all()
 

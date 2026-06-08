@@ -694,3 +694,16 @@ def test_candidate_query_criteria():
     assert "file_size_bytes" in sql
     assert "created_at" in sql
     assert "content_rating IN" in sql
+
+    # exclude_tag_slugs adds a NOT EXISTS guard over the asset_tag/tag join; the
+    # default query carries no such clause. Empty / falsy slugs are a no-op.
+    assert "NOT (EXISTS" not in default_sql
+    assert str(candidate_query(0, None, exclude_tag_slugs=[])) == default_sql
+    assert str(candidate_query(0, None, exclude_tag_slugs=[None, ""])) == default_sql
+
+    from pixsim7.backend.main.services.storage.relocation import FAVORITE_TAG_SLUG
+
+    fav_sql = str(candidate_query(0, None, exclude_tag_slugs=[FAVORITE_TAG_SLUG]))
+    assert "NOT (EXISTS" in fav_sql
+    assert "asset_tag" in fav_sql
+    assert "tag.slug IN" in fav_sql

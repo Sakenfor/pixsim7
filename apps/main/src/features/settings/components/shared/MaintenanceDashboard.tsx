@@ -1300,14 +1300,18 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   const [mediaTypes, setMediaTypes] = useState<string[]>(['video']);
   const [minSizeMb, setMinSizeMb] = useState(0);
   const [olderThanDays, setOlderThanDays] = useState(0);
+  // Pin favorites (user:favorite tag) to local by default — curated assets
+  // shouldn't get shipped to the archive. Plan media-storage-tiering cp-i (i1).
+  const [excludeFavorites, setExcludeFavorites] = useState(true);
 
   const criteriaQuery = useCallback(() => {
     const p = new URLSearchParams();
     if (mediaTypes.length) p.set('media_types', mediaTypes.join(','));
     if (minSizeMb > 0) p.set('min_size_mb', String(minSizeMb));
     if (olderThanDays > 0) p.set('older_than_days', String(olderThanDays));
+    if (excludeFavorites) p.set('exclude_favorites', 'true');
     return p.toString();
-  }, [mediaTypes, minSizeMb, olderThanDays]);
+  }, [mediaTypes, minSizeMb, olderThanDays, excludeFavorites]);
 
   const loadStats = useCallback(async () => {
     try {
@@ -1443,6 +1447,16 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
           />
           <span className="text-[10px] text-muted-foreground/60">0 = any</span>
         </div>
+        <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={excludeFavorites}
+            onChange={(e) => setExcludeFavorites(e.target.checked)}
+            disabled={busy}
+            className="h-3 w-3 disabled:opacity-50"
+          />
+          Never archive favorites (keep <code className="text-[9px]">user:favorite</code> on local)
+        </label>
       </div>
 
       {noArchive && !nothing && (
