@@ -809,13 +809,19 @@ async def apply_hook_config(
     live_mcp_tools = _fetch_mcp_tool_names()  # full names, e.g. mcp__pixsim__plans_management
     mcp_allowlist = live_mcp_tools if body.mcp_allowed else []
 
-    # Always intercept AskUserQuestion — it's UI routing (not a gate), and
-    # without it the built-in AUQ tool silently returns "Answer questions?"
-    # in headless subprocess mode. Combine with user-selected gating tools
-    # into a single matcher entry.
+    # Always intercept these — they're UI routing (not gates), and without the
+    # hook the built-in tool resolves silently/natively in the headless
+    # subprocess, never reaching the chat panel:
+    #   * AskUserQuestion → otherwise returns a default "Answer questions?"
+    #   * ExitPlanMode    → otherwise the plan-confirm prompt is invisible
+    #                       (and auto-approved if left in permissions.allow),
+    #                       so the user never gets to approve/reject the plan.
+    # Combine with user-selected gating tools into a single matcher entry.
+    _ALWAYS_HOOKED = ("AskUserQuestion", "ExitPlanMode")
     matcher_tools = list(body.hook_tools)
-    if "AskUserQuestion" not in matcher_tools:
-        matcher_tools.append("AskUserQuestion")
+    for tool in _ALWAYS_HOOKED:
+        if tool not in matcher_tools:
+            matcher_tools.append(tool)
     if body.mcp_allowed:
         # Catch-all so MCP tools registered after this apply (not yet in the
         # allow-list) still route through the hook instead of being silently
@@ -836,16 +842,22 @@ async def apply_hook_config(
     # Conversely, un-hooked built-in tools should be re-added so they auto-allow.
     _MANAGED_BUILTIN_TOOLS = {
         "Bash", "Write", "Edit", "NotebookEdit",
-        "WebFetch", "WebSearch",
+        "WebFetch", "WebSearch", "SlashCommand",
         "EnterPlanMode", "ExitPlanMode",
-        "Agent", "TodoWrite",
+        # Subagent tool: Claude Code emits "Task", older/SDK builds "Agent".
+        # Keep both so the gate/allow-list catches whichever name fires
+        # (session.py:1083 already treats them as one for event parsing).
+        "Task", "Agent", "TodoWrite",
     }
     permissions = project_settings.setdefault("permissions", {})
     allow_list_settings: list = permissions.get("allow", [])
     if not isinstance(allow_list_settings, list):
         allow_list_settings = []
 
-    hooked_set = set(body.hook_tools)
+    # Always-hooked tools count as hooked even when absent from hook_tools, so
+    # they're stripped from the allow list and never re-added (an allow-listed
+    # tool skips its PreToolUse hook — see the comment above).
+    hooked_set = set(body.hook_tools) | set(_ALWAYS_HOOKED)
     # Remove hooked tools from allow list
     allow_list_settings = [
         entry for entry in allow_list_settings

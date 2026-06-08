@@ -64,9 +64,9 @@
       "description": "Ticked built-in tools prompt for approval before running; unticked tools run silently. Empty = all built-ins run without prompting.",
       "options": [
         "Bash", "Write", "Edit", "NotebookEdit",
-        "WebFetch", "WebSearch",
+        "WebFetch", "WebSearch", "SlashCommand",
         "EnterPlanMode", "ExitPlanMode",
-        "Agent", "TodoWrite"
+        "Task", "Agent", "TodoWrite"
       ],
       "default": ["Bash", "Write", "Edit"],
       "section": "Tool Approval"

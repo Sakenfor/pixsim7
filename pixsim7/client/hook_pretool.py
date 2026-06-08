@@ -87,6 +87,10 @@ def main() -> None:
         _handle_ask_user_question(tool_input, cli_session_id=cli_session_id)
         return
 
+    if tool_name == "ExitPlanMode":
+        _handle_exit_plan_mode(tool_input, cli_session_id=cli_session_id)
+        return
+
     # MCP tools (mcp__*) are gated by the MCP server itself
     # (mcp_server.handle_call_tool → _request_mcp_tool_approval) — the only
     # cross-engine gate, since Codex never reads .claude/. The launcher's
@@ -233,6 +237,55 @@ def _emit_deny(reason: str) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# ExitPlanMode — render the proposed plan as an approve/deny card
+# ──────────────────────────────────────────────────────────────────────────
+
+def _handle_exit_plan_mode(tool_input: dict, *, cli_session_id: Optional[str] = None) -> None:
+    """Surface the plan-mode confirmation in the chat panel.
+
+    Like AskUserQuestion this is UI routing, not a security gate: Claude has
+    finished planning and wants to start executing. We render the proposed
+    plan (``tool_input["plan"]``, markdown) as a ConfirmationCard so the user
+    can approve or reject it from the AI assistant chat panel instead of the
+    native TUI (which never shows in the bridge subprocess).
+
+    Approve  → ``exit 0`` lets Claude leave plan mode and begin work.
+    Reject   → deny with the user's note as ``permissionDecisionReason`` so
+               Claude stays in plan mode and revises, mirroring the native
+               "keep planning" path.
+    """
+    plan = (tool_input.get("plan") or "").strip()
+
+    payload = {
+        "title": "Ready to code?",
+        "description": plan or "Claude has finished planning and is ready to start.",
+        "interaction_type": "approve_deny",
+        "timeout_s": TIMEOUT_S,
+    }
+    if cli_session_id:
+        payload["cli_session_id"] = cli_session_id
+
+    result = _post_confirm(payload)
+    if result is None:
+        # Bridge offline — fail-open so Claude isn't blocked; matches the
+        # native default of proceeding when no UI is mounted.
+        sys.exit(0)
+
+    if result.get("approved", False):
+        sys.exit(0)  # allow — exit plan mode and begin executing
+
+    # Rejected: keep planning. Forward any note the user left so Claude can
+    # revise rather than just re-proposing the same plan.
+    note = (result.get("note") or result.get("reason") or "").strip()
+    reason = (
+        f"User wants to keep planning. Revision request: {note}"
+        if note
+        else "User rejected the plan and wants to keep planning. Revise the plan and call ExitPlanMode again."
+    )
+    _emit_deny(reason)
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # Legacy approve/deny path — Bash / Write / Edit etc. via exit codes
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -268,6 +321,11 @@ def _describe_tool(tool_name: str, tool_input: dict) -> str:
         return f"Write to file: {tool_input['file_path']}"
     if tool_name == "Edit" and "file_path" in tool_input:
         return f"Edit file: {tool_input['file_path']}"
+    if tool_name in ("Task", "Agent"):
+        desc = tool_input.get("description") or tool_input.get("subagent_type") or ""
+        return f"Run subagent: {desc}" if desc else "Run a subagent task"
+    if tool_name == "SlashCommand" and "command" in tool_input:
+        return f"Run slash command: {tool_input['command']}"
     if tool_name in ("Read", "Glob", "Grep"):
         return f"{tool_name}: {json.dumps(tool_input)[:200]}"
     return f"{tool_name}({json.dumps(tool_input)[:200]})"
