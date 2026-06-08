@@ -42,16 +42,26 @@ export function PromptModerationChip({
   prompt,
   imageAssetId,
   operationType = null,
+  model = null,
+  duration = null,
+  modelOptions,
+  durationOptions,
   grain = 'auto',
 }: {
   prompt: string;
   imageAssetId: number | null;
   operationType?: string | null;
+  /** Current model/duration — scopes the resolved cap/backoff + seeds the editor. */
+  model?: string | null;
+  duration?: number | null;
+  /** Selectable values for the scope picker (composer). Omit in the viewer. */
+  modelOptions?: string[];
+  durationOptions?: number[];
   grain?: PromptModerationGrain;
 }) {
   // Self-contained: fetching here (rather than via a parent hook) means the
   // chip's own updates re-render only the chip, never the heavy composer.
-  const stats = usePromptModerationStats(prompt, imageAssetId, operationType);
+  const stats = usePromptModerationStats(prompt, imageAssetId, operationType, model, duration);
   const isAdmin = useAuthStore((s) => isAdminUser(s.user));
 
   // Hover-intent: open immediately, but defer close so the pointer can travel
@@ -83,7 +93,7 @@ export function PromptModerationChip({
   useEffect(() => {
     setLocalPolicy(null);
     setEditing(false);
-  }, [operationType, prompt, imageAssetId]);
+  }, [operationType, model, duration, prompt, imageAssetId]);
 
   if (!stats) {
     return (
@@ -229,6 +239,10 @@ export function PromptModerationChip({
                 {editing ? (
                   <PolicyEditor
                     operationType={operationType}
+                    currentModel={model}
+                    currentDuration={duration}
+                    modelOptions={modelOptions}
+                    durationOptions={durationOptions}
                     initialCap={cap}
                     initialDefer={defer}
                     onSaved={(next) => {
@@ -257,20 +271,41 @@ export function PromptModerationChip({
   );
 }
 
-/** Inline editor for one operation's filtered-retry policy (admin only). */
+const ANY_SCOPE = '__any__';
+
+/** Inline editor for a filtered-retry policy at a chosen scope (admin only). */
 function PolicyEditor({
   operationType,
+  currentModel,
+  currentDuration,
+  modelOptions,
+  durationOptions,
   initialCap,
   initialDefer,
   onSaved,
   onCancel,
 }: {
   operationType: string;
+  currentModel: string | null;
+  currentDuration: number | null;
+  modelOptions?: string[];
+  durationOptions?: number[];
   initialCap: number;
   initialDefer: number;
   onSaved: (next: { cap: number; defer: number }) => void;
   onCancel: () => void;
 }) {
+  // Fall back to the current value as the only specific option (viewer has no
+  // option lists); empty list → that dimension can only be "Any" (op-level).
+  const models = modelOptions ?? (currentModel ? [currentModel] : []);
+  const durations = durationOptions ?? (currentDuration != null ? [currentDuration] : []);
+
+  // Default the scope to the exact generation being looked at (most specific),
+  // so "Save" tunes what you're actually generating; widen to Any to cover all.
+  const [scopeModel, setScopeModel] = useState(currentModel ?? ANY_SCOPE);
+  const [scopeDuration, setScopeDuration] = useState(
+    currentDuration != null ? String(currentDuration) : ANY_SCOPE,
+  );
   const [capStr, setCapStr] = useState(String(initialCap));
   const [deferStr, setDeferStr] = useState(String(initialDefer));
   const [saving, setSaving] = useState(false);
@@ -286,8 +321,12 @@ function PolicyEditor({
     setSaving(true);
     setError(null);
     try {
+      const params = new URLSearchParams();
+      if (scopeModel !== ANY_SCOPE) params.set('model', scopeModel);
+      if (scopeDuration !== ANY_SCOPE) params.set('duration', scopeDuration);
+      const qs = params.toString();
       await pixsimClient.patch(
-        `/admin/generation-worker/filtered-retry/${operationType}`,
+        `/admin/generation-worker/filtered-retry/${operationType}${qs ? `?${qs}` : ''}`,
         { cap, defer_seconds: defer },
       );
       onSaved({ cap, defer });
@@ -297,8 +336,50 @@ function PolicyEditor({
     }
   };
 
+  const selectCls =
+    'rounded bg-gray-800 border border-gray-600 px-1 py-0.5 text-white text-[11px]';
+
+  const scopeLabel = [
+    operationType,
+    scopeModel !== ANY_SCOPE ? `model ${scopeModel}` : 'any model',
+    scopeDuration !== ANY_SCOPE ? `${scopeDuration}s` : 'any duration',
+  ].join(' · ');
+
   return (
     <div className="space-y-1">
+      {(models.length > 0 || durations.length > 0) && (
+        <div className="flex items-center gap-2">
+          <span className="opacity-70">scope</span>
+          {models.length > 0 && (
+            <select
+              value={scopeModel}
+              onChange={(e) => setScopeModel(e.target.value)}
+              className={selectCls}
+            >
+              <option value={ANY_SCOPE}>any model</option>
+              {models.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          )}
+          {durations.length > 0 && (
+            <select
+              value={scopeDuration}
+              onChange={(e) => setScopeDuration(e.target.value)}
+              className={selectCls}
+            >
+              <option value={ANY_SCOPE}>any dur</option>
+              {durations.map((d) => (
+                <option key={d} value={String(d)}>
+                  {d}s
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <label className="flex items-center gap-1">
           <span className="opacity-70">cap</span>
@@ -345,8 +426,8 @@ function PolicyEditor({
         {error && <span className="text-red-400">{error}</span>}
       </div>
       <div className="opacity-50 leading-snug">
-        Applies to <span className="font-mono">{operationType}</span> auto-retries
-        (per prompt+image). i2i is opt-in — saving here enables its backoff/cap.
+        Applies to <span className="font-mono">{scopeLabel}</span> auto-retries
+        (per prompt+image). i2i is opt-in — saving enables its backoff/cap.
       </div>
     </div>
   );

@@ -503,6 +503,14 @@ export function PromptPanel(props: QuickGenPanelProps) {
             prompt={promptValue}
             imageAssetId={primaryAssetId}
             operationType={operationType}
+            model={model ?? null}
+            duration={(workbench.dynamicParams?.duration as number | undefined) ?? null}
+            modelOptions={
+              (paramSpecs as Array<{ name?: string; enum?: string[] }> | undefined)?.find(
+                (p) => p?.name === 'model',
+              )?.enum
+            }
+            durationOptions={durationOptions}
             grain={resolvedPromptSettings.moderationGrain ?? 'auto'}
           />
         ) : undefined,

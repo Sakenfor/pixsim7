@@ -40,6 +40,8 @@ export function usePromptModerationStats(
   prompt: string,
   imageAssetId: number | null,
   operationType?: string | null,
+  model?: string | null,
+  duration?: number | null,
 ): PromptModerationStats | null {
   const [stats, setStats] = useState<PromptModerationStats | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -74,6 +76,8 @@ export function usePromptModerationStats(
           prompt: trimmed,
           image_asset_id: imageAssetId ?? null,
           operation_type: operationType ?? null,
+          model: model ?? null,
+          duration: duration ?? null,
         })
         .then((res) => {
           if (reqId.current === id) setStats(res);
@@ -83,7 +87,7 @@ export function usePromptModerationStats(
         });
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer.current);
-  }, [prompt, imageAssetId, operationType, refreshTick]);
+  }, [prompt, imageAssetId, operationType, model, duration, refreshTick]);
 
   return stats;
 }

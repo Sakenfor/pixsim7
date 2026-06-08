@@ -727,27 +727,94 @@ class FilteredRetryPolicy(NamedTuple):
     defer_seconds: int
 
 
+def filtered_retry_scope_key(
+    operation_type: Optional[str],
+    *,
+    model: Optional[str] = None,
+    duration: Optional[int] = None,
+) -> str:
+    """Canonical composite key for a filtered-retry override scope.
+
+    Single source of truth shared by the admin writer and the resolver so a
+    saved key always matches a resolver candidate. Dimensions are appended in a
+    fixed order (model before duration); omit a dimension to scope coarser:
+    ``image_to_video`` | ``image_to_video|model=v6`` |
+    ``image_to_video|duration=8`` | ``image_to_video|model=v6|duration=8``.
+    Values never contain ``|`` or ``=`` (model ids like 'v5.6', durations are
+    ints), so the format is unambiguous.
+    """
+    parts = [(operation_type or "").strip().lower()]
+    if model:
+        parts.append(f"model={str(model).strip().lower()}")
+    if duration is not None:
+        try:
+            parts.append(f"duration={int(duration)}")
+        except (TypeError, ValueError):
+            pass
+    return "|".join(parts)
+
+
+def _filtered_retry_scope_candidates(
+    operation_type: Optional[str], canonical_params: Any
+) -> list[str]:
+    """Override-lookup keys for a generation, most-specific first.
+
+    Order (model wins over duration when both have standalone overrides):
+    op+model+duration → op+model → op+duration → op.
+    """
+    op = (operation_type or "").strip().lower()
+    model: Optional[str] = None
+    duration: Optional[int] = None
+    if isinstance(canonical_params, dict):
+        m = canonical_params.get("model")
+        if isinstance(m, str) and m.strip():
+            model = m.strip().lower()
+        d = canonical_params.get("duration")
+        if isinstance(d, (int, float)) and not isinstance(d, bool):
+            duration = int(d)
+
+    candidates: list[str] = []
+    if model and duration is not None:
+        candidates.append(filtered_retry_scope_key(op, model=model, duration=duration))
+    if model:
+        candidates.append(filtered_retry_scope_key(op, model=model))
+    if duration is not None:
+        candidates.append(filtered_retry_scope_key(op, duration=duration))
+    candidates.append(filtered_retry_scope_key(op))
+    return candidates
+
+
 def resolve_filtered_retry_policy(
     operation_type: Optional[str],
     error_code: Optional[str],
+    canonical_params: Any = None,
 ) -> Optional[FilteredRetryPolicy]:
-    """Resolve the filtered-retry policy for an (operation, error_code), or None.
+    """Resolve the filtered-retry policy for a generation, or None.
 
-    - ``content_render_moderated`` (pixverse i2v/t2v): a per-operation override
-      from ``filtered_retry_overrides`` if present, else the global
-      ``render_moderated_retry_*`` defaults. ALWAYS active (preserves today's
-      behavior).
-    - ``content_filtered`` (i2i & friends): OPT-IN — only when a per-operation
-      override exists for that operation. ``cap`` defaults to None (no circuit
-      breaker, backoff only) when the override omits it; ``defer_seconds``
-      defaults to the global render-moderated backoff.
+    Looks up ``filtered_retry_overrides`` by composite scope key (operation +
+    optional model/duration from ``canonical_params``), most-specific first,
+    falling back to the operation-only key.
+
+    - ``content_render_moderated`` (pixverse i2v/t2v): the matched override if
+      any, else the global ``render_moderated_retry_*`` defaults. ALWAYS active.
+    - ``content_filtered`` (i2i & friends): OPT-IN — only when a matching
+      override exists. ``cap`` defaults to None (backoff-only) when omitted;
+      ``defer_seconds`` defaults to the global render-moderated backoff.
     - any other code: None.
+
+    ``canonical_params`` is optional; when omitted only the operation-only key is
+    considered (back-compat).
     """
     from pixsim7.backend.main.domain.enums import GenerationErrorCode
 
-    op = (operation_type or "").strip().lower()
     overrides = getattr(_ws(), "filtered_retry_overrides", {}) or {}
-    raw = overrides.get(op) if isinstance(overrides, dict) else None
+    overrides = overrides if isinstance(overrides, dict) else {}
+    raw = None
+    for key in _filtered_retry_scope_candidates(operation_type, canonical_params):
+        candidate = overrides.get(key)
+        if isinstance(candidate, dict):
+            raw = candidate
+            break
     has_override = isinstance(raw, dict)
     ov_cap = raw.get("cap") if has_override else None
     ov_defer = raw.get("defer_seconds") if has_override else None

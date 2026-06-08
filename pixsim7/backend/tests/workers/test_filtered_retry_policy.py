@@ -11,7 +11,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from pixsim7.backend.main.domain.enums import GenerationErrorCode
-from pixsim7.backend.main.workers.worker_concurrency import resolve_filtered_retry_policy
+from pixsim7.backend.main.workers.worker_concurrency import (
+    filtered_retry_scope_key,
+    resolve_filtered_retry_policy,
+)
 
 RM = GenerationErrorCode.CONTENT_RENDER_MODERATED.value
 CF = GenerationErrorCode.CONTENT_FILTERED.value
@@ -80,3 +83,71 @@ def test_unrelated_error_code_is_none():
     with _with_ws({"image_to_video": {"cap": 3}}):
         assert resolve_filtered_retry_policy("image_to_video", "provider_quota") is None
         assert resolve_filtered_retry_policy("image_to_video", None) is None
+
+
+# ── Scope-key granularity (operation + model + duration) ────────────────────
+
+def test_scope_key_formatting():
+    assert filtered_retry_scope_key("image_to_video") == "image_to_video"
+    assert filtered_retry_scope_key("image_to_video", model="V6") == "image_to_video|model=v6"
+    assert filtered_retry_scope_key("image_to_video", duration=8) == "image_to_video|duration=8"
+    assert (
+        filtered_retry_scope_key("image_to_video", model="v6", duration=8)
+        == "image_to_video|model=v6|duration=8"
+    )
+
+
+def test_exact_model_duration_match_wins():
+    overrides = {
+        "image_to_video": {"cap": 10},
+        "image_to_video|model=v6": {"cap": 7},
+        "image_to_video|model=v6|duration=8": {"cap": 3, "defer_seconds": 30},
+    }
+    with _with_ws(overrides):
+        policy = resolve_filtered_retry_policy(
+            "image_to_video", RM, {"model": "v6", "duration": 8}
+        )
+    assert policy == (3, 30)
+
+
+def test_falls_back_model_only_then_op():
+    overrides = {
+        "image_to_video": {"cap": 10},
+        "image_to_video|model=v6": {"cap": 7, "defer_seconds": 25},
+    }
+    with _with_ws(overrides):
+        # v6 at duration 5 has no exact key -> model-only override.
+        assert resolve_filtered_retry_policy("image_to_video", RM, {"model": "v6", "duration": 5}) == (7, 25)
+        # v5 has no model override at all -> op-level.
+        assert resolve_filtered_retry_policy("image_to_video", RM, {"model": "v5", "duration": 5}) == (10, 20)
+
+
+def test_model_wins_over_duration_when_both_standalone():
+    overrides = {
+        "image_to_video|model=v6": {"cap": 7},
+        "image_to_video|duration=8": {"cap": 4},
+    }
+    with _with_ws(overrides):
+        # gen is v6 + 8s; both standalone overrides exist; model takes precedence.
+        policy = resolve_filtered_retry_policy("image_to_video", RM, {"model": "v6", "duration": 8})
+    assert policy.cap == 7
+
+
+def test_duration_only_override_matches():
+    with _with_ws({"image_to_video|duration=8": {"cap": 4, "defer_seconds": 40}}):
+        assert resolve_filtered_retry_policy("image_to_video", RM, {"model": "v5", "duration": 8}) == (4, 40)
+
+
+def test_content_filtered_granular_opt_in():
+    with _with_ws({"image_to_image|model=gemini-3.0": {"defer_seconds": 45}}):
+        # matching model -> opt-in (backoff-only, cap None)
+        p = resolve_filtered_retry_policy("image_to_image", CF, {"model": "gemini-3.0"})
+        assert p is not None and p.cap is None and p.defer_seconds == 45
+        # different model -> no override -> None (unchanged behavior)
+        assert resolve_filtered_retry_policy("image_to_image", CF, {"model": "qwen-image"}) is None
+
+
+def test_no_canonical_params_is_op_only_backcompat():
+    with _with_ws({"image_to_video|model=v6": {"cap": 7}, "image_to_video": {"cap": 9}}):
+        # No params -> only the op-level key is considered.
+        assert resolve_filtered_retry_policy("image_to_video", RM) == (9, 20)

@@ -22,6 +22,8 @@ export function PromptBoxPanel() {
 
   const [prompt, setPrompt] = useState<string | null>(null);
   const [operationType, setOperationType] = useState<string | null>(null);
+  const [model, setModel] = useState<string | null>(null);
+  const [duration, setDuration] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastRequestIdRef = useRef(0);
@@ -50,13 +52,23 @@ export function PromptBoxPanel() {
       try {
         const ctx = await getAssetGenerationContext(numericAssetId);
         if (requestId !== lastRequestIdRef.current) return;
-        const text = (ctx as { final_prompt?: string }).final_prompt ?? '';
-        setPrompt(text);
-        setOperationType((ctx as { operation_type?: string }).operation_type ?? null);
+        const c = ctx as {
+          final_prompt?: string;
+          operation_type?: string;
+          model?: string;
+          duration?: number;
+          canonical_params?: { model?: string; duration?: number };
+        };
+        setPrompt(c.final_prompt ?? '');
+        setOperationType(c.operation_type ?? null);
+        setModel(c.canonical_params?.model ?? c.model ?? null);
+        setDuration(c.canonical_params?.duration ?? c.duration ?? null);
       } catch {
         if (requestId === lastRequestIdRef.current) {
           setPrompt(null);
           setOperationType(null);
+          setModel(null);
+          setDuration(null);
           setError('No prompt metadata available for this asset.');
         }
       } finally {
@@ -92,7 +104,7 @@ export function PromptBoxPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <PanelHeader prompt={prompt} operationType={operationType} engine={viewerEngine} onEngineChange={setViewerEngine} />
+      <PanelHeader prompt={prompt} operationType={operationType} model={model} duration={duration} engine={viewerEngine} onEngineChange={setViewerEngine} />
       <div className="flex-1 min-h-0">
         <PromptAnalysisLayout
           analysis={analysis}
@@ -127,11 +139,15 @@ export function PromptBoxPanel() {
 function PanelHeader({
   prompt,
   operationType,
+  model,
+  duration,
   engine,
   onEngineChange,
 }: {
   prompt: string;
   operationType: string | null;
+  model: string | null;
+  duration: number | null;
   engine: 'inline' | 'codemirror';
   onEngineChange: (next: 'inline' | 'codemirror') => void;
 }) {
@@ -142,7 +158,7 @@ function PanelHeader({
           we're inspecting a stored asset, not composing with a live input image). */}
       <div className="mr-auto flex items-center gap-2">
         <span className="text-neutral-500 dark:text-neutral-400">Prompt</span>
-        <PromptModerationChip prompt={prompt} imageAssetId={null} operationType={operationType} />
+        <PromptModerationChip prompt={prompt} imageAssetId={null} operationType={operationType} model={model} duration={duration} />
       </div>
       <EngineButton
         active={engine === 'inline'}

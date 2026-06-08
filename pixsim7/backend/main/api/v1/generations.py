@@ -722,7 +722,7 @@ async def create_simple_image_to_video(
 
 # ===== GET GENERATION =====
 
-@router.get("/generations/{generation_id}", response_model=GenerationResponse)
+@router.get("/generations/{generation_id:int}", response_model=GenerationResponse)
 async def get_generation(
     generation_id: int,
     user: CurrentUser,
@@ -997,7 +997,7 @@ async def _generation_lifecycle_action(
         raise HTTPException(status_code=500, detail=f"Failed to {action} generation: {str(e)}")
 
 
-@router.post("/generations/{generation_id}/cancel", response_model=GenerationResponse)
+@router.post("/generations/{generation_id:int}/cancel", response_model=GenerationResponse)
 async def cancel_generation(
     generation_id: int, user: CurrentUser, generation_service: GenerationSvc,
 ):
@@ -1005,7 +1005,7 @@ async def cancel_generation(
     return await _generation_lifecycle_action("cancel", generation_id, user, generation_service)
 
 
-@router.post("/generations/{generation_id}/pause", response_model=GenerationResponse)
+@router.post("/generations/{generation_id:int}/pause", response_model=GenerationResponse)
 async def pause_generation(
     generation_id: int, user: CurrentUser, generation_service: GenerationSvc,
 ):
@@ -1013,7 +1013,7 @@ async def pause_generation(
     return await _generation_lifecycle_action("pause", generation_id, user, generation_service)
 
 
-@router.post("/generations/{generation_id}/resume", response_model=GenerationResponse)
+@router.post("/generations/{generation_id:int}/resume", response_model=GenerationResponse)
 async def resume_generation(
     generation_id: int, user: CurrentUser, generation_service: GenerationSvc,
 ):
@@ -1023,7 +1023,7 @@ async def resume_generation(
 
 # ===== RETRY GENERATION =====
 
-@router.post("/generations/{generation_id}/retry", response_model=GenerationResponse)
+@router.post("/generations/{generation_id:int}/retry", response_model=GenerationResponse)
 async def retry_generation(
     generation_id: int,
     user: CurrentUser,
@@ -1109,7 +1109,7 @@ class PatchGenerationPromptRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=50000, description="New prompt text")
 
 
-@router.patch("/generations/{generation_id}/prompt", response_model=GenerationResponse)
+@router.patch("/generations/{generation_id:int}/prompt", response_model=GenerationResponse)
 async def patch_generation_prompt(
     generation_id: int,
     request: PatchGenerationPromptRequest,
@@ -1161,7 +1161,7 @@ async def patch_generation_prompt(
 
 # ===== DELETE GENERATION =====
 
-@router.delete("/generations/{generation_id}", status_code=204)
+@router.delete("/generations/{generation_id:int}", status_code=204)
 async def delete_generation(
     generation_id: int,
     user: CurrentUser,
@@ -1902,6 +1902,8 @@ class PromptStatsRequest(BaseModel):
     prompt: str
     image_asset_id: Optional[int] = None
     operation_type: Optional[str] = None  # scope stats + cap/defer to one operation
+    model: Optional[str] = None           # scope the resolved cap/defer finer
+    duration: Optional[int] = None        # scope the resolved cap/defer finer
 
 
 class PromptStatsResponse(BaseModel):
@@ -1930,19 +1932,25 @@ async def get_prompt_stats(
     meaningful than blending them. cap/defer reflect that operation's resolved
     filtered-retry policy (per-op override or the global default)."""
     from pixsim7.backend.main.workers.worker_concurrency import (
+        resolve_filtered_retry_policy,
         render_moderated_retry_cap,
         render_moderated_retry_defer_seconds,
     )
-    from pixsim7.backend.main.services.generation.worker_settings import get_worker_settings
 
     op = (body.operation_type or "").strip().lower() or None
-    _ov = (get_worker_settings().filtered_retry_overrides or {}).get(op) if op else None
-    _ov = _ov if isinstance(_ov, dict) else {}
-    cap = _ov.get("cap") if isinstance(_ov.get("cap"), int) and _ov.get("cap") > 0 else render_moderated_retry_cap()
-    defer_seconds = (
-        _ov.get("defer_seconds") if isinstance(_ov.get("defer_seconds"), int) and _ov.get("defer_seconds") > 0
-        else render_moderated_retry_defer_seconds()
+    # Resolve the cap/backoff that would apply to this exact scope (op + optional
+    # model/duration), most-specific override first. Use the render-moderated
+    # branch (always returns a policy: override-or-global) for the displayed cap.
+    _policy = (
+        resolve_filtered_retry_policy(
+            op,
+            GenerationErrorCode.CONTENT_RENDER_MODERATED.value,
+            {"model": body.model, "duration": body.duration},
+        )
+        if op else None
     )
+    cap = _policy.cap if _policy and _policy.cap is not None else render_moderated_retry_cap()
+    defer_seconds = _policy.defer_seconds if _policy else render_moderated_retry_defer_seconds()
     prompt = (body.prompt or "").strip()
     empty = PromptOutcomeStats(passed=0, filtered=0, rate=None)
     if not prompt:

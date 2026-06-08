@@ -179,7 +179,9 @@ async def handle_event(event: Event) -> None:
                 get_filtered_retry_count,
             )
             _op_value = getattr(generation.operation_type, "value", generation.operation_type)
-            _filtered_policy = resolve_filtered_retry_policy(_op_value, generation.error_code)
+            _filtered_policy = resolve_filtered_retry_policy(
+                _op_value, generation.error_code, generation.canonical_params
+            )
             if _filtered_policy is not None and _filtered_policy.cap is not None:
                 _fr_count = await get_filtered_retry_count(
                     generation.provider_id,
