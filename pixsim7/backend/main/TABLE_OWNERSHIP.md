@@ -110,6 +110,13 @@
 | `tag` | `Tag` | `tag.id` x2 (self-refs) |
 | `asset_tag` | `AssetTag` | `assets.id`, `tag.id` |
 
+### Asset sets (`domain/assets/asset_set.py`)
+
+| Table | Model | Hard FKs |
+|-------|-------|----------|
+| `asset_set` | `AssetSet` | `users.id` |
+| `asset_set_member` | `AssetSetMember` | `asset_set.id`, `assets.id` |
+
 ### Generation & Providers (`domain/generation/`, `domain/providers/`)
 
 | Table | Model | Hard FKs |

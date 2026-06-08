@@ -28,6 +28,12 @@ from .metadata import (
     AssetAdultMetadata,
 )
 from .tag import Tag
+from .asset_set import (
+    AssetSet,
+    AssetSetMember,
+    ASSET_SET_POLICY,
+    ASSET_SET_KINDS,
+)
 from .upload_attribution import (
     UPLOAD_METHOD_LABELS,
     INFERENCE_RULES,
@@ -59,6 +65,11 @@ __all__ = [
     "AssetAdultMetadata",
     # Tags
     "Tag",
+    # Asset sets
+    "AssetSet",
+    "AssetSetMember",
+    "ASSET_SET_POLICY",
+    "ASSET_SET_KINDS",
     # Upload attribution
     "UPLOAD_METHOD_LABELS",
     "INFERENCE_RULES",
