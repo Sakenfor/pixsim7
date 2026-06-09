@@ -261,6 +261,11 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
   ): Promise<Array<{ asset?: string; url?: string; layer: number; role: string; media_type?: string }> | undefined> => {
     if (!inputs || inputs.length === 0) return undefined;
     const overrideMediaType = options.mediaType;
+    // Asset sets are backend-backed and loaded lazily; make sure the cache is
+    // populated before the sync getSet() lookups below run.
+    if (inputs.some((i) => i.assetSetRef)) {
+      await useAssetSetStore.getState().ensureLoaded();
+    }
     const resolved = await Promise.all(inputs.map(async (item, index) => {
       // Resolve asset set reference if present
       let resolvedAsset: AssetModel = item.asset;

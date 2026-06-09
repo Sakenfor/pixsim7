@@ -112,7 +112,9 @@ export function SetEditView({
 
   // Stable ref for removeAssetsFromSet to avoid re-creating renderItemWidgets
   const removeRef = useCallback(
-    (asset: AssetModel) => removeAssetsFromSet(set.id, [asset.id]),
+    (asset: AssetModel) => {
+      void removeAssetsFromSet(set.id, [asset.id]);
+    },
     [set.id, removeAssetsFromSet],
   );
 
@@ -126,7 +128,7 @@ export function SetEditView({
 
   const handleRename = useCallback(() => {
     if (name.trim() && name !== set.name) {
-      renameSet(set.id, name.trim());
+      void renameSet(set.id, name.trim());
     }
   }, [name, set.id, set.name, renameSet]);
 
@@ -201,7 +203,7 @@ export function SetEditView({
 
           {showSearch && (
             <AssetSearchAdder
-              onAdd={(asset) => addAssetsToSet(set.id, [asset.id])}
+              onAdd={(asset) => void addAssetsToSet(set.id, [asset.id])}
             />
           )}
         </div>
@@ -213,7 +215,7 @@ export function SetEditView({
           <SmartFilterEditor
             filters={set.filters}
             maxResults={set.maxResults}
-            onChange={(filters, maxResults) => updateSmartFilters(set.id, filters, maxResults)}
+            onChange={(filters, maxResults) => void updateSmartFilters(set.id, filters, maxResults)}
           />
           <div className="text-[10px] text-neutral-500 font-medium">Preview</div>
           <div className="flex-1 min-h-0">
@@ -240,7 +242,7 @@ export function SetEditView({
             `Delete set "${set.name}"? This cannot be undone.`,
           );
           if (!confirmed) return;
-          deleteSet(set.id);
+          void deleteSet(set.id);
           onBack();
         }}
         className="mt-2 self-start inline-flex items-center gap-1 px-1.5 py-1 text-[10px] font-medium rounded-md text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"

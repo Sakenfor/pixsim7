@@ -1116,6 +1116,9 @@ const tagsSubmenuAction: MenuAction = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getManualAssetSets(): ManualAssetSet[] {
+  // Warm the backend-backed cache so the next menu open is populated (the menu
+  // itself renders synchronously from whatever is loaded now).
+  void useAssetSetStore.getState().ensureLoaded();
   return useAssetSetStore.getState().sets.filter((set): set is ManualAssetSet => set.kind === 'manual');
 }
 
@@ -1143,7 +1146,7 @@ const addToActiveSetAction: MenuAction = {
     if (!active) return;
     const assets = resolveAssets(ctx);
     if (!assets.length) return;
-    useAssetSetStore.getState().addAssetsToSet(active.id, assets.map((asset) => asset.id));
+    void useAssetSetStore.getState().addAssetsToSet(active.id, assets.map((asset) => asset.id));
     notify('success', `Added ${assets.length} asset${assets.length === 1 ? '' : 's'} to "${active.name}".`);
   },
 };
@@ -1227,7 +1230,7 @@ const addToAnySetSubmenuAction: MenuAction = {
       label: `${set.name} (${set.assetIds.length})`,
       icon: 'folder',
       execute: () => {
-        useAssetSetStore.getState().addAssetsToSet(set.id, assets.map((asset) => asset.id));
+        void useAssetSetStore.getState().addAssetsToSet(set.id, assets.map((asset) => asset.id));
         notify('success', `Added ${assets.length} asset${assets.length === 1 ? '' : 's'} to "${set.name}".`);
       },
     }));

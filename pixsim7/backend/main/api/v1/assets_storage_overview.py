@@ -771,6 +771,26 @@ def _csv_list(raw: Optional[str]) -> Optional[list[str]]:
     return items or None
 
 
+def _csv_int_list(raw: Optional[str]) -> Optional[list[int]]:
+    """Parse a comma-separated query param into a list of ints (None when empty).
+
+    Non-integer tokens are skipped rather than raising — the caller (a UI set
+    picker) should only ever send numeric ids.
+    """
+    if not raw:
+        return None
+    out: list[int] = []
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            out.append(int(token))
+        except ValueError:
+            continue
+    return out or None
+
+
 # Shared criteria query params for the relocate stats + action endpoints.
 _MEDIA_TYPES_Q = Query(
     None, description="CSV of media types to archive: video,image,audio,3d_model (default: video)"
@@ -781,6 +801,14 @@ _CONTENT_RATINGS_Q = Query(
 )
 _EXCLUDE_FAVORITES_Q = Query(
     False, description="Never archive assets tagged user:favorite (pin favorites to local)"
+)
+_EXCLUDE_SET_IDS_Q = Query(
+    None,
+    description="CSV of manual asset-set ids whose members are pinned to local (never archived)",
+)
+_INCLUDE_SET_IDS_Q = Query(
+    None,
+    description="CSV of manual asset-set ids; restrict candidates to members of these sets only",
 )
 
 
@@ -803,6 +831,8 @@ async def get_relocate_stats(
     older_than_days: Optional[int] = _OLDER_THAN_Q,
     content_ratings: Optional[str] = _CONTENT_RATINGS_Q,
     exclude_favorites: bool = _EXCLUDE_FAVORITES_Q,
+    exclude_set_ids: Optional[str] = _EXCLUDE_SET_IDS_Q,
+    include_set_ids: Optional[str] = _INCLUDE_SET_IDS_Q,
 ):
     """Count + bytes of local originals matching the relocation criteria that the
     archive would receive. Drives the relocate action's live preview."""
@@ -821,6 +851,8 @@ async def get_relocate_stats(
         older_than_days=older_than_days,
         content_ratings=_csv_list(content_ratings),
         exclude_tag_slugs=_exclude_tag_slugs(exclude_favorites),
+        exclude_set_ids=_csv_int_list(exclude_set_ids),
+        include_set_ids=_csv_int_list(include_set_ids),
     ).subquery()
     row = (
         await db.execute(
@@ -855,6 +887,8 @@ async def relocate_videos(
     older_than_days: Optional[int] = _OLDER_THAN_Q,
     content_ratings: Optional[str] = _CONTENT_RATINGS_Q,
     exclude_favorites: bool = _EXCLUDE_FAVORITES_Q,
+    exclude_set_ids: Optional[str] = _EXCLUDE_SET_IDS_Q,
+    include_set_ids: Optional[str] = _INCLUDE_SET_IDS_Q,
 ):
     """
     Move local originals matching the criteria to the configured ``archive``
@@ -862,10 +896,12 @@ async def relocate_videos(
 
     Criteria (all optional, AND-ed): ``media_types`` (default video), ``min_size_mb``,
     ``older_than_days``, ``content_ratings``, ``exclude_favorites`` (pin
-    user:favorite-tagged assets to local). Each asset: upload to archive under the
-    same key (idempotent), verify size (and optionally hash), flip ``storage_root_id``,
-    then delete the local blob when no sibling still references it. Commits per-asset
-    so a mid-batch failure keeps prior successes. Apply requires a configured archive.
+    user:favorite-tagged assets to local), ``exclude_set_ids`` (pin members of these
+    manual sets to local), ``include_set_ids`` (restrict to members of these manual
+    sets). Each asset: upload to archive under the same key (idempotent), verify size
+    (and optionally hash), flip ``storage_root_id``, then delete the local blob when
+    no sibling still references it. Commits per-asset so a mid-batch failure keeps
+    prior successes. Apply requires a configured archive.
 
     Served at both ``/relocate`` (generic) and ``/relocate-videos`` (legacy alias).
     """
@@ -899,6 +935,8 @@ async def relocate_videos(
         older_than_days=older_than_days,
         content_ratings=_csv_list(content_ratings),
         exclude_tag_slugs=_exclude_tag_slugs(exclude_favorites),
+        exclude_set_ids=_csv_int_list(exclude_set_ids),
+        include_set_ids=_csv_int_list(include_set_ids),
     ).limit(limit)
     assets = (await db.execute(stmt)).scalars().all()
 

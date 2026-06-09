@@ -32,6 +32,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAsyncTask, useAsyncTaskStore } from '@lib/asyncTask';
 import { Icon, type IconName } from '@lib/icons';
 
+import { useAssetSets } from '@features/assets';
+
 import { DuplicatesRow } from './DuplicatesRow';
 import { DurationCohortTable } from './DurationCohortTable';
 import { ErrorCatalogRow } from './ErrorCatalogRow';
@@ -1311,6 +1313,16 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   // Pin favorites (user:favorite tag) to local by default — curated assets
   // shouldn't get shipped to the archive. Plan media-storage-tiering cp-i (i1).
   const [excludeFavorites, setExcludeFavorites] = useState(true);
+  // Pin members of these manual sets to local. Plan media-storage-tiering cp-i (i3).
+  const [excludeSetIds, setExcludeSetIds] = useState<number[]>([]);
+
+  // Manual sets only — membership-based exclusion needs member rows; smart sets
+  // (filter-derived) have none, so they can't be pinned by this path.
+  const { sets } = useAssetSets();
+  const manualSets = useMemo(
+    () => sets.filter((s) => s.kind === 'manual'),
+    [sets],
+  );
 
   const criteriaQuery = useCallback(() => {
     const p = new URLSearchParams();
@@ -1318,8 +1330,15 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
     if (minSizeMb > 0) p.set('min_size_mb', String(minSizeMb));
     if (olderThanDays > 0) p.set('older_than_days', String(olderThanDays));
     if (excludeFavorites) p.set('exclude_favorites', 'true');
+    if (excludeSetIds.length) p.set('exclude_set_ids', excludeSetIds.join(','));
     return p.toString();
-  }, [mediaTypes, minSizeMb, olderThanDays, excludeFavorites]);
+  }, [mediaTypes, minSizeMb, olderThanDays, excludeFavorites, excludeSetIds]);
+
+  const toggleExcludeSet = useCallback((id: number) => {
+    setExcludeSetIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }, []);
 
   const loadStats = useCallback(async () => {
     try {
@@ -1465,6 +1484,33 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
           />
           Never archive favorites (keep <code className="text-[9px]">user:favorite</code> on local)
         </label>
+
+        {manualSets.length > 0 && (
+          <div className="flex items-start gap-1.5 flex-wrap">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1 mt-1">
+              Keep sets local
+            </span>
+            {manualSets.map((s) => {
+              const active = excludeSetIds.includes(s.id);
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => toggleExcludeSet(s.id)}
+                  disabled={busy}
+                  title={active ? `Members of "${s.name}" are pinned to local` : `Pin "${s.name}" members to local`}
+                  className={`h-6 px-2 text-[11px] rounded border transition-colors disabled:opacity-50 ${
+                    active
+                      ? 'border-accent bg-accent text-accent-foreground'
+                      : 'border-border bg-transparent hover:bg-muted/40 text-muted-foreground'
+                  }`}
+                >
+                  {s.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {noArchive && !nothing && (

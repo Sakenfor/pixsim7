@@ -16,7 +16,7 @@ import { useOverlayWidgetSettingsStore } from '@lib/widgets';
 import type { AssetModel } from '@features/assets';
 import { mediaCardPropsFromAsset } from '@features/assets/components/shared/mediaCardPropsFromAsset';
 import { isFavoriteAsset } from '@features/assets/lib/favoriteTag';
-import { useAssetSetStore, type ManualAssetSet } from '@features/assets/stores/assetSetStore';
+import { useAssetSets, useAssetSetStore, type ManualAssetSet } from '@features/assets/stores/assetSetStore';
 import { useGalleryApplyTargetStore } from '@features/assets/stores/galleryApplyTargetStore';
 
 import type { MediaCardOverlayData } from '../mediaCardWidgets';
@@ -98,7 +98,7 @@ export function useOverlayWidgetsForAsset({
   // active set" button (or the green check when the asset is already in the
   // set) shows up wherever an asset is rendered.
   const activeManualSetId = useGalleryApplyTargetStore((s) => s.activeManualSetId);
-  const sets = useAssetSetStore((s) => s.sets);
+  const { sets } = useAssetSets();
   const addAssetsToSet = useAssetSetStore((s) => s.addAssetsToSet);
   const activeManualSet = useMemo<ManualAssetSet | undefined>(
     () => {
@@ -155,7 +155,7 @@ export function useOverlayWidgetsForAsset({
       } else {
         candidates.push(
           buildAddToSetWidget(
-            () => addAssetsToSet(activeManualSet.id, [asset.id]),
+            () => void addAssetsToSet(activeManualSet.id, [asset.id]),
             { tooltip: `Add to active set: ${activeManualSet.name}` },
           ) as OverlayWidget<MediaCardOverlayData>,
         );

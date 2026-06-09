@@ -41,7 +41,7 @@ import { GROUP_BY_LABELS, normalizeGroupBySelection } from '../lib/groupBy';
 import { normalizeGroupScopeSelection } from '../lib/groupScope';
 import { buildAssetSearchRequest } from '../lib/searchParams';
 import { fromAssetResponses, toViewerAssets } from '../models/asset';
-import { useAssetSetStore, type ManualAssetSet } from '../stores/assetSetStore';
+import { useAssetSets, useAssetSetStore, type ManualAssetSet } from '../stores/assetSetStore';
 import { useAssetViewerStore, selectIsViewerOpen } from '../stores/assetViewerStore';
 import { useFilterPresetStore } from '../stores/filterPresetStore';
 import { useGalleryApplyTargetStore } from '../stores/galleryApplyTargetStore';
@@ -101,18 +101,18 @@ function AssetSetChip({
   chipState: ReturnType<typeof useFilterChipState>;
   manualSets: ManualAssetSet[];
   activeManualSet: ManualAssetSet | undefined;
-  filterSetIds: string[];
-  onToggleFilter: (setId: string) => void;
-  onSetTarget: (setId?: string) => void;
+  filterSetIds: number[];
+  onToggleFilter: (setId: number) => void;
+  onSetTarget: (setId?: number) => void;
   onBrowseSet: (set: ManualAssetSet) => void;
   selectedCount: number;
   onAddSelected: () => void;
-  onCreateSet: () => string | void;
-  onRenameSet: (id: string, name: string) => void;
-  onDeleteSet: (id: string) => void;
+  onCreateSet: () => Promise<number | void> | number | void;
+  onRenameSet: (id: number, name: string) => void;
+  onDeleteSet: (id: number) => void;
 }) {
   const [rowMenu, setRowMenu] = useState<{ set: ManualAssetSet; x: number; y: number } | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [draftName, setDraftName] = useState('');
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -138,9 +138,9 @@ function AssetSetChip({
     }
   }, [editingId]);
 
-  const handleCreate = useCallback(() => {
-    const newId = onCreateSet();
-    if (typeof newId === 'string') {
+  const handleCreate = useCallback(async () => {
+    const newId = await onCreateSet();
+    if (typeof newId === 'number') {
       setEditingId(newId);
       setDraftName('New Set');
     }
@@ -181,7 +181,7 @@ function AssetSetChip({
           <span className="flex-1">Set</span>
           <button
             type="button"
-            onClick={handleCreate}
+            onClick={() => void handleCreate()}
             title="Create new set"
             className="flex items-center justify-center w-4 h-4 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
           >
@@ -395,7 +395,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     return { upload_method: normalizedGroupScope };
   }, [hasGrouping, normalizedGroupScope]);
   const { providers } = useProviders();
-  const allSets = useAssetSetStore((state) => state.sets);
+  const { sets: allSets } = useAssetSets();
   const manualSets = useMemo(
     () => allSets.filter((set): set is ManualAssetSet => set.kind === 'manual'),
     [allSets],
@@ -1124,18 +1124,18 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   const addAssetToActiveManualSet = useCallback(
     (assetId: number) => {
       if (!activeManualSet) return;
-      addAssetsToSet(activeManualSet.id, [assetId]);
+      void addAssetsToSet(activeManualSet.id, [assetId]);
     },
     [activeManualSet, addAssetsToSet],
   );
 
   const addSelectedToActiveManualSet = useCallback(() => {
     if (!activeManualSet || selectedAssets.length === 0) return;
-    addAssetsToSet(activeManualSet.id, selectedAssets.map((asset) => asset.id));
+    void addAssetsToSet(activeManualSet.id, selectedAssets.map((asset) => asset.id));
   }, [activeManualSet, addAssetsToSet, selectedAssets]);
 
-  const handleCreateSet = useCallback(() => {
-    const created = createSet({ name: 'New Set', kind: 'manual', assetIds: [] });
+  const handleCreateSet = useCallback(async () => {
+    const created = await createSet({ name: 'New Set', kind: 'manual', assetIds: [] });
     return created.id;
   }, [createSet]);
 

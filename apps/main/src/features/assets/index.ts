@@ -171,10 +171,13 @@ export {
 
 export {
   useAssetSetStore,
+  useAssetSets,
   type AssetSet,
   type ManualAssetSet,
   type SmartAssetSet,
   type AssetSetKind,
+  type CreateAssetSetInput,
+  type UseAssetSetsResult,
 } from './stores/assetSetStore';
 
 export { resolveAssetSet, assetModelsToInputItems } from './lib/assetSetResolver';

@@ -105,6 +105,7 @@ vi.mock('@features/assets/stores/assetSetStore', () => ({
   useAssetSetStore: {
     getState: () => ({
       getSet: vi.fn(),
+      ensureLoaded: vi.fn(() => Promise.resolve()),
     }),
   },
 }));

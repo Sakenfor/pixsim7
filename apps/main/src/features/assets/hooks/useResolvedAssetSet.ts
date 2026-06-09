@@ -25,7 +25,7 @@ interface CacheEntry {
   assets: AssetModel[];
 }
 
-const cache = new Map<string, CacheEntry>();
+const cache = new Map<number, CacheEntry>();
 const inFlight = new Map<string, Promise<AssetModel[]>>();
 const EMPTY: AssetModel[] = [];
 
@@ -43,13 +43,19 @@ export interface UseResolvedAssetSetResult {
 }
 
 export function useResolvedAssetSet(
-  setId: string | undefined,
+  setId: number | undefined,
 ): UseResolvedAssetSetResult {
+  // Lazily load the set cache from the backend so a slot-linked set resolves
+  // even when no Asset Sets panel has mounted yet.
+  useEffect(() => {
+    if (setId !== undefined) void useAssetSetStore.getState().ensureLoaded();
+  }, [setId]);
+
   // Selector returns the AssetSet object; identity is stable until that set
   // is mutated (store does immutable upserts), so unrelated set updates
   // don't re-trigger the effect.
   const set = useAssetSetStore((s) =>
-    setId ? s.sets.find((x) => x.id === setId) : undefined,
+    setId !== undefined ? s.sets.find((x) => x.id === setId) : undefined,
   );
 
   const [members, setMembers] = useState<AssetModel[]>(() => {

@@ -872,14 +872,18 @@ function useQuickGenerateControllerImpl() {
    * Resolve all unique asset sets referenced by inputs ONCE, returning a cache.
    * Prevents N×M API calls when buildRequest is called per group/burst item.
    */
-  async function preResolveSetRefs(inputs: any[]): Promise<Map<string, AssetModel[]>> {
-    const cache = new Map<string, AssetModel[]>();
-    const setIds = new Set<string>();
+  async function preResolveSetRefs(inputs: any[]): Promise<Map<number, AssetModel[]>> {
+    const cache = new Map<number, AssetModel[]>();
+    const setIds = new Set<number>();
     for (const item of inputs) {
       const ref = item?.assetSetRef;
       if (ref?.setId && !setIds.has(ref.setId)) {
         setIds.add(ref.setId);
       }
+    }
+    if (setIds.size > 0) {
+      // Backend-backed cache; ensure it's loaded before the sync getSet() reads.
+      await useAssetSetStore.getState().ensureLoaded();
     }
     for (const setId of setIds) {
       const set = useAssetSetStore.getState().getSet(setId);
@@ -905,7 +909,7 @@ function useQuickGenerateControllerImpl() {
    */
   function prePickSetRefs(
     inputs: any[],
-    cache: Map<string, AssetModel[]>,
+    cache: Map<number, AssetModel[]>,
     transientPickStateByInputId?: Map<string, TransientSetPickState>,
   ): any[] {
     if (cache.size === 0) return inputs;
@@ -943,7 +947,7 @@ function useQuickGenerateControllerImpl() {
   // random_each gets resolved per-group later by prePickSetRefs.
   function buildIterateGroups(
     inputs: any[],
-    cache: Map<string, AssetModel[]>,
+    cache: Map<number, AssetModel[]>,
     strategy: CombinationStrategy,
     seed?: number,
   ): any[][] {
@@ -1387,7 +1391,7 @@ function useQuickGenerateControllerImpl() {
       const hasRandomEachRef = effectiveInputs.some(
         (item: any) => item.assetSetRef?.mode === 'random_each',
       );
-      const setCache = hasRandomEachRef ? await preResolveSetRefs(effectiveInputs) : new Map<string, AssetModel[]>();
+      const setCache = hasRandomEachRef ? await preResolveSetRefs(effectiveInputs) : new Map<number, AssetModel[]>();
       const burstPickStateByInputId = new Map<string, TransientSetPickState>();
 
       // Build a base request for validation (and reuse when no random_each refs)
@@ -1606,7 +1610,7 @@ function useQuickGenerateControllerImpl() {
       const hasRandomEachRef = currentInputs.some(
         (item: any) => item.assetSetRef?.mode === 'random_each',
       );
-      const setCache = hasRandomEachRef ? await preResolveSetRefs(currentInputs) : new Map<string, AssetModel[]>();
+      const setCache = hasRandomEachRef ? await preResolveSetRefs(currentInputs) : new Map<number, AssetModel[]>();
       const sequentialBurstPickStateByInputId = new Map<string, TransientSetPickState>();
 
       const result = await executeSequentialSteps({

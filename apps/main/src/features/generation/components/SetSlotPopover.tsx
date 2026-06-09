@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { Icon } from '@lib/icons';
 
 import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
-import { useAssetSetStore, type AssetSet } from '@features/assets/stores/assetSetStore';
+import { useAssetSets, type AssetSet } from '@features/assets/stores/assetSetStore';
 import type { AssetSetSlotRef, InputItem, PickStrategy } from '@features/generation';
 
 import type { OperationType } from '@/types/operations';
@@ -17,7 +17,7 @@ export interface SetSlotPopoverProps {
   anchorRect: DOMRect;
   inputItem: InputItem;
   operationType: OperationType;
-  onSetLink: (operationType: OperationType, inputId: string, setId: string) => void;
+  onSetLink: (operationType: OperationType, inputId: string, setId: number) => void;
   onSetUnlink: (operationType: OperationType, inputId: string) => void;
   onSetModeChange: (operationType: OperationType, inputId: string, mode: AssetSetSlotRef['mode']) => void;
   onPickStrategyChange: (operationType: OperationType, inputId: string, strategy: PickStrategy) => void;
@@ -38,18 +38,18 @@ export function SetSlotPopover({
 }: SetSlotPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
-  const sets = useAssetSetStore((s) => s.sets);
+  const { sets } = useAssetSets();
   const currentRef = inputItem.assetSetRef;
   const currentSet = currentRef
     ? sets.find((s) => s.id === currentRef.setId)
     : undefined;
 
   // Resolve asset count for display
-  const [setAssetCounts, setSetAssetCounts] = useState<Map<string, number>>(() => new Map());
+  const [setAssetCounts, setSetAssetCounts] = useState<Map<number, number>>(() => new Map());
   useEffect(() => {
     let cancelled = false;
     const resolveCounts = async () => {
-      const counts = new Map<string, number>();
+      const counts = new Map<number, number>();
       for (const set of sets) {
         if (set.kind === 'manual') {
           counts.set(set.id, set.assetIds.length);

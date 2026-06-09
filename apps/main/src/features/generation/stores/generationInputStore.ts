@@ -18,7 +18,7 @@ import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 export type PickStrategy = 'random' | 'sequential' | 'no_repeat';
 
 export interface AssetSetSlotRef {
-  setId: string;                                  // references AssetSet.id
+  setId: number;                                  // references AssetSet.id (backend int id)
   mode: 'random_each' | 'locked' | 'iterate';     // pick timing / iteration role
   lockedAssetId?: number;                         // for 'locked' mode — the pinned pick
   originalAssetId?: number;                       // asset that was in the slot before linking

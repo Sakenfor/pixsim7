@@ -747,8 +747,15 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     setActiveSetPopover(null);
   }, []);
 
-  const handleSetLink = useCallback(async (opType: typeof operationType, inputId: string, setId: string) => {
+  // Backend-backed set cache: load once so the sync getSet() reads in the
+  // badge builder and link/mode/reroll handlers resolve the linked set.
+  useEffect(() => {
+    void useAssetSetStore.getState().ensureLoaded();
+  }, []);
+
+  const handleSetLink = useCallback(async (opType: typeof operationType, inputId: string, setId: number) => {
     // Link set and pick initial preview asset
+    await useAssetSetStore.getState().ensureLoaded();
     const set = useAssetSetStore.getState().getSet(setId);
     if (!set) return;
     const resolved = await resolveAssetSet(set);
@@ -821,6 +828,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
       const items = useInputStore.getState().inputsByOperation[opType]?.items ?? [];
       const item = items.find(i => i.id === inputId);
       if (item?.assetSetRef) {
+        await useAssetSetStore.getState().ensureLoaded();
         const set = useAssetSetStore.getState().getSet(item.assetSetRef.setId);
         if (set) {
           const resolved = await resolveAssetSet(set);
@@ -853,6 +861,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     const items = useInputStore.getState().inputsByOperation[opType]?.items ?? [];
     const item = items.find(i => i.id === inputId);
     if (!item?.assetSetRef) return;
+    await useAssetSetStore.getState().ensureLoaded();
     const set = useAssetSetStore.getState().getSet(item.assetSetRef.setId);
     if (!set) return;
     const resolved = await resolveAssetSet(set);

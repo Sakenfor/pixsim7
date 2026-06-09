@@ -17,7 +17,7 @@ import { Icon } from '@lib/icons';
 
 import { useAccentButtonClasses } from '@features/appearance';
 import type { AssetModel } from '@features/assets';
-import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
+import { useAssetSets } from '@features/assets/stores/assetSetStore';
 import {
   CAP_GENERATION_WIDGET,
   useContextHubOverridesStore,
@@ -361,7 +361,7 @@ export function GenerationSettingsPanel({
   // Iterate-mode set sizes per driver slot (manual sets only; smart sets resolve
   // async and are reflected post-launch via the queue progress).
   const inputItems = useInputStore(s => s.inputsByOperation[operationType]?.items);
-  const assetSets = useAssetSetStore(s => s.sets);
+  const { sets: assetSets } = useAssetSets();
   const iterateSetSizes = useMemo(() => {
     if (!inputItems || inputItems.length === 0) return [];
     const sizes: number[] = [];

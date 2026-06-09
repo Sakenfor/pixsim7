@@ -3,12 +3,12 @@ import { persist } from 'zustand/middleware';
 
 interface GalleryApplyTargetState {
   /** Active manual asset set used for quick-add while browsing the gallery. */
-  activeManualSetId?: string;
+  activeManualSetId?: number;
   /** Set IDs whose assets are shown in the gallery (union). Empty = no filter. */
-  filterSetIds: string[];
-  setActiveManualSetId: (setId?: string) => void;
+  filterSetIds: number[];
+  setActiveManualSetId: (setId?: number) => void;
   clearActiveManualSetId: () => void;
-  toggleFilterSet: (setId: string) => void;
+  toggleFilterSet: (setId: number) => void;
   clearFilterSets: () => void;
 }
 

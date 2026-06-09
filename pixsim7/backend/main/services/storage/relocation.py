@@ -77,6 +77,8 @@ def candidate_query(
     older_than_days: Optional[int] = None,
     content_ratings=None,
     exclude_tag_slugs=None,
+    exclude_set_ids=None,
+    include_set_ids=None,
 ):
     """Build the select for archive-relocation candidates currently on local.
 
@@ -88,11 +90,18 @@ def candidate_query(
     - ``exclude_tag_slugs``: iterable of tag slugs; assets carrying ANY of these
       tags are excluded (NOT EXISTS on the asset_tag join). This is how curated
       assets are pinned to local — e.g. pass ``[FAVORITE_TAG_SLUG]`` so favorites
-      are never archived. Backend-native sets (plan cp-i, i2/i3) will feed their
-      membership through this same generic exclusion.
+      are never archived.
+    - ``exclude_set_ids``: iterable of manual asset-set ids; assets that are a
+      member of ANY of these sets are excluded (NOT EXISTS on asset_set_member) —
+      pin curated sets to local. Plan cp-i (i3).
+    - ``include_set_ids``: iterable of manual asset-set ids; restrict candidates
+      to assets that are a member of ANY of these sets (EXISTS) — "archive only
+      this set". Membership-based, so this targets manual sets only; smart sets
+      (filter-derived, no member rows) are not resolved here.
     """
     from datetime import datetime, timedelta, timezone
 
+    from pixsim7.backend.main.domain.assets.asset_set import AssetSetMember
     from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
 
@@ -128,6 +137,20 @@ def candidate_query(
             .where(AssetTag.asset_id == Asset.id, Tag.slug.in_(slugs))
         )
         stmt = stmt.where(~exists(pinned))
+    incl_sets = [int(s) for s in (include_set_ids or [])]
+    if incl_sets:
+        # Restrict to members of any included set ("archive only this set").
+        in_set = select(AssetSetMember.asset_id).where(
+            AssetSetMember.asset_id == Asset.id, AssetSetMember.set_id.in_(incl_sets)
+        )
+        stmt = stmt.where(exists(in_set))
+    excl_sets = [int(s) for s in (exclude_set_ids or [])]
+    if excl_sets:
+        # Pin members of any excluded set to local (mirror of the tag guard).
+        in_excl_set = select(AssetSetMember.asset_id).where(
+            AssetSetMember.asset_id == Asset.id, AssetSetMember.set_id.in_(excl_sets)
+        )
+        stmt = stmt.where(~exists(in_excl_set))
     return stmt.order_by(Asset.id)
 
 

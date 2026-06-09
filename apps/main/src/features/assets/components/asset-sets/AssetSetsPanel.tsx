@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Icon } from '@lib/icons';
 
 import {
+  useAssetSets,
   useAssetSetStore,
   type AssetSetKind,
 } from '@features/assets/stores/assetSetStore';
@@ -10,23 +11,24 @@ import {
 import { SetEditView } from './SetEditView';
 
 export function AssetSetsPanel() {
-  const { sets, createSet } = useAssetSetStore();
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const { sets } = useAssetSets();
+  const createSet = useAssetSetStore((s) => s.createSet);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [showKindPicker, setShowKindPicker] = useState(false);
 
-  const editingSet = editingId ? sets.find((s) => s.id === editingId) : null;
+  const editingSet = editingId !== null ? sets.find((s) => s.id === editingId) : null;
 
   if (editingSet) {
     return <SetEditView set={editingSet} onBack={() => setEditingId(null)} />;
   }
 
-  const handleCreate = (kind: AssetSetKind) => {
-    const newSet = createSet({
+  const handleCreate = async (kind: AssetSetKind) => {
+    setShowKindPicker(false);
+    const newSet = await createSet({
       name: kind === 'manual' ? 'New Set' : 'New Smart Set',
       kind,
       ...(kind === 'manual' ? { assetIds: [] } : { filters: {} }),
     } as any);
-    setShowKindPicker(false);
     setEditingId(newSet.id);
   };
 
@@ -48,7 +50,7 @@ export function AssetSetsPanel() {
             <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 min-w-[140px]">
               <button
                 type="button"
-                onClick={() => handleCreate('manual')}
+                onClick={() => void handleCreate('manual')}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-neutral-100 dark:hover:bg-neutral-700"
               >
                 <Icon name="layers" size={12} className="text-blue-500" />
@@ -56,7 +58,7 @@ export function AssetSetsPanel() {
               </button>
               <button
                 type="button"
-                onClick={() => handleCreate('smart')}
+                onClick={() => void handleCreate('smart')}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-neutral-100 dark:hover:bg-neutral-700"
               >
                 <Icon name="search" size={12} className="text-emerald-500" />
