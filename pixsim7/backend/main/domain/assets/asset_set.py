@@ -16,7 +16,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 
 from sqlmodel import SQLModel, Field, Column
-from sqlalchemy import JSON
+from sqlalchemy import JSON, ForeignKey, Integer
 
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim7.common.ownership import OwnershipPolicy, OwnershipScope, SHARED_FLAG
@@ -35,9 +35,15 @@ class AssetSet(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
 
     # ===== OWNERSHIP =====
+    # sa_column (not foreign_key=) so the ON DELETE CASCADE matches the
+    # migration — create_all-based tests would otherwise build a cascade-less FK.
     user_id: int = Field(
-        foreign_key="users.id",
-        index=True,
+        sa_column=Column(
+            Integer,
+            ForeignKey("users.id", ondelete="CASCADE"),
+            index=True,
+            nullable=False,
+        ),
         description="Owner (ASSET_SET_POLICY, USER scope)",
     )
 
@@ -87,16 +93,23 @@ class AssetSetMember(SQLModel, table=True):
 
     __tablename__ = "asset_set_member"
 
-    # Composite primary key
+    # Composite primary key. sa_column carries ON DELETE CASCADE so deleting a
+    # set (or its assets) drops membership — matching the migration.
     set_id: int = Field(
-        foreign_key="asset_set.id",
-        primary_key=True,
-        index=True,
+        sa_column=Column(
+            Integer,
+            ForeignKey("asset_set.id", ondelete="CASCADE"),
+            primary_key=True,
+            index=True,
+        ),
     )
     asset_id: int = Field(
-        foreign_key="assets.id",
-        primary_key=True,
-        index=True,
+        sa_column=Column(
+            Integer,
+            ForeignKey("assets.id", ondelete="CASCADE"),
+            primary_key=True,
+            index=True,
+        ),
     )
 
     # Ordering within the set (lower = earlier).
