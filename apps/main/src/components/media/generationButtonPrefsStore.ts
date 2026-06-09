@@ -20,9 +20,10 @@
 
 import { useMemo } from 'react';
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { registerStore } from '@lib/stores';
+import { createBackendStorage } from '@lib/utils';
 
 import type { GenerationActionId } from './useGenerationButtonGroup';
 
@@ -134,7 +135,10 @@ function toggleId(list: string[], id: string): string[] {
 // Store
 // ─────────────────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'pixsim:media-card:generation-button-prefs';
+// Backend-synced per-user prefs. createBackendStorage caches to localStorage
+// under `${PREF_KEY}_local` (offline/instant hydration) and debounce-syncs to
+// the user-preferences API so the choice follows the user across devices.
+const PREF_KEY = 'generationButtonPrefs';
 
 interface GenerationButtonPrefsState {
   styleHidden: string[];
@@ -172,7 +176,8 @@ export const useGenerationButtonPrefsStore = create<GenerationButtonPrefsState>(
       resetAction: () => set({ actionHidden: [], actionOrder: [] }),
     }),
     {
-      name: STORAGE_KEY,
+      name: PREF_KEY,
+      storage: createJSONStorage(() => createBackendStorage(PREF_KEY)),
       partialize: (s) => ({
         styleHidden: s.styleHidden,
         styleOrder: s.styleOrder,
@@ -183,7 +188,7 @@ export const useGenerationButtonPrefsStore = create<GenerationButtonPrefsState>(
   ),
 );
 
-registerStore({ id: 'media-card-generation-button-prefs', key: STORAGE_KEY });
+registerStore({ id: 'media-card-generation-button-prefs', key: `${PREF_KEY}_local` });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Read hooks
