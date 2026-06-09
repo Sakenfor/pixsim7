@@ -25,7 +25,7 @@ import { GenerationActivityFlyout } from './GenerationActivityFlyout';
 /** Recency window reconciled from the API each time the flyout opens. */
 const FLYOUT_RECONCILE_LIMIT = 100;
 
-type BadgeMode = 'active' | 'total' | 'polling';
+type BadgeMode = 'active' | 'total' | 'polling' | 'rendering';
 
 interface GenerationWidgetStats {
   activeCount: number;
@@ -42,6 +42,7 @@ function formatBadgeCount(value: number): string {
 function nextBadgeMode(current: BadgeMode): BadgeMode {
   if (current === 'active') return 'total';
   if (current === 'total') return 'polling';
+  if (current === 'polling') return 'rendering';
   return 'active';
 }
 
@@ -131,27 +132,21 @@ export function GenerationActivityBarWidget() {
 
   const isActive = activeCount > 0;
   const hasAnyGenerations = totalCount > 0;
-  const modeLabel = badgeMode === 'active' ? 'active' : badgeMode === 'total' ? 'total' : 'polling';
-  const modeTitle = badgeMode === 'active'
-    ? 'Active generations'
-    : badgeMode === 'total'
-      ? 'Tracked generations'
-      : 'Polling generations';
 
-  const badgeValue = badgeMode === 'active'
-    ? formatBadgeCount(activeCount)
-    : badgeMode === 'total'
-      ? formatBadgeCount(totalCount)
-      : pollingCount > 0
-        ? formatBadgeCount(pollingCount)
-        : 'idle';
-  const badgeToneClass = badgeMode === 'active'
-    ? (activeCount > 0 ? 'bg-amber-500 text-white' : 'bg-neutral-600 text-neutral-200')
-    : badgeMode === 'total'
-      ? 'bg-blue-500 text-white'
-      : pollingCount > 0
-        ? 'bg-emerald-500 text-white'
-        : 'bg-neutral-600 text-neutral-200';
+  // Per-mode badge config. `idleWhenZero` shows "idle" instead of 0 for the
+  // sub-counts; the colored tone only applies when the count is non-zero.
+  // Active uses dark text on amber (white-on-amber was hard to read).
+  const MODE_INFO: Record<BadgeMode, { label: string; title: string; count: number; tone: string; idleWhenZero: boolean }> = {
+    active: { label: 'active', title: 'Active generations', count: activeCount, tone: 'bg-amber-500 text-neutral-900', idleWhenZero: false },
+    total: { label: 'total', title: 'Tracked generations', count: totalCount, tone: 'bg-blue-500 text-white', idleWhenZero: false },
+    polling: { label: 'polling', title: 'Polling generations', count: pollingCount, tone: 'bg-emerald-500 text-white', idleWhenZero: true },
+    rendering: { label: 'rendering', title: 'Rendering (past fast-fail window)', count: renderingCount, tone: 'bg-teal-500 text-white', idleWhenZero: true },
+  };
+  const mode = MODE_INFO[badgeMode];
+  const modeLabel = mode.label;
+  const modeTitle = mode.title;
+  const badgeValue = mode.count > 0 || !mode.idleWhenZero ? formatBadgeCount(mode.count) : 'idle';
+  const badgeToneClass = mode.count > 0 ? mode.tone : 'bg-neutral-600 text-neutral-200';
 
   return (
     <div
