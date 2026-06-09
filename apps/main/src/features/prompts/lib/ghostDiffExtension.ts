@@ -2,12 +2,19 @@ import { EditorState, Facet, type Extension, RangeSetBuilder } from '@codemirror
 import {
   Decoration,
   type DecorationSet,
+  EditorView,
+  type Tooltip,
   ViewPlugin,
   type ViewUpdate,
   WidgetType,
+  hoverTooltip,
 } from '@codemirror/view';
 
-import { diffPromptWithRanges, type DiffPromptRangeOptions } from './promptDiff';
+import {
+  diffPromptWithRanges,
+  type DiffPromptRangeOptions,
+  type DiffSegmentWithRange,
+} from './promptDiff';
 
 // ── Config ─────────────────────────────────────────────────────────────────
 
@@ -75,7 +82,8 @@ class RemoveMarkerWidget extends WidgetType {
       'cm-ghost-diff-remove relative inline-block w-0 overflow-visible align-middle';
     root.dataset.ghostAt = String(this.at);
     root.dataset.ghostCompare = encodeURIComponent(this.removedText);
-    root.title = `Removed: ${this.removedText}\\nClick to restore this chunk`;
+    // No native `title` — the line hover tooltip carries the context; the dot
+    // stays a pure click-to-restore affordance.
 
     const dot = document.createElement('span');
     dot.className =
@@ -89,7 +97,7 @@ class RemoveMarkerWidget extends WidgetType {
   }
 }
 
-function computeDiff(docText: string, config: GhostDiffConfig | null): DiffResult {
+export function computeDiff(docText: string, config: GhostDiffConfig | null): DiffResult {
   const empty: DiffResult = {
     ranges: [],
     removeMarkers: [],
@@ -159,40 +167,59 @@ function computeDiff(docText: string, config: GhostDiffConfig | null): DiffResul
 
 // ── Decoration builder ─────────────────────────────────────────────────────
 
-function buildDecorations(result: DiffResult): DecorationSet {
+export function buildDecorations(result: DiffResult): DecorationSet {
   if ((result.ranges.length === 0 && result.removeMarkers.length === 0) || result.opacity <= 0) {
     return Decoration.none;
   }
 
-  const sorted = [...result.ranges].sort((a, b) => a.from - b.from);
-  const builder = new RangeSetBuilder<Decoration>();
-  for (const { from, to, compareText } of sorted) {
+  // RangeSetBuilder requires a SINGLE stream of ranges added in ascending
+  // (from, startSide) order — add marks and remove-widgets cannot be added in
+  // two separate passes, since a remove marker usually sits before an
+  // already-added add mark and trips "Ranges must be added sorted by `from`".
+  // Collect everything, then sort. `order` breaks ties at the same position:
+  // a point widget (side -1) must precede a mark that starts there.
+  type Entry = { from: number; to: number; deco: Decoration; order: number };
+  const entries: Entry[] = [];
+
+  for (const { from, to, compareText } of result.ranges) {
     if (from < to) {
-      const mark = Decoration.mark({
-        attributes: {
-          class: 'cm-ghost-diff-add',
-          style: `background-color: rgba(34, 197, 94, ${result.opacity}); border-radius: 2px; cursor: pointer;`,
-          title:
-            compareText.length > 0
-              ? `Compare: ${compareText}\nClick to replace this chunk`
-              : 'Compare: (empty)\nClick to remove this chunk',
-          'data-ghost-from': String(from),
-          'data-ghost-to': String(to),
-          'data-ghost-compare': encodeURIComponent(compareText),
-        },
+      entries.push({
+        from,
+        to,
+        order: 1,
+        deco: Decoration.mark({
+          attributes: {
+            // No native `title` — the hover tooltip (ghostLineHoverTooltip)
+            // owns the hover affordance so we don't double-pop two tooltips.
+            class: 'cm-ghost-diff-add',
+            style: `background-color: rgba(34, 197, 94, ${result.opacity}); border-radius: 2px; cursor: pointer;`,
+            'data-ghost-from': String(from),
+            'data-ghost-to': String(to),
+            'data-ghost-compare': encodeURIComponent(compareText),
+          },
+        }),
       });
-      builder.add(from, to, mark);
     }
   }
 
   for (const marker of result.removeMarkers) {
-    const widget = Decoration.widget({
-      widget: new RemoveMarkerWidget(marker.at, marker.text),
-      side: -1,
+    entries.push({
+      from: marker.at,
+      to: marker.at,
+      order: 0,
+      deco: Decoration.widget({
+        widget: new RemoveMarkerWidget(marker.at, marker.text),
+        side: -1,
+      }),
     });
-    builder.add(marker.at, marker.at, widget);
   }
 
+  entries.sort((a, b) => a.from - b.from || a.order - b.order);
+
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const entry of entries) {
+    builder.add(entry.from, entry.to, entry.deco);
+  }
   return builder.finish();
 }
 
@@ -339,6 +366,171 @@ function ghostDiffCallbackPlugin(callbacks: GhostDiffCallbacks) {
   });
 }
 
+// ── Hover tooltip — "what was this line before?" ────────────────────────────
+
+interface LineChange {
+  /** The previous version of the line (from comparisonText), or '' for a
+   *  brand-new line that had no prior counterpart. */
+  prevLine: string;
+  /** The current line text in the document. */
+  curLine: string;
+}
+
+/**
+ * Reconstruct the previous version of the document line containing `pos`.
+ *
+ * Walks the same diff the inline decorations use and maps the hovered doc line
+ * back to its span in `comparisonText` via each segment's prev offsets, then
+ * expands that span to whole comparison line(s). Returns null when the line
+ * has no changes (nothing was replaced, so there's nothing to show).
+ */
+export function lineChangeAt(
+  docText: string,
+  comparisonText: string,
+  pos: number,
+  precision: DiffPromptRangeOptions['precision'],
+): LineChange | null {
+  const segments = diffPromptWithRanges(comparisonText, docText, { precision });
+
+  const lineStart = docText.lastIndexOf('\n', Math.max(0, pos - 1)) + 1;
+  const nlIdx = docText.indexOf('\n', pos);
+  const lineEnd = nlIdx === -1 ? docText.length : nlIdx;
+  const curLine = docText.slice(lineStart, lineEnd);
+
+  let prevMin = Infinity;
+  let prevMax = -Infinity;
+  let hasChange = false;
+  let cursor = 0; // doc-frame cursor, mirrors computeDiff's remove anchoring
+
+  const notePrev = (seg: DiffSegmentWithRange) => {
+    if (typeof seg.prevFrom === 'number') prevMin = Math.min(prevMin, seg.prevFrom);
+    if (typeof seg.prevTo === 'number') prevMax = Math.max(prevMax, seg.prevTo);
+  };
+
+  for (const seg of segments) {
+    if (seg.type === 'remove') {
+      // Anchored at the current doc cursor; counts for the line it sits in.
+      if (cursor >= lineStart && cursor <= lineEnd) {
+        hasChange = true;
+        notePrev(seg);
+      }
+      continue;
+    }
+    const from = seg.from ?? cursor;
+    const to = seg.to ?? from;
+    cursor = to;
+    // Overlaps the hovered line?
+    if (to > lineStart && from < lineEnd) {
+      notePrev(seg);
+      if (seg.type === 'add') hasChange = true;
+    }
+  }
+
+  if (!hasChange) return null;
+  if (prevMin === Infinity || prevMax < prevMin) {
+    // Changed line with no prior counterpart (pure insertion).
+    return { prevLine: '', curLine };
+  }
+
+  const prevStart = comparisonText.lastIndexOf('\n', Math.max(0, prevMin - 1)) + 1;
+  const prevNl = comparisonText.indexOf('\n', prevMax);
+  const prevEnd = prevNl === -1 ? comparisonText.length : prevNl;
+  const prevLine = comparisonText.slice(prevStart, prevEnd);
+
+  // Nothing meaningful to show if the reconstructed previous line is identical.
+  if (prevLine === curLine) return null;
+
+  return { prevLine, curLine };
+}
+
+const ghostTooltipTheme = EditorView.baseTheme({
+  '.cm-ghost-line-tooltip': {
+    padding: '6px 9px',
+    borderRadius: '8px',
+    fontSize: '12px',
+    lineHeight: '1.45',
+    maxWidth: '420px',
+    background: 'rgba(23,23,23,0.96)',
+    color: '#e5e5e5',
+    border: '1px solid #404040',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+    pointerEvents: 'none',
+  },
+  '.cm-ghost-line-tooltip .cm-ghost-tt-row': {
+    display: 'flex',
+    gap: '6px',
+    fontFamily: 'ui-monospace, monospace',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+  },
+  '.cm-ghost-line-tooltip .cm-ghost-tt-sign': {
+    flexShrink: '0',
+    fontWeight: '600',
+    userSelect: 'none',
+  },
+});
+
+function ghostLineHoverTooltip() {
+  return hoverTooltip(
+    (view, pos): Tooltip | null => {
+      const config = view.state.facet(ghostDiffFacet);
+      if (!config) return null;
+
+      const change = lineChangeAt(
+        view.state.doc.toString(),
+        config.comparisonText,
+        pos,
+        config.precision ?? 'coarse',
+      );
+      if (!change) return null;
+
+      const line = view.state.doc.lineAt(pos);
+      return {
+        pos: line.from,
+        end: line.to,
+        above: true,
+        create() {
+          const dom = document.createElement('div');
+          dom.className = 'cm-ghost-line-tooltip';
+
+          const addRow = (sign: string, text: string, color: string) => {
+            const row = document.createElement('div');
+            row.className = 'cm-ghost-tt-row';
+            const s = document.createElement('span');
+            s.className = 'cm-ghost-tt-sign';
+            s.textContent = sign;
+            s.style.color = color;
+            const body = document.createElement('span');
+            body.textContent = text.length > 0 ? text : '(empty)';
+            row.appendChild(s);
+            row.appendChild(body);
+            dom.appendChild(row);
+          };
+
+          if (change.prevLine === '') {
+            const label = document.createElement('div');
+            label.style.cssText = 'color:#a0a0a0;margin-bottom:3px;';
+            label.textContent = 'New line — no previous version';
+            dom.appendChild(label);
+            addRow('+', change.curLine, '#4ade80');
+          } else {
+            addRow('−', change.prevLine, '#f87171');
+            addRow('+', change.curLine, '#4ade80');
+          }
+
+          const hint = document.createElement('div');
+          hint.style.cssText =
+            'margin-top:5px;padding-top:4px;border-top:1px solid #404040;color:#8a8a8a;font-size:11px;';
+          hint.textContent = 'Click highlighted text to replace · ● to restore';
+          dom.appendChild(hint);
+          return { dom };
+        },
+      };
+    },
+    { hideOnChange: true, hoverTime: 300 },
+  );
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────
 
 export function ghostDiffExtension(
@@ -348,6 +540,8 @@ export function ghostDiffExtension(
   const parts: Extension[] = [
     ghostDiffFacet.of(config),
     ghostDiffPlugin,
+    ghostLineHoverTooltip(),
+    ghostTooltipTheme,
   ];
   if (callbacks) {
     parts.push(ghostDiffCallbackPlugin(callbacks));
