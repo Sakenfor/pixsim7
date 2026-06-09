@@ -1319,6 +1319,8 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   // local blob (byte-level verify, not just size). Default ON — slower but the
   // strongest guarantee for irreplaceable originals. Apply-only (ignored on dry-run).
   const [verifyHash, setVerifyHash] = useState(true);
+  // Monotonic id so only the latest relocate-stats request applies its result.
+  const statsReqIdRef = useRef(0);
 
   // Manual sets only — membership-based exclusion needs member rows; smart sets
   // (filter-derived) have none, so they can't be pinned by this path.
@@ -1345,13 +1347,18 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   }, []);
 
   const loadStats = useCallback(async () => {
+    // Guard against out-of-order responses: when criteria change quickly, an
+    // earlier (e.g. unfiltered) request can resolve AFTER a later filtered one
+    // and clobber the preview back to the full match. Only the latest request
+    // applies its result. Plan media-storage-tiering cp-i.
+    const reqId = ++statsReqIdRef.current;
     try {
       const qs = criteriaQuery();
       const s = await maintGet<RelocateStats>(
         `${RELOCATE_STATS_KEY}${qs ? `?${qs}` : ''}`,
         SURFACE,
       );
-      setStats(s);
+      if (reqId === statsReqIdRef.current) setStats(s);
     } catch {
       /* surfaced via the row above; keep the action quiet */
     }
