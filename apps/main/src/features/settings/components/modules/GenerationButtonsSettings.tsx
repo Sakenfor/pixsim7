@@ -1,48 +1,56 @@
 /**
  * Generation Buttons Settings Module
  *
- * Per-user customization of the media-card generation button group. Today it
- * exposes the "Style variations" dimensions (which appear in the popover and
- * their order); the same store is the natural home for future per-action
- * show/hide/reorder. Global to the user — applies wherever media cards render.
+ * Per-user customization of the media-card generation button group:
+ *   - which button-group pills show, and their order
+ *   - which "Style variations" dimensions show in the popover, and their order
+ *
+ * Global to the user — applies wherever media cards render. Pill prefs compose
+ * on top of context gating (a hidden pill stays hidden; a shown one only
+ * appears where the card's context already supports it).
  */
 import { useMemo } from 'react';
 
 import {
+  GENERATION_ACTION_CATALOG,
   STYLE_VARIATION_CATEGORIES,
-  resolveOrderedStyleCategories,
-  useStyleVariationPrefsStore,
-} from '@/components/media/styleVariationPrefsStore';
+  resolveOrdered,
+  useGenerationButtonPrefsStore,
+  type Resolved,
+} from '@/components/media/generationButtonPrefsStore';
 
 import { settingsRegistry } from '../../lib/core/registry';
 
-function StyleVariationDimensions() {
-  const disabled = useStyleVariationPrefsStore((s) => s.disabled);
-  const order = useStyleVariationPrefsStore((s) => s.order);
-  const toggle = useStyleVariationPrefsStore((s) => s.toggle);
-  const move = useStyleVariationPrefsStore((s) => s.move);
-  const reset = useStyleVariationPrefsStore((s) => s.reset);
-
-  const rows = useMemo(
-    () => resolveOrderedStyleCategories(STYLE_VARIATION_CATEGORIES, { disabled, order }),
-    [disabled, order],
-  );
+function PrefListEditor<T extends { id: string; label: string }>({
+  title,
+  description,
+  rows,
+  isDefault,
+  lockLastEnabled,
+  onToggle,
+  onMove,
+  onReset,
+}: {
+  title: string;
+  description: string;
+  rows: Resolved<T>[];
+  isDefault: boolean;
+  lockLastEnabled: boolean;
+  onToggle: (id: string) => void;
+  onMove: (id: string, dir: 'up' | 'down') => void;
+  onReset: () => void;
+}) {
   const enabledCount = rows.filter((r) => r.enabled).length;
-  const isDefault = disabled.length === 0 && order.length === 0;
-
   return (
-    <div className="p-4 max-w-xl">
+    <section className="mb-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold">Style variation dimensions</h3>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            Choose which dimensions appear in the media-card “Style variations” popover, and their
-            order. Applies everywhere media cards render.
-          </p>
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">{description}</p>
         </div>
         <button
           type="button"
-          onClick={reset}
+          onClick={onReset}
           disabled={isDefault}
           className="shrink-0 text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40 disabled:no-underline"
         >
@@ -57,9 +65,9 @@ function StyleVariationDimensions() {
               <input
                 type="checkbox"
                 checked={row.enabled}
-                // Keep at least one dimension enabled — an empty popover is useless.
-                disabled={row.enabled && enabledCount <= 1}
-                onChange={() => toggle(row.id)}
+                // Optionally keep at least one entry enabled (style tabs).
+                disabled={lockLastEnabled && row.enabled && enabledCount <= 1}
+                onChange={() => onToggle(row.id)}
               />
               <span
                 className={`text-sm truncate ${
@@ -72,7 +80,7 @@ function StyleVariationDimensions() {
             <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
-                onClick={() => move(row.id, 'up')}
+                onClick={() => onMove(row.id, 'up')}
                 disabled={index === 0}
                 className="px-1.5 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 disabled:opacity-30"
                 title="Move up"
@@ -81,7 +89,7 @@ function StyleVariationDimensions() {
               </button>
               <button
                 type="button"
-                onClick={() => move(row.id, 'down')}
+                onClick={() => onMove(row.id, 'down')}
                 disabled={index === rows.length - 1}
                 className="px-1.5 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 disabled:opacity-30"
                 title="Move down"
@@ -92,12 +100,55 @@ function StyleVariationDimensions() {
           </li>
         ))}
       </ul>
-    </div>
+    </section>
   );
 }
 
 export function GenerationButtonsSettings() {
-  return <StyleVariationDimensions />;
+  const styleHidden = useGenerationButtonPrefsStore((s) => s.styleHidden);
+  const styleOrder = useGenerationButtonPrefsStore((s) => s.styleOrder);
+  const actionHidden = useGenerationButtonPrefsStore((s) => s.actionHidden);
+  const actionOrder = useGenerationButtonPrefsStore((s) => s.actionOrder);
+  const toggleStyle = useGenerationButtonPrefsStore((s) => s.toggleStyle);
+  const moveStyle = useGenerationButtonPrefsStore((s) => s.moveStyle);
+  const resetStyle = useGenerationButtonPrefsStore((s) => s.resetStyle);
+  const toggleAction = useGenerationButtonPrefsStore((s) => s.toggleAction);
+  const moveAction = useGenerationButtonPrefsStore((s) => s.moveAction);
+  const resetAction = useGenerationButtonPrefsStore((s) => s.resetAction);
+
+  const actionRows = useMemo(
+    () => resolveOrdered(GENERATION_ACTION_CATALOG, actionHidden, actionOrder),
+    [actionHidden, actionOrder],
+  );
+  const styleRows = useMemo(
+    () => resolveOrdered(STYLE_VARIATION_CATEGORIES, styleHidden, styleOrder),
+    [styleHidden, styleOrder],
+  );
+
+  return (
+    <div className="p-4 max-w-xl">
+      <PrefListEditor
+        title="Button group pills"
+        description="Hide or reorder the buttons on media cards. A button still only appears where the card's context supports it (e.g. Extend on videos)."
+        rows={actionRows}
+        isDefault={actionHidden.length === 0 && actionOrder.length === 0}
+        lockLastEnabled={false}
+        onToggle={toggleAction}
+        onMove={moveAction}
+        onReset={resetAction}
+      />
+      <PrefListEditor
+        title="Style variation dimensions"
+        description="Choose which dimensions appear in the “Style variations” popover, and their order."
+        rows={styleRows}
+        isDefault={styleHidden.length === 0 && styleOrder.length === 0}
+        lockLastEnabled
+        onToggle={toggleStyle}
+        onMove={moveStyle}
+        onReset={resetStyle}
+      />
+    </div>
+  );
 }
 
 settingsRegistry.register({

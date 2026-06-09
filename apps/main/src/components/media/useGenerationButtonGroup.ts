@@ -42,6 +42,13 @@ import { providerCapabilityRegistry, useProviderCapabilities, useOperationSpec, 
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 import { useExtendPromptSourceStore } from './extendPromptSourceStore';
+import {
+  STYLE_VARIATION_CATEGORIES,
+  applyOrder,
+  useGenerationActionPrefs,
+  useVisibleStyleCategories,
+  type StyleVariationCategory,
+} from './generationButtonPrefsStore';
 import type { MediaCardResolvedProps } from './MediaCard';
 import type { MediaCardActionMode } from './mediaCardActionModeStore';
 import { useMediaCardActionModeStore } from './mediaCardActionModeStore';
@@ -53,11 +60,6 @@ import {
   type GenerationSeedModePreference,
 } from './quickGenerateModeStore';
 import { getSmartActionLabel, resolveMaxSlotsForModel } from './SlotPicker';
-import {
-  STYLE_VARIATION_CATEGORIES,
-  useVisibleStyleCategories,
-  type StyleVariationCategory,
-} from './styleVariationPrefsStore';
 import { useGenerationCardHandlers } from './useGenerationCardHandlers';
 import { useSelectedVideoTimestamp, useVideoMarksStore, SELECT_LAST_FRAME } from './videoMarksStore';
 
@@ -217,8 +219,8 @@ export type GenerationButtonGroupModel = {
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-// The style-variation catalog + per-user prefs live in styleVariationPrefsStore.
-// Re-exported here for back-compat with existing importers of this module.
+// The style-variation catalog + per-user button prefs live in
+// generationButtonPrefsStore. Re-exported here for back-compat.
 export { STYLE_VARIATION_CATEGORIES, type StyleVariationCategory };
 
 const UPLOAD_PROVIDER_COLORS: Record<string, string> = {
@@ -648,9 +650,11 @@ export function useGenerationButtonGroup({
     }
   }, [setDefaultUploadProvider, providerMenuMode, handleUploadToTarget]);
 
+  // Per-user button-group prefs (global; follow the card across every surface).
+  // Pill hide/reorder composes on top of context gating — see the return below.
+  const actionPrefs = useGenerationActionPrefs();
   // Style variation picker state (blocks lazy-loaded per category on hover).
-  // Visible dimensions + order come from the per-user prefs store, so this is
-  // a personal default that follows the card across every surface.
+  // Visible dimensions + order come from the per-user prefs store too.
   const styleCategories = useVisibleStyleCategories();
   const [storedStyleCategory, setStoredStyleCategory] = useState<string>(
     STYLE_VARIATION_CATEGORIES[0].id,
@@ -1104,8 +1108,12 @@ export function useGenerationButtonGroup({
     },
   };
 
+  // Apply the user's pill hide/reorder on top of context gating: only the
+  // actions the card already made available can be hidden or reordered.
+  const orderedActions = applyOrder(actions, actionPrefs.hidden, actionPrefs.order);
+
   return {
-    actions,
+    actions: orderedActions,
     providerMenu,
     hotkeyContextMenu,
     container: {
