@@ -52,15 +52,6 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
   const resolvedVideoRef = videoRef ?? fallbackVideoRef;
   const resolvedImageRef = imageRef ?? fallbackImageRef;
 
-  // Callback ref for the viewer <video>. The element is mounted with
-  // `key={asset.id}`, so React replaces it on every clip switch and drops the
-  // outgoing one with no cleanup hook. Relying on Chrome to reclaim the decoder
-  // when the element detaches falls behind under rapid generation, leaving
-  // orphaned native/GPU decoders that accumulate (the multi-GB tab). So when the
-  // node detaches (asset switch, tab-suspend unmount, or viewer close) we force
-  // an immediate release — the same pause/clear-src/load teardown the scrub
-  // widget uses — instead of trusting lazy reclaim. The forwarded ref is kept in
-  // sync because object refs have no detach hook of their own.
   const remoteModelUrl = useMemo(
     () => ensureBackendAbsolute(asset._assetModel?.remoteUrl ?? undefined, BACKEND_BASE),
     [asset._assetModel?.remoteUrl],
