@@ -707,3 +707,25 @@ def test_candidate_query_criteria():
     assert "NOT (EXISTS" in fav_sql
     assert "asset_tag" in fav_sql
     assert "tag.slug IN" in fav_sql
+
+    # Set-membership guards (i3): exclude_set_ids -> NOT EXISTS over
+    # asset_set_member (pin a set's members to local); include_set_ids -> a
+    # positive EXISTS (restrict to members). Empty/None is a no-op, like tags.
+    assert "asset_set_member" not in default_sql
+    assert str(candidate_query(0, None, exclude_set_ids=[])) == default_sql
+    assert str(candidate_query(0, None, include_set_ids=[])) == default_sql
+
+    excl_set_sql = str(candidate_query(0, None, exclude_set_ids=[5, 6]))
+    assert "NOT (EXISTS" in excl_set_sql
+    assert "asset_set_member" in excl_set_sql
+
+    incl_set_sql = str(candidate_query(0, None, include_set_ids=[7]))
+    assert "asset_set_member" in incl_set_sql
+    assert "EXISTS" in incl_set_sql
+    # include is a positive EXISTS, not the negated (exclude) form.
+    assert "NOT (EXISTS" not in incl_set_sql
+
+    # exclude + include compose: both membership guards present.
+    both_set_sql = str(candidate_query(0, None, exclude_set_ids=[5], include_set_ids=[7]))
+    assert both_set_sql.count("asset_set_member") >= 2
+    assert "NOT (EXISTS" in both_set_sql
