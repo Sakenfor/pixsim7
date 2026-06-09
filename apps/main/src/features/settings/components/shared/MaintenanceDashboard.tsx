@@ -1248,6 +1248,14 @@ const RELOCATE_STATS_KEY = '/assets/relocate-stats';
 const STORAGE_OVERVIEW_PERSIST_KEY = 'maintenance:storage-overview:v1';
 const STORAGE_OVERVIEW_SOFT_TTL_MS = 5 * 60 * 1000;
 
+// Module-scoped in-flight guard for the (expensive) storage scan. The Overview
+// panel unmounts when you switch maintenance tabs, so bouncing back before the
+// first scan finished used to remount and kick off a *second* concurrent walk.
+// Holding the live promise here (outside the component) lets a remount — or a
+// background revalidate colliding with itself — piggyback on the running scan.
+// A force refresh won't reuse a non-force scan; it needs genuinely fresh data.
+let inFlightOverviewScan: { force: boolean; promise: Promise<StorageOverviewData> } | null = null;
+
 function readPersistedOverview(): { data: StorageOverviewData; at: number } | null {
   try {
     const raw = sessionStorage.getItem(STORAGE_OVERVIEW_PERSIST_KEY);
@@ -1946,10 +1954,16 @@ function StorageOverview({
     const hadData = Boolean(persisted);
     if (!hadData) setLoading(true);
     setError(null);
-    try {
+    // Reuse a running scan across remounts; only start a new request when none
+    // is in flight (or when a force refresh needs to supersede a non-force one).
+    if (!inFlightOverviewScan || (force && !inFlightOverviewScan.force)) {
       // force re-scans the backend too (bypasses its own 60s cache).
       const path = force ? `${STORAGE_OVERVIEW_KEY}?force=true` : STORAGE_OVERVIEW_KEY;
-      const resp = await maintGet<StorageOverviewData>(path, SURFACE);
+      inFlightOverviewScan = { force, promise: maintGet<StorageOverviewData>(path, SURFACE) };
+    }
+    const scan = inFlightOverviewScan;
+    try {
+      const resp = await scan.promise;
       writeStatsCache(STORAGE_OVERVIEW_KEY, resp);
       writePersistedOverview(resp);
       setData(resp);
@@ -1957,6 +1971,7 @@ function StorageOverview({
       // Don't blow away already-shown data on a background-revalidate failure.
       if (!hadData) setError(extractErrorMessage(err) || 'Failed to load storage overview');
     } finally {
+      if (inFlightOverviewScan === scan) inFlightOverviewScan = null;
       setLoading(false);
     }
   }, []);
