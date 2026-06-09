@@ -870,6 +870,23 @@ async def apply_hook_config(
             allow_list_settings.append(tool)
 
     permissions["allow"] = allow_list_settings
+
+    # ── Extra readable/writable roots beyond the project dir ──
+    # The session is confined to its working directory (the repo), so the chat
+    # agent can't touch files elsewhere — including Claude Code's OWN plan files
+    # in ~/.claude/plans (deleting/cleaning those failed with "may only access
+    # files in the allowed working directories"). Grant a SCOPED extra root so
+    # the agent can manage those, without opening up all of ~/.claude (which
+    # holds settings, credentials, other state). Merge with any user-added
+    # entries so a manual addition survives this regeneration.
+    extra_dirs = permissions.get("additionalDirectories", [])
+    if not isinstance(extra_dirs, list):
+        extra_dirs = []
+    claude_plans_dir = str(claude_dir / "plans")
+    if claude_plans_dir not in extra_dirs:
+        extra_dirs.append(claude_plans_dir)
+    permissions["additionalDirectories"] = extra_dirs
+
     project_settings["permissions"] = permissions
 
     try:
