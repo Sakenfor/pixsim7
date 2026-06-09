@@ -41,6 +41,11 @@ function isLikelyVideoUrl(url: string | undefined): boolean {
   return /\.(mp4|webm|mov|m4v|mkv|avi)(?:$|[?#])/.test(lowered);
 }
 
+// Grace before treating a never-resolving playback src (e.g. a failed media
+// token, which leaves `useMediaStreamSrc` returning nothing) as a load failure.
+// Generous enough that a cold-token round-trip resolves well within it.
+const UNRESOLVED_SRC_TIMEOUT_MS = 6000;
+
 export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, imageRef }: MediaDisplayProps) {
   const fallbackVideoRef = useRef<HTMLVideoElement>(null);
   const fallbackImageRef = useRef<HTMLImageElement>(null);
@@ -137,6 +142,36 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
       setVideoLoadFailed(true);
     }
   }, [asset.type, videoCandidates.length]);
+
+  // Watchdog for an unresolvable playback src. When candidates exist but
+  // `resolvedMediaUrl` never materializes — e.g. the media-token fetch failed,
+  // so `useMediaStreamSrc` has nothing to return — the <video> gets no src,
+  // fires no `error` event, and would spin forever. After a grace window,
+  // advance to the next candidate (the remote URL needs no token) or surface a
+  // failure so the Retry affordance shows instead of an endless spinner. Only
+  // arms while the src is empty, so it never cuts off a genuinely-loading clip
+  // (those resolve `resolvedMediaUrl` and report via onLoadedMetadata/onError).
+  useEffect(() => {
+    if (asset.type !== 'video') return;
+    if (resolvedMediaUrl || videoReady || videoLoadFailed) return;
+    if (videoCandidates.length === 0) return; // empty-candidates handled above
+    const timer = setTimeout(() => {
+      if (videoCandidateIndex < videoCandidates.length - 1) {
+        setVideoCandidateIndex((idx) => idx + 1);
+      } else {
+        setVideoLoadFailed(true);
+      }
+    }, UNRESOLVED_SRC_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [
+    asset.type,
+    asset.id,
+    resolvedMediaUrl,
+    videoReady,
+    videoLoadFailed,
+    videoCandidateIndex,
+    videoCandidates.length,
+  ]);
 
   useEffect(() => {
     if (asset.type !== 'video') return;
