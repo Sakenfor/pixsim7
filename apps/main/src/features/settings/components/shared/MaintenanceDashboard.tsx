@@ -1315,6 +1315,10 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   const [excludeFavorites, setExcludeFavorites] = useState(true);
   // Pin members of these manual sets to local. Plan media-storage-tiering cp-i (i3).
   const [excludeSetIds, setExcludeSetIds] = useState<number[]>([]);
+  // Re-hash the archive copy and compare to asset.sha256 before deleting the
+  // local blob (byte-level verify, not just size). Default ON — slower but the
+  // strongest guarantee for irreplaceable originals. Apply-only (ignored on dry-run).
+  const [verifyHash, setVerifyHash] = useState(true);
 
   // Manual sets only — membership-based exclusion needs member rows; smart sets
   // (filter-derived) have none, so they can't be pinned by this path.
@@ -1370,7 +1374,7 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
       setResult(null);
       try {
         const qs = criteriaQuery();
-        const path = `/assets/relocate?limit=${limit}&dry_run=${dryRun}${qs ? `&${qs}` : ''}`;
+        const path = `/assets/relocate?limit=${limit}&dry_run=${dryRun}&verify_hash=${verifyHash}${qs ? `&${qs}` : ''}`;
         const data = await maintPost<RelocateVideosResult>(path, SURFACE);
         if (dryRun) {
           setResult({
@@ -1394,7 +1398,7 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
         setBusy(false);
       }
     },
-    [criteriaQuery, limit, loadStats, onMoved],
+    [criteriaQuery, limit, verifyHash, loadStats, onMoved],
   );
 
   const onApply = useCallback(() => {
@@ -1483,6 +1487,16 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
             className="h-3 w-3 disabled:opacity-50"
           />
           Never archive favorites (keep <code className="text-[9px]">user:favorite</code> on local)
+        </label>
+        <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={verifyHash}
+            onChange={(e) => setVerifyHash(e.target.checked)}
+            disabled={busy}
+            className="h-3 w-3 disabled:opacity-50"
+          />
+          Verify hash before delete (re-hash the archive copy; slower, safest)
         </label>
 
         {manualSets.length > 0 && (
