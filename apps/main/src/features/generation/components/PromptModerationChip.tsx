@@ -142,14 +142,10 @@ export function PromptModerationChip({
           : 'red';
 
   // Inline label: rate + raw counts so confidence is visible without hovering.
-  // A 🎬 trails an active streak when the prompt still lands reliably — signals
-  // "a clip is coming out of these retries" so the climbing streak doesn't read
-  // as pure failure.
+  // The "still landing" reassurance lives in the popover (expected-tries), not
+  // inline — an inline glyph read as noise once a clip landed.
   const streakPrefix = hasStreak ? `⟳${stats.streak}/${cap} ` : '';
-  const landingSoon = hasStreak && !atCap && expectedTries != null;
-  const label = empty
-    ? '—'
-    : `${streakPrefix}✓${ratePct}% ${headline.passed}/${total}${landingSoon ? ' 🎬' : ''}`;
+  const label = empty ? '—' : `${streakPrefix}✓${ratePct}% ${headline.passed}/${total}`;
 
   const headerColor = hasStreak
     ? atCap
