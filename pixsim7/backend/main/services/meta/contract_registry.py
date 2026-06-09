@@ -637,6 +637,39 @@ def _builtin_plans_management() -> MetaContract:
                 tags=["read", "docs", "planning"],
             ),
             MetaContractEndpoint(
+                id="plans.work_log",
+                method="GET",
+                path="/api/v1/dev/plans/work-log/{plan_id}",
+                summary=(
+                    "List a plan's work_summary entries (from log_work), newest "
+                    "first. Each entry hydrates summary/decisions/next/blockers/"
+                    "evidence plus session_id/run_id/agent_type/timestamp out of "
+                    "the activity log, so a fresh session can resume a plan cold "
+                    "from the prior session's handoff notes. Paginated via "
+                    "limit/offset."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "params": {
+                            "type": "object",
+                            "properties": {
+                                "limit": {
+                                    "type": "integer",
+                                    "description": "Max entries to return (1-500, default 50).",
+                                },
+                                "offset": {
+                                    "type": "integer",
+                                    "description": "Entries to skip for pagination (default 0).",
+                                },
+                            },
+                        },
+                    },
+                    "required": ["plan_id"],
+                },
+                tags=["read", "agent", "planning", "observability"],
+            ),
+            MetaContractEndpoint(
                 id="plans.activity",
                 method="GET",
                 path="/api/v1/dev/plans/activity",
@@ -893,6 +926,122 @@ def _builtin_plans_management() -> MetaContract:
                     "'who is working on what right now' overview."
                 ),
                 tags=["agent", "planning", "observability"],
+            ),
+            MetaContractEndpoint(
+                id="plans.participants",
+                method="GET",
+                path="/api/v1/dev/plans/{plan_id}/participants",
+                summary=(
+                    "Attributed participants for one plan (builders + reviewers) "
+                    "with agent/run/session context and liveness. The per-plan "
+                    "companion to plans.active_agents (the cross-plan roster)."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {},
+                    "required": ["plan_id"],
+                },
+                tags=["read", "agent", "planning", "observability"],
+            ),
+            MetaContractEndpoint(
+                id="plans.revisions",
+                method="GET",
+                path="/api/v1/dev/plans/revisions/{plan_id}",
+                summary="List immutable revision-history snapshots for a plan, newest first.",
+                input_schema={
+                    "type": "object",
+                    "properties": {},
+                    "required": ["plan_id"],
+                },
+                tags=["read", "planning", "history"],
+            ),
+            MetaContractEndpoint(
+                id="plans.restore_revision",
+                method="POST",
+                path="/api/v1/dev/plans/restore/{plan_id}/{revision}",
+                summary="Restore a plan's HEAD fields from an immutable revision snapshot.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "body": {
+                            "type": "object",
+                            "properties": {
+                                "auto_head": {"type": "boolean"},
+                                "commit_sha": {"type": "string"},
+                                "verify_commits": {"type": "boolean"},
+                            },
+                        },
+                    },
+                    "required": ["plan_id", "revision"],
+                },
+                tags=["update", "planning", "history"],
+            ),
+            MetaContractEndpoint(
+                id="plans.stages",
+                method="GET",
+                path="/api/v1/dev/plans/stages",
+                summary="List canonical plan stages for UI/agent validation of the stage field.",
+                tags=["read", "planning", "policy"],
+            ),
+            MetaContractEndpoint(
+                id="plans.archive",
+                method="POST",
+                path="/api/v1/dev/plans/archive/{plan_id}",
+                summary=(
+                    "Archive a plan (hidden from listings, recoverable via "
+                    "unarchive). Admin only."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "body": {
+                            "type": "object",
+                            "properties": {"auto_head": {"type": "boolean"}},
+                        },
+                    },
+                    "required": ["plan_id"],
+                },
+                tags=["update", "planning", "admin"],
+            ),
+            MetaContractEndpoint(
+                id="plans.unarchive",
+                method="POST",
+                path="/api/v1/dev/plans/unarchive/{plan_id}",
+                summary="Unarchive a plan back to active or parked status. Admin only.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "body": {
+                            "type": "object",
+                            "properties": {
+                                "restore_status": {"type": "string"},
+                                "auto_head": {"type": "boolean"},
+                            },
+                        },
+                    },
+                    "required": ["plan_id"],
+                },
+                tags=["update", "planning", "admin"],
+            ),
+            MetaContractEndpoint(
+                id="plans.delete",
+                method="DELETE",
+                path="/api/v1/dev/plans/{plan_id}",
+                summary=(
+                    "Soft-delete (status=removed) or hard-delete (?hard=true) a "
+                    "plan. Soft is recoverable. Admin only."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "params": {
+                            "type": "object",
+                            "properties": {"hard": {"type": "boolean"}},
+                        },
+                    },
+                    "required": ["plan_id"],
+                },
+                tags=["delete", "planning", "admin"],
             ),
         ],
     )

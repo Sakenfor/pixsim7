@@ -78,7 +78,7 @@ class AgentContextResponse(BaseModel):
         default_factory=list,
         description="Recent work summaries from previous agent sessions on the assigned plan. Provides continuity across sessions.",
     )
-    availableActions: List[Dict[str, str]] = Field(default_factory=list)
+    availableActions: List[Dict[str, Any]] = Field(default_factory=list)
     discovery: Dict[str, str] = Field(
         default_factory=lambda: {
             "metaContracts": "/api/v1/meta/contracts",
@@ -86,6 +86,40 @@ class AgentContextResponse(BaseModel):
             "hint": "GET /api/v1/meta/contracts for full API surface discovery across all domains (prompts, blocks, plans, codegen, ui, assistant).",
         }
     )
+
+
+def _plans_available_actions() -> List[Dict[str, Any]]:
+    """Project the canonical plans MetaContract into the agent-facing action list.
+
+    Single source of truth: the same ``plans.management`` sub-endpoints generate
+    both the MCP tools and this inline cheat-sheet, so the two can no longer
+    drift. Replaces a formerly hand-maintained ~230-line literal. ``body_schema``
+    / ``params_schema`` are surfaced from each endpoint's ``input_schema`` so an
+    agent has the request contract without a second fetch.
+    """
+    from pixsim7.backend.main.services.meta.contract_registry import (
+        meta_contract_registry,
+    )
+
+    contract = meta_contract_registry.get_or_none("plans.management")
+    if contract is None:
+        return []
+
+    actions: List[Dict[str, Any]] = []
+    for ep in contract.sub_endpoints:
+        action: Dict[str, Any] = {
+            "action": ep.id.split(".", 1)[-1],  # "plans.progress" -> "progress"
+            "method": ep.method,
+            "url": ep.path,
+            "description": ep.summary or "",
+        }
+        props = (ep.input_schema or {}).get("properties", {})
+        if isinstance(props.get("body"), dict):
+            action["body_schema"] = props["body"]
+        if isinstance(props.get("params"), dict):
+            action["params_schema"] = props["params"]
+        actions.append(action)
+    return actions
 
 
 @router.get("/agent-context", response_model=AgentContextResponse)
@@ -208,237 +242,7 @@ async def get_agent_context(
         assignment=assignment,
         activePlans=active_plans,
         recentWorkSummaries=work_summaries,
-        availableActions=[
-            {
-                "action": "create_plan",
-                "method": "POST",
-                "url": "/dev/plans",
-                "body": '{"id": "slug", "title": "...", "summary": "...", "markdown": "...", "namespace": "dev/plans", "plan_type": "feature|bugfix|refactor|exploration|task", "task_scope": "plan|user|system", "status": "active", "stage": "backlog|proposed|discovery|design|implementation|validation|rollout|completed", "owner": "unassigned", "priority": "normal", "parent_id": null, "target": {}, "checkpoints": [], "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
-                "description": "Create a new plan (Document + PlanRegistry). Use parent_id to create sub-plans under an initiative. Automated callers must include checkpoints; see get_authoring_contract.",
-            },
-            {
-                "action": "get_authoring_contract",
-                "method": "GET",
-                "url": PLAN_AUTHORING_CONTRACT_ENDPOINT,
-                "description": "Canonical required/suggested plan authoring rules by principal type. Use this instead of hard-coded assumptions.",
-            },
-            {
-                "action": "list_stages",
-                "method": "GET",
-                "url": "/dev/plans/stages",
-                "description": "List canonical plan stages for UI/agent validation.",
-            },
-            {
-                "action": "get_plan_settings",
-                "method": "GET",
-                "url": "/dev/plans/settings",
-                "description": "Read runtime plan mode settings (DB-only mode).",
-            },
-            {
-                "action": "set_plan_settings",
-                "method": "PATCH",
-                "url": "/dev/plans/settings",
-                "body": '{"plans_db_only_mode": true}',
-                "description": "Toggle runtime DB-only mode for the current backend process (admin).",
-            },
-            {
-                "action": "update_status",
-                "method": "PATCH",
-                "url": "/dev/plans/{plan_id}",
-                "body": '{"status": "active|parked|done|blocked"}',
-                "description": "Change plan status.",
-            },
-            {
-                "action": "update_fields",
-                "method": "PATCH",
-                "url": "/dev/plans/{plan_id}",
-                "body": '{"title": "...", "status": "active|parked|done|blocked", "stage": "backlog|proposed|discovery|design|implementation|validation|rollout|completed", "priority": "high|normal|low", "task_scope": "plan|user|system", "plan_type": "feature|bugfix|refactor|exploration|task", "owner": "...", "summary": "...", "visibility": "public|shared|private", "namespace": "dev/plans", "target": {}, "checkpoints": [], "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
-                "description": "Update any combination of plan fields in a single call",
-            },
-            {
-                "action": "patch_fields",
-                "method": "PATCH",
-                "url": "/dev/plans/{plan_id}",
-                "body": '{"patch": {"target": {"type": "system", "id": "agent-infra"}, "checkpoints": [{"id": "phase_1", "label": "Phase 1", "status": "active"}]}}',
-                "description": "Generic patch map for mutable fields (explicit fields in body override patch keys).",
-            },
-            {
-                "action": "log_progress",
-                "method": "POST",
-                "url": "/dev/plans/progress/{plan_id}",
-                "body": '{"checkpoint_id": "phase_1", "points_delta": 1, "note": "implemented API scaffolding", "commit_sha": "a1b2c3d4e5f6", "append_commits": [], "commit_range": null, "auto_head": false, "verify_commits": false, "append_evidence": [{"kind": "test_suite", "ref": "my-feature-tests"}, "pixsim7/backend/tests/api/test_feature.py"]}',
-                "description": "Apply checkpoint progress deltas and metadata. Commit traceability: commit_sha (single), append_commits (list), commit_range ('sha..sha' auto-expanded), auto_head (resolve HEAD), verify_commits (check SHAs exist). All commit sources auto-convert to git_commit evidence.",
-            },
-            {
-                "action": "update_markdown",
-                "method": "PATCH",
-                "url": "/dev/plans/{plan_id}",
-                "body": '{"markdown": "full plan markdown content"}',
-                "description": "Update plan prose content",
-            },
-            {
-                "action": "list_plans",
-                "method": "GET",
-                "url": "/dev/plans?status=active",
-                "description": "List all plans, optionally filtered by status or owner",
-            },
-            {
-                "action": "get_plan",
-                "method": "GET",
-                "url": "/dev/plans/{plan_id}",
-                "description": "Get full plan detail with markdown, checkpoints, children",
-            },
-            {
-                "action": "list_participants",
-                "method": "GET",
-                "url": "/dev/plans/{plan_id}/participants",
-                "description": "List attributed participants for the plan (builders + reviewers with agent/run/session context).",
-            },
-            {
-                "action": "list_revisions",
-                "method": "GET",
-                "url": "/dev/plans/revisions/{plan_id}",
-                "description": "List immutable revision history snapshots for a plan.",
-            },
-            {
-                "action": "restore_revision",
-                "method": "POST",
-                "url": "/dev/plans/restore/{plan_id}/{revision}",
-                "body": '{"auto_head": false, "commit_sha": null, "verify_commits": false}',
-                "description": "Restore plan HEAD fields from an immutable revision snapshot.",
-            },
-            {
-                "action": "list_review_rounds",
-                "method": "GET",
-                "url": "/dev/plans/reviews/{plan_id}/rounds",
-                "description": "List iterative review rounds for a plan (open/changes_requested/approved/concluded).",
-            },
-            {
-                "action": "create_review_round",
-                "method": "POST",
-                "url": "/dev/plans/reviews/{plan_id}/rounds",
-                "body": '{"round_number": null, "review_revision": null, "status": "open", "note": "Initial reviewer pass"}',
-                "description": "Create a review round. round_number auto-increments when omitted.",
-            },
-            {
-                "action": "update_review_round",
-                "method": "PATCH",
-                "url": "/dev/plans/reviews/{plan_id}/rounds/{round_id}",
-                "body": '{"status": "changes_requested|approved|concluded", "conclusion": "final summary"}',
-                "description": "Update round state and optional conclusion. Concluded rounds require conclusion text.",
-            },
-            {
-                "action": "add_review_node",
-                "method": "POST",
-                "url": "/dev/plans/reviews/{plan_id}/nodes",
-                "body": '{"round_id": "uuid", "kind": "review_comment|agent_response|conclusion|note", "author_role": "reviewer|author|agent|system", "body": "...", "severity": "info|low|medium|high|critical", "plan_anchor": {"selector": "checkpoint:phase_1"}, "refs": [{"relation": "because_of|supports|contradicts|supersedes|replies_to|addresses", "target_node_id": "uuid", "target_anchor": {"selector": "p3"}, "target_plan_anchor": {"selector": "checkpoint:phase_2"}, "quote": "..." }] }',
-                "description": "Append a review/response node with typed references. Causal relations are cycle-checked.",
-            },
-            {
-                "action": "list_review_assignees",
-                "method": "GET",
-                "url": "/dev/plans/reviews/{plan_id}/assignees",
-                "description": "List live review assignees (idle first) plus recent reviewers for continuity targeting.",
-            },
-            {
-                "action": "list_review_requests",
-                "method": "GET",
-                "url": "/dev/plans/reviews/{plan_id}/requests",
-                "description": "List review requests for the plan, optionally filtered by status/round_id.",
-            },
-            {
-                "action": "create_review_request",
-                "method": "POST",
-                "url": "/dev/plans/reviews/{plan_id}/requests",
-                "body": '{"round_id": "uuid|null", "title": "...", "body": "...", "target_mode": "auto|session|recent_agent", "target_bridge_id": "bridge-uuid", "target_session_id": "agent-id", "preferred_agent_id": "agent-id", "target_profile_id": "profile-id", "target_method": "remote", "target_model_id": "claude-3-7-sonnet", "target_provider": "anthropic", "queue_if_busy": false, "auto_reroute_if_busy": true}',
-                "description": "Create a review request with dispatcher targeting policy (auto, pinned live session, or preferred recent agent).",
-            },
-            {
-                "action": "update_review_request",
-                "method": "PATCH",
-                "url": "/dev/plans/reviews/{plan_id}/requests/{request_id}",
-                "body": '{"status": "open|in_progress|fulfilled|cancelled", "resolution_note": "...", "resolved_node_id": "uuid|null"}',
-                "description": "Update review request status or resolution details.",
-            },
-            {
-                "action": "dispatch_review_request",
-                "method": "POST",
-                "url": "/dev/plans/reviews/{plan_id}/requests/{request_id}/dispatch",
-                "body": '{"timeout_seconds": 240, "spawn_if_missing": false, "create_round_if_missing": true}',
-                "description": "Execute one review request: resolve assignee, call target model/session, write agent response node, and fulfill the request on success.",
-            },
-            {
-                "action": "dispatch_review_tick",
-                "method": "POST",
-                "url": "/dev/plans/reviews/dispatch/tick",
-                "body": '{"plan_id": null, "limit": 5, "timeout_seconds": 240, "spawn_if_missing": false, "create_round_if_missing": true}',
-                "description": "Process a batch of open review requests (global or plan-scoped).",
-            },
-            {
-                "action": "get_review_graph",
-                "method": "GET",
-                "url": "/dev/plans/reviews/{plan_id}/graph",
-                "description": "Fetch rounds + nodes + typed links graph (optionally filter by round_number or round_id).",
-            },
-            {
-                "action": "preview_source_ref",
-                "method": "GET",
-                "url": "/dev/plans/reviews/{plan_id}/source-preview?path=factories.py&start_line=171&end_line=211",
-                "description": "Preview repository source snippet for review references. Restricted to plan owner/admin.",
-            },
-            {
-                "action": "get_documents",
-                "method": "GET",
-                "url": "/dev/plans/documents/{plan_id}",
-                "description": "Fetch companion and handoff documents for a plan",
-            },
-            {
-                "action": "get_work_log",
-                "method": "GET",
-                "url": "/dev/plans/work-log/{plan_id}",
-                "description": "List work_summary entries for the plan, newest first. Returns hydrated decisions/next/blockers/evidence from the activity log so a fresh session can resume cold.",
-            },
-            {
-                "action": "archive_plan",
-                "method": "POST",
-                "url": "/dev/plans/archive/{plan_id}",
-                "body": '{"auto_head": false}',
-                "description": "Archive a plan (hidden from listings, recoverable via unarchive). Admin only.",
-            },
-            {
-                "action": "unarchive_plan",
-                "method": "POST",
-                "url": "/dev/plans/unarchive/{plan_id}",
-                "body": '{"restore_status": "active", "auto_head": false}',
-                "description": "Unarchive a plan back to active or parked status. Admin only.",
-            },
-            {
-                "action": "delete_plan",
-                "method": "DELETE",
-                "url": "/dev/plans/{plan_id}?hard=false",
-                "description": "Soft-delete (status=removed) or hard-delete (?hard=true) a plan. Soft is recoverable. Admin only.",
-            },
-            {
-                "action": "claim_plan",
-                "method": "POST",
-                "url": "/dev/plans/{plan_id}/claim",
-                "body": '{"checkpoint_id": "optional-checkpoint-id"}',
-                "description": "Recommended at session start on your assigned plan: explicitly register presence / claim a checkpoint. Soft (returns conflicts[], never rejects), heartbeats while you work, auto-released on run end.",
-            },
-            {
-                "action": "release_claim",
-                "method": "POST",
-                "url": "/dev/plans/{plan_id}/release",
-                "body": '{"checkpoint_id": "optional-checkpoint-id"}',
-                "description": "Release your open claim(s) on a plan (or one checkpoint). Optional — claims auto-release when the run ends.",
-            },
-            {
-                "action": "list_active_agents",
-                "method": "GET",
-                "url": "/dev/plans/active-agents",
-                "description": "Cross-plan roster of agents currently active (non-stale, run not terminal), grouped by plan. Use to see who is working on what before claiming.",
-            },
-        ],
+        availableActions=_plans_available_actions(),
     )
 
 
