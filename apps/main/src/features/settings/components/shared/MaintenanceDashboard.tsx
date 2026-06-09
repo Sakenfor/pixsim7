@@ -1301,26 +1301,76 @@ const RELOCATE_MEDIA_TYPES: { key: string; label: string }[] = [
   { key: '3d_model', label: '3D' },
 ];
 
+// Relocation criteria persist across panel reopen (component state would reset
+// every mount, silently dropping a "Keep sets local" pin — a safety risk).
+const RELOCATE_CRITERIA_KEY = 'maintenance:relocate-criteria:v1';
+interface RelocateCriteria {
+  mediaTypes: string[];
+  minSizeMb: number;
+  olderThanDays: number;
+  excludeFavorites: boolean;
+  excludeSetIds: number[];
+  verifyHash: boolean;
+}
+const RELOCATE_CRITERIA_DEFAULTS: RelocateCriteria = {
+  mediaTypes: ['video'],
+  minSizeMb: 0,
+  olderThanDays: 0,
+  excludeFavorites: true,
+  excludeSetIds: [],
+  verifyHash: true,
+};
+function readRelocateCriteria(): RelocateCriteria {
+  try {
+    const raw = localStorage.getItem(RELOCATE_CRITERIA_KEY);
+    if (!raw) return RELOCATE_CRITERIA_DEFAULTS;
+    const p = JSON.parse(raw) as Partial<RelocateCriteria>;
+    return {
+      mediaTypes: Array.isArray(p.mediaTypes) ? p.mediaTypes : RELOCATE_CRITERIA_DEFAULTS.mediaTypes,
+      minSizeMb: typeof p.minSizeMb === 'number' && Number.isFinite(p.minSizeMb) ? p.minSizeMb : 0,
+      olderThanDays: typeof p.olderThanDays === 'number' && Number.isFinite(p.olderThanDays) ? p.olderThanDays : 0,
+      excludeFavorites: typeof p.excludeFavorites === 'boolean' ? p.excludeFavorites : true,
+      excludeSetIds: Array.isArray(p.excludeSetIds) ? p.excludeSetIds.filter((x): x is number => typeof x === 'number') : [],
+      verifyHash: typeof p.verifyHash === 'boolean' ? p.verifyHash : true,
+    };
+  } catch {
+    return RELOCATE_CRITERIA_DEFAULTS;
+  }
+}
+
 function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   const [stats, setStats] = useState<RelocateStats | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [limit, setLimit] = useState(50);
-  // Relocation criteria (AND-ed). Default keeps the prior video-only behavior.
-  const [mediaTypes, setMediaTypes] = useState<string[]>(['video']);
-  const [minSizeMb, setMinSizeMb] = useState(0);
-  const [olderThanDays, setOlderThanDays] = useState(0);
+  // Relocation criteria (AND-ed), hydrated from the last session's selection.
+  const initialCriteria = useMemo(readRelocateCriteria, []);
+  const [mediaTypes, setMediaTypes] = useState<string[]>(initialCriteria.mediaTypes);
+  const [minSizeMb, setMinSizeMb] = useState(initialCriteria.minSizeMb);
+  const [olderThanDays, setOlderThanDays] = useState(initialCriteria.olderThanDays);
   // Pin favorites (user:favorite tag) to local by default — curated assets
   // shouldn't get shipped to the archive. Plan media-storage-tiering cp-i (i1).
-  const [excludeFavorites, setExcludeFavorites] = useState(true);
+  const [excludeFavorites, setExcludeFavorites] = useState(initialCriteria.excludeFavorites);
   // Pin members of these manual sets to local. Plan media-storage-tiering cp-i (i3).
-  const [excludeSetIds, setExcludeSetIds] = useState<number[]>([]);
+  const [excludeSetIds, setExcludeSetIds] = useState<number[]>(initialCriteria.excludeSetIds);
   // Re-hash the archive copy and compare to asset.sha256 before deleting the
   // local blob (byte-level verify, not just size). Default ON — slower but the
   // strongest guarantee for irreplaceable originals. Apply-only (ignored on dry-run).
-  const [verifyHash, setVerifyHash] = useState(true);
+  const [verifyHash, setVerifyHash] = useState(initialCriteria.verifyHash);
   // Monotonic id so only the latest relocate-stats request applies its result.
   const statsReqIdRef = useRef(0);
+
+  // Persist criteria so the selection (esp. Keep sets local) survives reopen.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        RELOCATE_CRITERIA_KEY,
+        JSON.stringify({ mediaTypes, minSizeMb, olderThanDays, excludeFavorites, excludeSetIds, verifyHash }),
+      );
+    } catch {
+      /* localStorage unavailable — non-fatal */
+    }
+  }, [mediaTypes, minSizeMb, olderThanDays, excludeFavorites, excludeSetIds, verifyHash]);
 
   // Manual sets only — membership-based exclusion needs member rows; smart sets
   // (filter-derived) have none, so they can't be pinned by this path.
@@ -1463,9 +1513,13 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
           <input
             type="number"
             min={0}
-            value={minSizeMb}
+            // Show empty (not a sticky leading 0) when unset so typing reads clean.
+            value={minSizeMb === 0 ? '' : minSizeMb}
+            placeholder="0"
             onChange={(e) => {
-              const n = Number(e.target.value);
+              const raw = e.target.value;
+              if (raw === '') { setMinSizeMb(0); return; }
+              const n = Number(raw);
               if (Number.isFinite(n)) setMinSizeMb(Math.max(0, Math.floor(n)));
             }}
             disabled={busy}
@@ -1475,9 +1529,12 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
           <input
             type="number"
             min={0}
-            value={olderThanDays}
+            value={olderThanDays === 0 ? '' : olderThanDays}
+            placeholder="0"
             onChange={(e) => {
-              const n = Number(e.target.value);
+              const raw = e.target.value;
+              if (raw === '') { setOlderThanDays(0); return; }
+              const n = Number(raw);
               if (Number.isFinite(n)) setOlderThanDays(Math.max(0, Math.floor(n)));
             }}
             disabled={busy}
