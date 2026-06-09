@@ -20,7 +20,7 @@ import {
 } from '@lib/media/capturedFrameStore';
 import { useMediaSuspended } from '@lib/media/mediaSuspendStore';
 import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
-import { releaseVideoDecoder } from '@lib/media/videoDecoder';
+import { useManagedVideoSource } from '@lib/media/videoDecoder';
 import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 
 import { claimAudio, registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
@@ -324,6 +324,14 @@ export function VideoScrubWidgetRenderer({
   const hasVideoDecoderSlot = useVideoActivationSlot(wantsVideoDecoder);
   const shouldAttachVideoSrc = mediaActive && hasVideoDecoderSlot;
 
+  // Callback ref for the scrub <video>. The element is conditionally mounted
+  // (`{shouldAttachVideoSrc && <video/>}`), so on hover-out it UNMOUNTS — and
+  // the decoder must be released right then, while the element still exists.
+  // (An effect keyed on `shouldAttachVideoSrc` can't: by the time it runs the
+  // element is gone and `videoRef.current` is already null.) The hook releases
+  // the decoder on detach and keeps `videoRef` in sync for the scrub controls.
+  const attachVideo = useManagedVideoSource(effectiveUrl, videoRef);
+
   // Force video to load when hovering starts — but skip the reload if the
   // video is already loaded (from a recent hover whose src was kept warm).
   // Re-calling load() would wipe the decoded frame buffer, making re-hover
@@ -412,14 +420,13 @@ export function VideoScrubWidgetRenderer({
     };
   }, []);
 
-  // Explicitly release decoder/network resources when this widget should no
-  // longer hold a source.  Merely rendering src={undefined} can leave
-  // currentSrc + decoder state pinned in some browsers.
+  // Reset readiness when the decoder slot drops (hover-out / suspend). Decoder
+  // release itself is handled by `attachVideo` on the <video>'s unmount.
   useEffect(() => {
     if (shouldAttachVideoSrc) return;
-    const el = videoRef.current;
-    if (!el) return;
-    releaseVideoDecoder(el);
+    // The <video> unmounts here and its decoder is released by `attachVideo`
+    // (the callback ref) at detach. Just reset readiness so the next mount
+    // fades in cleanly instead of flashing a stale "loaded" frame.
     setIsVideoLoaded(false);
   }, [shouldAttachVideoSrc]);
 
@@ -1190,7 +1197,7 @@ export function VideoScrubWidgetRenderer({
       {/* Use crossOrigin="anonymous" for external URLs (CDN), omit for local paths */}
       {shouldAttachVideoSrc && (
         <video
-          ref={videoRef}
+          ref={attachVideo}
           data-hovering={isHovering}
           data-video-loaded={isVideoLoaded}
           data-keep-paused={keepSrcWhilePaused}
