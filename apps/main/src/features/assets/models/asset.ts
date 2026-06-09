@@ -73,16 +73,12 @@ export interface AssetModel {
   hasGenerationContext?: boolean;
   /** True when at least one other asset lists this one as its source/parent (via lineage or upload_context) */
   hasChildren?: boolean;
-  /** User-scoped, include-self count of assets sharing the same input-asset set
-   *  (Asset.input_assets_key). 0 when the asset had no input assets. */
-  sameInputsCount?: number;
-  /** User-scoped, include-self count of assets sharing the same prompt family
-   *  (PromptVersion.family_id; falls back to exact version for one-off prompts).
-   *  0 when the asset has no prompt linkage. */
-  samePromptCount?: number;
-  /** User-scoped, include-self count of assets sharing the same generation
-   *  seed (Asset.gen_seed). 0 when no meaningful seed is recorded. */
-  sameSeedCount?: number;
+  /** Cohort counts for the similarity badge, keyed by lit-facet letters in
+   *  canonical i<p<s order: i, p, s, ip, is, ps, ips (i=inputs, p=prompt,
+   *  s=seed). Each value is the user-scoped, include-self count of assets
+   *  matching ALL facets in that combo; 0 when the asset lacks a facet. The
+   *  badge displays the entry for the user's chosen facet lens. */
+  cohortCounts?: Record<string, number>;
   /** True when this image was CDN-salvaged from a Pixverse false-filter / stuck-processing state */
   recovered?: boolean;
   storedKey?: string | null;
@@ -214,9 +210,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     sourceGenerationId: response.source_generation_id,
     hasGenerationContext: response.has_generation_context ?? false,
     hasChildren: (response as any).has_children ?? false,
-    sameInputsCount: (response as any).same_inputs_count ?? 0,
-    samePromptCount: (response as any).same_prompt_count ?? 0,
-    sameSeedCount: (response as any).same_seed_count ?? 0,
+    cohortCounts: ((response as any).cohort_counts ?? {}) as Record<string, number>,
     recovered: response.recovered ?? false,
     storedKey: response.stored_key,
     syncStatus: response.sync_status,
@@ -284,9 +278,16 @@ export function toViewerAsset(asset: AssetModel): ViewerAsset {
   const safeRemoteUrl = suppressRemoteVideoFallback
     ? undefined
     : ensureBackendAbsolute(asset.remoteUrl ?? undefined, BACKEND_BASE);
+  // For a video, the source must actually be playable video. `previewUrl` and
+  // `thumbnailUrl` are (almost always) images — handing one to a <video> src
+  // just errors into the fallback chain and reads as a broken clip. Only fall
+  // back to a *video* preview; never to a thumbnail. The thumbnail still rides
+  // along as `url` (the poster) below.
   const videoFullUrl =
     viewerType === 'video'
-      ? (safeMainUrl || safeRemoteUrl || safePreviewUrl || safeThumbUrl)
+      ? (safeMainUrl ||
+         safeRemoteUrl ||
+         (isVideoOrAudioUrl(safePreviewUrl) ? safePreviewUrl : undefined))
       : safeMainUrl;
 
   return {

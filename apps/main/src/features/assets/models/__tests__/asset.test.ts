@@ -27,7 +27,7 @@ vi.mock('@lib/api/client', () => ({
 }));
 
 vi.mock('@lib/media/backendUrl', () => ({
-  ensureBackendAbsolute: (url: string | undefined, _base: string) => url,
+  ensureBackendAbsolute: (url: string | undefined) => url,
 }));
 
 vi.mock('../../lib/assetUrlResolver', () => ({
@@ -76,8 +76,38 @@ describe('toViewerAsset – remote video fallback gating', () => {
     mocks.downloadOnGenerate = true;
     const asset = makeAsset({ syncStatus: 'remote', storedKey: undefined });
     const viewer = toViewerAsset(asset);
-    // fullUrl should NOT contain the remote CDN URL
-    expect(viewer.fullUrl).not.toContain('cdn.example.com');
+    // Remote is suppressed and the only other display URLs are image
+    // thumb/preview — never valid <video> sources — so there is no playable
+    // video source and fullUrl is left undefined (poster still rides as `url`).
+    expect(viewer.fullUrl).toBeUndefined();
+  });
+
+  it('never uses an image thumbnail/preview as a video fullUrl', () => {
+    mocks.downloadOnGenerate = false;
+    mocks.getAssetDisplayUrls.mockReturnValue({
+      mainUrl: undefined,
+      thumbnailUrl: '/api/v1/media/thumb-key.jpg',
+      previewUrl: '/api/v1/media/preview-key.jpg',
+    });
+    // No remote video source either → nothing playable.
+    const asset = makeAsset({ remoteUrl: undefined, syncStatus: 'remote', storedKey: undefined });
+    const viewer = toViewerAsset(asset);
+    // An image src would render as a broken <video>; better to have no source.
+    expect(viewer.fullUrl).toBeUndefined();
+    // The thumbnail still rides along as the poster/url.
+    expect(viewer.url).toBe('/api/v1/media/thumb-key.jpg');
+  });
+
+  it('falls back to a video preview (but never an image one) when no main/remote source', () => {
+    mocks.downloadOnGenerate = false;
+    mocks.getAssetDisplayUrls.mockReturnValue({
+      mainUrl: undefined,
+      thumbnailUrl: '/api/v1/media/thumb-key.jpg',
+      previewUrl: '/api/v1/media/preview-clip.mp4',
+    });
+    const asset = makeAsset({ remoteUrl: undefined, syncStatus: 'remote', storedKey: undefined });
+    const viewer = toViewerAsset(asset);
+    expect(viewer.fullUrl).toBe('/api/v1/media/preview-clip.mp4');
   });
 
   it('provides fullUrl from local source when download_on_generate=true and local-ready (downloaded)', () => {
