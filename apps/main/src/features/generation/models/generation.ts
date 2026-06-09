@@ -306,7 +306,7 @@ export function getStatusLabel(status: GenerationStatus): string {
 
 /** Fine-grained status derived from base status + submission/wait metadata. */
 export type GranularStatus =
-  | 'starting' | 'submitting' | 'polling'           // from processing
+  | 'starting' | 'submitting' | 'polling' | 'rendering'  // from processing
   | 'refiltering'                                    // retrying a render-moderated (fast-filtered) attempt
   | 'yielding' | 'cooldown' | 'retrying'            // from pending/queued
   | 'accepted' | 'submitted' | 'queued'             // from pending/queued
@@ -318,14 +318,27 @@ export type GranularStatus =
  *  rendered then got moderated away. Mirrors the backend GenerationErrorCode. */
 export const RENDER_MODERATED_ERROR_CODE = 'content_render_moderated';
 
+/** A job polled past the fast-fail window is very likely rendering a real clip.
+ *  The render-time moderation ("fast filter") resolves within ~one poll cycle
+ *  (the poller polls every 2s early on), so surviving past this many ms after
+ *  start = "accepted & rendering" rather than "just submitted, might fast-fail". */
+export const RENDER_CONFIRMED_AFTER_MS = 6000;
+
 /**
  * Resolve a generation's fine-grained status from its base status and metadata.
  * Mirrors the activity-badge logic but as a pure function for reuse in filters.
+ *
+ * Pass ``nowMs`` (e.g. Date.now()) to distinguish a freshly-accepted job
+ * ('polling') from one that has been rendering past the fast-fail window
+ * ('rendering'). Omit it to keep the time-agnostic result (back-compat).
  */
-export function resolveGranularStatus(g: Pick<
-  GenerationModel,
-  'status' | 'retryCount' | 'attemptCount' | 'latestSubmissionPayload' | 'latestSubmissionProviderJobId' | 'waitReason' | 'deferredAction' | 'errorCode'
->): GranularStatus {
+export function resolveGranularStatus(
+  g: Pick<
+    GenerationModel,
+    'status' | 'retryCount' | 'attemptCount' | 'latestSubmissionPayload' | 'latestSubmissionProviderJobId' | 'waitReason' | 'deferredAction' | 'errorCode' | 'startedAt'
+  >,
+  nowMs?: number,
+): GranularStatus {
   // Deferred cancel/pause: backend keeps status='processing' (or pending) until
   // the poller honours the request, but the user has already asked for it to
   // stop — surface that intent instead of the underlying activity label.
@@ -340,6 +353,13 @@ export function resolveGranularStatus(g: Pick<
   if (g.status === 'processing') {
     if (!hasSubmitEvidence) return 'starting';
     if (!hasProviderAcceptance) return 'submitting';
+    // Accepted + past the fast-fail window → very likely producing a clip.
+    if (nowMs != null && g.startedAt) {
+      const startedMs = new Date(g.startedAt).getTime();
+      if (Number.isFinite(startedMs) && nowMs - startedMs >= RENDER_CONFIRMED_AFTER_MS) {
+        return 'rendering';
+      }
+    }
     return 'polling';
   }
 
@@ -364,6 +384,7 @@ const GRANULAR_STATUS_LABELS: Record<GranularStatus, string> = {
   starting: 'Starting',
   submitting: 'Submitting',
   polling: 'Polling',
+  rendering: 'Rendering',
   refiltering: 'Refiltering',
   yielding: 'Yielding',
   cooldown: 'Cooldown',

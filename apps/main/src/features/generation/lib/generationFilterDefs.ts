@@ -19,7 +19,7 @@ const ALL_ACTIVE = '__all_active__';
 const ALL_TERMINAL = '__all_terminal__';
 
 const ACTIVE_STATUSES: GranularStatus[] = [
-  'starting', 'submitting', 'polling',
+  'starting', 'submitting', 'polling', 'rendering',
   'queued', 'submitted', 'accepted', 'cooldown', 'yielding', 'retrying', 'refiltering',
   'cancelling', 'pausing',
 ];
@@ -40,6 +40,7 @@ const GRANULAR_STATUS_OPTIONS: StatusOption[] = [
   { value: 'starting', label: 'Starting', group: 'active', groupLabel: 'Active' },
   { value: 'submitting', label: 'Submitting', group: 'active', groupLabel: 'Active' },
   { value: 'polling', label: 'Polling', group: 'active', groupLabel: 'Active' },
+  { value: 'rendering', label: 'Rendering', group: 'active', groupLabel: 'Active' },
   // Active — waiting
   { value: 'queued', label: 'Queued', group: 'active', groupLabel: 'Active' },
   { value: 'submitted', label: 'Submitted', group: 'active', groupLabel: 'Active' },
@@ -116,8 +117,9 @@ export const GENERATION_FILTER_DEFS: ClientFilterDef<GenerationModel>[] = [
     order: 1,
     deriveOptionsWithCounts: (items) => {
       const counts: Record<string, number> = {};
+      const now = Date.now();
       for (const g of items) {
-        const gs = resolveGranularStatus(g);
+        const gs = resolveGranularStatus(g, now);
         counts[gs] = (counts[gs] ?? 0) + 1;
       }
       // Aggregate counts for shortcuts
@@ -141,7 +143,7 @@ export const GENERATION_FILTER_DEFS: ClientFilterDef<GenerationModel>[] = [
       const selected = value as string[] | undefined;
       if (!selected || selected.length === 0) return true;
       const expanded = expandStatusSelection(selected);
-      return expanded.has(resolveGranularStatus(item));
+      return expanded.has(resolveGranularStatus(item, Date.now()));
     },
   },
 

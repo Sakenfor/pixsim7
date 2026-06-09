@@ -6,7 +6,11 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { resolveGranularStatus, type GenerationModel } from '../generation';
+import {
+  resolveGranularStatus,
+  RENDER_CONFIRMED_AFTER_MS,
+  type GenerationModel,
+} from '../generation';
 
 type GranularInput = Pick<
   GenerationModel,
@@ -18,6 +22,7 @@ type GranularInput = Pick<
   | 'waitReason'
   | 'deferredAction'
   | 'errorCode'
+  | 'startedAt'
 >;
 
 function input(overrides: Partial<GranularInput> = {}): GranularInput {
@@ -30,6 +35,7 @@ function input(overrides: Partial<GranularInput> = {}): GranularInput {
     waitReason: null,
     deferredAction: null,
     errorCode: null,
+    startedAt: null,
     ...overrides,
   };
 }
@@ -174,5 +180,46 @@ describe('resolveGranularStatus — render-moderation (fast-filter) retries', ()
         }),
       ),
     ).toBe('queued');
+  });
+});
+
+describe("resolveGranularStatus — 'rendering' (polled past the fast-fail window)", () => {
+  const T0 = 1_700_000_000_000;
+  const startedAtIso = new Date(T0).toISOString();
+
+  it("stays 'polling' when no nowMs is given (back-compat / filters)", () => {
+    expect(
+      resolveGranularStatus(input({ status: 'processing', startedAt: startedAtIso })),
+    ).toBe('polling');
+  });
+
+  it("returns 'rendering' once age >= the fast-fail threshold", () => {
+    const now = T0 + RENDER_CONFIRMED_AFTER_MS + 1;
+    expect(
+      resolveGranularStatus(input({ status: 'processing', startedAt: startedAtIso }), now),
+    ).toBe('rendering');
+  });
+
+  it("stays 'polling' while still inside the fast-fail window", () => {
+    const now = T0 + RENDER_CONFIRMED_AFTER_MS - 500;
+    expect(
+      resolveGranularStatus(input({ status: 'processing', startedAt: startedAtIso }), now),
+    ).toBe('polling');
+  });
+
+  it("stays 'polling' when startedAt is missing", () => {
+    expect(
+      resolveGranularStatus(input({ status: 'processing', startedAt: null }), T0 + 60_000),
+    ).toBe('polling');
+  });
+
+  it("does not apply before provider acceptance (still 'submitting')", () => {
+    const now = T0 + RENDER_CONFIRMED_AFTER_MS + 1;
+    expect(
+      resolveGranularStatus(
+        input({ status: 'processing', startedAt: startedAtIso, latestSubmissionProviderJobId: null }),
+        now,
+      ),
+    ).toBe('submitting');
   });
 });

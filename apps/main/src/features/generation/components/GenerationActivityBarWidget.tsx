@@ -31,6 +31,7 @@ interface GenerationWidgetStats {
   activeCount: number;
   totalCount: number;
   pollingCount: number;
+  renderingCount: number;
   refilteringCount: number;
 }
 
@@ -47,20 +48,41 @@ function nextBadgeMode(current: BadgeMode): BadgeMode {
 export function GenerationActivityBarWidget() {
   const { isConnected, forceReconnect } = useGenerationWebSocket();
   const generations = useGenerationsStore((s) => s.generations);
-  const { activeCount, totalCount, pollingCount, refilteringCount } = useMemo<GenerationWidgetStats>(() => {
-    let active = 0;
-    let total = 0;
-    let polling = 0;
-    let refiltering = 0;
-    for (const g of generations.values()) {
-      total++;
-      if (isActiveStatus(g.status)) active++;
-      const granular = resolveGranularStatus(g);
-      if (granular === 'polling') polling++;
-      if (granular === 'refiltering') refiltering++;
-    }
-    return { activeCount: active, totalCount: total, pollingCount: polling, refilteringCount: refiltering };
-  }, [generations]);
+  // Local clock so the 'polling' → 'rendering' crossing (a time threshold past
+  // the fast-fail window) is reflected even between backend pushes. Ticks only
+  // while something is active; see the effect below.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const { activeCount, totalCount, pollingCount, renderingCount, refilteringCount } =
+    useMemo<GenerationWidgetStats>(() => {
+      let active = 0;
+      let total = 0;
+      let polling = 0;
+      let rendering = 0;
+      let refiltering = 0;
+      for (const g of generations.values()) {
+        total++;
+        if (isActiveStatus(g.status)) active++;
+        const granular = resolveGranularStatus(g, nowMs);
+        if (granular === 'polling') polling++;
+        if (granular === 'rendering') rendering++;
+        if (granular === 'refiltering') refiltering++;
+      }
+      return {
+        activeCount: active,
+        totalCount: total,
+        pollingCount: polling,
+        renderingCount: rendering,
+        refilteringCount: refiltering,
+      };
+    }, [generations, nowMs]);
+
+  // Re-evaluate the time threshold ~every 1.5s while work is in flight (purely
+  // local re-render; the backend status poller stays the source of truth).
+  useEffect(() => {
+    if (activeCount === 0) return;
+    const id = setInterval(() => setNowMs(Date.now()), 1500);
+    return () => clearInterval(id);
+  }, [activeCount]);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const triggerRef = useRef<HTMLDivElement>(null);
 
@@ -187,6 +209,7 @@ export function GenerationActivityBarWidget() {
           activeCount={activeCount}
           totalCount={totalCount}
           pollingCount={pollingCount}
+          renderingCount={renderingCount}
           refilteringCount={refilteringCount}
           badgeMode={badgeMode}
           badgeValue={badgeValue}
@@ -219,6 +242,7 @@ function GenerationTooltip({
   activeCount,
   totalCount,
   pollingCount,
+  renderingCount,
   refilteringCount,
   badgeMode,
   badgeValue,
@@ -229,6 +253,7 @@ function GenerationTooltip({
   activeCount: number;
   totalCount: number;
   pollingCount: number;
+  renderingCount: number;
   refilteringCount: number;
   badgeMode: BadgeMode;
   badgeValue: string;
@@ -256,6 +281,11 @@ function GenerationTooltip({
       {badgeMode !== 'total' && (
         <span className="text-neutral-500">
           Tracked: {formatBadgeCount(totalCount)} | Polling: {pollingCount > 0 ? formatBadgeCount(pollingCount) : 'idle'}
+        </span>
+      )}
+      {renderingCount > 0 && (
+        <span className="text-emerald-400">
+          ✓ {formatBadgeCount(renderingCount)} rendering (past the fast-fail window)
         </span>
       )}
       {refilteringCount > 0 && (

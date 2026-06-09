@@ -698,7 +698,7 @@ function GenerationStatusGridCard({
 }) {
   const statusDisplay = getGenerationStatusDisplay(generation.status);
   const isActive = isGenerationActive(generation.status);
-  const granularStatus = resolveGranularStatus(generation);
+  const granularStatus = resolveGranularStatus(generation, Date.now());
   const granularLabel = getGranularStatusLabel(granularStatus);
   const modelName = getGenerationModelName(generation);
   const promptSnippet = generation.finalPrompt
@@ -718,16 +718,20 @@ function GenerationStatusGridCard({
         className={`text-[10px] font-semibold uppercase tracking-wide ${
           granularStatus === 'refiltering'
             ? 'text-orange-500 dark:text-orange-400 hover:underline cursor-pointer'
-            : onStatusClick
-              ? 'text-accent hover:underline cursor-pointer'
-              : 'text-neutral-500 dark:text-neutral-400 cursor-default'
+            : granularStatus === 'rendering'
+              ? 'text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer'
+              : onStatusClick
+                ? 'text-accent hover:underline cursor-pointer'
+                : 'text-neutral-500 dark:text-neutral-400 cursor-default'
         }`}
         title={
           granularStatus === 'refiltering'
             ? 'Render-moderation retry — this prompt rendered then got moderated away (fast-filtered) and is auto-retrying.'
-            : onStatusClick
-              ? `Filter by "${granularLabel}"`
-              : undefined
+            : granularStatus === 'rendering'
+              ? 'Accepted and rendering past the fast-fail window — a clip is very likely to land.'
+              : onStatusClick
+                ? `Filter by "${granularLabel}"`
+                : undefined
         }
       >
         {granularLabel}
@@ -1070,7 +1074,7 @@ function GenerationItem({ generation, onRetry, onCancel, onPause, onResume, onDe
   const [paramTab, setParamTab] = useState<ParamTab>('canonical');
   const statusDisplay = getGenerationStatusDisplay(generation.status);
   const isActive = isGenerationActive(generation.status);
-  const granularStatus = resolveGranularStatus(generation);
+  const granularStatus = resolveGranularStatus(generation, Date.now());
   const isTerminal = generation.status === 'completed' || generation.status === 'failed' || generation.status === 'cancelled';
   const isPaused = generation.status === 'paused';
   const canRetry = generation.status === 'failed' || generation.status === 'cancelled';
