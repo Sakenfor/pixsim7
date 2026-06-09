@@ -26,6 +26,7 @@ from pixsim7.backend.main.domain.game.schemas.room_navigation import (
 router = APIRouter()
 ROOM_NAVIGATION_TRANSITION_CACHE_META_KEY = "room_navigation_transition_cache"
 NPC_SLOTS_2D_META_KEY = "npcSlots2d"
+PLACEMENTS_META_KEY = "placements"
 
 
 class GameLocationSummary(ApiModel):
@@ -272,6 +273,7 @@ _RESERVED_LOCATION_META_WRITE_ENDPOINTS: Dict[str, str] = {
     NPC_SLOTS_2D_META_KEY: "/api/v1/game/locations/{location_id}/npc-slots-2d",
     "npcSlots2D": "/api/v1/game/locations/{location_id}/npc-slots-2d",
     "npc_slots_2d": "/api/v1/game/locations/{location_id}/npc-slots-2d",
+    PLACEMENTS_META_KEY: "/api/v1/game/locations/{location_id}/placements",
 }
 
 
@@ -1143,3 +1145,265 @@ async def replace_hotspots(
         hotspots=hotspots_payload,
     )
     return _serialize_location_detail(loc, created)
+
+
+# ── Unified spatial placements (v1, location.meta-backed) ───────────────────
+#
+# One placement model for any positioned entity on a location (npc / object /
+# hotspot / waypoint / camera). Stored under ``location.meta["placements"]`` in
+# v1 (same write path + authoring_revision concurrency as npc-slots-2d); a
+# dedicated table is the planned v2 extraction if cross-location querying lands.
+#
+# The schema is detection-ready: ``source`` records provenance and ``region``
+# carries optional clickable geometry mirroring NpcBodyZone (rect/circle/polygon),
+# so a future detection pipeline can emit Placements with source="detection"
+# without a schema migration. No detection pipeline exists yet.
+
+PlacementEntityType = Literal["npc", "object", "hotspot", "waypoint", "camera"]
+PlacementSource = Literal["manual", "detection", "import"]
+PlacementShape = Literal["rect", "circle", "polygon"]
+
+
+class PlacementPosition(ApiModel):
+    x: float  # 0..1 normalized image plane
+    y: float  # 0..1 normalized image plane
+    depth: Optional[float] = None  # 0..1 (0 foreground, 1 background)
+    anchor: Optional[str] = None  # "floor" | "surface" | "wall" | custom
+
+
+class PlacementRegion(ApiModel):
+    """Optional clickable area. Coords are normalized 0..1.
+
+    rect -> [x, y, w, h]; circle -> [cx, cy, r]; polygon -> [x1, y1, x2, y2, ...].
+    """
+
+    shape: PlacementShape
+    coords: List[float] = Field(default_factory=list)
+
+
+class PlacementDTO(ApiModel):
+    id: str
+    entity_type: PlacementEntityType = Field(
+        validation_alias=AliasChoices("entityType", "entity_type"),
+        serialization_alias="entityType",
+    )
+    entity_id: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("entityId", "entity_id"),
+        serialization_alias="entityId",
+    )
+    position: PlacementPosition
+    region: Optional[PlacementRegion] = None
+    depth_checkpoint_id: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("depthCheckpointId", "depth_checkpoint_id"),
+        serialization_alias="depthCheckpointId",
+    )
+    roles: Optional[List[str]] = None
+    source: PlacementSource = "manual"
+    confidence: Optional[float] = None
+    meta: Optional[Dict[str, Any]] = None
+
+
+class PlacementsState(ApiModel):
+    location_id: int
+    placements: List[PlacementDTO] = Field(default_factory=list)
+    authoring_revision: Optional[str] = None
+
+
+class PutPlacementsPayload(AuthoringRevisionWritePayload):
+    placements: List[PlacementDTO] = Field(default_factory=list)
+
+
+class PatchPlacementPayload(AuthoringRevisionWritePayload):
+    placement: PlacementDTO
+
+
+def _placements_error(
+    message: str,
+    *,
+    item_index: Optional[int] = None,
+) -> HTTPException:
+    detail: Dict[str, Any] = {"error": "invalid_placements", "message": message}
+    if item_index is not None:
+        detail["item_index"] = item_index
+    return HTTPException(status_code=400, detail=detail)
+
+
+def _normalize_placements_payload(items: List[PlacementDTO]) -> List[Dict[str, Any]]:
+    seen: set[str] = set()
+    normalized: List[Dict[str, Any]] = []
+    for index, placement in enumerate(items):
+        placement_id = (placement.id or "").strip()
+        if not placement_id:
+            raise _placements_error("placement.id is required", item_index=index)
+        if placement_id in seen:
+            raise _placements_error(
+                f"duplicate placement.id '{placement_id}'", item_index=index
+            )
+        seen.add(placement_id)
+
+        pos = placement.position
+        for axis, value in (("x", pos.x), ("y", pos.y)):
+            if not 0.0 <= float(value) <= 1.0:
+                raise _placements_error(
+                    f"position.{axis} must be within range [0, 1]", item_index=index
+                )
+        if pos.depth is not None and not 0.0 <= float(pos.depth) <= 1.0:
+            raise _placements_error(
+                "position.depth must be within range [0, 1]", item_index=index
+            )
+        if placement.confidence is not None and not 0.0 <= float(placement.confidence) <= 1.0:
+            raise _placements_error(
+                "confidence must be within range [0, 1]", item_index=index
+            )
+
+        out = placement.model_dump(exclude_none=True, by_alias=False)
+        out["id"] = placement_id
+        normalized.append(out)
+
+    return normalized
+
+
+def _read_placements_from_meta(meta: Any) -> List[Dict[str, Any]]:
+    canonical_meta, _ = _canonicalize_location_meta(meta)
+    raw = canonical_meta.get(PLACEMENTS_META_KEY)
+    if not isinstance(raw, list):
+        return []
+    return [dict(item) for item in raw if isinstance(item, dict)]
+
+
+@router.get("/{location_id}/placements", response_model=PlacementsState)
+async def get_location_placements(
+    location_id: int,
+    game_location_service: GameLocationSvc,
+    user: CurrentGamePrincipal,
+    entity_type: Optional[PlacementEntityType] = None,
+) -> PlacementsState:
+    """Read unified spatial placements for a location, optionally filtered by type."""
+    loc = await game_location_service.get_location(location_id)
+    if not loc:
+        raise HTTPException(status_code=404, detail="Location not found")
+
+    placements = _read_placements_from_meta(loc.meta)
+    if entity_type is not None:
+        placements = [p for p in placements if p.get("entity_type") == entity_type]
+
+    return PlacementsState(
+        location_id=location_id,
+        placements=placements,
+        authoring_revision=compute_location_authoring_revision(loc),
+    )
+
+
+@router.put("/{location_id}/placements", response_model=PlacementsState)
+async def put_location_placements(
+    location_id: int,
+    payload: PutPlacementsPayload,
+    game_location_service: GameLocationSvc,
+    user: CurrentGamePrincipal,
+) -> PlacementsState:
+    """Replace all placements for a location while preserving other metadata."""
+    loc = await game_location_service.get_location(location_id)
+    if not loc:
+        raise HTTPException(status_code=404, detail="Location not found")
+
+    placements = _normalize_placements_payload(payload.placements)
+    canonical_meta, _ = _canonicalize_location_meta(loc.meta)
+    canonical_meta[PLACEMENTS_META_KEY] = placements
+
+    try:
+        update_kwargs: Dict[str, Any] = dict(location_id=location_id, meta=canonical_meta)
+        if payload.expected_authoring_revision:
+            update_kwargs["expected_authoring_revision"] = payload.expected_authoring_revision
+        updated_location = await game_location_service.update_location_meta(**update_kwargs)
+    except RoomNavigationValidationError as exc:
+        raise _room_navigation_error(exc)
+    except AuthoringRevisionConflictError as exc:
+        raise _authoring_revision_conflict_error(exc)
+
+    return PlacementsState(
+        location_id=location_id,
+        placements=_read_placements_from_meta(updated_location.meta),
+        authoring_revision=compute_location_authoring_revision(updated_location),
+    )
+
+
+@router.patch("/{location_id}/placements/{placement_id}", response_model=PlacementsState)
+async def upsert_location_placement(
+    location_id: int,
+    placement_id: str,
+    payload: PatchPlacementPayload,
+    game_location_service: GameLocationSvc,
+    user: CurrentGamePrincipal,
+) -> PlacementsState:
+    """Insert or update a single placement by id, preserving the rest."""
+    loc = await game_location_service.get_location(location_id)
+    if not loc:
+        raise HTTPException(status_code=404, detail="Location not found")
+
+    if (payload.placement.id or "").strip() != placement_id.strip():
+        raise _placements_error("placement.id must match the path placement_id")
+
+    existing = _read_placements_from_meta(loc.meta)
+    [normalized] = _normalize_placements_payload([payload.placement])
+    merged = [p for p in existing if p.get("id") != placement_id.strip()]
+    merged.append(normalized)
+
+    canonical_meta, _ = _canonicalize_location_meta(loc.meta)
+    canonical_meta[PLACEMENTS_META_KEY] = merged
+
+    try:
+        update_kwargs: Dict[str, Any] = dict(location_id=location_id, meta=canonical_meta)
+        if payload.expected_authoring_revision:
+            update_kwargs["expected_authoring_revision"] = payload.expected_authoring_revision
+        updated_location = await game_location_service.update_location_meta(**update_kwargs)
+    except RoomNavigationValidationError as exc:
+        raise _room_navigation_error(exc)
+    except AuthoringRevisionConflictError as exc:
+        raise _authoring_revision_conflict_error(exc)
+
+    return PlacementsState(
+        location_id=location_id,
+        placements=_read_placements_from_meta(updated_location.meta),
+        authoring_revision=compute_location_authoring_revision(updated_location),
+    )
+
+
+@router.delete("/{location_id}/placements/{placement_id}", response_model=PlacementsState)
+async def delete_location_placement(
+    location_id: int,
+    placement_id: str,
+    payload: AuthoringRevisionWritePayload,
+    game_location_service: GameLocationSvc,
+    user: CurrentGamePrincipal,
+) -> PlacementsState:
+    """Remove a single placement by id, preserving the rest."""
+    loc = await game_location_service.get_location(location_id)
+    if not loc:
+        raise HTTPException(status_code=404, detail="Location not found")
+
+    existing = _read_placements_from_meta(loc.meta)
+    target = placement_id.strip()
+    remaining = [p for p in existing if p.get("id") != target]
+    if len(remaining) == len(existing):
+        raise HTTPException(status_code=404, detail="Placement not found")
+
+    canonical_meta, _ = _canonicalize_location_meta(loc.meta)
+    canonical_meta[PLACEMENTS_META_KEY] = remaining
+
+    try:
+        update_kwargs: Dict[str, Any] = dict(location_id=location_id, meta=canonical_meta)
+        if payload.expected_authoring_revision:
+            update_kwargs["expected_authoring_revision"] = payload.expected_authoring_revision
+        updated_location = await game_location_service.update_location_meta(**update_kwargs)
+    except RoomNavigationValidationError as exc:
+        raise _room_navigation_error(exc)
+    except AuthoringRevisionConflictError as exc:
+        raise _authoring_revision_conflict_error(exc)
+
+    return PlacementsState(
+        location_id=location_id,
+        placements=_read_placements_from_meta(updated_location.meta),
+        authoring_revision=compute_location_authoring_revision(updated_location),
+    )
