@@ -4,13 +4,14 @@
  * Renders the actual media (image or video) with zoom and fit mode applied.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 
 import { BACKEND_BASE } from '@lib/api/client';
 import { useAutoContextMenu } from '@lib/dockview';
 import { ensureBackendAbsolute } from '@lib/media/backendUrl';
 import { useMediaSuspended } from '@lib/media/mediaSuspendStore';
 import { warmMediaToken } from '@lib/media/mediaToken';
+import { useManagedVideoSource } from '@lib/media/videoDecoder';
 
 import type { ViewerAsset } from '@features/assets';
 import { registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
@@ -55,42 +56,6 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
   // an immediate release — the same pause/clear-src/load teardown the scrub
   // widget uses — instead of trusting lazy reclaim. The forwarded ref is kept in
   // sync because object refs have no detach hook of their own.
-  const lastVideoElRef = useRef<HTMLVideoElement | null>(null);
-  // Holds the src this render wants on the element, so the callback ref can
-  // restore it after a detach stripped it (see below). Updated each render once
-  // `resolvedMediaUrl` is known.
-  const currentSrcRef = useRef<string | undefined>(undefined);
-  const attachVideo = useCallback(
-    (el: HTMLVideoElement | null) => {
-      if (el) {
-        lastVideoElRef.current = el;
-        // A prior detach may have stripped the src off this *same* element —
-        // React's StrictMode mount→unmount→mount double-invokes the ref in dev,
-        // and dockview panel moves can detach/reattach the node without a React
-        // unmount. React won't re-apply the declarative `src` (the prop value is
-        // unchanged), so the element would be left with no source and stream
-        // nothing. Restore it here and kick a load.
-        if (currentSrcRef.current && !el.getAttribute('src')) {
-          el.src = currentSrcRef.current;
-          el.load();
-        }
-      } else {
-        const prev = lastVideoElRef.current;
-        if (prev) {
-          try {
-            prev.pause();
-            prev.removeAttribute('src');
-            prev.load();
-          } catch {
-            /* best effort — detached element teardown */
-          }
-        }
-        lastVideoElRef.current = null;
-      }
-      (resolvedVideoRef as { current: HTMLVideoElement | null }).current = el;
-    },
-    [resolvedVideoRef],
-  );
   const remoteModelUrl = useMemo(
     () => ensureBackendAbsolute(asset._assetModel?.remoteUrl ?? undefined, BACKEND_BASE),
     [asset._assetModel?.remoteUrl],
@@ -120,9 +85,14 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
   });
 
   const resolvedMediaUrl = asset.type === 'video' ? videoSrc : imageSrc;
-  // Keep the restore-on-reattach ref (used by `attachVideo`) in sync with the
-  // src this render wants on the <video>.
-  currentSrcRef.current = asset.type === 'video' ? videoSrc : undefined;
+  // Owns the viewer <video>'s decoder lifecycle: restores src after a
+  // StrictMode/panel-move detach→reattach (React won't re-apply an unchanged
+  // declarative src) and releases the decoder on detach. Keeps `resolvedVideoRef`
+  // in sync for the active-video registry / frame capture.
+  const attachVideo = useManagedVideoSource(
+    asset.type === 'video' ? videoSrc : undefined,
+    resolvedVideoRef,
+  );
   // While the tab is backgrounded, drop the <video> entirely so Chrome frees
   // the GPU decoder (an autoplay clip in a hidden tab keeps it alive forever).
   // The element remounts and resumes on return. See `mediaSuspendStore`.

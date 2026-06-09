@@ -18,7 +18,9 @@ import {
   clearCapturedFrame,
   setCapturedFrame,
 } from '@lib/media/capturedFrameStore';
+import { useMediaSuspended } from '@lib/media/mediaSuspendStore';
 import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
+import { releaseVideoDecoder } from '@lib/media/videoDecoder';
 import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 
 import { claimAudio, registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
@@ -252,7 +254,10 @@ export function VideoScrubWidgetRenderer({
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const mediaActive = isHovering || keepSrcWhilePaused;
+  // Drop the decoder while the tab is backgrounded even if a recent hover left
+  // the src warm (keepSrcWhilePaused) — no point holding GPU memory unseen.
+  const suspended = useMediaSuspended();
+  const mediaActive = (isHovering || keepSrcWhilePaused) && !suspended;
   const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: mediaActive, mediaType: 'video' });
   const isBackendMediaUrl = Boolean(url && isBackendUrl(url, BACKEND_BASE));
   const resolvedUrl = useMemo(() => {
@@ -414,13 +419,7 @@ export function VideoScrubWidgetRenderer({
     if (shouldAttachVideoSrc) return;
     const el = videoRef.current;
     if (!el) return;
-    try {
-      el.pause();
-      el.removeAttribute('src');
-      el.load();
-    } catch {
-      // Best effort cleanup.
-    }
+    releaseVideoDecoder(el);
     setIsVideoLoaded(false);
   }, [shouldAttachVideoSrc]);
 
