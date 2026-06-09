@@ -395,6 +395,34 @@ class Bridge:
             get_logger().info("buffered_results_restored", count=len(out))
         return out
 
+    # WS keepalive ping timing (seconds). Generous by default so a
+    # briefly-busy event loop is never mistaken for a dead peer; overridable
+    # so tests can force half-open detection in seconds rather than ~80s.
+    _DEFAULT_WS_PING_INTERVAL = 20.0
+    _DEFAULT_WS_PING_TIMEOUT = 60.0
+
+    @classmethod
+    def _resolve_ws_ping_timing(cls) -> tuple[float, float]:
+        """(ping_interval, ping_timeout) for ws_connect, env-overridable.
+
+        ``PIXSIM_BRIDGE_PING_INTERVAL`` / ``PIXSIM_BRIDGE_PING_TIMEOUT`` accept
+        a positive float; anything missing/invalid falls back to the default.
+        """
+        def _val(env_name: str, default: float) -> float:
+            raw = str(os.environ.get(env_name) or "").strip()
+            if not raw:
+                return default
+            try:
+                parsed = float(raw)
+            except ValueError:
+                return default
+            return parsed if parsed > 0 else default
+
+        return (
+            _val("PIXSIM_BRIDGE_PING_INTERVAL", cls._DEFAULT_WS_PING_INTERVAL),
+            _val("PIXSIM_BRIDGE_PING_TIMEOUT", cls._DEFAULT_WS_PING_TIMEOUT),
+        )
+
     async def run(self) -> None:
         """Main loop — connect, handle tasks, reconnect on failure."""
         if websockets is None:
@@ -547,24 +575,26 @@ class Bridge:
 
         get_logger().info("connecting", url=redact_url(self._url))
 
+        # WS-level keepalive. Commit 45d54664f disabled this ("app-level
+        # heartbeats handle liveness"), but that left the CLIENT unable to
+        # notice a silently half-open connection: the recv loop blocks on
+        # recv() forever and the app-level keepalive send()s buffer into a dead
+        # socket without raising, so a connection that dies mid-turn is only
+        # discovered when the turn's `result` finally fails to send — at which
+        # point a process restart can lose the buffered reply (plan
+        # launcher-health-probe-stability / checkpoint
+        # buffered-result-lost-on-bridge-restart). Ping expects a *pong*, so a
+        # missing pong closes the connection and surfaces as a recv() error →
+        # prompt reconnect. Timing is deliberately generous (ping every 20s,
+        # 60s to pong) so a briefly-busy event loop is never mistaken for a
+        # dead peer; the server's own 45s ping + 120s recv-timeout (45d54664f)
+        # still guards the other direction. Overridable via env (tests use a
+        # tight interval/timeout to assert half-open detection in seconds).
+        ping_interval, ping_timeout = self._resolve_ws_ping_timing()
         async with ws_connect(
             ws_url,
-            # WS-level keepalive. Commit 45d54664f disabled this ("app-level
-            # heartbeats handle liveness"), but that left the CLIENT unable to
-            # notice a silently half-open connection: the recv loop blocks on
-            # recv() forever and the app-level keepalive send()s buffer into a
-            # dead socket without raising, so a connection that dies mid-turn is
-            # only discovered when the turn's `result` finally fails to send —
-            # at which point a process restart can lose the buffered reply
-            # (plan launcher-health-probe-stability / checkpoint
-            # buffered-result-lost-on-bridge-restart). Ping expects a *pong*, so
-            # a missing pong closes the connection and surfaces as a recv()
-            # error → prompt reconnect. Timing is deliberately generous (ping
-            # every 20s, 60s to pong) so a briefly-busy event loop is never
-            # mistaken for a dead peer; the server's own 45s ping + 120s
-            # recv-timeout (45d54664f) still guards the other direction.
-            ping_interval=20,
-            ping_timeout=60,
+            ping_interval=ping_interval,
+            ping_timeout=ping_timeout,
             close_timeout=10,
             max_size=5 * 1024 * 1024,  # 5MB — default 1MB is tight when payloads carry base64 images
         ) as ws:
