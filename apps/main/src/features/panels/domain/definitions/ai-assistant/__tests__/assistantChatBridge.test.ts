@@ -613,6 +613,173 @@ describe('AssistantChatBridge', () => {
   });
 
   // ────────────────────────────────────────────────────────
+  // task_not_found retry race (backend restart)
+  //
+  // When the backend restarts, the panel reconnects fast but the agent
+  // bridge is still in its reconnect backoff, so the backend answers
+  // `task_not_found` before the bridge has re-reported its in-flight
+  // task_ids. The panel retries a bounded number of times (RECONNECT_RETRY_MAX
+  // attempts, RECONNECT_RETRY_DELAY_MS apart) before surfacing the error.
+  // ────────────────────────────────────────────────────────
+
+  describe('task_not_found retry race', () => {
+    async function connectStreaming(tabId: string, taskId: string) {
+      const p = bridge.send(tabId, { message: 'hi' });
+      await vi.advanceTimersByTimeAsync(0);
+      const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+      ws.simulateOpen();
+      await p;
+      // Heartbeat captures task_id and moves the request to streaming.
+      ws.simulateMessage({ type: 'heartbeat', tab_id: tabId, action: 'w', detail: 'Working', task_id: taskId });
+      expect(bridge.get(tabId)!.status).toBe('streaming');
+      expect(bridge.get(tabId)!.taskId).toBe(taskId);
+      return ws;
+    }
+
+    function countReconnects(ws: MockWebSocket): number {
+      return ws.sent.filter((s) => JSON.parse(s).type === 'reconnect').length;
+    }
+
+    it('suppresses the first task_not_found and re-sends a reconnect frame', async () => {
+      const ws = await connectStreaming('tab-1', 'task-race');
+
+      // Backend answers task_not_found — bridge not back yet.
+      ws.simulateMessage({
+        type: 'error', tab_id: 'tab-1',
+        error: 'Task not found or expired', error_code: 'task_not_found',
+      });
+
+      // Error is NOT surfaced — the request stays streaming and shows a
+      // reconnecting hint instead.
+      expect(bridge.get('tab-1')!.status).toBe('streaming');
+      expect(bridge.get('tab-1')!.activity).toMatch(/Reconnecting \(1\/3\)/);
+
+      // After the retry delay the bridge re-sends a reconnect frame.
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(countReconnects(ws)).toBe(1);
+    });
+
+    it('gives up after the retry cap and surfaces the error (the field bug)', async () => {
+      const ws = await connectStreaming('tab-1', 'task-race');
+
+      // The bridge stays in backoff longer than the panel's retry budget:
+      // every reconnect attempt keeps getting task_not_found. 4 errors and
+      // 3 × 6s = the request finally surfaces the failure — exactly what the
+      // user saw ("Task not found or expired") while the agent was still
+      // running locally.
+      for (let i = 0; i < 4; i++) {
+        ws.simulateMessage({
+          type: 'error', tab_id: 'tab-1',
+          error: 'Task not found or expired', error_code: 'task_not_found',
+        });
+        await vi.advanceTimersByTimeAsync(6_000);
+      }
+
+      const req = bridge.get('tab-1')!;
+      expect(req.status).toBe('error');
+      expect(req.result?.error_code).toBe('task_not_found');
+      // 3 retry frames were sent (the 4th error exhausted the cap).
+      expect(countReconnects(ws)).toBe(3);
+    });
+
+    it('completes if the bridge returns before the retry budget runs out', async () => {
+      const ws = await connectStreaming('tab-1', 'task-race');
+
+      // First reconnect races ahead of the bridge → task_not_found.
+      ws.simulateMessage({
+        type: 'error', tab_id: 'tab-1',
+        error: 'Task not found or expired', error_code: 'task_not_found',
+      });
+      expect(bridge.get('tab-1')!.status).toBe('streaming');
+
+      // Retry fires; this time the bridge is back and the backend streams the
+      // recovered result.
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(countReconnects(ws)).toBe(1);
+      ws.simulateMessage({
+        type: 'result', tab_id: 'tab-1', ok: true,
+        response: 'recovered answer', bridge_session_id: 'sess-back', reconnected: true,
+      });
+
+      expect(bridge.get('tab-1')!.status).toBe('completed');
+      expect(bridge.consume('tab-1')).toMatchObject({ ok: true, response: 'recovered answer' });
+    });
+  });
+
+  // ────────────────────────────────────────────────────────
+  // Backend grace-wait recovery (Fix A)
+  //
+  // After a backend restart the server now holds an unknown-task reconnect
+  // open and emits `recovering` heartbeats while it waits for the agent bridge
+  // to return, instead of answering task_not_found immediately. The panel must
+  // ride those heartbeats: stay streaming, reset staleness, and complete on the
+  // eventual result — never surfacing a spurious failure.
+  // ────────────────────────────────────────────────────────
+
+  describe('backend grace-wait recovery', () => {
+    async function connectStreaming(tabId: string, taskId: string) {
+      const p = bridge.send(tabId, { message: 'hi' });
+      await vi.advanceTimersByTimeAsync(0);
+      const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+      ws.simulateOpen();
+      await p;
+      ws.simulateMessage({ type: 'heartbeat', tab_id: tabId, action: 'w', detail: 'Working', task_id: taskId });
+      expect(bridge.get(tabId)!.status).toBe('streaming');
+      return ws;
+    }
+
+    it('keeps the request streaming and shows the recovering activity', async () => {
+      const ws = await connectStreaming('tab-1', 'task-1');
+
+      ws.simulateMessage({
+        type: 'heartbeat', tab_id: 'tab-1', task_id: 'task-1',
+        action: 'recovering', detail: 'Waiting for agent to reconnect',
+      });
+
+      const req = bridge.get('tab-1')!;
+      expect(req.status).toBe('streaming');
+      expect(req.activity).toBe('Waiting for agent to reconnect');
+    });
+
+    it('resets staleness so a long backend grace does not error the request', async () => {
+      const ws = await connectStreaming('tab-1', 'task-1');
+
+      // Three recovering heartbeats spaced 80s apart — 240s total, well past the
+      // 90s stale threshold, but each resets the timer so it never trips.
+      for (const detail of ['Waiting for agent to reconnect', 'Waiting for bridge replay', 'Waiting for bridge replay']) {
+        await vi.advanceTimersByTimeAsync(80_000);
+        ws.simulateMessage({
+          type: 'heartbeat', tab_id: 'tab-1', task_id: 'task-1',
+          action: 'recovering', detail,
+        });
+        expect(bridge.get('tab-1')!.status).toBe('streaming');
+      }
+    });
+
+    it('rides through recovery and completes on the eventual result', async () => {
+      const ws = await connectStreaming('tab-1', 'task-1');
+
+      ws.simulateMessage({
+        type: 'heartbeat', tab_id: 'tab-1', task_id: 'task-1',
+        action: 'recovering', detail: 'Waiting for agent to reconnect',
+      });
+      ws.simulateMessage({
+        type: 'heartbeat', tab_id: 'tab-1', task_id: 'task-1',
+        action: 'recovering', detail: 'Waiting for bridge replay',
+      });
+      expect(bridge.get('tab-1')!.status).toBe('streaming');
+
+      ws.simulateMessage({
+        type: 'result', tab_id: 'tab-1', ok: true,
+        response: 'recovered after restart', bridge_session_id: 'sess-back', reconnected: true,
+      });
+
+      expect(bridge.get('tab-1')!.status).toBe('completed');
+      expect(bridge.consume('tab-1')).toMatchObject({ ok: true, response: 'recovered after restart' });
+    });
+  });
+
+  // ────────────────────────────────────────────────────────
   // Consume behavior (panel close/reopen resilience)
   // ────────────────────────────────────────────────────────
 
