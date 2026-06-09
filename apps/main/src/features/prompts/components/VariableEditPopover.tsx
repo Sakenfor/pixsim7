@@ -3,6 +3,8 @@ import { useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
+import { getVariableClassVisual } from '../lib/variableClassVisuals';
+
 export interface VariableEditPopoverProps {
   /** Canonical uppercase variable name. */
   name: string;
@@ -73,7 +75,19 @@ export function VariableEditPopover({
             )}
           </span>
         </div>
-        <div className="mt-1 font-mono text-sm text-neutral-800 dark:text-neutral-200">{name}</div>
+        <div className="mt-1 flex items-center gap-1.5">
+          {(() => {
+            const visual = getVariableClassVisual(name);
+            if (!visual) return null;
+            return (
+              <span className="inline-flex items-center gap-1">
+                <span className={clsx('w-2 h-2 rounded-full', visual.dotClass)} />
+                <Icon name={visual.icon} size={13} className="text-neutral-500" />
+              </span>
+            );
+          })()}
+          <span className="font-mono text-sm text-neutral-800 dark:text-neutral-200">{name}</span>
+        </div>
         {description && (
           <div className="mt-1 text-[11px] italic text-neutral-500 dark:text-neutral-400">
             {description}

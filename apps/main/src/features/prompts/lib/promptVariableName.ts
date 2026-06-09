@@ -12,18 +12,38 @@
  * No persistence change; see plan `prompt-variable-placeholders` (Phase 3).
  */
 
+/** Visual/taxonomy config for a default variable class. Data-only — no UI
+ *  imports here; colour/icon are resolved in `variableClassVisuals.ts`, which
+ *  links to the role taxonomy. `compositionRole` derives colour+icon from the
+ *  shared role vocab; `color`/`icon` are explicit overrides (or for classes
+ *  with no role match). */
+export interface DefaultVariableClass {
+  /** Linked composition role id (e.g. 'entities:main_character'). */
+  compositionRole?: string;
+  /** Explicit colour-name override (e.g. 'yellow'). */
+  color?: string;
+  /** Explicit @lib/icons IconName override (string to avoid a UI import here). */
+  icon?: string;
+}
+
 /** Class-level defaults: any name in one of these classes is "recognised"
  *  even when the user hasn't explicitly saved it (so ACTOR1/ACTOR2/ACTOR3 just
- *  work). Class-level, not a fixed name list. */
-export const DEFAULT_VARIABLE_CLASSES: ReadonlySet<string> = new Set([
-  'ACTOR',
-  'GOAL',
-  'SCENE',
-  'STYLE',
-  'CAMERA',
-  'MOOD',
-  'SETTING',
-]);
+ *  work). Class-level, not a fixed name list. Each links to the role taxonomy
+ *  where one exists; GOAL has no role so carries an explicit colour/icon. */
+export const DEFAULT_VARIABLE_CLASSES: Record<string, DefaultVariableClass> = {
+  ACTOR: { compositionRole: 'entities:main_character' },
+  GOAL: { color: 'yellow', icon: 'target' },
+  SCENE: { compositionRole: 'world:environment' },
+  SETTING: { compositionRole: 'world:environment' },
+  STYLE: { compositionRole: 'materials:atmosphere', icon: 'palette' },
+  CAMERA: { compositionRole: 'camera:angle' },
+  MOOD: { compositionRole: 'materials:atmosphere' },
+};
+
+/** Whether a class name is a hard-coded default class. */
+export function isDefaultVariableClassName(className: string): boolean {
+  return Object.prototype.hasOwnProperty.call(DEFAULT_VARIABLE_CLASSES, className);
+}
 
 export interface ParsedVariableName {
   /** The original canonical name, uppercased. */
@@ -68,7 +88,7 @@ export function parseVariableName(name: string): ParsedVariableName {
 
 /** Whether a name belongs to a hard-coded default class. */
 export function isDefaultVariableClass(name: string): boolean {
-  return DEFAULT_VARIABLE_CLASSES.has(parseVariableName(name).className);
+  return isDefaultVariableClassName(parseVariableName(name).className);
 }
 
 export interface VariableGroupMember {
@@ -121,7 +141,7 @@ export function groupVariablesByEntity(
         entity: parsed.entity,
         className: parsed.className,
         index: parsed.index,
-        defaultClass: DEFAULT_VARIABLE_CLASSES.has(parsed.className),
+        defaultClass: isDefaultVariableClassName(parsed.className),
         members: [],
       };
       groups.set(parsed.entity, group);

@@ -21,6 +21,7 @@ import {
 } from '../lib/parsePrimitiveMatch';
 import { groupVariablesByEntity } from '../lib/promptVariableName';
 import { buildVariableValueMap, resolvePromptVariables } from '../lib/resolvePromptVariables';
+import { getVariableClassVisual } from '../lib/variableClassVisuals';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptBlockCandidate } from '../types';
 
@@ -785,14 +786,21 @@ export function ShadowSidePanel({
                           className="rounded border border-neutral-200/70 dark:border-neutral-700/60 px-1.5 py-1"
                         >
                           <div className="flex items-center gap-1 text-[10px]">
+                            {(() => {
+                              const visual = getVariableClassVisual(group.entity);
+                              if (!visual) return null;
+                              return (
+                                <span className="inline-flex items-center gap-1">
+                                  <span
+                                    className={clsx('w-1.5 h-1.5 rounded-full', visual.dotClass)}
+                                  />
+                                  <Icon name={visual.icon} size={11} className="text-neutral-500" />
+                                </span>
+                              );
+                            })()}
                             <span className="font-mono font-semibold text-neutral-700 dark:text-neutral-200">
                               {group.entity}
                             </span>
-                            {group.defaultClass && (
-                              <span className="px-1 rounded bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 text-[9px] uppercase tracking-wide">
-                                default
-                              </span>
-                            )}
                             <span className="ml-auto text-neutral-400 tabular-nums">
                               {group.members.length}
                             </span>
