@@ -10,6 +10,7 @@ import {
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 
 import { isDefaultVariableClass } from './promptVariableName';
+import { getVariableClassVisual } from './variableClassVisuals';
 
 /**
  * Variable token extension — decorates uppercase `var` chain elements
@@ -33,6 +34,8 @@ export interface VariableRange {
   /** Whether the name's class is a hard-coded default (e.g. ACTOR1/2/3) — it
    *  reads as "recognised" even when not explicitly saved. */
   defaultClass: boolean;
+  /** Class colour hex (from the role taxonomy), when the class has one. */
+  colorHex?: string;
 }
 
 export interface VariableTokenCallbacks {
@@ -84,6 +87,7 @@ function collectVariableRanges(config: VariableTokensConfig, doc: Text): Variabl
         name,
         saved: savedNames.has(name),
         defaultClass: isDefaultVariableClass(name),
+        colorHex: getVariableClassVisual(name)?.hex,
       });
     }
   }
@@ -92,20 +96,34 @@ function collectVariableRanges(config: VariableTokensConfig, doc: Text): Variabl
   return out;
 }
 
-const savedVarMark = Decoration.mark({
-  attributes: { class: 'cm-prompt-var cm-prompt-var-saved' },
-});
-const defaultVarMark = Decoration.mark({
-  attributes: { class: 'cm-prompt-var cm-prompt-var-default' },
-});
-const unsavedVarMark = Decoration.mark({
-  attributes: { class: 'cm-prompt-var' },
-});
+// Token styling combines two signals:
+//   colour  = the variable's class hue (role taxonomy) when it has one;
+//             else emerald for a plain saved var, grey for an unknown one.
+//   underline = saved -> solid, default-recognised -> dotted, unknown -> dashed.
+const _SAVED_HEX = 'rgba(16, 185, 129, 0.85)'; // emerald, for saved non-class vars
+const _UNKNOWN_HEX = 'rgba(120, 120, 120, 0.55)';
+
+function variableStyle(range: VariableRange): string {
+  const underline = range.saved ? 'solid' : range.defaultClass ? 'dotted' : 'dashed';
+  const lineColor = range.colorHex ?? (range.saved ? _SAVED_HEX : _UNKNOWN_HEX);
+  const parts = [`border-bottom:1px ${underline} ${lineColor}`];
+  // Tint the text only when there's a class hue or it's saved — keep unknown
+  // tokens in the editor's default text colour so they read as plain prose.
+  const textColor = range.colorHex ?? (range.saved ? _SAVED_HEX : undefined);
+  if (textColor) parts.push(`color:${textColor}`);
+  return parts.join(';');
+}
+
+const _markCache = new Map<string, Decoration>();
 
 function markFor(range: VariableRange): Decoration {
-  if (range.saved) return savedVarMark;
-  if (range.defaultClass) return defaultVarMark;
-  return unsavedVarMark;
+  const style = variableStyle(range);
+  let mark = _markCache.get(style);
+  if (!mark) {
+    mark = Decoration.mark({ attributes: { class: 'cm-prompt-var', style } });
+    _markCache.set(style, mark);
+  }
+  return mark;
 }
 
 function buildDecorations(config: VariableTokensConfig, doc: Text): DecorationSet {
@@ -171,29 +189,16 @@ function variableClickHandler(callbacks: VariableTokenCallbacks) {
 }
 
 const variableTheme = EditorView.baseTheme({
-  // Resting style: a dashed underline marks any uppercase VAR token as a
-  // clickable, save-able operand — distinct from the violet operator glyph.
+  // Layout/affordance only; the colour + underline style are applied per-token
+  // as an inline style (class hue × saved/default/unknown state) by markFor().
   '.cm-prompt-var': {
     cursor: 'pointer',
     borderRadius: '2px',
     padding: '0 1px',
-    borderBottom: '1px dashed rgba(120, 120, 120, 0.55)',
     transition: 'background-color 100ms ease, border-color 100ms ease',
   },
   '.cm-prompt-var:hover': {
     backgroundColor: 'rgba(168, 85, 247, 0.18)',
-    borderBottomColor: 'rgba(168, 85, 247, 0.7)',
-  },
-  // Saved variables get the solid emerald treatment used by the sidebar list.
-  '.cm-prompt-var-saved': {
-    borderBottom: '1px solid rgba(16, 185, 129, 0.75)',
-    color: 'rgba(5, 150, 105, 0.95)',
-  },
-  // Default-class variables (ACTOR1/2/3, GOAL, …) read as recognised even when
-  // not explicitly saved: a lighter dotted emerald, between saved and unknown.
-  '.cm-prompt-var-default': {
-    borderBottom: '1px dotted rgba(16, 185, 129, 0.7)',
-    color: 'rgba(5, 150, 105, 0.8)',
   },
 });
 

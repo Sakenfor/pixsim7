@@ -8,6 +8,7 @@ describe('getVariableClassVisual', () => {
       icon: 'target',
       dotClass: 'bg-yellow-500',
       colorName: 'yellow',
+      hex: '#eab308',
     });
   });
 

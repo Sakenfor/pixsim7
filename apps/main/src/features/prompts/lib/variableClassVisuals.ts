@@ -30,6 +30,22 @@ const COLOR_DOT: Record<string, string> = {
 };
 const DEFAULT_DOT = 'bg-neutral-400';
 
+// Colour-name → hex, for contexts that need a raw colour (e.g. CodeMirror
+// inline decoration styles where a tailwind class can't be applied).
+const COLOR_HEX: Record<string, string> = {
+  blue: '#3b82f6',
+  green: '#22c55e',
+  purple: '#a855f7',
+  yellow: '#eab308',
+  pink: '#ec4899',
+  cyan: '#06b6d4',
+  orange: '#f97316',
+  slate: '#64748b',
+  gray: '#64748b',
+  red: '#ef4444',
+  emerald: '#10b981',
+};
+
 function roleColorName(roleId: string): string | undefined {
   const colors = ROLE_COLORS as Record<string, string>;
   if (colors[roleId]) return colors[roleId];
@@ -43,6 +59,8 @@ export interface VariableClassVisual {
   dotClass: string;
   /** Resolved colour name (e.g. 'blue'), if any. */
   colorName?: string;
+  /** Resolved colour hex, for raw-colour contexts (e.g. CodeMirror styles). */
+  hex?: string;
 }
 
 /** Visual identity for a variable's class, or null when the class isn't a default. */
@@ -60,6 +78,7 @@ export function getVariableClassVisual(name: string): VariableClassVisual | null
   const colorName =
     config.color ?? (config.compositionRole ? roleColorName(config.compositionRole) : undefined);
   const dotClass = colorName ? (COLOR_DOT[colorName] ?? DEFAULT_DOT) : DEFAULT_DOT;
+  const hex = colorName ? COLOR_HEX[colorName] : undefined;
 
-  return { icon, dotClass, colorName };
+  return { icon, dotClass, colorName, hex };
 }
