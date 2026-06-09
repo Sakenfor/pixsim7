@@ -21,6 +21,7 @@ import { useGenerationsStore } from '../stores/generationsStore';
 export interface PromptOutcomeStats {
   passed: number;
   filtered: number;
+  in_flight?: number; // still pending/processing/retrying — not yet settled
   rate: number | null; // passed / (passed + filtered)
 }
 

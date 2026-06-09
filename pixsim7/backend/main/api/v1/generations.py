@@ -1757,6 +1757,7 @@ from sqlalchemy import select, func, case  # noqa: E402
 
 from pixsim7.backend.main.domain.enums import (  # noqa: E402
     GenerationErrorCode,
+    FILTERED_OUTCOME_ERROR_CODES,
     RETRYABLE_ERROR_CODES,
     TWEAKABLE_ERROR_CODES,
     ERROR_CODE_CATEGORY,
@@ -1893,9 +1894,10 @@ from pixsim7.backend.main.domain.enums import GenerationStatus as _GenStatus  # 
 
 
 class PromptOutcomeStats(BaseModel):
-    passed: int          # completed (produced a video)
-    filtered: int        # content_render_moderated (fast-filtered, no video)
-    rate: Optional[float]  # passed / (passed + filtered); None when no history
+    passed: int          # SETTLED completed (produced a video)
+    filtered: int        # SETTLED terminal failure with a filtered code (no video)
+    in_flight: int = 0   # still pending/processing/retrying — not yet a pass or fail
+    rate: Optional[float]  # passed / (passed + filtered); None when no settled history
 
 
 class PromptStatsRequest(BaseModel):
@@ -1958,10 +1960,8 @@ async def get_prompt_stats(
 
     # "Filtered" covers BOTH the i2v render-moderation code and the i2i
     # content_filtered code, so the chip is meaningful for either operation.
-    filtered_codes = {
-        GenerationErrorCode.CONTENT_RENDER_MODERATED.value,
-        GenerationErrorCode.CONTENT_FILTERED.value,
-    }
+    # Shared with the gallery "prompt success rate" filter so the two never drift.
+    filtered_codes = {code.value for code in FILTERED_OUTCOME_ERROR_CODES}
     asset_ref = f"asset:{body.image_asset_id}" if body.image_asset_id is not None else None
 
     # Seek this prompt's history directly via the indexed prompt_text_hash
@@ -1976,7 +1976,9 @@ async def get_prompt_stats(
     RECENT_WINDOW = 400
     prompt_hash = _GenerationModel.compute_prompt_text_hash(prompt)
     if prompt_hash is None:
-        return PromptStatsResponse(prompt_only=empty, prompt_image=None, streak=0, cap=cap)
+        return PromptStatsResponse(
+            prompt_only=empty, prompt_image=None, streak=0, cap=cap, defer_seconds=defer_seconds
+        )
     stmt = (
         select(
             _GenerationModel.status,
@@ -1996,17 +1998,26 @@ async def get_prompt_stats(
             return False
         return any(isinstance(i, dict) and i.get("asset") == asset_ref for i in inputs)
 
-    p_passed = p_filtered = 0
-    pi_passed = pi_filtered = 0
+    # Only SETTLED outcomes count toward pass/fail. An in-flight retry sits in
+    # PENDING/PROCESSING with its prior attempt's filtered error_code still
+    # attached — counting that as "filtered" made a queue of N retrying gens read
+    # as N failures that then "fell" as they landed. In-flight is tracked
+    # separately so the chip can show "N running" instead of inflating the fail
+    # count. (A fast-filter is only a real failure once it gives up → FAILED.)
+    _ACTIVE_STATUSES = (_GenStatus.PENDING, _GenStatus.PROCESSING, _GenStatus.PAUSED)
+    p_passed = p_filtered = p_inflight = 0
+    pi_passed = pi_filtered = pi_inflight = 0
     streak = 0
     streak_open = True
     for r in rows:
         if r.status == _GenStatus.COMPLETED:
             outcome = "passed"
-        elif r.error_code in filtered_codes:
+        elif r.status == _GenStatus.FAILED and r.error_code in filtered_codes:
             outcome = "filtered"
+        elif r.status in _ACTIVE_STATUSES:
+            outcome = "in_flight"
         else:
-            outcome = "other"
+            outcome = "other"  # cancelled, or a non-filter failure
         in_image = _matches_image(r.inputs)
 
         if outcome == "passed":
@@ -2017,9 +2028,13 @@ async def get_prompt_stats(
             p_filtered += 1
             if in_image:
                 pi_filtered += 1
+        elif outcome == "in_flight":
+            p_inflight += 1
+            if in_image:
+                pi_inflight += 1
 
-        # Streak = consecutive render-moderated since the last success, ignoring
-        # unrelated outcomes (quota etc.). Scoped to prompt+image when given.
+        # Streak = consecutive settled-filtered since the last success, ignoring
+        # in-flight/unrelated outcomes. Scoped to prompt+image when given.
         if streak_open and (in_image if asset_ref is not None else True):
             if outcome == "filtered":
                 streak += 1
@@ -2027,9 +2042,13 @@ async def get_prompt_stats(
                 streak_open = False
 
     return PromptStatsResponse(
-        prompt_only=PromptOutcomeStats(passed=p_passed, filtered=p_filtered, rate=_rate(p_passed, p_filtered)),
+        prompt_only=PromptOutcomeStats(
+            passed=p_passed, filtered=p_filtered, in_flight=p_inflight, rate=_rate(p_passed, p_filtered)
+        ),
         prompt_image=(
-            PromptOutcomeStats(passed=pi_passed, filtered=pi_filtered, rate=_rate(pi_passed, pi_filtered))
+            PromptOutcomeStats(
+                passed=pi_passed, filtered=pi_filtered, in_flight=pi_inflight, rate=_rate(pi_passed, pi_filtered)
+            )
             if asset_ref is not None else None
         ),
         streak=streak,

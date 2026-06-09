@@ -121,6 +121,10 @@ export function PromptModerationChip({
   const atCap = stats.streak >= cap;
   const near = stats.streak >= Math.ceil(cap * 0.6);
   const empty = total === 0 && !hasStreak;
+  // Still-running attempts for this prompt (not counted as pass/fail until they
+  // settle) — so a queue of in-flight retries shows "N running" instead of
+  // inflating the fail count.
+  const inFlight = headline.in_flight ?? 0;
   // Expected attempts per landed clip (geometric mean of the pass rate). Lets a
   // climbing streak read as "a clip is still coming" rather than pure failure.
   const expectedTries =
@@ -207,8 +211,9 @@ export function PromptModerationChip({
 
             {empty ? (
               <div className="opacity-80">
-                No recent attempts recorded for this prompt yet. Generate to start
-                building a pass/fail history.
+                {inFlight > 0
+                  ? `${inFlight} running — no settled pass/fail history for this prompt yet.`
+                  : 'No recent attempts recorded for this prompt yet. Generate to start building a pass/fail history.'}
               </div>
             ) : (
               <div className="space-y-0.5">
@@ -228,6 +233,12 @@ export function PromptModerationChip({
                     {po.passed}/{poTotal} · {pct(po.rate)}%
                   </span>
                 </div>
+                {inFlight > 0 && (
+                  <div className="flex justify-between gap-3 tabular-nums text-sky-300">
+                    <span className="opacity-80">Running now</span>
+                    <span>{inFlight}</span>
+                  </div>
+                )}
               </div>
             )}
 
