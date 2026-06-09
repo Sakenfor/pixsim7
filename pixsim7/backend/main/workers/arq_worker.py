@@ -183,12 +183,52 @@ def _register_system_config_subscriber() -> None:
 _register_system_config_subscriber()
 
 
+# arq logs an INFO start/end pair for every job and cron fire, e.g.
+#   "1.01s → cron:poll_job_statuses()" / "0.10s ← cron:poll_job_statuses ●".
+# A few crons fire very frequently (poll every 2s, heartbeats every 30s, reload
+# and requeue) and those scaffolding lines carry no information — the functions
+# log their own meaningful events. On the main worker the 2s poller alone is
+# ~60 lines/min, burying real logs. Drop just those INFO lines while keeping
+# real job logs, arq's periodic "recording health" summary, and any
+# WARNING/ERROR (including failures of these same crons).
+_QUIET_CRON_NAMES = (
+    "cron:poll_job_statuses",
+    "cron:update_main_heartbeat",
+    "cron:update_retry_heartbeat",
+    "cron:update_simulation_heartbeat",
+    "cron:update_automation_heartbeat",
+    "cron:reload_logging_config",
+    "cron:requeue_pending_generations",
+    "cron:requeue_pending_analyses",
+)
+
+
+class _QuietHighFrequencyCronFilter(stdlib_logging.Filter):
+    """Drop arq's routine INFO start/end lines for high-frequency crons.
+
+    Only INFO (and below) records are dropped; WARNING/ERROR about the same
+    crons pass through untouched so failures stay visible.
+    """
+
+    def filter(self, record: stdlib_logging.LogRecord) -> bool:
+        if record.levelno > stdlib_logging.INFO:
+            return True
+        message = record.getMessage()
+        return not any(name in message for name in _QUIET_CRON_NAMES)
+
+
+_quiet_cron_filter = _QuietHighFrequencyCronFilter()
+
+
 def _normalize_arq_logger_handlers() -> None:
     """Drop ARQ's default plain-text handler so events flow once via pixsim_logging.
 
     The `arq` CLI applies its own logging dictConfig after importing this module.
     That handler emits `%(asctime)s: %(message)s` lines in parallel with the
     structured stdlib root handler configured by pixsim_logging, causing duplicates.
+
+    Also installs a filter on ``arq.worker`` that suppresses the routine INFO
+    start/end lines for the high-frequency crons (see _QUIET_CRON_NAMES).
     """
     removed = 0
     for logger_name in ("arq", "arq.worker"):
@@ -198,6 +238,14 @@ def _normalize_arq_logger_handlers() -> None:
             removed += 1
         arq_logger.propagate = True
         arq_logger.disabled = False
+
+    # The job/cron start-end lines are emitted by the "arq.worker" logger, so
+    # the filter must be attached there (logger filters don't apply to records
+    # propagated up from children). Idempotent across repeated startup calls.
+    arq_worker_logger = stdlib_logging.getLogger("arq.worker")
+    if not any(isinstance(f, _QuietHighFrequencyCronFilter) for f in arq_worker_logger.filters):
+        arq_worker_logger.addFilter(_quiet_cron_filter)
+
     if removed:
         logger.info("arq_logger_handlers_removed", removed_handlers=removed)
 
