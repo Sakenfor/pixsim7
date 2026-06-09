@@ -178,9 +178,11 @@ export function GenerationActivityBarWidget() {
         {/* Fast-filter dot — top-left (free corner) when prompts are bouncing
             through render-moderation retries; the count lives in the tooltip. */}
         {refilteringCount > 0 && (
+          // Decorative — the count + meaning live in the rich hover tooltip; no
+          // native title here (it would double up with that tooltip).
           <div
+            aria-hidden
             className="absolute top-1.5 left-1.5 w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"
-            title={`${refilteringCount} attempt(s) re-filtering (render-moderation retries)`}
           />
         )}
       </button>
@@ -190,7 +192,8 @@ export function GenerationActivityBarWidget() {
           onMouseDown={(e) => e.stopPropagation()}
           onClick={handleBadgeClick}
           className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full text-[10px] font-semibold leading-none transition-[transform,filter] hover:brightness-110 hover:scale-105 ${badgeToneClass}`}
-          title={`${modeTitle}: ${badgeValue}. Click to cycle metric.`}
+          // No native title — the rich hover tooltip already explains the metric
+          // + "click to cycle"; a title here showed a second overlapping tooltip.
           aria-label={`${modeTitle}: ${badgeValue}. Click to cycle metric.`}
         >
           {badgeValue}
