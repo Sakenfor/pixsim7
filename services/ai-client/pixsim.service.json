@@ -91,6 +91,15 @@
       ],
       "default": [],
       "section": "Tool Approval"
+    },
+    {
+      "key": "additional_directories",
+      "type": "string",
+      "separator": "\n",
+      "label": "Additional accessible directories",
+      "description": "Extra filesystem roots the agent may read/write beyond the project directory (the agent is otherwise confined to the repo). Add absolute paths, one per entry. The project dir and ~/.claude/plans are always included. Applied to .claude/settings.json on the next apply.",
+      "default": "",
+      "section": "Tool Approval"
     }
   ]
 }

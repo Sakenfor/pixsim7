@@ -885,6 +885,21 @@ async def apply_hook_config(
     claude_plans_dir = str(claude_dir / "plans")
     if claude_plans_dir not in extra_dirs:
         extra_dirs.append(claude_plans_dir)
+    # User-configured extra roots (ai-client service setting
+    # `additional_directories`, newline-separated; edited via the launcher's
+    # "Additional accessible directories" list) merge on top of the always-on
+    # default. Read from persisted settings — same pattern as mcp_approval_tools
+    # — so it flows through the normal settings UI without a request-contract
+    # change. Best-effort: a settings-read failure must not break apply.
+    try:
+        from launcher.core.service_settings import load_persisted as _load_persisted
+        _configured_dirs = _load_persisted("ai-client").get("additional_directories") or ""
+    except Exception:
+        _configured_dirs = ""
+    for _entry in str(_configured_dirs).splitlines():
+        _entry = _entry.strip()
+        if _entry and _entry not in extra_dirs:
+            extra_dirs.append(_entry)
     permissions["additionalDirectories"] = extra_dirs
 
     project_settings["permissions"] = permissions
