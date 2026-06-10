@@ -1633,6 +1633,261 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Restore (un-archive) — pull archived originals back to local. Reverse of the
+// relocate action. Selection is by manual set and/or media type; the preview
+// shows how much LOCAL disk the restore would CONSUME (important on low-disk
+// machines). Plan media-storage-tiering (reversibility).
+// ---------------------------------------------------------------------------
+
+const RESTORE_STATS_KEY = '/assets/restore-stats';
+
+interface RestoreStats {
+  archive_configured: boolean;
+  archive_root_id: string;
+  candidate_count: number;
+  candidate_bytes: number;
+  candidate_human: string;
+}
+
+interface RestoreResult {
+  archive_configured: boolean;
+  dry_run: boolean;
+  restored: number;
+  skipped: number;
+  errors: number;
+  restored_bytes: number;
+  restored_human: string;
+  would_restore_bytes: number;
+  would_restore_human: string;
+  error_ids: number[];
+}
+
+function RestoreFromArchiveAction({ onChanged }: { onChanged: () => void }) {
+  const [stats, setStats] = useState<RestoreStats | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const [limit, setLimit] = useState(50);
+  // Selection: which archived assets to pull back. Empty set+type = all archived.
+  const [setIds, setSetIds] = useState<number[]>([]);
+  const [mediaTypes, setMediaTypes] = useState<string[]>([]);
+  // Re-hash the restored local copy before trusting it. Default ON.
+  const [verifyHash, setVerifyHash] = useState(true);
+  // Also drop the archive copy after restoring. Default OFF — keep the backup.
+  const [deleteArchive, setDeleteArchive] = useState(false);
+  const statsReqIdRef = useRef(0);
+
+  const { sets } = useAssetSets();
+  const manualSets = useMemo(() => sets.filter((s) => s.kind === 'manual'), [sets]);
+
+  const criteriaQuery = useCallback(() => {
+    const p = new URLSearchParams();
+    if (setIds.length) p.set('set_ids', setIds.join(','));
+    if (mediaTypes.length) p.set('media_types', mediaTypes.join(','));
+    return p.toString();
+  }, [setIds, mediaTypes]);
+
+  const loadStats = useCallback(async () => {
+    const reqId = ++statsReqIdRef.current;
+    try {
+      const qs = criteriaQuery();
+      const s = await maintGet<RestoreStats>(
+        `${RESTORE_STATS_KEY}${qs ? `?${qs}` : ''}`,
+        SURFACE,
+      );
+      if (reqId === statsReqIdRef.current) setStats(s);
+    } catch {
+      /* surfaced elsewhere; keep quiet */
+    }
+  }, [criteriaQuery]);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  const toggleSet = useCallback((id: number) => {
+    setSetIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }, []);
+  const toggleType = useCallback((key: string) => {
+    setMediaTypes((prev) => (prev.includes(key) ? prev.filter((t) => t !== key) : [...prev, key]));
+  }, []);
+
+  const run = useCallback(
+    async (dryRun: boolean) => {
+      setBusy(true);
+      setResult(null);
+      try {
+        const qs = criteriaQuery();
+        const path = `/assets/restore?limit=${limit}&dry_run=${dryRun}&verify_hash=${verifyHash}&delete_archive=${deleteArchive}${qs ? `&${qs}` : ''}`;
+        const data = await maintPost<RestoreResult>(path, SURFACE);
+        if (dryRun) {
+          setResult({
+            message:
+              data.restored > 0
+                ? `Would restore ${data.restored} item(s) — ${data.would_restore_human} onto local${data.skipped ? `, ${data.skipped} skipped` : ''}`
+                : 'Nothing matches — nothing to restore',
+          });
+        } else {
+          const parts = [`${data.restored} restored`];
+          if (data.restored_bytes > 0) parts.push(`${data.restored_human} added locally`);
+          if (data.skipped) parts.push(`${data.skipped} skipped`);
+          if (data.errors) parts.push(`${data.errors} errors`);
+          setResult({ message: parts.join(', '), isError: data.errors > 0 && data.restored === 0 });
+          onChanged();
+        }
+        await loadStats();
+      } catch (err) {
+        setResult({ message: extractErrorMessage(err) || 'Restore failed', isError: true });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [criteriaQuery, limit, verifyHash, deleteArchive, loadStats, onChanged],
+  );
+
+  const onApply = useCallback(() => {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `Restore up to ${limit} archived original(s) back to LOCAL disk${deleteArchive ? ' and delete the archive copy' : ''}? This downloads from the archive and consumes local space.`,
+      )
+    )
+      return;
+    run(false);
+  }, [limit, deleteArchive, run]);
+
+  if (!stats) return null;
+
+  const noArchive = !stats.archive_configured;
+  const nothing = stats.candidate_count === 0;
+
+  return (
+    <div className="px-3 py-2 space-y-2">
+      <div className="flex items-center gap-2 text-[11px]">
+        <Icon name="download" size={12} className="text-muted-foreground shrink-0" />
+        <span className="text-muted-foreground flex-1">
+          {nothing
+            ? 'No archived originals match this selection'
+            : `${fmt(stats.candidate_count)} archived original(s) match (${stats.candidate_human}) — restoring uses that much local disk`}
+        </span>
+      </div>
+
+      {/* Selection */}
+      <div className="pl-5 space-y-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1">Types</span>
+          {RELOCATE_MEDIA_TYPES.map((t) => {
+            const active = mediaTypes.includes(t.key);
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => toggleType(t.key)}
+                disabled={busy}
+                className={`h-6 px-2 text-[11px] rounded border transition-colors disabled:opacity-50 ${
+                  active
+                    ? 'border-accent bg-accent text-accent-foreground'
+                    : 'border-border bg-transparent hover:bg-muted/40 text-muted-foreground'
+                }`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+          <span className="text-[10px] text-muted-foreground/60">none = all types</span>
+        </div>
+
+        {manualSets.length > 0 && (
+          <div className="flex items-start gap-1.5 flex-wrap">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1 mt-1">
+              From sets
+            </span>
+            {manualSets.map((s) => {
+              const active = setIds.includes(s.id);
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => toggleSet(s.id)}
+                  disabled={busy}
+                  title={active ? `Restoring archived members of "${s.name}"` : `Restore archived members of "${s.name}"`}
+                  className={`h-6 px-2 text-[11px] rounded border transition-colors disabled:opacity-50 ${
+                    active
+                      ? 'border-accent bg-accent text-accent-foreground'
+                      : 'border-border bg-transparent hover:bg-muted/40 text-muted-foreground'
+                  }`}
+                >
+                  {s.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={verifyHash}
+            onChange={(e) => setVerifyHash(e.target.checked)}
+            disabled={busy}
+            className="h-3 w-3 disabled:opacity-50"
+          />
+          Verify hash after restore (re-hash the local copy; slower, safest)
+        </label>
+        <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={deleteArchive}
+            onChange={(e) => setDeleteArchive(e.target.checked)}
+            disabled={busy}
+            className="h-3 w-3 disabled:opacity-50"
+          />
+          Also delete the archive copy (default keeps it as a backup)
+        </label>
+      </div>
+
+      {noArchive && !nothing && (
+        <p className="text-[10px] text-amber-600 dark:text-amber-400 pl-5">
+          No <code>archive</code> root configured — nothing to restore from.
+        </p>
+      )}
+      {!nothing && (
+        <div className="flex items-center gap-2 flex-wrap pl-5">
+          <label className="text-[10px] text-muted-foreground">Batch</label>
+          <input
+            type="number"
+            min={1}
+            max={500}
+            value={limit}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n)) setLimit(Math.max(1, Math.min(500, Math.floor(n))));
+            }}
+            disabled={busy}
+            className="h-6 w-16 text-[11px] bg-transparent border border-border rounded px-1.5 tabular-nums disabled:opacity-50"
+          />
+          <Button onClick={() => run(true)} disabled={busy} variant="outline" size="sm">
+            {busy ? <Spinner className="w-3 h-3" /> : 'Preview'}
+          </Button>
+          <Button onClick={onApply} disabled={busy || noArchive} variant="primary" size="sm">
+            Restore {fmt(Math.min(limit, stats.candidate_count))}
+          </Button>
+        </div>
+      )}
+      {result && (
+        <div
+          className={`flex items-center gap-1.5 text-[11px] pl-5 ${
+            result.isError ? 'text-red-500' : 'text-green-600 dark:text-green-400'
+          }`}
+        >
+          <Icon name={result.isError ? 'alertCircle' : 'check'} size={12} />
+          {result.message}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const STORAGE_ROOTS_CONFIG_KEY = '/assets/storage-roots-config';
 
 interface RootForm {
@@ -2034,6 +2289,11 @@ function StorageTieringPanel() {
           {/* Relocate action */}
           <section className="rounded-md border border-border/60 bg-muted/20">
             <RelocateVideosAction onMoved={refresh} />
+          </section>
+
+          {/* Restore (un-archive) action */}
+          <section className="rounded-md border border-border/60 bg-muted/20">
+            <RestoreFromArchiveAction onChanged={refresh} />
           </section>
 
           {/* Add / edit / remove roots */}

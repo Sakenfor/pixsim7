@@ -729,3 +729,28 @@ def test_candidate_query_criteria():
     both_set_sql = str(candidate_query(0, None, exclude_set_ids=[5], include_set_ids=[7]))
     assert both_set_sql.count("asset_set_member") >= 2
     assert "NOT (EXISTS" in both_set_sql
+
+
+def test_restore_candidate_query():
+    from pixsim7.backend.main.services.storage.relocation import restore_candidate_query
+
+    # Reverse selector: targets the archive root, NOT local.
+    base = str(restore_candidate_query(1, archive_root="archive"))
+    assert "storage_root_id" in base
+    assert "stored_key IS NOT NULL" in base
+    # No video-only default (unlike candidate_query): media_type filter absent
+    # unless requested.
+    assert "media_type IN" not in base
+
+    # media_types filter applies only when given.
+    assert "media_type IN" in str(
+        restore_candidate_query(1, archive_root="archive", media_types=["image", "video"])
+    )
+
+    # explicit asset_ids -> id IN; set_ids -> EXISTS over asset_set_member.
+    by_ids = str(restore_candidate_query(1, archive_root="archive", asset_ids=[10, 11]))
+    assert "assets.id IN" in by_ids
+    by_sets = str(restore_candidate_query(1, archive_root="archive", set_ids=[3]))
+    assert "asset_set_member" in by_sets
+    assert "EXISTS" in by_sets
+    assert "NOT (EXISTS" not in by_sets  # include (positive), not exclude

@@ -763,6 +763,28 @@ class RelocateVideosResponse(BaseModel):
     error_ids: list[int]
 
 
+class RestoreStatsResponse(BaseModel):
+    archive_configured: bool
+    archive_root_id: str
+    candidate_count: int
+    # Local disk this restore would CONSUME (inverse of relocation's freed bytes).
+    candidate_bytes: int
+    candidate_human: str
+
+
+class RestoreResponse(BaseModel):
+    archive_configured: bool
+    dry_run: bool
+    restored: int
+    skipped: int
+    errors: int
+    restored_bytes: int
+    restored_human: str
+    would_restore_bytes: int
+    would_restore_human: str
+    error_ids: list[int]
+
+
 def _csv_list(raw: Optional[str]) -> Optional[list[str]]:
     """Parse a comma-separated query param into a list (None when empty)."""
     if not raw:
@@ -809,6 +831,17 @@ _EXCLUDE_SET_IDS_Q = Query(
 _INCLUDE_SET_IDS_Q = Query(
     None,
     description="CSV of manual asset-set ids; restrict candidates to members of these sets only",
+)
+_RESTORE_ASSET_IDS_Q = Query(
+    None, description="CSV of asset ids to restore from archive back to local"
+)
+_RESTORE_SET_IDS_Q = Query(
+    None,
+    description="CSV of manual asset-set ids; restore the archived members of these sets",
+)
+_DELETE_ARCHIVE_Q = Query(
+    False,
+    description="After restoring to local, also delete the archive copy (default: keep as backup)",
 )
 
 
@@ -986,6 +1019,152 @@ async def relocate_videos(
         freed_human=_human_size(freed),
         would_move_bytes=would_bytes,
         would_move_human=_human_size(would_bytes),
+        error_ids=error_ids[:20],
+    )
+
+
+@router.get("/restore-stats", response_model=RestoreStatsResponse)
+async def get_restore_stats(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    asset_ids: Optional[str] = _RESTORE_ASSET_IDS_Q,
+    set_ids: Optional[str] = _RESTORE_SET_IDS_Q,
+    media_types: Optional[str] = _MEDIA_TYPES_Q,
+):
+    """Count + bytes of archived originals matching the restore selection. The
+    bytes are the LOCAL disk a restore would consume (mind low-disk machines)."""
+    from sqlalchemy import func as _func, select as _select
+
+    from pixsim7.backend.main.services.storage.placement import (
+        ARCHIVE_ROOT_ID,
+        archive_configured,
+    )
+    from pixsim7.backend.main.services.storage.relocation import restore_candidate_query
+
+    base = restore_candidate_query(
+        admin.id,
+        archive_root=ARCHIVE_ROOT_ID,
+        asset_ids=_csv_int_list(asset_ids),
+        set_ids=_csv_int_list(set_ids),
+        media_types=_csv_list(media_types),
+    ).subquery()
+    row = (
+        await db.execute(
+            _select(
+                _func.count().label("cnt"),
+                _func.coalesce(_func.sum(base.c.file_size_bytes), 0).label("total_bytes"),
+            ).select_from(base)
+        )
+    ).one()
+
+    return RestoreStatsResponse(
+        archive_configured=archive_configured(),
+        archive_root_id=ARCHIVE_ROOT_ID,
+        candidate_count=row.cnt,
+        candidate_bytes=row.total_bytes,
+        candidate_human=_human_size(row.total_bytes),
+    )
+
+
+@router.post("/restore", response_model=RestoreResponse)
+async def restore_assets(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    limit: int = Query(50, ge=1, le=500, description="Max assets to process per batch"),
+    dry_run: bool = Query(True, description="Preview without downloading/restoring"),
+    verify_hash: bool = Query(
+        False, description="Re-hash the restored local copy and compare to asset.sha256"
+    ),
+    delete_archive: bool = _DELETE_ARCHIVE_Q,
+    asset_ids: Optional[str] = _RESTORE_ASSET_IDS_Q,
+    set_ids: Optional[str] = _RESTORE_SET_IDS_Q,
+    media_types: Optional[str] = _MEDIA_TYPES_Q,
+):
+    """Restore archived originals back to the local root (reverse of ``/relocate``).
+
+    Selection (AND-ed): ``asset_ids`` (explicit), ``set_ids`` (archived members of
+    these manual sets), ``media_types``. Each asset: pull archive -> local, verify
+    size (and optionally hash) BEFORE flipping ``storage_root_id`` back to local,
+    then optionally delete the archive copy (``delete_archive``; off by default so
+    the backup survives). Per-asset commit. Requires a configured archive.
+    """
+    global _cache
+
+    from pixsim7.backend.main.services.storage.placement import (
+        ARCHIVE_ROOT_ID,
+        archive_configured,
+    )
+    from pixsim7.backend.main.services.storage.relocation import (
+        restore_candidate_query,
+        restore_one,
+    )
+
+    configured = archive_configured()
+    if not dry_run and not configured:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Archive root '{ARCHIVE_ROOT_ID}' is not configured — cannot restore."
+            ),
+        )
+
+    storage = get_storage_service()
+    stmt = restore_candidate_query(
+        admin.id,
+        archive_root=ARCHIVE_ROOT_ID,
+        asset_ids=_csv_int_list(asset_ids),
+        set_ids=_csv_int_list(set_ids),
+        media_types=_csv_list(media_types),
+    ).limit(limit)
+    assets = (await db.execute(stmt)).scalars().all()
+
+    restored = skipped = errors = 0
+    restored_bytes = 0
+    would_bytes = 0
+    error_ids: list[int] = []
+
+    for asset in assets:
+        try:
+            res = await restore_one(
+                db, storage, asset,
+                archive_root=ARCHIVE_ROOT_ID,
+                apply=not dry_run,
+                verify_hash=verify_hash,
+                delete_archive=delete_archive,
+            )
+        except Exception as exc:  # noqa: BLE001 — report per-asset, keep going
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            errors += 1
+            error_ids.append(asset.id)
+            logger.warning("restore_asset_failed", asset_id=asset.id, error=str(exc))
+            continue
+
+        status = res["status"]
+        if status == "restored":
+            restored += 1
+            restored_bytes += res["restored_bytes"]
+        elif status == "would_restore":
+            restored += 1
+            would_bytes += res["bytes"]
+        else:
+            skipped += 1
+
+    if not dry_run and restored:
+        _cache = None  # storage placement changed — invalidate overview cache
+
+    return RestoreResponse(
+        archive_configured=configured,
+        dry_run=dry_run,
+        restored=restored,
+        skipped=skipped,
+        errors=errors,
+        restored_bytes=restored_bytes,
+        restored_human=_human_size(restored_bytes),
+        would_restore_bytes=would_bytes,
+        would_restore_human=_human_size(would_bytes),
         error_ids=error_ids[:20],
     )
 

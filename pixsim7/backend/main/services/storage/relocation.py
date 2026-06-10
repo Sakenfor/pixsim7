@@ -154,6 +154,47 @@ def candidate_query(
     return stmt.order_by(Asset.id)
 
 
+def restore_candidate_query(
+    user_id: Optional[int],
+    *,
+    archive_root: str,
+    asset_ids=None,
+    set_ids=None,
+    media_types=None,
+):
+    """Build the select for archived assets eligible to restore back to local.
+
+    The reverse selector of ``candidate_query``: it targets the archive root
+    rather than local. Filters (all optional, AND-ed):
+    - ``asset_ids``: explicit ids to restore.
+    - ``set_ids``: members of any of these manual sets (EXISTS on asset_set_member).
+    - ``media_types``: limit by media type (NO video-only default here — restore
+      should not silently assume video the way relocation does).
+    Always scoped to ``storage_root_id == archive_root`` with a non-null key.
+    """
+    from pixsim7.backend.main.domain.assets.asset_set import AssetSetMember
+    from pixsim7.backend.main.domain.assets.models import Asset
+
+    stmt = select(Asset).where(
+        Asset.storage_root_id == archive_root,
+        Asset.stored_key.is_not(None),
+    )
+    if user_id is not None:
+        stmt = stmt.where(Asset.user_id == user_id)
+    if media_types:
+        stmt = stmt.where(Asset.media_type.in_(_normalize_media_types(media_types)))
+    ids = [int(i) for i in (asset_ids or [])]
+    if ids:
+        stmt = stmt.where(Asset.id.in_(ids))
+    sids = [int(s) for s in (set_ids or [])]
+    if sids:
+        in_set = select(AssetSetMember.asset_id).where(
+            AssetSetMember.asset_id == Asset.id, AssetSetMember.set_id.in_(sids)
+        )
+        stmt = stmt.where(exists(in_set))
+    return stmt.order_by(Asset.id)
+
+
 # --------------------------------------------------------------------------- #
 # Core blob relocation (DB-free — unit-testable with any TieredStorageService)
 # --------------------------------------------------------------------------- #
@@ -262,3 +303,96 @@ async def relocate_one(
         if await storage.delete(key, root_id=LOCAL_ROOT_ID):
             freed = local_size
     return {"status": "moved", "freed_bytes": freed, "shared_local": remaining_local > 0}
+
+
+async def restore_one(
+    session,
+    storage,
+    asset,
+    *,
+    archive_root: str,
+    apply: bool,
+    verify_hash: bool,
+    delete_archive: bool = False,
+) -> dict:
+    """Restore a single archived asset's original back to local. Reverse of
+    ``relocate_one``: pull archive -> local, verify it landed intact BEFORE
+    flipping ``storage_root_id`` back, then (optionally) drop the archive copy.
+
+    ``delete_archive`` defaults False — keep the archive object as a backup so
+    un-archiving never destroys the only verified copy. ``restored_bytes`` is the
+    local disk this consumes (the inverse of relocation's ``freed_bytes``).
+    """
+    from pixsim7.backend.main.domain.assets.models import Asset
+
+    key = asset.stored_key
+    if not key:
+        return {"status": "skipped", "reason": "no_stored_key", "restored_bytes": 0}
+
+    # Only assets actually on the archive root are restorable.
+    if asset.storage_root_id != archive_root:
+        return {"status": "skipped", "reason": "not_archived", "restored_bytes": 0}
+
+    meta = await storage.get_metadata(key, root_id=archive_root)
+    if meta is None:
+        return {"status": "skipped", "reason": "archive_missing", "restored_bytes": 0}
+    archive_size = meta.get("size")
+
+    if not apply:
+        local_present = await storage.exists(key, root_id=LOCAL_ROOT_ID)
+        return {
+            "status": "would_restore",
+            "already_local": local_present,
+            "bytes": archive_size or 0,
+            "restored_bytes": 0,
+        }
+
+    # 1. Pull archive bytes to a temp file, then place at the canonical local key.
+    tmp_path, is_temp = await storage.ensure_local_copy(key, root_id=archive_root)
+    try:
+        await storage.store_from_path(key, tmp_path, root_id=LOCAL_ROOT_ID)
+    finally:
+        if is_temp:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    # 2. Verify the local copy landed intact BEFORE flipping placement / deleting
+    #    the archive — same verify-before-mutate discipline as relocation.
+    local_meta = await storage.get_metadata(key, root_id=LOCAL_ROOT_ID)
+    if local_meta is None:
+        raise RuntimeError(f"verify failed: no local object after restore (key={key})")
+    if archive_size is not None and local_meta.get("size") != archive_size:
+        raise RuntimeError(
+            f"verify failed: local size {local_meta.get('size')} != archive {archive_size} (key={key})"
+        )
+    if verify_hash and asset.sha256:
+        local_sha = await storage.compute_hash(key, root_id=LOCAL_ROOT_ID)
+        if local_sha != asset.sha256:
+            raise RuntimeError(
+                f"verify failed: local hash {local_sha} != expected {asset.sha256} (key={key})"
+            )
+
+    # 3. Flip placement back to local; local_path becomes a real path again.
+    asset.storage_root_id = LOCAL_ROOT_ID
+    asset.local_path = storage.local_path_if_local(key, LOCAL_ROOT_ID)
+    await session.commit()
+
+    restored = local_meta.get("size") or 0
+
+    # 4. Post-commit: optionally delete the archive blob, but only if no sibling
+    #    still references this key on the archive root (this asset is now local).
+    archive_deleted = False
+    if delete_archive:
+        remaining_archive = (
+            await session.execute(
+                select(func.count()).select_from(Asset).where(
+                    Asset.stored_key == key,
+                    Asset.storage_root_id == archive_root,
+                )
+            )
+        ).scalar() or 0
+        if remaining_archive == 0:
+            archive_deleted = await storage.delete(key, root_id=archive_root)
+    return {"status": "restored", "restored_bytes": restored, "archive_deleted": archive_deleted}
