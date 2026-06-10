@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  classifyFacet,
+  facetAxesForClass,
   groupVariablesByEntity,
   isDefaultVariableClass,
   parseVariableName,
+  recognizeVariableFacet,
 } from '../promptVariableName';
 
 describe('parseVariableName', () => {
@@ -62,6 +65,52 @@ describe('isDefaultVariableClass', () => {
 
   it('rejects non-default classes', () => {
     expect(isDefaultVariableClass('WIDGET1')).toBe(false);
+  });
+});
+
+describe('facet recognition', () => {
+  it('exposes declared axes for a class and none for facetless classes', () => {
+    expect(facetAxesForClass('ACTOR').map((a) => a.name)).toEqual([
+      'ANATOMY',
+      'POSE',
+      'PERSONALITY',
+      'DETAILS',
+      'OUTFIT',
+      'ROLE',
+      'GOAL',
+    ]);
+    expect(facetAxesForClass('GOAL')).toEqual([]);
+    expect(facetAxesForClass('WIDGET')).toEqual([]);
+  });
+
+  it('classifies a known axis (case/space-insensitive) with its source', () => {
+    expect(classifyFacet('ACTOR', 'pose ')).toMatchObject({
+      facet: 'POSE',
+      known: true,
+      axis: { name: 'POSE', source: { kind: 'vocab', category: 'pose' } },
+    });
+    expect(classifyFacet('ACTOR', 'PERSONALITY')).toMatchObject({
+      known: true,
+      axis: { source: { kind: 'freeform' } },
+    });
+  });
+
+  it('reports unknown for a concrete vocab value (axis-level recognition only)', () => {
+    // HIP is an anatomy *value*, not an axis name — conservatively unknown until
+    // the vocab resolver lands. Never a false positive.
+    expect(classifyFacet('ACTOR', 'HIP')).toMatchObject({ facet: 'HIP', known: false });
+    expect(classifyFacet('ACTOR', 'HIP').axis).toBeUndefined();
+  });
+
+  it('recognises the leading facet of a full name, null when facetless', () => {
+    expect(recognizeVariableFacet('ACTOR1_POSE')).toMatchObject({ facet: 'POSE', known: true });
+    // Leading segment is the axis; trailing segments are sub-path.
+    expect(recognizeVariableFacet('ACTOR2_POSE_LEFT')).toMatchObject({
+      facet: 'POSE',
+      known: true,
+    });
+    expect(recognizeVariableFacet('ACTOR1')).toBeNull();
+    expect(recognizeVariableFacet('GOAL')).toBeNull();
   });
 });
 

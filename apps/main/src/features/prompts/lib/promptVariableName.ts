@@ -12,6 +12,28 @@
  * No persistence change; see plan `prompt-variable-placeholders` (Phase 3).
  */
 
+/** Where a facet axis draws its values from — used for recognition today and
+ *  autocomplete later. We REFERENCE an existing source by name; values are never
+ *  re-listed here (the vocab/slot registry stays the single source of truth).
+ *  - `vocab`: values are members of a VocabRegistry category (e.g. anatomy, pose).
+ *  - `slot`: values are slot ids (relation-capable — see slots.yaml provides/requires).
+ *  - `freeform`: any text; a named axis with no backing vocab (e.g. PERSONALITY). */
+export type FacetValueSource =
+  | { kind: 'vocab'; category: string }
+  | { kind: 'slot'; group?: string }
+  | { kind: 'freeform' };
+
+/** A named facet axis on a variable class. The `name` is the UPPERCASE token that
+ *  appears after the entity underscore (e.g. `POSE` in `ACTOR1_POSE`). For a
+ *  vocab-backed axis the axis is the *category*, and concrete values (e.g. HIP)
+ *  are members of that category — so `ACTOR1_HIP` resolves HIP against the axis's
+ *  vocab rather than being enumerated here. */
+export interface FacetAxis {
+  name: string;
+  label?: string;
+  source: FacetValueSource;
+}
+
 /** Visual/taxonomy config for a default variable class. Data-only — no UI
  *  imports here; colour/icon are resolved in `variableClassVisuals.ts`, which
  *  links to the role taxonomy. `compositionRole` derives colour+icon from the
@@ -24,19 +46,52 @@ export interface DefaultVariableClass {
   color?: string;
   /** Explicit @lib/icons IconName override (string to avoid a UI import here). */
   icon?: string;
+  /** Known facet axes for this class. First-pass mapping — facets become
+   *  *recognised* (known vs unknown) via these; value-level resolution against
+   *  the referenced vocab/slot source is layered on once a vocab surface exists. */
+  facets?: FacetAxis[];
 }
 
 /** Class-level defaults: any name in one of these classes is "recognised"
  *  even when the user hasn't explicitly saved it (so ACTOR1/ACTOR2/ACTOR3 just
  *  work). Class-level, not a fixed name list. Each links to the role taxonomy
  *  where one exists; GOAL has no role so carries an explicit colour/icon. */
+// First-pass facet axes per class. Vocab-backed axes reference an existing
+// VocabRegistry category by name (anatomy/pose/mood/camera/locations/...) — the
+// resolver maps the name to the registry; values are NOT duplicated here. Slot
+// axes are relation-capable (slots.yaml). Freeform axes are named conventions
+// with no backing vocab. Easily edited — this is a taxonomy seed, not a contract.
 export const DEFAULT_VARIABLE_CLASSES: Record<string, DefaultVariableClass> = {
-  ACTOR: { compositionRole: 'entities:main_character' },
+  ACTOR: {
+    compositionRole: 'entities:main_character',
+    facets: [
+      { name: 'ANATOMY', source: { kind: 'vocab', category: 'anatomy' } },
+      { name: 'POSE', source: { kind: 'vocab', category: 'pose' } },
+      { name: 'PERSONALITY', source: { kind: 'freeform' } },
+      { name: 'DETAILS', source: { kind: 'freeform' } },
+      { name: 'OUTFIT', source: { kind: 'freeform' } },
+      { name: 'ROLE', source: { kind: 'freeform' } },
+      { name: 'GOAL', source: { kind: 'freeform' } },
+    ],
+  },
   GOAL: { color: 'yellow', icon: 'target' },
-  SCENE: { compositionRole: 'world:environment' },
-  SETTING: { compositionRole: 'world:environment' },
+  SCENE: {
+    compositionRole: 'world:environment',
+    facets: [
+      { name: 'LOCATION', source: { kind: 'vocab', category: 'locations' } },
+      { name: 'BEAT', source: { kind: 'freeform' } },
+      { name: 'PROP', source: { kind: 'freeform' } },
+    ],
+  },
+  SETTING: {
+    compositionRole: 'world:environment',
+    facets: [{ name: 'LOCATION', source: { kind: 'vocab', category: 'locations' } }],
+  },
   STYLE: { compositionRole: 'materials:atmosphere', icon: 'palette' },
-  CAMERA: { compositionRole: 'camera:angle' },
+  CAMERA: {
+    compositionRole: 'camera:angle',
+    facets: [{ name: 'ANGLE', source: { kind: 'vocab', category: 'camera' } }],
+  },
   MOOD: { compositionRole: 'materials:atmosphere' },
 };
 
@@ -89,6 +144,40 @@ export function parseVariableName(name: string): ParsedVariableName {
 /** Whether a name belongs to a hard-coded default class. */
 export function isDefaultVariableClass(name: string): boolean {
   return isDefaultVariableClassName(parseVariableName(name).className);
+}
+
+/** Declared facet axes for a class (empty when the class has none / isn't default). */
+export function facetAxesForClass(className: string): FacetAxis[] {
+  return DEFAULT_VARIABLE_CLASSES[className]?.facets ?? [];
+}
+
+export interface FacetRecognition {
+  /** The leading facet segment, uppercased (e.g. `POSE` from `ACTOR1_POSE_X`). */
+  facet: string;
+  /** Matches a declared axis name for the class. */
+  known: boolean;
+  /** The matched axis, when known. */
+  axis?: FacetAxis;
+}
+
+/** Classify a single facet token against a class's declared axes. Axis-level
+ *  recognition only — value-level resolution (is `HIP` a real anatomy member?)
+ *  is layered on later once vocab members are available to the FE. The token may
+ *  be a leading axis (`POSE`) or a concrete vocab value (`HIP`); we match the
+ *  axis by name today, so concrete values report `known:false` until the vocab
+ *  resolver lands (intentionally conservative — never a false positive). */
+export function classifyFacet(className: string, facet: string): FacetRecognition {
+  const token = (facet ?? '').trim().toUpperCase();
+  const axis = facetAxesForClass(className).find((a) => a.name === token);
+  return { facet: token, known: Boolean(axis), axis };
+}
+
+/** Recognise the leading facet of a full variable name (e.g. `ACTOR1_POSE`).
+ *  Returns null when the name has no facet. */
+export function recognizeVariableFacet(name: string): FacetRecognition | null {
+  const parsed = parseVariableName(name);
+  if (parsed.facets.length === 0) return null;
+  return classifyFacet(parsed.className, parsed.facets[0]);
 }
 
 export interface VariableGroupMember {
