@@ -944,6 +944,7 @@ async def relocate_videos(
         ARCHIVE_ROOT_ID,
         archive_configured,
     )
+    from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.services.storage.relocation import (
         candidate_query,
         relocate_one,
@@ -971,15 +972,26 @@ async def relocate_videos(
         exclude_set_ids=_csv_int_list(exclude_set_ids),
         include_set_ids=_csv_int_list(include_set_ids),
     ).limit(limit)
-    assets = (await db.execute(stmt)).scalars().all()
+    # Capture PKs up front, then re-fetch each asset fresh inside the loop.
+    # relocate_one commits per-asset, and a per-asset failure runs db.rollback()
+    # which expires EVERY loaded ORM instance (expire_on_commit=False otherwise
+    # keeps them live). Iterating the already-loaded objects would then trip a
+    # sync lazy-load on an expired attribute in async context -> MissingGreenlet
+    # -> uncaught 500. Re-fetching by id (awaited) keeps every access on the
+    # async path and lets the batch continue past a single bad asset.
+    candidate_ids = [a.id for a in (await db.execute(stmt)).scalars().all()]
 
     moved = skipped = errors = 0
     freed = 0
     would_bytes = 0
     error_ids: list[int] = []
 
-    for asset in assets:
+    for aid in candidate_ids:
         try:
+            asset = await db.get(Asset, aid)
+            if asset is None:
+                skipped += 1
+                continue
             res = await relocate_one(
                 db, storage, asset,
                 archive_root=ARCHIVE_ROOT_ID,
@@ -992,8 +1004,8 @@ async def relocate_videos(
             except Exception:
                 pass
             errors += 1
-            error_ids.append(asset.id)
-            logger.warning("relocate_video_failed", asset_id=asset.id, error=str(exc))
+            error_ids.append(aid)
+            logger.warning("relocate_video_failed", asset_id=aid, error=str(exc))
             continue
 
         status = res["status"]
@@ -1094,6 +1106,7 @@ async def restore_assets(
         ARCHIVE_ROOT_ID,
         archive_configured,
     )
+    from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.services.storage.relocation import (
         restore_candidate_query,
         restore_one,
@@ -1116,15 +1129,21 @@ async def restore_assets(
         set_ids=_csv_int_list(set_ids),
         media_types=_csv_list(media_types),
     ).limit(limit)
-    assets = (await db.execute(stmt)).scalars().all()
+    # See relocate_videos: re-fetch by id so a per-asset rollback (which expires
+    # all loaded instances) can't trigger a sync lazy-load -> MissingGreenlet 500.
+    candidate_ids = [a.id for a in (await db.execute(stmt)).scalars().all()]
 
     restored = skipped = errors = 0
     restored_bytes = 0
     would_bytes = 0
     error_ids: list[int] = []
 
-    for asset in assets:
+    for aid in candidate_ids:
         try:
+            asset = await db.get(Asset, aid)
+            if asset is None:
+                skipped += 1
+                continue
             res = await restore_one(
                 db, storage, asset,
                 archive_root=ARCHIVE_ROOT_ID,
@@ -1138,8 +1157,8 @@ async def restore_assets(
             except Exception:
                 pass
             errors += 1
-            error_ids.append(asset.id)
-            logger.warning("restore_asset_failed", asset_id=asset.id, error=str(exc))
+            error_ids.append(aid)
+            logger.warning("restore_asset_failed", asset_id=aid, error=str(exc))
             continue
 
         status = res["status"]
