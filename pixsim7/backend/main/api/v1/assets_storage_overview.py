@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -785,6 +785,28 @@ class RestoreResponse(BaseModel):
     error_ids: list[int]
 
 
+class RelocateJobStartResponse(BaseModel):
+    job_id: str
+    status: str  # "queued"
+
+
+class RelocateJobProgress(BaseModel):
+    """Live snapshot of a background relocation job (Redis-backed)."""
+    job_id: str
+    status: str  # queued | running | completed | cancelled | error | continued
+    apply: bool
+    cursor: int
+    processed: int
+    moved: int
+    skipped: int
+    errors: int
+    freed_bytes: int
+    freed_human: str
+    would_bytes: int
+    would_human: str
+    error_ids: list[int]
+
+
 def _csv_list(raw: Optional[str]) -> Optional[list[str]]:
     """Parse a comma-separated query param into a list (None when empty)."""
     if not raw:
@@ -1186,6 +1208,110 @@ async def restore_assets(
         would_restore_human=_human_size(would_bytes),
         error_ids=error_ids[:20],
     )
+
+
+# ---------------------------------------------------------------------------
+# Background relocation (cp-k): run the same move as a long-lived arq job so the
+# UI doesn't block. Thin wrappers over the worker's control helpers — progress
+# lives in Redis, so /relocate/job is pollable and survives a page reload.
+# ---------------------------------------------------------------------------
+
+def _progress_to_model(p: Optional[dict]) -> Optional[RelocateJobProgress]:
+    if not p:
+        return None
+    freed = int(p.get("freed_bytes", 0) or 0)
+    would = int(p.get("would_bytes", 0) or 0)
+    return RelocateJobProgress(
+        job_id=p.get("job_id", ""),
+        status=p.get("status", "unknown"),
+        apply=bool(p.get("apply", False)),
+        cursor=int(p.get("cursor", 0) or 0),
+        processed=int(p.get("processed", 0) or 0),
+        moved=int(p.get("moved", 0) or 0),
+        skipped=int(p.get("skipped", 0) or 0),
+        errors=int(p.get("errors", 0) or 0),
+        freed_bytes=freed,
+        freed_human=_human_size(freed),
+        would_bytes=would,
+        would_human=_human_size(would),
+        error_ids=list(p.get("error_ids", []) or [])[:20],
+    )
+
+
+@router.post("/relocate/start", response_model=RelocateJobStartResponse)
+async def start_relocate_background(
+    admin: CurrentAdminUser,
+    min_size_mb: float = Query(0.0, ge=0),
+    dry_run: bool = Query(False, description="Preview without moving (apply = not dry_run)"),
+    verify_hash: bool = Query(False, description="Re-hash the archive copy vs asset.sha256 (slower)"),
+    media_types: Optional[str] = _MEDIA_TYPES_Q,
+    older_than_days: Optional[int] = _OLDER_THAN_Q,
+    content_ratings: Optional[str] = _CONTENT_RATINGS_Q,
+    exclude_favorites: bool = _EXCLUDE_FAVORITES_Q,
+    exclude_set_ids: Optional[str] = _EXCLUDE_SET_IDS_Q,
+    include_set_ids: Optional[str] = _INCLUDE_SET_IDS_Q,
+    max_assets: Optional[int] = Query(None, ge=1, description="Cap assets processed (testing)"),
+):
+    """Start a background relocation job; returns its id for polling /relocate/job.
+
+    Same criteria as POST /relocate. ``dry_run`` previews without moving; an
+    apply (``dry_run=false``) requires a configured archive.
+    """
+    from pixsim7.backend.main.services.storage.placement import (
+        ARCHIVE_ROOT_ID,
+        archive_configured,
+    )
+    from pixsim7.backend.main.workers.relocation_processor import start_relocation_job
+
+    apply = not dry_run
+    if apply and not archive_configured():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Archive root '{ARCHIVE_ROOT_ID}' is not configured — cannot relocate."
+            ),
+        )
+    criteria = {
+        "user_id": admin.id,
+        "min_size_mb": min_size_mb,
+        "media_types": _csv_list(media_types) or ["video"],
+        "older_than_days": older_than_days,
+        "content_ratings": _csv_list(content_ratings),
+        "exclude_favorites": exclude_favorites,
+        "exclude_set_ids": _csv_int_list(exclude_set_ids),
+        "include_set_ids": _csv_int_list(include_set_ids),
+    }
+    job_id = await start_relocation_job(
+        criteria, apply=apply, verify_hash=verify_hash, max_assets=max_assets
+    )
+    return RelocateJobStartResponse(job_id=job_id, status="queued")
+
+
+@router.get("/relocate/job", response_model=Optional[RelocateJobProgress])
+async def get_relocate_job(
+    admin: CurrentAdminUser,
+    job_id: Optional[str] = Query(None, description="Job id; omit for the latest job"),
+):
+    """Poll a background relocation job's progress (latest job when ``job_id`` omitted).
+
+    Returns null when there is no such job (or none has ever run) — the UI treats
+    that as "nothing in flight".
+    """
+    from pixsim7.backend.main.workers.relocation_processor import read_relocation_progress
+
+    return _progress_to_model(await read_relocation_progress(job_id))
+
+
+@router.post("/relocate/cancel")
+async def cancel_relocate_job(
+    admin: CurrentAdminUser,
+    job_id: str = Query(..., description="Job id to cancel"),
+):
+    """Request cancellation; the job stops after its current asset."""
+    from pixsim7.backend.main.workers.relocation_processor import request_relocation_cancel
+
+    await request_relocation_cancel(job_id)
+    return {"ok": True, "job_id": job_id}
 
 
 # ---------------------------------------------------------------------------
