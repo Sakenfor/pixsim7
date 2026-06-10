@@ -25,8 +25,18 @@ export function maintGet<T>(path: string, surface: string): Promise<T> {
   return pixsimClient.get<T>(path, { headers: { 'X-Client-Surface': surface } });
 }
 
-export function maintPost<T>(path: string, surface: string, body?: unknown): Promise<T> {
-  return pixsimClient.post<T>(path, body, { headers: { 'X-Client-Surface': surface } });
+export function maintPost<T>(
+  path: string,
+  surface: string,
+  body?: unknown,
+  opts?: { timeoutMs?: number },
+): Promise<T> {
+  return pixsimClient.post<T>(path, body, {
+    headers: { 'X-Client-Surface': surface },
+    // Per-call override for long-running maintenance actions (e.g. bulk
+    // relocation) so they aren't cut by the default client timeout.
+    ...(opts?.timeoutMs ? { timeout: opts.timeoutMs } : {}),
+  });
 }
 
 export function maintPatch<T>(path: string, body: unknown, surface: string): Promise<T> {

@@ -1432,7 +1432,10 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
       try {
         const qs = criteriaQuery();
         const path = `/assets/relocate?limit=${limit}&dry_run=${dryRun}&verify_hash=${verifyHash}${qs ? `&${qs}` : ''}`;
-        const data = await maintPost<RelocateVideosResult>(path, SURFACE);
+        // A full batch (esp. with hash-verify, over the network) can run well
+        // past the default client timeout; allow up to 10 min so one click
+        // completes and reports a real result instead of a 30s timeout error.
+        const data = await maintPost<RelocateVideosResult>(path, SURFACE, undefined, { timeoutMs: 600_000 });
         if (dryRun) {
           setResult({
             message:
@@ -1719,7 +1722,8 @@ function RestoreFromArchiveAction({ onChanged }: { onChanged: () => void }) {
       try {
         const qs = criteriaQuery();
         const path = `/assets/restore?limit=${limit}&dry_run=${dryRun}&verify_hash=${verifyHash}&delete_archive=${deleteArchive}${qs ? `&${qs}` : ''}`;
-        const data = await maintPost<RestoreResult>(path, SURFACE);
+        // Restores download from the archive; allow up to 10 min per batch.
+        const data = await maintPost<RestoreResult>(path, SURFACE, undefined, { timeoutMs: 600_000 });
         if (dryRun) {
           setResult({
             message:
