@@ -1005,3 +1005,149 @@ async def test_single_local_tier_io_matches_local():
 
     assert await tier.delete(key) is True
     assert await tier.exists(key) is False
+
+
+# --------------------------------------------------------------------------- #
+# g1 — S3StorageService real I/O (store/get/exists/delete/dedup).
+#
+# Exercises the actual aiobotocore code path against a live S3-compatible store
+# (MinIO). moto can't be used: it pulls a botocore newer than aiobotocore 2.19
+# supports, so it can't share the process with our async client. Gated on
+# PIXSIM_TEST_S3_* env vars so it self-skips in CI / on machines without a store;
+# point it at any S3/MinIO bucket to run. Uses a throwaway key namespace and
+# cleans up after itself.
+# --------------------------------------------------------------------------- #
+
+_LIVE_S3_ENDPOINT = os.environ.get("PIXSIM_TEST_S3_ENDPOINT")
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not _LIVE_S3_ENDPOINT,
+    reason="set PIXSIM_TEST_S3_ENDPOINT/_BUCKET/_ACCESS_KEY/_SECRET_KEY to run live-S3 I/O",
+)
+async def test_s3_store_get_exists_delete_dedup_live():
+    import hashlib
+    import uuid
+
+    svc = S3StorageService(
+        endpoint_url=_LIVE_S3_ENDPOINT,
+        bucket=os.environ["PIXSIM_TEST_S3_BUCKET"],
+        access_key=os.environ["PIXSIM_TEST_S3_ACCESS_KEY"],
+        secret_key=os.environ["PIXSIM_TEST_S3_SECRET_KEY"],
+        region=os.environ.get("PIXSIM_TEST_S3_REGION", "us-east-1"),
+    )
+    data = b"pixsim-tiering-live-" + uuid.uuid4().hex.encode()
+    sha = hashlib.sha256(data).hexdigest()
+    key = f"u/0/test/{uuid.uuid4().hex}/{sha}.bin"
+    dedup_key = svc.get_content_addressed_key(0, sha, ".bin")
+    try:
+        # store / exists / get / metadata round-trip.
+        assert await svc.exists(key) is False
+        await svc.store(key, data, content_type="application/octet-stream")
+        assert await svc.exists(key) is True
+        assert await svc.get(key) == data
+        meta = await svc.get_metadata(key)
+        assert meta is not None and meta["size"] == len(data)
+        # get() on a missing key is None (not an error).
+        assert await svc.get(f"u/0/test/{uuid.uuid4().hex}.bin") is None
+
+        # content-addressed dedup: a second store for the same hash is a no-op
+        # and returns the same key (root-scoped existence check).
+        k1 = await svc.store_with_hash(0, sha, data, extension=".bin")
+        k2 = await svc.store_with_hash(0, sha, data, extension=".bin")
+        assert k1 == k2 == dedup_key
+        assert await svc.exists(dedup_key) is True
+    finally:
+        await svc.delete(key)
+        await svc.delete(dedup_key)
+    # delete is effective (and idempotent — a 2nd delete still "succeeds").
+    assert await svc.exists(key) is False
+    assert await svc.delete(key) is True
+
+
+# --------------------------------------------------------------------------- #
+# g2 — serve handler redirects an archived original to a presigned URL.
+#
+# Phase D tests cover root resolution + serve-mode selection + proxy streaming;
+# this asserts the end-to-end redirect decision in serve_media itself.
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_serve_media_redirects_archived_original_to_presigned(monkeypatch):
+    from types import SimpleNamespace
+
+    from starlette.responses import RedirectResponse
+
+    from pixsim7.backend.main.api.v1 import media as media_mod
+
+    class _ArchiveStub(_NonLocalStub):
+        def get_url(self, key):
+            return "http://minio.test/pixsim7-archive/" + key + "?X-Amz-Signature=deadbeef"
+
+    archive = _ArchiveStub()
+    key = "u/1/content/ab/" + "a" * 64 + ".mp4"
+    await archive.store(key, b"video")  # present, so the health probe passes
+    tier = TieredStorageService(
+        {LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp()), "archive": archive}
+    )
+    set_storage_service(tier)
+    monkeypatch.setattr(media_mod, "get_media_settings", lambda: SimpleNamespace(), raising=True)
+    monkeypatch.setattr(
+        media_mod.app_settings, "media_archive_serve_mode", "redirect", raising=False
+    )
+    try:
+        resp = await media_mod.serve_media(
+            key,
+            SimpleNamespace(id=1),
+            _FakeDB("archive"),  # content key resolves to the archive root
+            request=SimpleNamespace(headers={}),
+            response=SimpleNamespace(),
+        )
+        assert isinstance(resp, RedirectResponse)
+        assert resp.status_code == 307
+        loc = resp.headers["location"]
+        assert loc.startswith("http://minio.test/pixsim7-archive/")
+        assert "X-Amz-Signature" in loc
+    finally:
+        set_storage_service(None)
+
+
+@pytest.mark.asyncio
+async def test_serve_media_archive_offline_returns_503(monkeypatch):
+    """When the health probe can't confirm the object (store unreachable), serve
+    returns the clear archived-offline 503 instead of a doomed redirect."""
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from pixsim7.backend.main.api.v1 import media as media_mod
+
+    class _OfflineArchive(_NonLocalStub):
+        async def exists(self, key):
+            raise ConnectionError("unreachable")
+
+        async def health_check(self):
+            raise ConnectionError("unreachable")
+
+    tier = TieredStorageService(
+        {LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp()), "archive": _OfflineArchive()}
+    )
+    set_storage_service(tier)
+    monkeypatch.setattr(media_mod, "get_media_settings", lambda: SimpleNamespace(), raising=True)
+    monkeypatch.setattr(
+        media_mod.app_settings, "media_archive_serve_mode", "redirect", raising=False
+    )
+    try:
+        with pytest.raises(HTTPException) as ei:
+            await media_mod.serve_media(
+                "u/1/content/ab/" + "a" * 64 + ".mp4",
+                SimpleNamespace(id=1),
+                _FakeDB("archive"),
+                request=SimpleNamespace(headers={}),
+                response=SimpleNamespace(),
+            )
+        assert ei.value.status_code == 503
+        assert ei.value.headers.get("X-Media-State") == "archived-offline"
+    finally:
+        set_storage_service(None)
