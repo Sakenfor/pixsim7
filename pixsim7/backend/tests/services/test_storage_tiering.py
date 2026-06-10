@@ -787,3 +787,221 @@ def test_restore_candidate_query():
     assert "asset_set_member" in by_sets
     assert "EXISTS" in by_sets
     assert "NOT (EXISTS" not in by_sets  # include (positive), not exclude
+
+
+# --------------------------------------------------------------------------- #
+# Phase G (cp-g) — mover EXECUTION logic: relocate_one / restore_one.
+#
+# candidate_query SQL is covered above; this exercises the per-asset state
+# machine (dry-run vs apply, placement flip, and the root-scoped sibling-delete
+# guard) without a live S3 or the FK-heavy assets table. The archive stands in
+# as a 2nd local backend, and a tiny fake session controls the only DB read the
+# mover makes (the sibling-count) so both branches are deterministic.
+# --------------------------------------------------------------------------- #
+
+class _CountResult:
+    def __init__(self, n):
+        self._n = n
+
+    def scalar(self):
+        return self._n
+
+
+class _CountSession:
+    """Async session stand-in for relocate_one/restore_one.
+
+    commit/rollback are no-ops (the mover mutates the passed asset object in
+    place, which is all these tests assert); execute() answers the sole query
+    the mover runs — the sibling-count — with a configurable value so the
+    delete-vs-keep branch can be driven directly.
+    """
+
+    def __init__(self, sibling_count=0):
+        self.sibling_count = sibling_count
+        self.commits = 0
+
+    async def commit(self):
+        self.commits += 1
+
+    async def rollback(self):
+        pass
+
+    async def execute(self, *a, **k):
+        return _CountResult(self.sibling_count)
+
+
+def _content_key(ch="a"):
+    return "u/1/content/" + ch * 2 + "/" + ch * 64 + ".mp4"
+
+
+@pytest.mark.asyncio
+async def test_relocate_one_dry_run_reports_would_move_without_mutating():
+    from pixsim7.backend.main.services.storage.relocation import relocate_one
+    from types import SimpleNamespace
+
+    tier = _local_to_archive_tier()
+    key = _content_key("a")
+    data = b"x" * 800
+    await tier.store(key, data, root_id="local")
+    asset = SimpleNamespace(
+        id=1, stored_key=key, sha256="a" * 64, storage_root_id="local",
+        local_path=tier.local_path_if_local(key, "local"),
+    )
+    res = await relocate_one(
+        _CountSession(), tier, asset, archive_root="archive", apply=False, verify_hash=False
+    )
+    assert res["status"] == "would_move"
+    assert res["already_uploaded"] is False  # archive empty
+    assert res["bytes"] == 800
+    # Nothing moved: placement unchanged, archive empty, local blob intact.
+    assert asset.storage_root_id == "local"
+    assert await tier.exists(key, root_id="archive") is False
+    assert await tier.exists(key, root_id="local") is True
+
+
+@pytest.mark.asyncio
+async def test_relocate_one_apply_flips_placement_and_deletes_sole_local():
+    from pixsim7.backend.main.services.storage.relocation import relocate_one
+    from types import SimpleNamespace
+
+    tier = _local_to_archive_tier()
+    key = _content_key("b")
+    data = b"y" * 1234
+    await tier.store(key, data, root_id="local")
+    asset = SimpleNamespace(
+        id=1, stored_key=key, sha256="b" * 64, storage_root_id="local",
+        local_path=tier.local_path_if_local(key, "local"),
+    )
+    session = _CountSession(sibling_count=0)  # no other row references the blob
+    res = await relocate_one(
+        session, tier, asset, archive_root="archive", apply=True, verify_hash=False
+    )
+    assert res["status"] == "moved"
+    assert res["freed_bytes"] == 1234
+    assert res["shared_local"] is False
+    assert session.commits == 1
+    # Placement flipped; local_path cleared (it's derived for archived files).
+    assert asset.storage_root_id == "archive"
+    assert asset.local_path is None
+    # Bytes now on archive, gone from local.
+    assert await tier.exists(key, root_id="archive") is True
+    assert await tier.exists(key, root_id="local") is False
+
+
+@pytest.mark.asyncio
+async def test_relocate_one_apply_keeps_shared_local_blob():
+    """Root-scoped sibling delete: when another asset row still references the
+    same content-addressed key on local, the local blob must NOT be deleted."""
+    from pixsim7.backend.main.services.storage.relocation import relocate_one
+    from types import SimpleNamespace
+
+    tier = _local_to_archive_tier()
+    key = _content_key("c")
+    await tier.store(key, b"z" * 500, root_id="local")
+    asset = SimpleNamespace(
+        id=1, stored_key=key, sha256="c" * 64, storage_root_id="local",
+        local_path=tier.local_path_if_local(key, "local"),
+    )
+    session = _CountSession(sibling_count=1)  # a sibling still points at the blob
+    res = await relocate_one(
+        session, tier, asset, archive_root="archive", apply=True, verify_hash=False
+    )
+    assert res["status"] == "moved"
+    assert res["freed_bytes"] == 0
+    assert res["shared_local"] is True
+    # Archive has the copy, but the shared local blob survives.
+    assert await tier.exists(key, root_id="archive") is True
+    assert await tier.exists(key, root_id="local") is True
+
+
+@pytest.mark.asyncio
+async def test_relocate_one_skips_when_local_missing():
+    from pixsim7.backend.main.services.storage.relocation import relocate_one
+    from types import SimpleNamespace
+
+    tier = _local_to_archive_tier()
+    key = _content_key("d")  # never stored locally
+    asset = SimpleNamespace(
+        id=1, stored_key=key, sha256="d" * 64, storage_root_id="local", local_path=None
+    )
+    res = await relocate_one(
+        _CountSession(), tier, asset, archive_root="archive", apply=True, verify_hash=False
+    )
+    assert res["status"] == "skipped"
+    assert res["reason"] == "local_missing"
+
+
+@pytest.mark.asyncio
+async def test_restore_one_apply_round_trip_and_deletes_archive():
+    from pixsim7.backend.main.services.storage.relocation import restore_one
+    from types import SimpleNamespace
+
+    tier = _local_to_archive_tier()
+    key = _content_key("e")
+    data = b"w" * 999
+    await tier.store(key, data, root_id="archive")  # starts archived only
+    asset = SimpleNamespace(
+        id=1, stored_key=key, sha256="e" * 64, storage_root_id="archive", local_path=None
+    )
+    session = _CountSession(sibling_count=0)
+    res = await restore_one(
+        session, tier, asset, archive_root="archive", apply=True,
+        verify_hash=False, delete_archive=True,
+    )
+    assert res["status"] == "restored"
+    assert res["restored_bytes"] == 999
+    assert res["archive_deleted"] is True
+    assert session.commits == 1
+    # Placement flipped back; local_path is a real path again.
+    assert asset.storage_root_id == LOCAL_ROOT_ID
+    assert asset.local_path == tier.local_path_if_local(key, LOCAL_ROOT_ID)
+    # Bytes now local; archive copy dropped (delete_archive + no siblings).
+    assert await tier.exists(key, root_id="local") is True
+    assert await tier.exists(key, root_id="archive") is False
+
+
+@pytest.mark.asyncio
+async def test_restore_one_keeps_archive_by_default():
+    """delete_archive defaults False — un-archiving must never destroy the only
+    verified copy, so the archive object survives a restore."""
+    from pixsim7.backend.main.services.storage.relocation import restore_one
+    from types import SimpleNamespace
+
+    tier = _local_to_archive_tier()
+    key = _content_key("f")
+    await tier.store(key, b"q" * 321, root_id="archive")
+    asset = SimpleNamespace(
+        id=1, stored_key=key, sha256="f" * 64, storage_root_id="archive", local_path=None
+    )
+    res = await restore_one(
+        _CountSession(), tier, asset, archive_root="archive", apply=True, verify_hash=False
+    )
+    assert res["status"] == "restored"
+    assert res["archive_deleted"] is False
+    assert await tier.exists(key, root_id="local") is True
+    assert await tier.exists(key, root_id="archive") is True  # backup kept
+
+
+@pytest.mark.asyncio
+async def test_single_local_tier_io_matches_local():
+    """g5 regression guard: a tier with only 'local' is a straight passthrough to
+    LocalStorageService for the full I/O surface — no behavior change."""
+    tier = TieredStorageService(
+        {LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp())}
+    )
+    assert tier.has_root(LOCAL_ROOT_ID) and not tier.has_root("archive")
+    assert tier.is_local() is True
+
+    key = "u/1/content/ab/" + "c" * 64 + ".bin"
+    await tier.store(key, b"data")
+    assert await tier.exists(key) is True
+    assert await tier.get(key) == b"data"
+    assert tier.local_path_if_local(key) is not None  # real path for local
+
+    # Content-addressed dedup: identical content -> same key, idempotent.
+    k1 = await tier.store_with_hash(1, "d" * 64, b"abc", extension=".bin")
+    k2 = await tier.store_with_hash(1, "d" * 64, b"abc", extension=".bin")
+    assert k1 == k2
+
+    assert await tier.delete(key) is True
+    assert await tier.exists(key) is False
