@@ -1076,6 +1076,25 @@ interface RelocateVideosResult {
   error_ids: number[];
 }
 
+// Background relocation job progress (Redis-backed; plan media-storage-tiering cp-k k3).
+interface RelocateJobProgress {
+  job_id: string;
+  status: string; // queued | running | completed | cancelled | error | continued
+  apply: boolean;
+  cursor: number;
+  processed: number;
+  moved: number;
+  skipped: number;
+  errors: number;
+  freed_bytes: number;
+  freed_human: string;
+  would_bytes: number;
+  would_human: string;
+  error_ids: number[];
+}
+
+const RELOCATE_JOB_TERMINAL = new Set(['completed', 'cancelled', 'error']);
+
 interface StorageRootConfigItem {
   id: string;
   kind: string;
@@ -1472,6 +1491,100 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
     run(false);
   }, [limit, run]);
 
+  // --- Background job (drains the WHOLE matching set without blocking) -------
+  const [bgJob, setBgJob] = useState<RelocateJobProgress | null>(null);
+  // Denominator for the progress bar — the candidate count captured at start.
+  // Unknown (0) for a job adopted on reopen, where we fall back to counts only.
+  const bgTotalRef = useRef(0);
+  const bgActive = bgJob != null && !RELOCATE_JOB_TERMINAL.has(bgJob.status);
+
+  // Adopt an in-flight (or last) job when the panel mounts, so progress survives
+  // a reload / reopen. Latest job = no job_id.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const j = await maintGet<RelocateJobProgress | null>('/assets/relocate/job', SURFACE);
+        if (alive && j) setBgJob(j);
+      } catch {
+        /* no job / surfaced elsewhere */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Poll while a job is running. The interval is keyed on job_id + active so a
+  // status update doesn't churn it; it tears down when the job goes terminal.
+  useEffect(() => {
+    if (!bgActive || !bgJob) return;
+    const jobId = bgJob.job_id;
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const j = await maintGet<RelocateJobProgress | null>(
+          `/assets/relocate/job?job_id=${encodeURIComponent(jobId)}`,
+          SURFACE,
+        );
+        if (stopped || !j) return;
+        setBgJob(j);
+        if (RELOCATE_JOB_TERMINAL.has(j.status)) {
+          onMoved();
+          loadStats();
+        }
+      } catch {
+        /* transient — keep polling */
+      }
+    };
+    const id = window.setInterval(tick, 1500);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [bgActive, bgJob?.job_id, onMoved, loadStats]);
+
+  const startBackground = useCallback(async () => {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `Relocate ALL ${fmt(stats?.candidate_count ?? 0)} matching original(s) to the archive in the background and delete local copies (when unshared)? Runs as a job — you can cancel anytime.`,
+      )
+    )
+      return;
+    setResult(null);
+    try {
+      const qs = criteriaQuery();
+      bgTotalRef.current = stats?.candidate_count ?? 0;
+      const r = await maintPost<{ job_id: string; status: string }>(
+        `/assets/relocate/start?dry_run=false&verify_hash=${verifyHash}${qs ? `&${qs}` : ''}`,
+        SURFACE,
+      );
+      const j = await maintGet<RelocateJobProgress | null>(
+        `/assets/relocate/job?job_id=${encodeURIComponent(r.job_id)}`,
+        SURFACE,
+      );
+      setBgJob(
+        j ?? {
+          job_id: r.job_id, status: 'queued', apply: true, cursor: 0,
+          processed: 0, moved: 0, skipped: 0, errors: 0,
+          freed_bytes: 0, freed_human: '0 B', would_bytes: 0, would_human: '0 B', error_ids: [],
+        },
+      );
+    } catch (err) {
+      setResult({ message: extractErrorMessage(err) || 'Failed to start background job', isError: true });
+    }
+  }, [criteriaQuery, verifyHash, stats]);
+
+  const cancelBackground = useCallback(async () => {
+    if (!bgJob) return;
+    try {
+      await maintPost(`/assets/relocate/cancel?job_id=${encodeURIComponent(bgJob.job_id)}`, SURFACE);
+    } catch {
+      /* will reflect on next poll, or surfaced via the row */
+    }
+  }, [bgJob]);
+
   if (!stats) return null;
 
   const noArchive = !stats.archive_configured;
@@ -1620,8 +1733,77 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
           <Button onClick={onApply} disabled={busy || noArchive} variant="primary" size="sm">
             Relocate {fmt(Math.min(limit, stats.candidate_count))}
           </Button>
+          <Button
+            onClick={startBackground}
+            disabled={busy || noArchive || bgActive}
+            variant="outline"
+            size="sm"
+            title="Relocate the WHOLE matching set as a background job (drains everything, cancellable)"
+          >
+            {bgActive ? 'Running…' : `Run all in background`}
+          </Button>
         </div>
       )}
+
+      {bgJob && (
+        <div className="pl-5 space-y-1">
+          {bgActive ? (
+            <>
+              <div className="flex items-center gap-2 text-[11px]">
+                <Spinner className="w-3 h-3" />
+                <span className="text-muted-foreground flex-1">
+                  Background relocate — {fmt(bgJob.moved)} moved
+                  {bgJob.skipped ? `, ${fmt(bgJob.skipped)} skipped` : ''}
+                  {bgJob.errors ? `, ${fmt(bgJob.errors)} errors` : ''}
+                  {bgJob.freed_bytes > 0 ? ` (${bgJob.freed_human} freed)` : ''}
+                </span>
+                <Button onClick={cancelBackground} variant="outline" size="sm">
+                  Cancel
+                </Button>
+              </div>
+              {bgTotalRef.current > 0 ? (
+                <div className="h-1.5 bg-muted rounded overflow-hidden">
+                  <div
+                    className="h-full bg-accent transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.round((bgJob.processed / bgTotalRef.current) * 100))}%`,
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="h-1.5 bg-muted rounded overflow-hidden">
+                  <div className="h-full w-1/3 bg-accent/60 animate-pulse" />
+                </div>
+              )}
+            </>
+          ) : (
+            <div
+              className={`flex items-center gap-1.5 text-[11px] ${
+                bgJob.status === 'error' || bgJob.errors > 0
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-green-600 dark:text-green-400'
+              }`}
+            >
+              <Icon
+                name={bgJob.status === 'cancelled' ? 'x' : bgJob.status === 'error' ? 'alertCircle' : 'check'}
+                size={12}
+              />
+              {bgJob.status === 'cancelled' ? 'Cancelled' : bgJob.status === 'error' ? 'Failed' : 'Done'}
+              {` — ${fmt(bgJob.moved)} moved${bgJob.freed_bytes > 0 ? `, ${bgJob.freed_human} freed` : ''}`}
+              {bgJob.skipped ? `, ${fmt(bgJob.skipped)} skipped` : ''}
+              {bgJob.errors ? `, ${fmt(bgJob.errors)} errors` : ''}
+              <button
+                type="button"
+                className="ml-2 text-muted-foreground hover:text-foreground underline"
+                onClick={() => setBgJob(null)}
+              >
+                dismiss
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {result && (
         <div
           className={`flex items-center gap-1.5 text-[11px] pl-5 ${
