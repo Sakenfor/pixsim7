@@ -298,6 +298,39 @@ def test_s3_get_path_raises():
         _s3().get_path("anything")
 
 
+def test_s3_client_has_bounded_timeouts_and_retries():
+    """Every S3 client must carry bounded connect/read timeouts + retries so a
+    connection that never establishes (the worker-relocation hang, cp-k) fails
+    fast and retryably instead of stalling the job silently."""
+    svc = S3StorageService(
+        endpoint_url="http://10.243.1.2:9000",
+        bucket="pixsim-archive",
+        access_key="ak",
+        secret_key="sk",
+        connect_timeout_seconds=7.0,
+        read_timeout_seconds=123.0,
+        max_attempts=4,
+    )
+    cfg = svc._client_config
+    assert cfg.connect_timeout == 7.0
+    assert cfg.read_timeout == 123.0
+    assert cfg.retries == {"max_attempts": 4, "mode": "standard"}
+    # The sync presign client inherits the same timeouts (signing is local, but
+    # a misconfigured endpoint shouldn't hang the serve path either).
+    presign = svc._get_presign_client()
+    assert presign.meta.config.connect_timeout == 7.0
+    assert presign.meta.config.read_timeout == 123.0
+
+
+def test_s3_defaults_are_bounded():
+    """Defaults (no per-root override) are still bounded, not botocore's open-ended
+    behavior — the registry path (_build_backend) relies on these defaults."""
+    cfg = _s3()._client_config
+    assert cfg.connect_timeout == 10.0
+    assert cfg.read_timeout == 300.0
+    assert cfg.retries["max_attempts"] == 3
+
+
 # --------------------------------------------------------------------------- #
 # Phase E — ingestion pulls archived originals to a temp working copy
 # --------------------------------------------------------------------------- #

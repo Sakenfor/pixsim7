@@ -461,6 +461,9 @@ class S3StorageService(StorageService):
         secret_key: str,
         region: str = "us-east-1",
         presigned_ttl_seconds: int = 3600,
+        connect_timeout_seconds: float = 10.0,
+        read_timeout_seconds: float = 300.0,
+        max_attempts: int = 3,
     ):
         self._endpoint_url = endpoint_url
         self._bucket = bucket
@@ -471,7 +474,29 @@ class S3StorageService(StorageService):
         aioboto_get_session, self._BotoClientError = _import_s3()
         self._session = aioboto_get_session()
         self._presign_client = None  # lazy sync botocore client
-        logger.info("s3_storage_initialized", endpoint=endpoint_url, bucket=bucket)
+        # Bounded timeouts + retries on every client. WITHOUT these, botocore's
+        # defaults are 60s connect / 60s read but retries can stretch a stalled
+        # request out, and — critically — a connection that never establishes
+        # (firewall / ZeroTier path / wrong event-loop context in a worker) would
+        # otherwise stall the whole relocation job silently with no error and no
+        # progress. A short connect_timeout turns that hang into a fast, retryable
+        # ConnectTimeoutError that arq surfaces. read_timeout stays generous so a
+        # single put_object of a multi-MB original isn't cut off mid-upload.
+        # See plan media-storage-tiering cp-k (worker S3 hang).
+        from botocore.config import Config
+
+        self._client_config = Config(
+            connect_timeout=float(connect_timeout_seconds),
+            read_timeout=float(read_timeout_seconds),
+            retries={"max_attempts": int(max_attempts), "mode": "standard"},
+        )
+        logger.info(
+            "s3_storage_initialized",
+            endpoint=endpoint_url,
+            bucket=bucket,
+            connect_timeout=connect_timeout_seconds,
+            read_timeout=read_timeout_seconds,
+        )
 
     @staticmethod
     def _safe_key(key: str) -> str:
@@ -484,6 +509,7 @@ class S3StorageService(StorageService):
             aws_access_key_id=self._access_key,
             aws_secret_access_key=self._secret_key,
             region_name=self._region,
+            config=self._client_config,
         )
 
     @staticmethod
@@ -651,7 +677,11 @@ class S3StorageService(StorageService):
                 aws_access_key_id=self._access_key,
                 aws_secret_access_key=self._secret_key,
                 region_name=self._region,
-                config=Config(signature_version="s3v4"),
+                config=Config(
+                    signature_version="s3v4",
+                    connect_timeout=self._client_config.connect_timeout,
+                    read_timeout=self._client_config.read_timeout,
+                ),
             )
         return self._presign_client
 
@@ -838,6 +868,9 @@ def _build_backend(spec: RootSpec) -> StorageService:
             secret_key=cfg["secret_key"],
             region=cfg.get("region", "us-east-1"),
             presigned_ttl_seconds=cfg.get("presigned_ttl_seconds", 3600),
+            connect_timeout_seconds=cfg.get("connect_timeout_seconds", 10.0),
+            read_timeout_seconds=cfg.get("read_timeout_seconds", 300.0),
+            max_attempts=cfg.get("max_attempts", 3),
         )
     raise ValueError(f"unknown storage root kind: {spec.kind!r}")
 
