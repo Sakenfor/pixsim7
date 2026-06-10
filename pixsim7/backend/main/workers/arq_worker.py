@@ -40,6 +40,7 @@ from pixsim7.backend.main.workers.chain_execution_processor import (
     process_ephemeral_fanout_execution,
 )
 from pixsim7.backend.main.workers.derivatives_processor import process_derivatives
+from pixsim7.backend.main.workers.relocation_processor import process_relocation
 from pixsim7.backend.main.workers.ingestion_processor import process_ingestion
 from pixsim7.backend.main.workers.prompt_tagging_processor import process_prompt_tagging
 from pixsim7.backend.main.workers.prompt_embedding_processor import process_prompt_embedding
@@ -572,6 +573,7 @@ class WorkerSettings:
         process_generation,
         process_analysis,
         process_derivatives,
+        process_relocation,
         process_ingestion,
         process_prompt_tagging,
         process_prompt_embedding,
