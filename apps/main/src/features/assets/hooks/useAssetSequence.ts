@@ -220,13 +220,30 @@ async function fetchDirection(
       ? { ...base, created_to: pivot.createdAt }
       : { ...base, created_from: pivot.createdAt };
   const response = await listAssets(query);
-  const candidates = fromAssetResponses(response.assets).filter((a) => a.id !== pivot.id);
-  // Still sort client-side as defence-in-depth: the server may return ties or
-  // the `from/to` boundary may be inclusive in surprising ways.
+  // The sequence is a TOTAL ORDER on the composite key `(created_at, id)`, not
+  // on `created_at` alone. This matters whenever assets share an identical
+  // timestamp (e.g. a batch/cohort generated in one operation): the
+  // `created_from` / `created_to` boundary is inclusive, so the response for a
+  // `next` fetch also contains same-timestamp siblings that are really BEHIND
+  // the pivot (and vice-versa for `prev`). Filtering on `id !== pivot.id` alone
+  // would let those wrong-side ties through, making `next`/`prev` non-inverse —
+  // walking down then up could land on a different cluster member and snap the
+  // walk to a new anchor. Partition strictly around the pivot on the composite
+  // key so each direction only ever sees assets on its own side.
+  const pivotTime = new Date(pivot.createdAt).getTime();
+  const candidates = fromAssetResponses(response.assets).filter((a) => {
+    if (a.id === pivot.id) return false;
+    const t = new Date(a.createdAt).getTime();
+    return direction === 'next'
+      ? t > pivotTime || (t === pivotTime && a.id > pivot.id)
+      : t < pivotTime || (t === pivotTime && a.id < pivot.id);
+  });
+  // Sort by the same composite key (id breaks timestamp ties) so the order is
+  // deterministic regardless of how the server returned same-timestamp rows.
   candidates.sort((a, b) => {
     const ta = new Date(a.createdAt).getTime();
     const tb = new Date(b.createdAt).getTime();
-    return direction === 'prev' ? tb - ta : ta - tb;
+    return direction === 'prev' ? tb - ta || b.id - a.id : ta - tb || a.id - b.id;
   });
   return candidates.slice(0, windowSize);
 }
