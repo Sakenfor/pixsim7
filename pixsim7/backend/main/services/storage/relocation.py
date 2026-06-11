@@ -14,7 +14,8 @@ Per asset, with ``apply=True``:
      the object already exists on the archive (safe resume).
   2. Verify integrity: the archive object must exist and its size must match the
      local file. ``verify_hash`` additionally re-hashes the archive copy and
-     compares to ``asset.sha256`` (slower — downloads the object).
+     compares it to the LOCAL file's hash (slower — downloads the object). It is
+     NOT compared to ``asset.sha256``, which may be a stale/source hash.
   3. Flip ``storage_root_id`` to the archive id and clear ``local_path`` (it's a
      derived cache; for archived files the path is resolved on demand). Commit
      per-asset so a mid-batch failure keeps prior successes.
@@ -206,7 +207,6 @@ async def relocate_blob(
     archive_root: str,
     *,
     verify_hash: bool = False,
-    expected_sha: Optional[str] = None,
 ) -> int:
     """
     Upload ``key``'s local file to ``archive_root`` and verify it landed intact.
@@ -214,6 +214,12 @@ async def relocate_blob(
     Idempotent: skips the upload when the object already exists on the archive
     (safe resume). Raises RuntimeError on any verification failure. Returns the
     local file size in bytes.
+
+    ``verify_hash`` re-hashes the archive copy and compares it to the LOCAL
+    file's hash — a true upload-integrity check. It is deliberately NOT compared
+    to ``asset.sha256``: that column can legitimately differ from the stored
+    content's hash (a pre-transcode source hash, or a stale/legacy value), which
+    would fail verification on a perfectly intact upload.
     """
     if not await storage.exists(key, root_id=archive_root):
         await storage.store_from_path(key, src_path, root_id=archive_root)
@@ -228,11 +234,12 @@ async def relocate_blob(
             f"verify failed: archive size {meta.get('size')} != local {local_size} (key={key})"
         )
 
-    if verify_hash and expected_sha:
+    if verify_hash:
         archive_sha = await storage.compute_hash(key, root_id=archive_root)
-        if archive_sha != expected_sha:
+        local_sha = await storage.compute_hash(key, root_id=LOCAL_ROOT_ID)
+        if archive_sha != local_sha:
             raise RuntimeError(
-                f"verify failed: archive hash {archive_sha} != expected {expected_sha} (key={key})"
+                f"verify failed: archive hash {archive_sha} != local {local_sha} (key={key})"
             )
 
     return local_size
@@ -277,10 +284,7 @@ async def relocate_one(
         }
 
     # 1-2. Upload + verify (idempotent).
-    await relocate_blob(
-        storage, key, src, archive_root,
-        verify_hash=verify_hash, expected_sha=asset.sha256,
-    )
+    await relocate_blob(storage, key, src, archive_root, verify_hash=verify_hash)
 
     # 3. Flip placement; local_path is derived, so clear it for archived files.
     asset.storage_root_id = archive_root
@@ -367,11 +371,15 @@ async def restore_one(
         raise RuntimeError(
             f"verify failed: local size {local_meta.get('size')} != archive {archive_size} (key={key})"
         )
-    if verify_hash and asset.sha256:
+    if verify_hash:
+        # Verify the restored local copy matches the ARCHIVE copy (download
+        # integrity), not asset.sha256 — same rationale as relocate_blob: the
+        # column may be a stale/source hash that doesn't match stored bytes.
         local_sha = await storage.compute_hash(key, root_id=LOCAL_ROOT_ID)
-        if local_sha != asset.sha256:
+        archive_sha = await storage.compute_hash(key, root_id=archive_root)
+        if local_sha != archive_sha:
             raise RuntimeError(
-                f"verify failed: local hash {local_sha} != expected {asset.sha256} (key={key})"
+                f"verify failed: local hash {local_sha} != archive {archive_sha} (key={key})"
             )
 
     # 3. Flip placement back to local; local_path becomes a real path again.

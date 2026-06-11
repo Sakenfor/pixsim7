@@ -530,6 +530,9 @@ async def test_proxy_archive_stream_returns_streaming_response():
 
 @pytest.mark.asyncio
 async def test_relocate_blob_hash_verify(tmp_path):
+    """verify_hash checks archive-bytes == LOCAL-bytes (upload integrity), and is
+    independent of asset.sha256 — a stale/mismatched sha256 must not fail an
+    otherwise-intact upload."""
     import hashlib
 
     from tools.relocate_media import relocate_blob
@@ -539,18 +542,17 @@ async def test_relocate_blob_hash_verify(tmp_path):
     sha = hashlib.sha256(data).hexdigest()
     src = tmp_path / "v.mp4"
     src.write_bytes(data)
+    key = "u/1/content/cd/" + sha + ".mp4"
+    # relocate_blob hashes the LOCAL copy via the storage key, so seed it there.
+    await tier.store(key, data, root_id="local")
 
-    # Correct hash passes.
-    await relocate_blob(
-        tier, "u/1/content/cd/" + sha + ".mp4", str(src), "archive",
-        verify_hash=True, expected_sha=sha,
-    )
-    # Wrong expected hash trips verification.
+    # Intact upload (archive == local) passes regardless of any asset.sha256.
+    await relocate_blob(tier, key, str(src), "archive", verify_hash=True)
+
+    # A corrupt archive object (same size, different bytes) trips verification.
+    await tier.store(key, b"z" * 500, root_id="archive")  # overwrite, upload skipped
     with pytest.raises(RuntimeError):
-        await relocate_blob(
-            tier, "u/1/content/cd/other.mp4", str(src), "archive",
-            verify_hash=True, expected_sha="deadbeef",
-        )
+        await relocate_blob(tier, key, str(src), "archive", verify_hash=True)
 
 
 # --------------------------------------------------------------------------- #
