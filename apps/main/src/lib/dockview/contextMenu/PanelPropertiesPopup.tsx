@@ -1,9 +1,13 @@
-import { Panel, Z } from "@pixsim7/shared.ui";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { Panel, Popover } from "@pixsim7/shared.ui";
+import { useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
 
-import { useContextHubState, type CapabilityConsumption } from "@features/contextHub";
+import {
+  getContextHubHostRegistry,
+  subscribeContextHubHosts,
+  useContextHubState,
+  type CapabilityConsumption,
+} from "@features/contextHub";
 import {
   panelRegistry,
   panelSettingsScopeRegistry,
@@ -40,8 +44,6 @@ interface PropertiesPayload {
   hostId?: string;
   /** Item-specific data */
   data?: Record<string, unknown>;
-  /** ContextHub capabilities snapshot */
-  capabilities?: Record<string, unknown>;
 }
 
 interface PropertiesPopupState {
@@ -335,29 +337,55 @@ function ItemProperties({ data, contextType }: { data?: Record<string, unknown>;
 }
 
 /**
- * Renders capabilities snapshot.
+ * Renders capabilities *provided by this panel's own ContextHubHost*.
+ *
+ * Reads directly from the host registry indexed by `hostId` (panel `instanceId`)
+ * — does NOT walk the parent chain, so capabilities inherited from app/root
+ * scopes are not falsely attributed to this panel.
  */
-function CapabilitiesSection({ capabilities }: { capabilities?: Record<string, unknown> }) {
-  if (!capabilities || Object.keys(capabilities).length === 0) {
-    return null;
-  }
+function CapabilitiesSection({ hostId }: { hostId?: string }) {
+  const [entries, setEntries] = useState<Array<[string, unknown]>>([]);
 
-  const entries = Object.entries(capabilities).filter(([, value]) => {
-    // Only show truthy capabilities or ones with meaningful values
-    if (value === false || value === null || value === undefined) return false;
-    return true;
-  });
+  useEffect(() => {
+    if (!hostId) {
+      setEntries([]);
+      return;
+    }
+
+    const read = (): Array<[string, unknown]> => {
+      const registry = getContextHubHostRegistry(hostId);
+      if (!registry) return [];
+      const keys = registry.getExposedKeys();
+      const result: Array<[string, unknown]> = [];
+      for (const key of keys) {
+        const provider = registry.getBest(key);
+        const value = provider ? provider.getValue() : null;
+        if (value === false || value === null || value === undefined) continue;
+        result.push([key, value]);
+      }
+      return result.sort(([a], [b]) => a.localeCompare(b));
+    };
+
+    setEntries(read());
+
+    const refresh = () => setEntries(read());
+    const unsubHosts = subscribeContextHubHosts(refresh);
+    const unsubReg = getContextHubHostRegistry(hostId)?.subscribe(refresh);
+    return () => {
+      unsubHosts();
+      unsubReg?.();
+    };
+  }, [hostId]);
 
   if (entries.length === 0) return null;
 
   return (
     <div className="mt-4 pt-3 border-t border-neutral-200 dark:border-neutral-700">
       <div className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-2">
-        Capabilities
+        Provides
       </div>
       <div className="space-y-1">
         {entries.slice(0, 8).map(([key, value]) => {
-          // Consider a capability "active" if it's true or has a meaningful non-false value
           const isActive = value === true || (value !== false && value != null && value !== '');
           return (
             <PropertyRow
@@ -477,73 +505,33 @@ function getContextTitle(contextType: ContextMenuContext): string {
  */
 export function PropertiesPopup() {
   const { isOpen, payload, close } = usePropertiesPopupStore();
-  const popupRef = useRef<HTMLDivElement>(null);
-  const [coords, setCoords] = useState<PopupPosition>({ x: 0, y: 0 });
 
-  useEffect(() => {
-    if (!isOpen || !payload?.position) return;
-    setCoords(payload.position);
+  // The popup opens at a right-click point rather than off a trigger element,
+  // so anchor Popover to a zero-size rect at the cursor; it handles portal,
+  // click-outside, Escape, and viewport clamping.
+  const px = payload?.position?.x;
+  const py = payload?.position?.y;
+  const anchor = useMemo(
+    () => (px != null && py != null ? new DOMRect(px, py, 0, 0) : null),
+    [px, py],
+  );
 
-    const raf = requestAnimationFrame(() => {
-      if (!popupRef.current) return;
-      const rect = popupRef.current.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
+  if (!isOpen || !payload || !anchor) return null;
 
-      let nextX = payload.position.x;
-      let nextY = payload.position.y;
-
-      if (nextX + rect.width > viewportWidth) {
-        nextX = viewportWidth - rect.width - 12;
-      }
-      if (nextY + rect.height > viewportHeight) {
-        nextY = viewportHeight - rect.height - 12;
-      }
-
-      setCoords({ x: Math.max(12, nextX), y: Math.max(12, nextY) });
-    });
-
-    return () => cancelAnimationFrame(raf);
-  }, [isOpen, payload?.position]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, close]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest?.("[data-properties-popup]")) return;
-      close();
-    };
-    const timer = window.setTimeout(() => {
-      document.addEventListener("mousedown", handleClick);
-    }, 100);
-    return () => {
-      window.clearTimeout(timer);
-      document.removeEventListener("mousedown", handleClick);
-    };
-  }, [isOpen, close]);
-
-  if (!isOpen || !payload) return null;
-
-  const { contextType, panelId, instanceId, panelTitle, panelDefinition, hostId, data, capabilities } = payload;
+  const { contextType, panelId, instanceId, panelTitle, panelDefinition, hostId, data } = payload;
   const isPanelContext = contextType === 'tab' || contextType === 'panel-content';
   const title = getContextTitle(contextType);
   const itemName = data?.title ?? data?.name ?? data?.id ?? panelTitle ?? panelId ?? contextType;
 
-  return createPortal(
-    <div
-      ref={popupRef}
-      className="fixed"
-      style={{ zIndex: Z.floatOverlay, left: `${coords.x}px`, top: `${coords.y}px` }}
-      data-properties-popup
+  return (
+    <Popover
+      open={isOpen}
+      anchor={anchor}
+      placement="bottom"
+      align="start"
+      offset={0}
+      viewportMargin={12}
+      onClose={close}
     >
       <Panel className="w-[320px] shadow-lg">
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
@@ -567,15 +555,14 @@ export function PropertiesPopup() {
             <>
               <PanelProperties panelId={panelId} instanceId={instanceId} panelTitle={panelTitle} panelDefinition={panelDefinition} />
               <ConsumesSection hostId={hostId} />
-              <CapabilitiesSection capabilities={capabilities} />
+              <CapabilitiesSection hostId={hostId} />
             </>
           ) : (
             <ItemProperties data={data as Record<string, unknown>} contextType={contextType} />
           )}
         </div>
       </Panel>
-    </div>,
-    document.body,
+    </Popover>
   );
 }
 
