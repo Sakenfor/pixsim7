@@ -1,8 +1,6 @@
-import { Z } from '@pixsim7/shared.ui';
+import { Popover } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { createPortal } from 'react-dom';
-
+import { useState, useRef } from 'react';
 
 import type { ParamSpec } from '@lib/generation-ui';
 
@@ -30,81 +28,7 @@ export function AdvancedSettingsPopover({
   currentModel,
 }: AdvancedSettingsPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  // Update position when open
-  useLayoutEffect(() => {
-    if (!isOpen || !buttonRef.current) return;
-
-    const updatePosition = () => {
-      const rect = buttonRef.current!.getBoundingClientRect();
-      const popoverWidth = 224; // w-56 = 14rem = 224px
-      const popoverHeight = 350; // approximate max height
-
-      // Position above the button, aligned to the right
-      let top = rect.top - 8; // mb-2 gap
-      let left = rect.right - popoverWidth;
-
-      // Ensure popover stays within viewport
-      if (top - popoverHeight < 0) {
-        // Not enough space above, position below
-        top = rect.bottom + 8;
-      } else {
-        top = top - popoverHeight + 50; // Adjust for actual content height
-      }
-
-      if (left < 8) {
-        left = 8;
-      }
-      if (left + popoverWidth > window.innerWidth - 8) {
-        left = window.innerWidth - popoverWidth - 8;
-      }
-
-      setPosition({ top: Math.max(8, rect.top - popoverHeight - 8), left });
-    };
-
-    updatePosition();
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
-
-    return () => {
-      window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition, true);
-    };
-  }, [isOpen]);
-
-  // Close on click outside
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        popoverRef.current &&
-        !popoverRef.current.contains(e.target as Node) &&
-        buttonRef.current &&
-        !buttonRef.current.contains(e.target as Node)
-      ) {
-        setIsOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen]);
-
-  // Close on Escape
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsOpen(false);
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen]);
 
   // Filter params based on applies_to_models metadata
   const safeParams = params.filter((param) => {
@@ -130,16 +54,8 @@ export function AdvancedSettingsPopover({
     return true;
   }).length;
 
-  const popoverContent = isOpen && position && (
-    <div
-      ref={popoverRef}
-      className="fixed w-56 bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden"
-      style={{
-        top: position.top,
-        left: position.left,
-        zIndex: Z.floatOverlay,
-      }}
-    >
+  const popoverContent = (
+    <div className="w-56 bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden">
       <div className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
         <h3 className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-200">
           Advanced Settings
@@ -251,8 +167,18 @@ export function AdvancedSettingsPopover({
           </span>
         )}
       </button>
-      {/* Render popover as portal to escape stacking context */}
-      {popoverContent && createPortal(popoverContent, document.body)}
+      {/* Canonical Popover handles portal, click-outside, Escape, viewport clamp */}
+      <Popover
+        anchor={buttonRef.current}
+        placement="top"
+        align="end"
+        offset={8}
+        open={isOpen}
+        onClose={() => setIsOpen(false)}
+        triggerRef={buttonRef}
+      >
+        {popoverContent}
+      </Popover>
     </>
   );
 }

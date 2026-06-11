@@ -2,8 +2,8 @@
  * SetSlotPopover – Portal-based popover for linking/unlinking an asset set
  * to a generation slot and toggling pick timing (random_each / locked).
  */
-import { useEffect, useRef, useLayoutEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { Popover } from '@pixsim7/shared.ui';
+import { useEffect, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -36,8 +36,6 @@ export function SetSlotPopover({
   onReroll,
   onClose,
 }: SetSlotPopoverProps) {
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const { sets } = useAssetSets();
   const currentRef = inputItem.assetSetRef;
   const currentSet = currentRef
@@ -68,46 +66,6 @@ export function SetSlotPopover({
     return () => { cancelled = true; };
   }, [sets]);
 
-  // Position relative to anchor
-  useLayoutEffect(() => {
-    const popoverWidth = 220;
-    let top = anchorRect.bottom + 6;
-    let left = anchorRect.left;
-
-    // Ensure within viewport
-    if (left + popoverWidth > window.innerWidth - 8) {
-      left = window.innerWidth - popoverWidth - 8;
-    }
-    if (left < 8) left = 8;
-    if (top + 300 > window.innerHeight) {
-      top = anchorRect.top - 300 - 6;
-    }
-
-    setPosition({ top: Math.max(8, top), left });
-  }, [anchorRect]);
-
-  // Close on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
-
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
-
-  if (!position) return null;
-
   const renderSetColor = (set: AssetSet) => {
     const color = set.color || '#8b5cf6';
     return (
@@ -118,13 +76,17 @@ export function SetSlotPopover({
     );
   };
 
-  const content = (
-    <div
-      ref={popoverRef}
-      className="fixed w-[220px] bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden z-popover"
-      style={{ top: position.top, left: position.left }}
+  return (
+    <Popover
+      anchor={anchorRect}
+      placement="bottom"
+      align="start"
+      offset={6}
+      open
+      onClose={onClose}
     >
-      {/* Header */}
+      <div className="w-[220px] bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+        {/* Header */}
       <div className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
         <h3 className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-200">
           {currentSet ? currentSet.name : 'Link Asset Set'}
@@ -269,8 +231,7 @@ export function SetSlotPopover({
           })
         )}
       </div>
-    </div>
+      </div>
+    </Popover>
   );
-
-  return createPortal(content, document.body);
 }
