@@ -37,6 +37,7 @@ import {
   getScopeMode,
   usePanelInstanceSettingsStore,
 } from '@features/panels';
+import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 import { PromptComposerSurface, useQuickGenerateController } from '@features/prompts';
 
 
@@ -83,6 +84,7 @@ function promptDraftHistoryScopeLabel(
 export function PromptPanel(props: QuickGenPanelProps) {
   const ctx = props.context;
   const allowAnySelected = !ctx;
+  const isMobile = useIsMobileViewport();
   const controller = useQuickGenerateController();
   const { useSessionStore } = useGenerationScopeStores();
   const setSessionUiState = useSessionStore((s) => s.setUiState);
@@ -488,32 +490,38 @@ export function PromptPanel(props: QuickGenPanelProps) {
   );
 
 
-  return (
+  // Read-time default: older persisted settings predate this key, so it
+  // hydrates as `undefined` — treat anything but an explicit `false` as on,
+  // else the chip silently vanishes for anyone who saved prompt settings
+  // before it existed. (See "createBackendStorage clear gotcha".)
+  const moderationChip =
+    resolvedPromptSettings.showModerationChip !== false ? (
+      <PromptModerationChip
+        prompt={promptValue}
+        imageAssetId={primaryAssetId}
+        operationType={operationType}
+        model={model ?? null}
+        duration={(workbench.dynamicParams?.duration as number | undefined) ?? null}
+        modelOptions={
+          (paramSpecs as Array<{ name?: string; enum?: string[] }> | undefined)?.find(
+            (p) => p?.name === 'model',
+          )?.enum
+        }
+        durationOptions={durationOptions}
+        grain={resolvedPromptSettings.moderationGrain ?? 'auto'}
+      />
+    ) : undefined;
+
+  const surface = (
     <PromptComposerSurface
       adapter={promptAdapter}
       display={{
         variant: resolvedPromptSettings.variant,
         showCounter: resolvedPromptSettings.showCounter,
-        // Read-time default: older persisted settings predate this key, so it
-        // hydrates as `undefined` — treat anything but an explicit `false` as on,
-        // else the chip silently vanishes for anyone who saved prompt settings
-        // before it existed. (See "createBackendStorage clear gotcha".)
-        counterAccessory: resolvedPromptSettings.showModerationChip !== false ? (
-          <PromptModerationChip
-            prompt={promptValue}
-            imageAssetId={primaryAssetId}
-            operationType={operationType}
-            model={model ?? null}
-            duration={(workbench.dynamicParams?.duration as number | undefined) ?? null}
-            modelOptions={
-              (paramSpecs as Array<{ name?: string; enum?: string[] }> | undefined)?.find(
-                (p) => p?.name === 'model',
-              )?.enum
-            }
-            durationOptions={durationOptions}
-            grain={resolvedPromptSettings.moderationGrain ?? 'auto'}
-          />
-        ) : undefined,
+        // On mobile the composer's bottom counter row is clipped by the prompt
+        // section's fixed height (QuickGenPanelHost), so the chip is hoisted to
+        // a pinned header below instead of riding the counter row.
+        counterAccessory: isMobile ? undefined : moderationChip,
         resizable: resolvedPromptSettings.resizable,
         minHeight: resolvedPromptSettings.minHeight,
         historyScopeKey: promptHistoryScopeKey,
@@ -526,4 +534,19 @@ export function PromptPanel(props: QuickGenPanelProps) {
       }}
     />
   );
+
+  // Mobile: pin the moderation chip to a header above the composer so it stays
+  // visible (the desktop counter-row placement is clipped at small heights).
+  if (isMobile && moderationChip) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex flex-shrink-0 items-center justify-end px-2 pt-1">
+          {moderationChip}
+        </div>
+        <div className="min-h-0 flex-1">{surface}</div>
+      </div>
+    );
+  }
+
+  return surface;
 }
