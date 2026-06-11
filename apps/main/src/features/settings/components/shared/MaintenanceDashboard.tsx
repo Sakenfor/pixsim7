@@ -1549,19 +1549,20 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   }, [bgActive, bgJob?.job_id, onMoved, loadStats]);
 
   const startBackground = useCallback(async () => {
+    const count = Math.min(limit, stats?.candidate_count ?? 0);
     if (
       typeof window !== 'undefined' &&
       !window.confirm(
-        `Relocate ALL ${fmt(stats?.candidate_count ?? 0)} matching original(s) to the archive in the background and delete local copies (when unshared)? Runs as a job — you can cancel anytime.`,
+        `Relocate up to ${fmt(count)} matching original(s) to the archive in the background and delete local copies (when unshared)? Runs as a job — you can cancel anytime.`,
       )
     )
       return;
     setResult(null);
     try {
       const qs = criteriaQuery();
-      bgTotalRef.current = stats?.candidate_count ?? 0;
+      bgTotalRef.current = count;
       const r = await maintPost<{ job_id: string; status: string }>(
-        `/assets/relocate/start?dry_run=false&verify_hash=${verifyHash}${qs ? `&${qs}` : ''}`,
+        `/assets/relocate/start?dry_run=false&verify_hash=${verifyHash}&max_assets=${limit}${qs ? `&${qs}` : ''}`,
         SURFACE,
       );
       const j = await maintGet<RelocateJobProgress | null>(
@@ -1578,7 +1579,7 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
     } catch (err) {
       setResult({ message: extractErrorMessage(err) || 'Failed to start background job', isError: true });
     }
-  }, [criteriaQuery, verifyHash, stats]);
+  }, [criteriaQuery, verifyHash, limit, stats]);
 
   const cancelBackground = useCallback(async () => {
     if (!bgJob) return;
@@ -1690,7 +1691,7 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
             disabled={busy}
             className="h-3 w-3 disabled:opacity-50"
           />
-          Run in background (relocate ALL matching as a cancellable job — doesn&apos;t block)
+          Run in background (same batch — runs as a cancellable job instead of blocking)
         </label>
 
         {manualSets.length > 0 && (
@@ -1728,43 +1729,33 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
       )}
       {!nothing && (
         <div className="flex items-center gap-2 flex-wrap pl-5">
-          {/* Batch only bounds the foreground (blocking) run; the background job
-              drains the whole matching set, so the limit is moot there. */}
-          {!runInBackground && (
-            <>
-              <label className="text-[10px] text-muted-foreground">Batch</label>
-              <input
-                type="number"
-                min={1}
-                max={500}
-                value={limit}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (Number.isFinite(n)) setLimit(Math.max(1, Math.min(500, Math.floor(n))));
-                }}
-                disabled={busy}
-                className="h-6 w-16 text-[11px] bg-transparent border border-border rounded px-1.5 tabular-nums disabled:opacity-50"
-              />
-            </>
-          )}
+          <label className="text-[10px] text-muted-foreground">Batch</label>
+          <input
+            type="number"
+            min={1}
+            max={500}
+            value={limit}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n)) setLimit(Math.max(1, Math.min(500, Math.floor(n))));
+            }}
+            disabled={busy}
+            className="h-6 w-16 text-[11px] bg-transparent border border-border rounded px-1.5 tabular-nums disabled:opacity-50"
+          />
           <Button onClick={() => run(true)} disabled={busy} variant="outline" size="sm">
             {busy ? <Spinner className="w-3 h-3" /> : 'Preview'}
           </Button>
-          {runInBackground ? (
-            <Button
-              onClick={startBackground}
-              disabled={busy || noArchive || bgActive}
-              variant="primary"
-              size="sm"
-              title="Relocate the WHOLE matching set as a background job (cancellable)"
-            >
-              {bgActive ? 'Running…' : `Relocate all (${fmt(stats.candidate_count)}) in background`}
-            </Button>
-          ) : (
-            <Button onClick={onApply} disabled={busy || noArchive} variant="primary" size="sm">
-              Relocate {fmt(Math.min(limit, stats.candidate_count))}
-            </Button>
-          )}
+          <Button
+            onClick={runInBackground ? startBackground : onApply}
+            disabled={busy || noArchive || (runInBackground && bgActive)}
+            variant="primary"
+            size="sm"
+            title={runInBackground ? 'Relocate this batch as a background job (cancellable)' : undefined}
+          >
+            {runInBackground && bgActive
+              ? 'Running…'
+              : `Relocate ${fmt(Math.min(limit, stats.candidate_count))}`}
+          </Button>
         </div>
       )}
 
