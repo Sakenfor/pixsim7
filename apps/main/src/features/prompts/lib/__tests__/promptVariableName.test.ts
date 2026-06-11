@@ -87,7 +87,7 @@ describe('facet recognition', () => {
     expect(classifyFacet('ACTOR', 'pose ')).toMatchObject({
       facet: 'POSE',
       known: true,
-      axis: { name: 'POSE', source: { kind: 'vocab', category: 'pose' } },
+      axis: { name: 'POSE', source: { kind: 'vocab', category: 'poses' } },
     });
     expect(classifyFacet('ACTOR', 'PERSONALITY')).toMatchObject({
       known: true,

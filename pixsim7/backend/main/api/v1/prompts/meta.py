@@ -34,6 +34,10 @@ from pixsim7.backend.main.services.prompt.parser.tokenizer import (
 from pixsim7.backend.main.services.prompt.parser.relation_recipes import (
     get_relation_recipes,
 )
+from pixsim7.backend.main.shared.ontology.vocabularies import (
+    VOCAB_CONFIGS,
+    get_registry as get_vocab_registry,
+)
 from pixsim7.backend.main.services.prompt.variable_registry import (
     PromptVariable,
     normalize_prompt_variable_description,
@@ -512,6 +516,76 @@ async def get_prompt_operator_vocabulary():
     choices and bound the run-length stepper. Pure data, no auth needed.
     """
     return OperatorVocabularyResponse(**get_operator_vocabulary())
+
+
+# ── vocabularies (facet recognition + autocomplete) ────────────────────
+
+
+class VocabItemModel(BaseModel):
+    id: str = Field(..., description="Canonical vocab ID, e.g. 'part:hip' or 'pose:standing_neutral'.")
+    label: str = Field(..., description="Human-readable label.")
+    category: str = Field("", description="Intra-vocab category, e.g. anatomy 'general'/'specific'.")
+    keywords: List[str] = Field(
+        default_factory=list,
+        description="Free-text keywords resolving to this item (the match_keywords source).",
+    )
+
+
+class VocabTypeModel(BaseModel):
+    type: str = Field(..., description="Vocab type key (VOCAB_CONFIGS), e.g. 'parts', 'poses', 'locations', 'camera'.")
+    items: List[VocabItemModel] = Field(default_factory=list)
+
+
+class VocabulariesResponse(BaseModel):
+    vocabularies: List[VocabTypeModel] = Field(default_factory=list)
+
+
+def _vocab_item_model(item: Any, keywords_attr: Optional[str]) -> VocabItemModel:
+    raw_keywords = getattr(item, keywords_attr, None) if keywords_attr else None
+    keywords = [str(k) for k in raw_keywords] if isinstance(raw_keywords, (list, tuple)) else []
+    item_id = getattr(item, "id", "") or ""
+    return VocabItemModel(
+        id=item_id,
+        label=getattr(item, "label", "") or item_id,
+        category=getattr(item, "category", "") or "",
+        keywords=keywords,
+    )
+
+
+@router.get("/meta/vocabularies", response_model=VocabulariesResponse)
+async def get_prompt_vocabularies(types: Optional[str] = None):
+    """Return vocabulary members for the requested vocab types.
+
+    Surfaces the unified VocabRegistry (anatomy `parts`, `poses`, `locations`,
+    `camera`, ...) to the editor so prompt-variable facets can be recognised
+    and autocompleted against real vocab members instead of guessing. `types`
+    is an optional comma-separated filter (e.g. `parts,poses`); unknown types
+    are dropped and an omitted filter returns all known types. Each item's
+    `keywords` come from that vocab type's configured keyword attribute (the
+    same source `match_keywords` uses). Pure data, no auth — same as
+    `/meta/operator-vocabulary`.
+    """
+    registry = get_vocab_registry()
+    known = registry.list_vocab_types()
+    if types:
+        requested = [t.strip() for t in types.split(",") if t.strip()]
+        known_set = set(known)
+        requested = [t for t in requested if t in known_set]
+    else:
+        requested = list(known)
+
+    vocabularies: List[VocabTypeModel] = []
+    for vocab_type in requested:
+        config = VOCAB_CONFIGS.get(vocab_type)
+        keywords_attr = config.keywords_attr if config else None
+        items = registry.all_of(vocab_type)
+        vocabularies.append(
+            VocabTypeModel(
+                type=vocab_type,
+                items=[_vocab_item_model(item, keywords_attr) for item in items],
+            )
+        )
+    return VocabulariesResponse(vocabularies=vocabularies)
 
 
 # ── relation recipes (semantic enrichment) ─────────────────────────────

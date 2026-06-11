@@ -65,8 +65,8 @@ export const DEFAULT_VARIABLE_CLASSES: Record<string, DefaultVariableClass> = {
   ACTOR: {
     compositionRole: 'entities:main_character',
     facets: [
-      { name: 'ANATOMY', source: { kind: 'vocab', category: 'anatomy' } },
-      { name: 'POSE', source: { kind: 'vocab', category: 'pose' } },
+      { name: 'ANATOMY', source: { kind: 'vocab', category: 'parts' } },
+      { name: 'POSE', source: { kind: 'vocab', category: 'poses' } },
       { name: 'PERSONALITY', source: { kind: 'freeform' } },
       { name: 'DETAILS', source: { kind: 'freeform' } },
       { name: 'OUTFIT', source: { kind: 'freeform' } },
