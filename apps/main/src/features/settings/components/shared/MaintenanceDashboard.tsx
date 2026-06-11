@@ -1733,11 +1733,10 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
           <input
             type="number"
             min={1}
-            max={500}
             value={limit}
             onChange={(e) => {
               const n = Number(e.target.value);
-              if (Number.isFinite(n)) setLimit(Math.max(1, Math.min(500, Math.floor(n))));
+              if (Number.isFinite(n)) setLimit(Math.max(1, Math.floor(n)));
             }}
             disabled={busy}
             className="h-6 w-16 text-[11px] bg-transparent border border-border rounded px-1.5 tabular-nums disabled:opacity-50"

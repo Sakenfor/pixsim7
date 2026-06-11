@@ -932,7 +932,7 @@ async def get_relocate_stats(
 async def relocate_videos(
     admin: CurrentAdminUser,
     db: DatabaseSession,
-    limit: int = Query(50, ge=1, le=500, description="Max assets to process per batch"),
+    limit: int = Query(50, ge=1, description="Max assets to process per batch"),
     min_size_mb: float = Query(0.0, ge=0, description="Only assets >= this size (MB)"),
     dry_run: bool = Query(True, description="Preview without uploading/moving"),
     verify_hash: bool = Query(
