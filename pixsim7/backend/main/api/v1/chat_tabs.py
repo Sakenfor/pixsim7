@@ -229,6 +229,31 @@ async def _derive_primary_plan_ids(
     return out
 
 
+async def _to_response_single(
+    db: AsyncSession,
+    tab: ChatTab,
+    *,
+    engine: Optional[str] = None,
+    profile_id: Optional[str] = None,
+) -> ChatTabResponse:
+    """``_to_response`` for one freshly-mutated tab, primary included.
+
+    Single-tab mutation endpoints (create / PATCH / set-identity) must carry
+    the same claim-derived ``primaryPlanId`` the list poll would, or a partial
+    PATCH (e.g. a user rename) collapses it to ``tab.plan_id`` (null for tabs
+    grouped via an agent's session claim) and the client shallow-merges that
+    over the known value, bouncing the tab out of its plan group until the
+    next poll. The list endpoint derives in one batch instead of per-row.
+    """
+    primary = await _derive_primary_plan_ids(db, [tab])
+    return _to_response(
+        tab,
+        primary_plan_id=primary.get(str(tab.id)),
+        engine=engine,
+        profile_id=profile_id,
+    )
+
+
 async def _load_owned_tab(db: AsyncSession, tab_id: UUID, user_id: int) -> ChatTab:
     """Fetch a tab and assert it belongs to the caller.
 
@@ -407,7 +432,7 @@ async def create_chat_tab(
     db.add(tab)
     await db.commit()
     await db.refresh(tab)
-    return _to_response(tab)
+    return await _to_response_single(db, tab)
 
 
 @router.patch("/{tab_id}", response_model=ChatTabResponse)
@@ -455,7 +480,7 @@ async def update_chat_tab(
 
     await db.commit()
     await db.refresh(tab)
-    return _to_response(tab)
+    return await _to_response_single(db, tab)
 
 
 # ── Agent-set tab identity (plan `agent-freeform-tab-identity`) ───
@@ -564,7 +589,7 @@ async def set_self_tab_identity(
         tab = await _resolve_self_tab(
             db, user, fallback_session_id=payload.session_id
         )
-        return _to_response(tab)
+        return await _to_response_single(db, tab)
 
     tab = await _resolve_self_tab(db, user, fallback_session_id=payload.session_id)
     for key, value in updates.items():
@@ -572,7 +597,7 @@ async def set_self_tab_identity(
     tab.updated_at = utcnow()
     await db.commit()
     await db.refresh(tab)
-    return _to_response(tab)
+    return await _to_response_single(db, tab)
 
 
 class TabPlanClaim(BaseModel):

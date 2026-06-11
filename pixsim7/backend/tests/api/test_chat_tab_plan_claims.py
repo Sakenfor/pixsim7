@@ -319,3 +319,35 @@ async def test_derive_primary_ignores_released_and_sessionless() -> None:
     out = await ct._derive_primary_plan_ids(db, [bound, nosess])
     # Released claim → not grouped; no session → not grouped.
     assert out == {}
+
+
+# ── single-tab responses carry the claim-derived primary ─────────────
+
+
+@pytest.mark.asyncio
+async def test_rename_preserves_claim_derived_primary() -> None:
+    """Regression: a label-only PATCH (a user rename) on a tab grouped via an
+    agent's session claim must still return the claim-derived
+    ``primaryPlanId``, not collapse it to the (null) manual ``plan_id``.
+
+    Before the fix the PATCH response carried ``primaryPlanId=None``; the
+    client shallow-merged that over the known value and the tab bounced out
+    of its plan group until the next list poll re-derived it.
+    """
+    tab = _tab(1, session_id="s1", plan_id=None)
+    parts = [_participant("plan-claimed", "s1", _open_claim())]
+    db = SimpleNamespace(
+        get=AsyncMock(return_value=tab),
+        commit=AsyncMock(),
+        refresh=AsyncMock(),
+        execute=AsyncMock(return_value=_result(parts)),
+    )
+    result = await ct.update_chat_tab(
+        tab_id=tab.id,
+        payload=ct.ChatTabUpdateRequest(label="renamed by user"),
+        user=_user(1),
+        db=db,
+    )
+    assert result.label == "renamed by user"
+    assert result.planId is None  # manual binding untouched
+    assert result.primaryPlanId == "plan-claimed"  # grouping preserved

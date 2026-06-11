@@ -189,14 +189,28 @@ export function applyInsertTab(tab: ServerChatTab): void {
   });
 }
 
-/** Optimistically update an existing tab. Merges patch on top of current row. */
+/**
+ * Optimistically update an existing tab. Merges the patch on top of the
+ * current row, treating `undefined` keys as "leave untouched" — a partial
+ * patch must never clobber a known field (e.g. a server-derived
+ * `primaryPlanId`, which keeps the tab in its plan group) just because the
+ * key was absent. An explicit `null` is honored as an intentional clear.
+ */
 export function applyUpdateTab(
   tabId: string,
   patch: Partial<ServerChatTab>,
 ): void {
   publish({
     ...snapshot,
-    tabs: snapshot.tabs.map((t) => (t.id === tabId ? { ...t, ...patch } : t)),
+    tabs: snapshot.tabs.map((t) => {
+      if (t.id !== tabId) return t;
+      const next = { ...t };
+      for (const key of Object.keys(patch) as Array<keyof ServerChatTab>) {
+        const value = patch[key];
+        if (value !== undefined) (next[key] as unknown) = value;
+      }
+      return next;
+    }),
   });
 }
 
