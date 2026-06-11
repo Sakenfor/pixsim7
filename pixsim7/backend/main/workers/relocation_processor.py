@@ -282,3 +282,45 @@ async def request_relocation_cancel(job_id: str) -> bool:
     redis = await get_redis()
     await redis.set(relocation_cancel_key(job_id), "1", ex=_PROGRESS_TTL)
     return True
+
+
+# Statuses that mean the job is no longer in flight (UI must mirror this set).
+_TERMINAL_STATUSES = frozenset({"completed", "cancelled", "error", "interrupted"})
+
+
+async def reconcile_orphaned_relocation_job() -> Optional[str]:
+    """Mark a non-terminal latest job as ``interrupted`` (call at worker startup).
+
+    A relocation job only advances while its worker is alive. If that worker
+    died or was restarted mid-batch, its Redis progress is frozen at a
+    non-terminal status (``running``/``queued``/``continued``) and the UI keeps
+    showing a phantom in-flight job (Cancel button, polling) until the 24h TTL
+    expires. Worker startup means no relocation batch is mid-flight, so any
+    non-terminal latest job is orphaned and should be retired.
+
+    A legitimately re-enqueued continuation, if still queued, simply overwrites
+    this back to ``running`` when it resumes. Returns the retired job id, if any.
+    """
+    from pixsim7.backend.main.infrastructure.redis.client import get_redis
+
+    redis = await get_redis()
+    job_id = await redis.get(RELOCATION_LATEST_KEY)
+    if not job_id:
+        return None
+    raw = await redis.get(relocation_progress_key(job_id))
+    if not raw:
+        return None
+    payload = json.loads(raw)
+    if payload.get("status") in _TERMINAL_STATUSES:
+        return None
+    payload["status"] = "interrupted"
+    await _write_progress(redis, job_id, payload)
+    logger.info(
+        "relocation_job_interrupted_on_startup",
+        job_id=job_id,
+        processed=payload.get("processed", 0),
+        moved=payload.get("moved", 0),
+        skipped=payload.get("skipped", 0),
+        errors=payload.get("errors", 0),
+    )
+    return job_id

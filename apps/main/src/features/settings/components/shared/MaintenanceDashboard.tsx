@@ -1094,7 +1094,9 @@ interface RelocateJobProgress {
   skipped_reasons?: Record<string, number>;
 }
 
-const RELOCATE_JOB_TERMINAL = new Set(['completed', 'cancelled', 'error']);
+// 'interrupted' = a job left non-terminal by a worker crash/restart, retired on
+// the next worker startup. Mirrors relocation_processor._TERMINAL_STATUSES.
+const RELOCATE_JOB_TERMINAL = new Set(['completed', 'cancelled', 'error', 'interrupted']);
 
 // Friendly labels for the per-reason skip breakdown (relocate_one statuses).
 const SKIP_REASON_LABELS: Record<string, string> = {
@@ -1587,14 +1589,16 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   const bgTotalRef = useRef(0);
   const bgActive = bgJob != null && !RELOCATE_JOB_TERMINAL.has(bgJob.status);
 
-  // Adopt an in-flight (or last) job when the panel mounts, so progress survives
-  // a reload / reopen. Latest job = no job_id.
+  // Adopt an IN-FLIGHT job when the panel mounts, so progress survives a reload
+  // / reopen. A finished (or crash-interrupted) job is NOT re-surfaced — opening
+  // the tab shouldn't look like a job is running when none is. Latest job = no
+  // job_id.
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const j = await maintGet<RelocateJobProgress | null>('/assets/relocate/job', SURFACE);
-        if (alive && j) setBgJob(j);
+        if (alive && j && !RELOCATE_JOB_TERMINAL.has(j.status)) setBgJob(j);
       } catch {
         /* no job / surfaced elsewhere */
       }

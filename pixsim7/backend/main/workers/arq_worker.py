@@ -358,6 +358,18 @@ async def startup(ctx: dict) -> None:
     except Exception as e:
         logger.warning("startup_stale_recovery_failed", error=str(e))
 
+    # Retire any relocation job left non-terminal by a crash/restart so the UI
+    # doesn't show a phantom in-flight job (see relocation_processor docstring).
+    try:
+        from pixsim7.backend.main.workers.relocation_processor import (
+            reconcile_orphaned_relocation_job,
+        )
+        retired = await reconcile_orphaned_relocation_job()
+        if retired:
+            logger.info("startup_relocation_reconcile_complete", job_id=retired)
+    except Exception as e:
+        logger.warning("startup_relocation_reconcile_failed", error=str(e))
+
     # Reconcile account counters on startup (fixes counter drift from crashes)
     try:
         reconcile_result = await reconcile_account_counters(ctx)
