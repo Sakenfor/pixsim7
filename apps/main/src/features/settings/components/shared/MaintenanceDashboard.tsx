@@ -1347,6 +1347,8 @@ interface RelocateCriteria {
   excludeFavorites: boolean;
   excludeSetIds: number[];
   verifyHash: boolean;
+  runInBackground: boolean;
+  limit: number;
 }
 const RELOCATE_CRITERIA_DEFAULTS: RelocateCriteria = {
   mediaTypes: ['video'],
@@ -1355,6 +1357,8 @@ const RELOCATE_CRITERIA_DEFAULTS: RelocateCriteria = {
   excludeFavorites: true,
   excludeSetIds: [],
   verifyHash: true,
+  runInBackground: false,
+  limit: 50,
 };
 function readRelocateCriteria(): RelocateCriteria {
   try {
@@ -1368,6 +1372,8 @@ function readRelocateCriteria(): RelocateCriteria {
       excludeFavorites: typeof p.excludeFavorites === 'boolean' ? p.excludeFavorites : true,
       excludeSetIds: Array.isArray(p.excludeSetIds) ? p.excludeSetIds.filter((x): x is number => typeof x === 'number') : [],
       verifyHash: typeof p.verifyHash === 'boolean' ? p.verifyHash : true,
+      runInBackground: typeof p.runInBackground === 'boolean' ? p.runInBackground : false,
+      limit: typeof p.limit === 'number' && Number.isFinite(p.limit) ? Math.max(1, Math.floor(p.limit)) : 50,
     };
   } catch {
     return RELOCATE_CRITERIA_DEFAULTS;
@@ -1378,9 +1384,9 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   const [stats, setStats] = useState<RelocateStats | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
-  const [limit, setLimit] = useState(50);
   // Relocation criteria (AND-ed), hydrated from the last session's selection.
   const initialCriteria = useMemo(readRelocateCriteria, []);
+  const [limit, setLimit] = useState(initialCriteria.limit);
   const [mediaTypes, setMediaTypes] = useState<string[]>(initialCriteria.mediaTypes);
   const [minSizeMb, setMinSizeMb] = useState(initialCriteria.minSizeMb);
   const [olderThanDays, setOlderThanDays] = useState(initialCriteria.olderThanDays);
@@ -1393,10 +1399,10 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   // local blob (byte-level verify, not just size). Default ON — slower but the
   // strongest guarantee for irreplaceable originals. Apply-only (ignored on dry-run).
   const [verifyHash, setVerifyHash] = useState(initialCriteria.verifyHash);
-  // Run the relocate as a background job (drains ALL matching, non-blocking,
-  // cancellable) instead of a foreground batch. Not persisted — defaults off so
-  // reopening the panel can never silently arm a full-library move.
-  const [runInBackground, setRunInBackground] = useState(false);
+  // Run the relocate as a background job (same batch N, non-blocking,
+  // cancellable) instead of foreground. Persisted — it never auto-runs (a click
+  // + confirm is still required), so remembering the mode is safe.
+  const [runInBackground, setRunInBackground] = useState(initialCriteria.runInBackground);
   // Monotonic id so only the latest relocate-stats request applies its result.
   const statsReqIdRef = useRef(0);
 
@@ -1405,12 +1411,15 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
     try {
       localStorage.setItem(
         RELOCATE_CRITERIA_KEY,
-        JSON.stringify({ mediaTypes, minSizeMb, olderThanDays, excludeFavorites, excludeSetIds, verifyHash }),
+        JSON.stringify({
+          mediaTypes, minSizeMb, olderThanDays, excludeFavorites, excludeSetIds,
+          verifyHash, runInBackground, limit,
+        }),
       );
     } catch {
       /* localStorage unavailable — non-fatal */
     }
-  }, [mediaTypes, minSizeMb, olderThanDays, excludeFavorites, excludeSetIds, verifyHash]);
+  }, [mediaTypes, minSizeMb, olderThanDays, excludeFavorites, excludeSetIds, verifyHash, runInBackground, limit]);
 
   // Manual sets only — membership-based exclusion needs member rows; smart sets
   // (filter-derived) have none, so they can't be pinned by this path.
@@ -1782,11 +1791,24 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
               <div className="flex items-center gap-2 text-[11px]">
                 <Spinner className="w-3 h-3" />
                 <span className="text-muted-foreground flex-1">
-                  Background relocate — {fmt(bgJob.moved)} moved
-                  {bgJob.skipped ? `, ${fmt(bgJob.skipped)} skipped${formatSkipReasons(bgJob.skipped_reasons)}` : ''}
-                  {bgJob.errors ? `, ${fmt(bgJob.errors)} errors` : ''}
-                  {bgJob.freed_bytes > 0 ? ` (${bgJob.freed_human} freed)` : ''}
+                  {bgJob.status === 'queued' ? (
+                    'Background relocate — queued… (waiting for the Media Archive worker)'
+                  ) : (
+                    <>
+                      Background relocate — {fmt(bgJob.moved)} moved
+                      {bgJob.skipped ? `, ${fmt(bgJob.skipped)} skipped${formatSkipReasons(bgJob.skipped_reasons)}` : ''}
+                      {bgJob.errors ? (
+                        <span title={bgJob.error_ids.join(', ')}>{`, ${fmt(bgJob.errors)} errors`}</span>
+                      ) : ''}
+                      {bgJob.freed_bytes > 0 ? ` (${bgJob.freed_human} freed)` : ''}
+                    </>
+                  )}
                 </span>
+                {bgTotalRef.current > 0 && bgJob.status !== 'queued' && (
+                  <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                    {Math.min(100, Math.round((bgJob.processed / bgTotalRef.current) * 100))}%
+                  </span>
+                )}
                 <Button onClick={cancelBackground} variant="outline" size="sm">
                   Cancel
                 </Button>
@@ -1821,7 +1843,9 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
               {bgJob.status === 'cancelled' ? 'Cancelled' : bgJob.status === 'error' ? 'Failed' : 'Done'}
               {` — ${fmt(bgJob.moved)} moved${bgJob.freed_bytes > 0 ? `, ${bgJob.freed_human} freed` : ''}`}
               {bgJob.skipped ? `, ${fmt(bgJob.skipped)} skipped${formatSkipReasons(bgJob.skipped_reasons)}` : ''}
-              {bgJob.errors ? `, ${fmt(bgJob.errors)} errors` : ''}
+              {bgJob.errors ? (
+                <span title={bgJob.error_ids.join(', ')}>{`, ${fmt(bgJob.errors)} errors`}</span>
+              ) : ''}
               <button
                 type="button"
                 className="ml-2 text-muted-foreground hover:text-foreground underline"
