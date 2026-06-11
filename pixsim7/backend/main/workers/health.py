@@ -17,7 +17,7 @@ from pixsim7.backend.main.infrastructure.queue import (
     AUTOMATION_QUEUE_NAME,
 )
 
-logger = configure_logging("worker.health").bind(channel="cron")
+logger = configure_logging("worker.health").bind(channel="cron", domain="cron")
 
 # Role constants + the family list come from the worker_families registry
 # (single source of truth). Re-exported here so existing importers of
@@ -27,6 +27,7 @@ from pixsim7.backend.main.workers.worker_families import (  # noqa: E402
     WORKER_ROLE_RETRY,
     WORKER_ROLE_SIMULATION,
     WORKER_ROLE_AUTOMATION,
+    WORKER_ROLE_MEDIA_ARCHIVE,
     WORKER_ROLES,
 )
 
@@ -212,6 +213,10 @@ async def update_simulation_heartbeat(ctx: dict) -> None:
 
 async def update_automation_heartbeat(ctx: dict) -> None:
     await _update_worker_heartbeat(ctx, WORKER_ROLE_AUTOMATION)
+
+
+async def update_media_archive_heartbeat(ctx: dict) -> None:
+    await _update_worker_heartbeat(ctx, WORKER_ROLE_MEDIA_ARCHIVE)
 
 
 async def get_worker_health(

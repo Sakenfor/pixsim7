@@ -25,6 +25,7 @@ from pixsim7.backend.main.infrastructure.queue import (
     AUTOMATION_QUEUE_NAME,
     GENERATION_FRESH_QUEUE_NAME,
     GENERATION_RETRY_QUEUE_NAME,
+    MEDIA_ARCHIVE_QUEUE_NAME,
     SIMULATION_SCHEDULER_QUEUE_NAME,
 )
 
@@ -32,6 +33,7 @@ WORKER_ROLE_MAIN = "main"
 WORKER_ROLE_RETRY = "retry"
 WORKER_ROLE_SIMULATION = "simulation"
 WORKER_ROLE_AUTOMATION = "automation"
+WORKER_ROLE_MEDIA_ARCHIVE = "media_archive"
 
 
 @dataclass(frozen=True)
@@ -113,6 +115,19 @@ WORKER_FAMILIES: Tuple[WorkerFamily, ...] = (
         settings_class="AutomationWorkerSettings",
         max_jobs_env="ARQ_AUTOMATION_MAX_JOBS", max_jobs_default=5,
         job_timeout_env="ARQ_AUTOMATION_JOB_TIMEOUT", job_timeout_default=1800,
+        max_tries_env=None, max_tries_default=1,
+        retry_jobs=False,
+    ),
+    WorkerFamily(
+        role=WORKER_ROLE_MEDIA_ARCHIVE,
+        queue_name=MEDIA_ARCHIVE_QUEUE_NAME,
+        settings_class="MediaArchiveWorkerSettings",
+        # Single slot: relocation self-paginates and we don't want parallel
+        # uploads saturating the ZeroTier/MinIO link.
+        max_jobs_env="ARQ_MEDIA_ARCHIVE_MAX_JOBS", max_jobs_default=1,
+        # 1 h ceiling; the job self-re-enqueues well before this (~40 min budget).
+        job_timeout_env="ARQ_MEDIA_ARCHIVE_JOB_TIMEOUT", job_timeout_default=3600,
+        # Don't auto-retry a half-done batch — it's cursor-resumable; re-kick by hand.
         max_tries_env=None, max_tries_default=1,
         retry_jobs=False,
     ),

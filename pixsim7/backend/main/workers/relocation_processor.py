@@ -112,6 +112,7 @@ async def process_relocation(
     """
     from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.infrastructure.database.session import get_async_session
+    from pixsim7.backend.main.infrastructure.queue import MEDIA_ARCHIVE_QUEUE_NAME
     from pixsim7.backend.main.infrastructure.redis.client import get_arq_pool, get_redis
     from pixsim7.backend.main.services.storage.placement import (
         ARCHIVE_ROOT_ID,
@@ -193,6 +194,7 @@ async def process_relocation(
                 job_id=job_id, criteria=criteria, cursor=cursor,
                 apply=apply, verify_hash=verify_hash, max_assets=max_assets, stats=stats,
                 _job_id=f"reloc:{job_id}:{cursor}",
+                _queue_name=MEDIA_ARCHIVE_QUEUE_NAME,
             )
             logger.info("relocation_job_reenqueued", job_id=job_id, cursor=cursor, **_log_stats(stats))
             return await _persist("continued")
@@ -229,6 +231,7 @@ async def start_relocation_job(
     job_id: Optional[str] = None,
 ) -> str:
     """Enqueue a background relocation job; returns its logical job_id."""
+    from pixsim7.backend.main.infrastructure.queue import MEDIA_ARCHIVE_QUEUE_NAME
     from pixsim7.backend.main.infrastructure.redis.client import get_arq_pool, get_redis
 
     job_id = job_id or f"reloc-{int(time.time())}-{uuid.uuid4().hex[:6]}"
@@ -246,6 +249,7 @@ async def start_relocation_job(
         job_id=job_id, criteria=criteria, cursor=0,
         apply=apply, verify_hash=verify_hash, max_assets=max_assets,
         _job_id=f"reloc:{job_id}:0",
+        _queue_name=MEDIA_ARCHIVE_QUEUE_NAME,
     )
     return job_id
 

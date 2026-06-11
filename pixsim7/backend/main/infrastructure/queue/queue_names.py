@@ -14,3 +14,8 @@ SIMULATION_SCHEDULER_QUEUE_NAME = "arq:queue:simulation-scheduler"
 # Dedicated queue for device automation execution jobs.
 AUTOMATION_QUEUE_NAME = "arq:queue:automation"
 
+# Dedicated queue for slow media-archive jobs (bulk relocate/restore over S3).
+# Isolated from the generation hot path so long ZeroTier uploads can't eat
+# generation slots. See plan media-storage-tiering cp-k.
+MEDIA_ARCHIVE_QUEUE_NAME = "arq:queue:media-archive"
+

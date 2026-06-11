@@ -51,6 +51,7 @@ from pixsim7.backend.main.workers.health import (
     update_retry_heartbeat,
     update_simulation_heartbeat,
     update_automation_heartbeat,
+    update_media_archive_heartbeat,
     get_health_tracker,
 )
 from pixsim7.backend.main.workers.log_cleanup import cleanup_old_logs
@@ -60,6 +61,7 @@ from pixsim7.backend.main.workers.worker_families import (
     BY_ROLE,
     WORKER_ROLE_AUTOMATION,
     WORKER_ROLE_MAIN,
+    WORKER_ROLE_MEDIA_ARCHIVE,
     WORKER_ROLE_RETRY,
     WORKER_ROLE_SIMULATION,
 )
@@ -68,6 +70,7 @@ from pixsim7.backend.main.infrastructure.queue import (
     GENERATION_RETRY_QUEUE_NAME,
     SIMULATION_SCHEDULER_QUEUE_NAME,
     AUTOMATION_QUEUE_NAME,
+    MEDIA_ARCHIVE_QUEUE_NAME,
 )
 from pixsim7.backend.main.shared.debug import load_global_debug_from_env
 from pixsim_logging import configure_logging, configure_stdlib_root_logger, bind_domain_context
@@ -540,6 +543,38 @@ async def automation_shutdown(ctx: dict) -> None:
         logger.warning("worker_shutdown_database_close_error", error=str(e))
 
 
+async def media_archive_startup(ctx: dict) -> None:
+    """Startup for the dedicated media-archive worker (bulk relocate/restore).
+
+    Loads persisted system config so the ``storage_roots`` applier binds the
+    ``archive`` S3 backend before any relocation job builds the storage service.
+    """
+    _normalize_arq_logger_handlers()
+    get_health_tracker()
+    logger.info("worker_start", msg="PixSim7 Media Archive Worker Starting")
+    await _load_persisted_system_config_for_worker()
+    logger.info(
+        "worker_component_registered",
+        component="process_relocation",
+        queue=MEDIA_ARCHIVE_QUEUE_NAME,
+    )
+    logger.info("worker_component_registered", component="update_media_archive_heartbeat", schedule="*/30s")
+    await update_media_archive_heartbeat(ctx)
+    # Slow archive uploads can run for a long time; keep the machine awake.
+    inhibit_sleep()
+
+
+async def media_archive_shutdown(ctx: dict) -> None:
+    """Shutdown for the dedicated media-archive worker."""
+    logger.info("worker_shutdown", msg="PixSim7 Media Archive Worker Shutting Down")
+    await _drain_arq_pool(ctx)
+    try:
+        await close_database()
+    except Exception as e:
+        logger.warning("worker_shutdown_database_close_error", error=str(e))
+    allow_sleep()
+
+
 _sync_preload_system_config()
 
 
@@ -550,6 +585,7 @@ _MAIN_FAMILY = BY_ROLE[WORKER_ROLE_MAIN]
 _RETRY_FAMILY = BY_ROLE[WORKER_ROLE_RETRY]
 _SIMULATION_FAMILY = BY_ROLE[WORKER_ROLE_SIMULATION]
 _AUTOMATION_FAMILY = BY_ROLE[WORKER_ROLE_AUTOMATION]
+_MEDIA_ARCHIVE_FAMILY = BY_ROLE[WORKER_ROLE_MEDIA_ARCHIVE]
 
 
 class WorkerSettings:
@@ -573,7 +609,6 @@ class WorkerSettings:
         process_generation,
         process_analysis,
         process_derivatives,
-        process_relocation,
         process_ingestion,
         process_prompt_tagging,
         process_prompt_embedding,
@@ -790,6 +825,41 @@ class AutomationWorkerSettings:
     job_timeout = _AUTOMATION_FAMILY.resolve_job_timeout()
     max_tries = _AUTOMATION_FAMILY.resolve_max_tries()
     retry_jobs = _AUTOMATION_FAMILY.retry_jobs
+
+    log_results = True
+    verbose = True
+    health_check_interval = 60
+
+
+class MediaArchiveWorkerSettings:
+    """ARQ worker dedicated to slow media-archive jobs (bulk relocate/restore).
+
+    Isolated from the main generation worker so long S3/ZeroTier uploads can't
+    eat generation processing slots. Single-slot by default; the relocation job
+    self-paginates and re-enqueues to span the job timeout. See plan
+    media-storage-tiering cp-k.
+    """
+
+    redis_settings = _redis_settings()
+    queue_name = _MEDIA_ARCHIVE_FAMILY.queue_name
+
+    functions = [
+        process_relocation,
+        reload_logging_config,
+    ]
+
+    cron_jobs = [
+        cron(update_media_archive_heartbeat, second={0, 30}, run_at_startup=False),
+        cron(reload_logging_config, second={10}, run_at_startup=False),
+    ]
+
+    on_startup = media_archive_startup
+    on_shutdown = media_archive_shutdown
+
+    max_jobs = _MEDIA_ARCHIVE_FAMILY.resolve_max_jobs()
+    job_timeout = _MEDIA_ARCHIVE_FAMILY.resolve_job_timeout()
+    max_tries = _MEDIA_ARCHIVE_FAMILY.resolve_max_tries()
+    retry_jobs = _MEDIA_ARCHIVE_FAMILY.retry_jobs
 
     log_results = True
     verbose = True
