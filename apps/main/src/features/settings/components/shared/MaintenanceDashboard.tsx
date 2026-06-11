@@ -1281,6 +1281,30 @@ function SeverityBadge({ severity }: { severity: string }) {
 const STORAGE_OVERVIEW_KEY = '/assets/storage-overview';
 const RELOCATE_STATS_KEY = '/assets/relocate-stats';
 
+// The relocate progress bar's denominator (candidate count captured at start)
+// isn't part of the job's Redis payload, so a job adopted on panel reopen / page
+// reload would lose its %. Persist {job_id,total} so a resumed view shows real
+// progress instead of an indeterminate pulse.
+const RELOCATE_JOB_TOTAL_KEY = 'maintenance:relocate-job-total:v1';
+function readRelocateJobTotal(): { job_id: string; total: number } | null {
+  try {
+    const raw = localStorage.getItem(RELOCATE_JOB_TOTAL_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (p && typeof p.job_id === 'string' && typeof p.total === 'number') return p;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+function writeRelocateJobTotal(jobId: string, total: number): void {
+  try {
+    localStorage.setItem(RELOCATE_JOB_TOTAL_KEY, JSON.stringify({ job_id: jobId, total }));
+  } catch {
+    /* ignore */
+  }
+}
+
 // The storage overview is an expensive recursive FS walk, so we don't want to
 // re-run it on every panel reopen. Persist the last result to localStorage
 // (survives a full app/tab restart, not just a panel close) and serve it
@@ -1605,7 +1629,12 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
     (async () => {
       try {
         const j = await maintGet<RelocateJobProgress | null>('/assets/relocate/job', SURFACE);
-        if (alive && j && !RELOCATE_JOB_TERMINAL.has(j.status)) setBgJob(j);
+        if (alive && j && !RELOCATE_JOB_TERMINAL.has(j.status)) {
+          // Restore the progress denominator so the resumed bar shows a real %.
+          const saved = readRelocateJobTotal();
+          if (saved && saved.job_id === j.job_id) bgTotalRef.current = saved.total;
+          setBgJob(j);
+        }
       } catch {
         /* no job / surfaced elsewhere */
       }
@@ -1661,6 +1690,7 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
         `/assets/relocate/start?dry_run=false&verify_hash=${verifyHash}&max_assets=${limit}${qs ? `&${qs}` : ''}`,
         SURFACE,
       );
+      writeRelocateJobTotal(r.job_id, count); // so the bar resumes on reopen/reload
       const j = await maintGet<RelocateJobProgress | null>(
         `/assets/relocate/job?job_id=${encodeURIComponent(r.job_id)}`,
         SURFACE,

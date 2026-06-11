@@ -72,7 +72,7 @@ export async function maintGetRoot<T>(path: string, surface: string): Promise<T>
 // by the refresh button and after any mutating action.
 // ---------------------------------------------------------------------------
 
-const STATS_CACHE_TTL_MS = 60_000;
+const STATS_CACHE_TTL_MS = 5 * 60_000;
 const statsCache = new Map<string, { value: unknown; fetchedAt: number }>();
 
 export function readStatsCache<T>(key: string): T | null {
