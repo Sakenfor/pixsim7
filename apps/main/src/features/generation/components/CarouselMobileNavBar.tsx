@@ -53,7 +53,8 @@ export interface CarouselMobileNavBarProps {
 
 /**
  * Center badge that both displays and drives the time/prompt cohort:
- *   - tap label/chevron → toggle cohort / walk prev/next
+ *   - tap chevron → walk prev/next
+ *   - tap label/icon OR hold (long-press) anywhere on the badge → toggle cohort
  *   - scroll-wheel / horizontal swipe → walk prev↔next
  * A drag past threshold suppresses the trailing click so a swipe doesn't also
  * toggle the cohort.
@@ -146,7 +147,7 @@ function CohortNavBadge({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onClickCapture={onClickCapture}
-      title="Tap chevrons to walk · scroll/swipe to walk · tap label to switch"
+      title="Tap chevrons to walk · scroll/swipe to walk · hold or tap label to switch"
     >
       {assetSetRef ? (
         <ViewModePill inputId={inputId} bare scrollHint={scrollHint} />

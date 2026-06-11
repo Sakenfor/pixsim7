@@ -34,6 +34,12 @@ import type { OperationType } from '@/types/operations';
 
 import { useInputSlotNavigation } from './useInputSlotNavigation';
 
+// Hold this long (ms) on the mobile cohort badge to toggle Time ⇄ Source.
+const LONG_PRESS_MS = 400;
+// A pointer moving more than this (px) before the timer fires is treated as a
+// swipe, not a hold, and cancels the pending toggle.
+const LONG_PRESS_MOVE_TOLERANCE = 10;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Chevron — render + hover-peek + wheel + click; cohort-agnostic
 // (delegates to `useInputSlotNavigation`).
@@ -238,14 +244,69 @@ export function CohortPill({ asset, operationType, bare = false, scrollHint }: C
       : 'messageSquare'
     : 'clock';
 
+  const doToggle = useCallback(() => {
+    if (!sourceAvailable) return;
+    setInputNavCohort(operationType, isSource ? 'time' : 'source');
+  }, [sourceAvailable, isSource, setInputNavCohort, operationType]);
+
   const toggle = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (!sourceAvailable) return;
-      setInputNavCohort(operationType, isSource ? 'time' : 'source');
+      doToggle();
     },
-    [sourceAvailable, isSource, setInputNavCohort, operationType],
+    [doToggle],
   );
+
+  // Long-press (hold) anywhere on the badge toggles the cohort. On a small
+  // screen the tiny center icon / label are awkward to hit precisely, so a
+  // hold over the whole badge gives a large touch target while quick taps on
+  // the green chevrons still walk prev/next. The trailing click is swallowed
+  // (onClickCapture below) so the hold doesn't also fire the icon/label tap.
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
+  const pressStart = useRef<{ x: number; y: number } | null>(null);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    pressStart.current = null;
+  }, []);
+
+  // Cancel any pending hold on unmount so the timer can't fire after teardown.
+  useEffect(() => clearLongPress, [clearLongPress]);
+
+  const onPressDown = (e: React.PointerEvent) => {
+    if (!sourceAvailable) return; // nothing to switch to
+    pressStart.current = { x: e.clientX, y: e.clientY };
+    longPressFired.current = false;
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      longPressTimer.current = null;
+      doToggle();
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate(15); // light haptic tick to confirm the hold registered
+      }
+    }, LONG_PRESS_MS);
+  };
+  // A drag past threshold is a swipe (handled by the parent nav bar), not a
+  // hold — cancel the pending toggle so swipe-to-walk doesn't also switch.
+  const onPressMove = (e: React.PointerEvent) => {
+    const s = pressStart.current;
+    if (!s) return;
+    if (Math.abs(e.clientX - s.x) > LONG_PRESS_MOVE_TOLERANCE || Math.abs(e.clientY - s.y) > LONG_PRESS_MOVE_TOLERANCE) {
+      clearLongPress();
+    }
+  };
+  const onClickCaptureSuppress = (e: React.MouseEvent) => {
+    if (longPressFired.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      longPressFired.current = false;
+    }
+  };
 
   const className = bare
     ? `
@@ -287,7 +348,18 @@ export function CohortPill({ asset, operationType, bare = false, scrollHint }: C
       scrollHint.onNext?.();
     };
     return (
-      <div className={className} role="group" aria-label={`Cohort: ${label}`}>
+      <div
+        className={`${className} select-none`}
+        role="group"
+        aria-label={`Cohort: ${label}`}
+        title={sourceAvailable ? `${toggleTitle} · hold to switch` : toggleTitle}
+        onPointerDown={onPressDown}
+        onPointerMove={onPressMove}
+        onPointerUp={clearLongPress}
+        onPointerCancel={clearLongPress}
+        onClickCapture={onClickCaptureSuppress}
+        onContextMenu={(e) => e.preventDefault()}
+      >
         <span className="flex flex-col items-center leading-none">
           <button
             key={scrollHint.dir === 'prev' ? `up-${scrollHint.tick}` : 'up'}
@@ -295,49 +367,36 @@ export function CohortPill({ asset, operationType, bare = false, scrollHint }: C
             onMouseDown={(e) => e.preventDefault()}
             onClick={handlePrev}
             disabled={!scrollHint.onPrev}
-            className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'prev' ? 'animate-bounce-once' : ''}`}
+            className={`px-2 py-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'prev' ? 'animate-bounce-once' : ''}`}
             title="Previous neighbor"
             aria-label="Previous neighbor"
           >
-            <Icon name="chevronUp" size={10} />
+            <Icon name="chevronUp" size={12} />
           </button>
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={toggle}
-            disabled={!sourceAvailable}
-            className={`flex items-center justify-center transition-colors ${!sourceAvailable ? 'opacity-30 cursor-default' : 'cursor-pointer hover:text-white'}`}
-            title={toggleTitle}
-            aria-label={`Toggle cohort: ${label}`}
+          {/* Display-only cohort indicator — switching is via hold (see container). */}
+          <span
+            className={`flex items-center justify-center ${!sourceAvailable ? 'opacity-30' : ''}`}
+            aria-hidden
           >
             <Icon name={cohortIconName} size={12} />
-          </button>
+          </span>
           <button
             key={scrollHint.dir === 'next' ? `down-${scrollHint.tick}` : 'down'}
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleNext}
             disabled={!scrollHint.onNext}
-            className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'next' ? 'animate-bounce-once' : ''}`}
+            className={`px-2 py-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'next' ? 'animate-bounce-once' : ''}`}
             title="Next neighbor"
             aria-label="Next neighbor"
           >
-            <Icon name="chevronDown" size={10} />
+            <Icon name="chevronDown" size={12} />
           </button>
         </span>
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={toggle}
-          disabled={!sourceAvailable}
-          className={
-            `gen-scrub-label ${!sourceAvailable ? 'opacity-30 cursor-default' : 'cursor-pointer'}`.trim()
-          }
-          title={toggleTitle}
-          aria-label={`Toggle cohort: ${label}`}
-        >
+        {/* Display-only label — switching is via hold on the badge. */}
+        <span className={`gen-scrub-label ${!sourceAvailable ? 'opacity-30' : ''}`.trim()}>
           {label}
-        </button>
+        </span>
       </div>
     );
   }
