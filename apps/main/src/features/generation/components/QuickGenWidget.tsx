@@ -37,7 +37,7 @@ import { useProvideGenerationWidget } from '../hooks/useProvideGenerationWidget'
 import { GenerationControllerProvider } from '../hooks/useQuickGenerateController';
 import { useQuickGenPanelLayout } from '../hooks/useQuickGenPanelLayout';
 import { useQuickGenScopeSync } from '../hooks/useQuickGenScopeSync';
-import { loadAssetToQuickGen } from '../lib/assetGenerationActions';
+import { runQuickGenIntent } from '../lib/assetGenerationActions';
 import type { InputItem } from '../stores/generationInputStore';
 import { useQuickGenStagingStore } from '../stores/quickGenStagingStore';
 
@@ -215,29 +215,30 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
       setOpen,
     });
 
-    // Drain a staged "Load to Quick Gen" request once this widget is open.
-    // Issued from surfaces with no live widget (e.g. the mobile gallery); the
-    // first widget to open consumes it (consume() is atomic, so multiple
-    // mounted widgets don't double-load) and hydrates its own scoped stores.
-    const stagedLoad = useQuickGenStagingStore((s) => s.pending);
+    // Drain any staged Quick Gen intents once this widget is open. Issued from
+    // surfaces with no live widget (e.g. the mobile gallery); the first widget
+    // to open consumes them (consume() is atomic, so multiple mounted widgets
+    // don't double-apply) and dispatches each against its own scoped stores.
+    const stagedIntents = useQuickGenStagingStore((s) => s.pending);
     useEffect(() => {
-      if (!isOpen || !stagedLoad) return;
-      const staged = useQuickGenStagingStore.getState().consume();
-      if (!staged) return;
-      void loadAssetToQuickGen(staged.asset, operationType, {
-        scopeId,
-        setOpen,
-        setOperationType,
-        withoutSeed: staged.withoutSeed,
-      }).catch((err) => {
-        console.error('Failed to load staged asset into Quick Gen:', err);
-        useToastStore.getState().addToast({
-          type: 'error',
-          message: 'Failed to load the queued generation settings.',
-          duration: 4000,
-        });
-      });
-    }, [isOpen, stagedLoad, operationType, scopeId, setOpen, setOperationType]);
+      if (!isOpen || stagedIntents.length === 0) return;
+      const intents = useQuickGenStagingStore.getState().consume();
+      if (intents.length === 0) return;
+      void (async () => {
+        for (const intent of intents) {
+          try {
+            await runQuickGenIntent(intent, { scopeId, setOpen, setOperationType });
+          } catch (err) {
+            console.error('Failed to apply staged Quick Gen intent:', intent.kind, err);
+            useToastStore.getState().addToast({
+              type: 'error',
+              message: 'Failed to apply the queued generation action.',
+              duration: 4000,
+            });
+          }
+        }
+      })();
+    }, [isOpen, stagedIntents, scopeId, setOpen, setOperationType]);
 
     // Step 4: Panel layout — panels, defaultLayout, resolvePanelPosition
     const layout = useQuickGenPanelLayout({ panelIds });

@@ -7,7 +7,7 @@
 import { useToastStore } from '@pixsim7/shared.ui';
 import { useState, useCallback } from 'react';
 
-import { extractFrame, getAsset, getAssetGenerationContext } from '@lib/api/assets';
+import { extractFrame, getAssetGenerationContext } from '@lib/api/assets';
 import { searchBlocks } from '@lib/api/blockTemplates';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 
@@ -18,12 +18,15 @@ import {
   type GenerationWidgetContext,
 } from '@features/contextHub';
 import {
-  getGenerationInputStore,
   getGenerationSessionStore,
-  getGenerationSettingsStore,
   useQuickGenStagingStore,
 } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
+import {
+  insertAssetsToQuickGen,
+  insertPromptToQuickGen,
+  insertSeedToQuickGen,
+} from '@features/generation/lib/assetGenerationActions';
 import { buildCompositionAssetsFromAssetIds, buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
 import { createGenerationRunDescriptor, createGenerationRunItemContext } from '@features/generation/lib/runContext';
 import { nextRandomGenerationSeed } from '@features/generation/lib/seed';
@@ -167,19 +170,29 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   const addOrUpdateGeneration = useGenerationsStore((s) => s.addOrUpdate);
   const setWatchingGeneration = useGenerationsStore((s) => s.setWatchingGeneration);
 
-  // Handlers that load/insert into the active Quick Generate widget need a
-  // widget context to target. Returns the widget when present, otherwise
-  // surfaces the same "not available" notice and returns null so callers can
-  // bail with `const widget = requireWidget(); if (!widget) return;`.
-  const requireWidget = useCallback((): GenerationWidgetContext | null => {
-    if (widgetContext) return widgetContext;
-    useToastStore.getState().addToast({
-      type: 'info',
-      message: 'Quick Generate is not available in this view.',
-      duration: 3000,
-    });
-    return null;
-  }, [widgetContext]);
+  // When no live Quick Gen widget is mounted to receive a load/insert (e.g. the
+  // mobile gallery, where the Control Center — and its QuickGenWidget — isn't
+  // mounted), queue the intent so the next Quick Gen surface to open drains it.
+  // See quickGenStagingStore + QuickGenWidget's drain effect.
+  const stageForLater = useCallback(
+    (
+      kind: 'load' | 'patch' | 'insert-prompt' | 'insert-seed' | 'insert-assets',
+      extra?: { withoutSeed?: boolean },
+    ) => {
+      useQuickGenStagingStore.getState().stage({
+        kind,
+        asset: inputAsset,
+        fallbackOperationType: operationType,
+        ...extra,
+      });
+      useToastStore.getState().addToast({
+        type: 'info',
+        message: 'Queued for Quick Gen — applies when you next open Quick Gen.',
+        duration: 3500,
+      });
+    },
+    [inputAsset, operationType],
+  );
 
   // Resolve the generation scope to write into: prefer the widget's own scope,
   // fall back to this card's scoped store, then the global scope.
@@ -332,16 +345,11 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     const withoutSeed = options?.withoutSeed === true;
 
     // No live Quick Gen widget to receive the load (e.g. mobile gallery, where
-    // the Control Center — and its QuickGenWidget — isn't mounted). Stash the
-    // request so the next Quick Gen surface to open hydrates from it, instead
-    // of bailing with "not available". See quickGenStagingStore.
+    // the Control Center — and its QuickGenWidget — isn't mounted). Stage the
+    // intent so the next Quick Gen surface to open drains it, instead of bailing
+    // with "not available". See quickGenStagingStore.
     if (!widgetContext) {
-      useQuickGenStagingStore.getState().stage({ asset: inputAsset, withoutSeed });
-      useToastStore.getState().addToast({
-        type: 'info',
-        message: 'Queued for Quick Gen — it will load when you open Quick Gen.',
-        duration: 3500,
-      });
+      stageForLater('load', { withoutSeed });
       return;
     }
 
@@ -368,23 +376,22 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     operationType,
     widgetContext,
     scopedScopeId,
+    stageForLater,
   ]);
 
   const handleInsertPromptOnly = useCallback(async () => {
     if (!hasSourceContext || isInsertingPrompt) return;
-    const widget = requireWidget();
-    if (!widget) return;
+    if (!widgetContext) {
+      stageForLater('insert-prompt');
+      return;
+    }
 
     setIsInsertingPrompt(true);
     try {
-      const ctx = await getAssetGenerationContext(id);
-      const { prompt } = parseGenerationContext(ctx, operationType);
-
-      const scopeId = resolveScopeId(widget.scopeId);
-      const sessionStore = getGenerationSessionStore(scopeId).getState();
-      sessionStore.setPrompt(prompt);
-
-      widget.setOpen(true);
+      await insertPromptToQuickGen(inputAsset, operationType, {
+        widget: widgetContext,
+        scopeId: scopedScopeId,
+      });
     } catch (error) {
       console.error('Failed to insert prompt:', error);
       useToastStore.getState().addToast({
@@ -396,42 +403,28 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       setIsInsertingPrompt(false);
     }
   }, [
-    id,
     hasSourceContext,
     isInsertingPrompt,
+    widgetContext,
+    inputAsset,
     operationType,
-    resolveScopeId,
-    requireWidget,
+    scopedScopeId,
+    stageForLater,
   ]);
 
   const handleInsertSeedOnly = useCallback(async () => {
     if (!hasSourceContext || isInsertingSeed) return;
-    const widget = requireWidget();
-    if (!widget) return;
+    if (!widgetContext) {
+      stageForLater('insert-seed');
+      return;
+    }
 
     setIsInsertingSeed(true);
     try {
-      const ctx = await getAssetGenerationContext(id);
-      const { params } = parseGenerationContext(ctx, operationType);
-      const seed = extractSeedFromParams(params);
-
-      if (seed === undefined) {
-        useToastStore.getState().addToast({
-          type: 'info',
-          message: 'No seed found for this generation.',
-          duration: 2500,
-        });
-        return;
-      }
-
-      const scopeId = resolveScopeId(widget.scopeId);
-      const settingsStore = getGenerationSettingsStore(scopeId).getState();
-      settingsStore.setDynamicParams((prev: Record<string, unknown>) => ({
-        ...prev,
-        seed,
-      }));
-
-      widget.setOpen(true);
+      await insertSeedToQuickGen(inputAsset, operationType, {
+        widget: widgetContext,
+        scopeId: scopedScopeId,
+      });
     } catch (error) {
       console.error('Failed to insert seed:', error);
       useToastStore.getState().addToast({
@@ -443,12 +436,13 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       setIsInsertingSeed(false);
     }
   }, [
-    id,
     hasSourceContext,
     isInsertingSeed,
+    widgetContext,
+    inputAsset,
     operationType,
-    resolveScopeId,
-    requireWidget,
+    scopedScopeId,
+    stageForLater,
   ]);
 
   // Replace the active widget's inputs with the source generation's assets.
@@ -456,54 +450,17 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   // queued for this operation so the widget mirrors the source generation.
   const handleInsertAssetsOnly = useCallback(async () => {
     if (!hasSourceContext || isInsertingAssets) return;
-    const widget = requireWidget();
-    if (!widget) return;
+    if (!widgetContext) {
+      stageForLater('insert-assets');
+      return;
+    }
 
     setIsInsertingAssets(true);
     try {
-      const ctx = await getAssetGenerationContext(id);
-      const { sourceAssetIds } = parseGenerationContext(ctx, operationType);
-
-      if (!sourceAssetIds || sourceAssetIds.length === 0) {
-        useToastStore.getState().addToast({
-          type: 'info',
-          message: 'No source assets found for this generation.',
-          duration: 2500,
-        });
-        return;
-      }
-
-      const assets = (
-        await Promise.all(
-          sourceAssetIds.map(async (assetId) => {
-            try {
-              return fromAssetResponse(await getAsset(assetId));
-            } catch {
-              return null;
-            }
-          }),
-        )
-      ).filter((a): a is AssetModel => a !== null);
-
-      if (assets.length === 0) {
-        useToastStore.getState().addToast({
-          type: 'error',
-          message: 'Failed to load source assets.',
-          duration: 4000,
-        });
-        return;
-      }
-
-      // Replace: clear current inputs for this operation, then add the source
-      // assets so the widget faithfully reproduces the source generation.
-      // Resolve the widget's own scope (same as the prompt/seed handlers) —
-      // the bare scoped store may not be the one the widget reads from.
-      const scopeId = resolveScopeId(widget.scopeId);
-      const inputState = getGenerationInputStore(scopeId).getState();
-      inputState.clearInputs(operationType);
-      inputState.addInputs({ assets, operationType });
-
-      widget.setOpen(true);
+      await insertAssetsToQuickGen(inputAsset, operationType, {
+        widget: widgetContext,
+        scopeId: scopedScopeId,
+      });
     } catch (error) {
       console.error('Failed to load source assets:', error);
       useToastStore.getState().addToast({
@@ -515,12 +472,13 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       setIsInsertingAssets(false);
     }
   }, [
-    id,
     hasSourceContext,
     isInsertingAssets,
+    widgetContext,
+    inputAsset,
     operationType,
-    resolveScopeId,
-    requireWidget,
+    scopedScopeId,
+    stageForLater,
   ]);
 
   // Handler for extending video with the same prompt
