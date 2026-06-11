@@ -805,6 +805,7 @@ class RelocateJobProgress(BaseModel):
     would_bytes: int
     would_human: str
     error_ids: list[int]
+    skipped_reasons: dict[str, int] = {}
 
 
 def _csv_list(raw: Optional[str]) -> Optional[list[str]]:
@@ -1235,6 +1236,7 @@ def _progress_to_model(p: Optional[dict]) -> Optional[RelocateJobProgress]:
         would_bytes=would,
         would_human=_human_size(would),
         error_ids=list(p.get("error_ids", []) or [])[:20],
+        skipped_reasons=dict(p.get("skipped_reasons", {}) or {}),
     )
 
 

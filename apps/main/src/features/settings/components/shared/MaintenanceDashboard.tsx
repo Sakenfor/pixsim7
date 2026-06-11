@@ -1091,9 +1091,26 @@ interface RelocateJobProgress {
   would_bytes: number;
   would_human: string;
   error_ids: number[];
+  skipped_reasons?: Record<string, number>;
 }
 
 const RELOCATE_JOB_TERMINAL = new Set(['completed', 'cancelled', 'error']);
+
+// Friendly labels for the per-reason skip breakdown (relocate_one statuses).
+const SKIP_REASON_LABELS: Record<string, string> = {
+  local_missing: 'local file missing',
+  no_stored_key: 'no key',
+  not_found: 'row vanished',
+  other: 'other',
+};
+
+function formatSkipReasons(reasons?: Record<string, number>): string {
+  if (!reasons) return '';
+  const parts = Object.entries(reasons)
+    .filter(([, n]) => n > 0)
+    .map(([k, n]) => `${fmt(n)} ${SKIP_REASON_LABELS[k] ?? k}`);
+  return parts.length ? ` (${parts.join(', ')})` : '';
+}
 
 interface StorageRootConfigItem {
   id: string;
@@ -1766,7 +1783,7 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
                 <Spinner className="w-3 h-3" />
                 <span className="text-muted-foreground flex-1">
                   Background relocate — {fmt(bgJob.moved)} moved
-                  {bgJob.skipped ? `, ${fmt(bgJob.skipped)} skipped` : ''}
+                  {bgJob.skipped ? `, ${fmt(bgJob.skipped)} skipped${formatSkipReasons(bgJob.skipped_reasons)}` : ''}
                   {bgJob.errors ? `, ${fmt(bgJob.errors)} errors` : ''}
                   {bgJob.freed_bytes > 0 ? ` (${bgJob.freed_human} freed)` : ''}
                 </span>
@@ -1803,7 +1820,7 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
               />
               {bgJob.status === 'cancelled' ? 'Cancelled' : bgJob.status === 'error' ? 'Failed' : 'Done'}
               {` — ${fmt(bgJob.moved)} moved${bgJob.freed_bytes > 0 ? `, ${bgJob.freed_human} freed` : ''}`}
-              {bgJob.skipped ? `, ${fmt(bgJob.skipped)} skipped` : ''}
+              {bgJob.skipped ? `, ${fmt(bgJob.skipped)} skipped${formatSkipReasons(bgJob.skipped_reasons)}` : ''}
               {bgJob.errors ? `, ${fmt(bgJob.errors)} errors` : ''}
               <button
                 type="button"

@@ -61,7 +61,15 @@ def _empty_stats() -> dict:
         "freed_bytes": 0,
         "would_bytes": 0,
         "error_ids": [],
+        # reason -> count, e.g. {"local_missing": 4, "no_stored_key": 2}.
+        "skipped_reasons": {},
     }
+
+
+def _record_skip(stats: dict, reason: str) -> None:
+    stats["skipped"] += 1
+    reasons = stats["skipped_reasons"]
+    reasons[reason] = reasons.get(reason, 0) + 1
 
 
 def _candidate_page(criteria: dict, cursor: int):
@@ -156,7 +164,7 @@ async def process_relocation(
                 try:
                     asset = await db.get(Asset, aid)
                     if asset is None:
-                        stats["skipped"] += 1
+                        _record_skip(stats, "not_found")
                     else:
                         res = await relocate_one(
                             db, storage, asset,
@@ -209,12 +217,12 @@ def _tally(stats: dict, res: dict) -> None:
         stats["moved"] += 1
         stats["would_bytes"] += res.get("bytes", 0)
     else:
-        stats["skipped"] += 1
+        _record_skip(stats, res.get("reason") or "other")
 
 
 def _log_stats(stats: dict) -> dict:
-    # error_ids can be long — drop it from log kwargs.
-    return {k: v for k, v in stats.items() if k != "error_ids"}
+    # Drop the verbose collections from log kwargs.
+    return {k: v for k, v in stats.items() if k not in ("error_ids", "skipped_reasons")}
 
 
 # --------------------------------------------------------------------------- #
