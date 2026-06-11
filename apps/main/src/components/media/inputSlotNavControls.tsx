@@ -367,36 +367,52 @@ export function CohortPill({ asset, operationType, bare = false, scrollHint }: C
             onMouseDown={(e) => e.preventDefault()}
             onClick={handlePrev}
             disabled={!scrollHint.onPrev}
-            className={`px-2 py-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'prev' ? 'animate-bounce-once' : ''}`}
+            className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'prev' ? 'animate-bounce-once' : ''}`}
             title="Previous neighbor"
             aria-label="Previous neighbor"
           >
-            <Icon name="chevronUp" size={12} />
+            <Icon name="chevronUp" size={10} />
           </button>
-          {/* Display-only cohort indicator — switching is via hold (see container). */}
-          <span
-            className={`flex items-center justify-center ${!sourceAvailable ? 'opacity-30' : ''}`}
-            aria-hidden
+          {/* Cohort indicator — click toggles (desktop / precise taps); a hold
+              anywhere on the badge also toggles (large mobile target, see
+              container). The trailing click of a hold is swallowed by
+              onClickCaptureSuppress so the two never double-fire. */}
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={toggle}
+            disabled={!sourceAvailable}
+            className={`flex items-center justify-center transition-colors ${!sourceAvailable ? 'opacity-30 cursor-default' : 'cursor-pointer hover:text-white'}`}
+            title={toggleTitle}
+            aria-label={`Toggle cohort: ${label}`}
           >
             <Icon name={cohortIconName} size={12} />
-          </span>
+          </button>
           <button
             key={scrollHint.dir === 'next' ? `down-${scrollHint.tick}` : 'down'}
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleNext}
             disabled={!scrollHint.onNext}
-            className={`px-2 py-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'next' ? 'animate-bounce-once' : ''}`}
+            className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'next' ? 'animate-bounce-once' : ''}`}
             title="Next neighbor"
             aria-label="Next neighbor"
           >
-            <Icon name="chevronDown" size={12} />
+            <Icon name="chevronDown" size={10} />
           </button>
         </span>
-        {/* Display-only label — switching is via hold on the badge. */}
-        <span className={`gen-scrub-label ${!sourceAvailable ? 'opacity-30' : ''}`.trim()}>
+        {/* Label — click toggles (desktop); hold on the badge also toggles. */}
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={toggle}
+          disabled={!sourceAvailable}
+          className={`gen-scrub-label ${!sourceAvailable ? 'opacity-30 cursor-default' : 'cursor-pointer'}`.trim()}
+          title={toggleTitle}
+          aria-label={`Toggle cohort: ${label}`}
+        >
           {label}
-        </span>
+        </button>
       </div>
     );
   }
