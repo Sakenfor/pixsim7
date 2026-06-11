@@ -173,13 +173,30 @@ def _register_system_config_subscriber() -> None:
 
     async def _on_system_config_reloaded(event) -> None:
         namespace = (event.data or {}).get("namespace")
-        if namespace != "logging":
+        if not namespace:
             return
+        if namespace == "logging":
+            # Dedicated path (also reconciles the in-memory display).
+            try:
+                await reload_logging_config({})
+                logger.info("worker_logging_config_reloaded_via_event")
+            except Exception as e:
+                logger.warning("worker_logging_config_reload_failed", error=str(e))
+            return
+        # Generic path for every other namespace that has a registered applier
+        # (e.g. 'storage_roots' — rebuilds the worker's tiered storage service so
+        # a relocate job picks up an endpoint change without a worker restart).
         try:
-            await reload_logging_config({})
-            logger.info("worker_logging_config_reloaded_via_event")
+            from pixsim7.backend.main.infrastructure.database.session import get_async_session
+            from pixsim7.backend.main.services.system_config import get_config, apply_namespace
+            import pixsim7.backend.main.services.system_config.appliers  # noqa: F401
+
+            async with get_async_session() as db:
+                data = await get_config(db, namespace)
+            apply_namespace(namespace, data or {})
+            logger.info("worker_system_config_reloaded_via_event", namespace=namespace)
         except Exception as e:
-            logger.warning("worker_logging_config_reload_failed", error=str(e))
+            logger.warning("worker_system_config_reload_failed", namespace=namespace, error=str(e))
 
     event_bus.subscribe("system_config:reloaded", _on_system_config_reloaded)
 

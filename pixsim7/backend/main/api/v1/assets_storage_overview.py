@@ -123,6 +123,21 @@ class StorageOverviewResponse(BaseModel):
     tiering_enabled: bool
 
 
+class StorageFilesystemResponse(BaseModel):
+    """Filesystem-only slice of the overview (the expensive recursive walk).
+
+    Split out from ``StorageOverviewResponse`` so the UI can render the instant
+    DB sections first and stream these in once the walk completes.
+    """
+    total_size_bytes: int
+    total_size_human: str
+    scan_duration_ms: int
+
+    directories: list[DirectorySize]
+    media_subdirectories: list[SubdirectorySize]
+    cleanup_opportunities: list[CleanupOpportunity]
+
+
 class CleanupOrphanedResponse(BaseModel):
     deleted_count: int
     freed_bytes: int
@@ -529,8 +544,37 @@ def _compute_cleanup_opportunities(
 # Cache
 # ---------------------------------------------------------------------------
 
-_cache: Optional[tuple[float, StorageOverviewResponse]] = None
-_CACHE_TTL = 60.0
+# Caches ONLY the expensive recursive FS walk (directories + media subdirs); the
+# DB sections are cheap enough to run per request. Both the combined overview and
+# the filesystem-only endpoint read through here, and every place that mutates
+# on-disk state (cleanup, log rotation, relocate/restore, root changes) clears it
+# via ``_cache = None``.
+_cache: Optional[tuple[float, tuple[list[DirectorySize], list[SubdirectorySize]]]] = None
+# Covers the client's 5-min stale-while-revalidate window so a background
+# revalidate after a panel reopen returns this cache instead of re-running the
+# expensive FS walk. The Refresh button (force=true) always bypasses it.
+_CACHE_TTL = 300.0
+
+
+async def _fs_sections(
+    force: bool,
+) -> tuple[list[DirectorySize], list[SubdirectorySize], int]:
+    """Recursive FS walk (directories + media subdirs), cached for ``_CACHE_TTL``.
+
+    Returns ``(directories, media_subdirectories, total_size_bytes)``. The walk
+    runs in a thread; a non-force call within the TTL reuses the cached result.
+    """
+    global _cache
+    if not force and _cache is not None and time.monotonic() - _cache[0] < _CACHE_TTL:
+        directories, media_subdirs = _cache[1]
+    else:
+        registry = get_path_registry()
+        directories, media_subdirs = await asyncio.to_thread(
+            _scan_pixsim_home, registry.pixsim_home
+        )
+        _cache = (time.monotonic(), (directories, media_subdirs))
+    total_size = sum(d.size_bytes for d in directories)
+    return directories, media_subdirs, total_size
 
 
 # ---------------------------------------------------------------------------
@@ -541,7 +585,16 @@ _CACHE_TTL = 60.0
 async def get_storage_overview(
     admin: CurrentAdminUser,
     db: DatabaseSession,
-    force: bool = Query(False, description="Bypass cache"),
+    force: bool = Query(False, description="Bypass the FS-scan cache"),
+    include_fs: bool = Query(
+        True,
+        description=(
+            "Run the recursive filesystem walk (directories, media subdirs, "
+            "cleanup). Set False for a fast DB-only payload and hydrate the FS "
+            "sections separately via /storage-overview/filesystem so the panel "
+            "can render DB sections before the slow walk finishes."
+        ),
+    ),
     probe_health: bool = Query(
         True, description="Probe each non-local storage root for reachability"
     ),
@@ -550,40 +603,34 @@ async def get_storage_overview(
     System-wide storage overview: filesystem sizes, media breakdown,
     database table sizes, unused indexes, cleanup opportunities, and per-root
     placement summary (tiered storage).
+
+    For progressive UI loading, call with ``include_fs=false`` (and
+    ``probe_health=false``) for an instant DB-only payload, then hydrate the FS
+    sections via ``/storage-overview/filesystem`` and reachability via
+    ``/storage-roots`` in parallel.
     """
-    global _cache
-
-    if not force and _cache is not None:
-        cached_at, cached_response = _cache
-        if time.monotonic() - cached_at < _CACHE_TTL:
-            return cached_response
-
     t0 = time.monotonic()
 
-    registry = get_path_registry()
-    pixsim_home = registry.pixsim_home
-
-    # Filesystem scan in thread + DB queries in parallel
-    fs_task = asyncio.to_thread(_scan_pixsim_home, pixsim_home)
-    media_task = _query_media_types(db, admin.id)
-    tables_task = _query_table_sizes(db)
-    indexes_task = _query_unused_indexes(db)
-    db_size_task = _query_db_total_size(db)
-
-    (directories, media_subdirs), media_types, db_tables, unused_indexes, db_total = (
-        await asyncio.gather(fs_task, media_task, tables_task, indexes_task, db_size_task)
+    # DB sections are cheap — always run them in parallel.
+    media_types, db_tables, unused_indexes, db_total = await asyncio.gather(
+        _query_media_types(db, admin.id),
+        _query_table_sizes(db),
+        _query_unused_indexes(db),
+        _query_db_total_size(db),
     )
 
-    # Per-root placement summary (after the DB gather — health probes touch the
-    # network and shouldn't block the rest of the scan).
+    # Per-root placement summary (health probes touch the network).
     storage_roots = await _build_storage_roots(db, admin.id, probe_health)
 
-    cleanup = _compute_cleanup_opportunities(directories, media_types, unused_indexes)
+    if include_fs:
+        directories, media_subdirs, total_size = await _fs_sections(force)
+        cleanup = _compute_cleanup_opportunities(directories, media_types, unused_indexes)
+    else:
+        directories, media_subdirs, total_size, cleanup = [], [], 0, []
 
-    total_size = sum(d.size_bytes for d in directories)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 
-    response = StorageOverviewResponse(
+    return StorageOverviewResponse(
         total_size_bytes=total_size,
         total_size_human=_human_size(total_size),
         scan_duration_ms=elapsed_ms,
@@ -600,8 +647,33 @@ async def get_storage_overview(
         tiering_enabled=len(get_root_specs()) > 1,
     )
 
-    _cache = (time.monotonic(), response)
-    return response
+
+@router.get("/storage-overview/filesystem", response_model=StorageFilesystemResponse)
+async def get_storage_filesystem(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    force: bool = Query(False, description="Bypass the FS-scan cache"),
+):
+    """Filesystem-only slice of the overview: directory sizes, the media-subdir
+    breakdown, and cleanup opportunities. Split from ``/storage-overview`` so the
+    expensive recursive walk can stream in after the instant DB sections."""
+    t0 = time.monotonic()
+    directories, media_subdirs, total_size = await _fs_sections(force)
+    # Cleanup also weighs PNG/index savings — pull those cheap DB bits too.
+    media_types, unused_indexes = await asyncio.gather(
+        _query_media_types(db, admin.id),
+        _query_unused_indexes(db),
+    )
+    cleanup = _compute_cleanup_opportunities(directories, media_types, unused_indexes)
+
+    return StorageFilesystemResponse(
+        total_size_bytes=total_size,
+        total_size_human=_human_size(total_size),
+        scan_duration_ms=int((time.monotonic() - t0) * 1000),
+        directories=directories,
+        media_subdirectories=media_subdirs,
+        cleanup_opportunities=cleanup,
+    )
 
 
 @router.post("/cleanup-orphaned", response_model=CleanupOrphanedResponse)
@@ -1415,6 +1487,36 @@ async def _persisted_roots(db) -> list[dict]:
     return list(cfg.get("roots", [])) if cfg else []
 
 
+async def _publish_storage_roots_reloaded() -> None:
+    """Push a config-reload event so other processes (notably the arq worker,
+    which runs the background relocate) rebuild their tiered storage service.
+
+    Without this, ``apply_storage_roots`` only hot-reloads *this* API process;
+    the worker keeps the storage endpoint it loaded at startup and a relocate
+    job dials the stale host. Best-effort — the worker also reloads at startup.
+    """
+    try:
+        from pixsim7.backend.main.infrastructure.events.bus import (
+            event_bus,
+            register_event_type,
+        )
+
+        register_event_type(
+            "system_config:reloaded",
+            description="A persisted system_config namespace was patched and should be reloaded by other processes.",
+            payload_schema={"namespace": "str — namespace key (e.g. 'storage_roots')"},
+            source="backend.api.v1.assets",
+        )
+        await event_bus.publish(
+            "system_config:reloaded",
+            {"namespace": _STORAGE_ROOTS_NS},
+            wait=False,
+            strict=False,
+        )
+    except Exception as e:  # noqa: BLE001 — propagation is best-effort
+        logger.warning("storage_roots_event_publish_failed: %s", e)
+
+
 @router.get("/storage-roots-config", response_model=StorageRootsConfigResponse)
 async def get_storage_roots_config(admin: CurrentAdminUser, db: DatabaseSession):
     """Editable extra-root config for the Maintenance UI (secrets masked)."""
@@ -1505,6 +1607,7 @@ async def upsert_storage_root(
     data = {"roots": list(by_id.values())}
     await set_config(db, _STORAGE_ROOTS_NS, data, admin.id)
     apply_storage_roots(data)  # live: override env + rebuild tiered storage
+    await _publish_storage_roots_reloaded()  # propagate to the arq worker
     _cache = None  # storage roots changed — invalidate the overview scan cache
 
     return StorageRootsConfigResponse(
@@ -1532,6 +1635,7 @@ async def delete_storage_root(
     data = {"roots": remaining}
     await set_config(db, _STORAGE_ROOTS_NS, data, admin.id)
     apply_storage_roots(data)
+    await _publish_storage_roots_reloaded()  # propagate to the arq worker
     _cache = None
 
     return StorageRootsConfigResponse(

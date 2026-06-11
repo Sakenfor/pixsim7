@@ -1280,35 +1280,94 @@ const STORAGE_OVERVIEW_KEY = '/assets/storage-overview';
 const RELOCATE_STATS_KEY = '/assets/relocate-stats';
 
 // The storage overview is an expensive recursive FS walk, so we don't want to
-// re-run it on every panel reopen. Persist the last result to sessionStorage
-// and serve it stale-while-revalidate: show it instantly, only re-scan in the
-// background when it's older than the soft TTL (or the user hits Refresh).
+// re-run it on every panel reopen. Persist the last result to localStorage
+// (survives a full app/tab restart, not just a panel close) and serve it
+// stale-while-revalidate: show it instantly, only re-scan in the background when
+// it's older than the soft TTL (or the user hits Refresh).
 const STORAGE_OVERVIEW_PERSIST_KEY = 'maintenance:storage-overview:v1';
 const STORAGE_OVERVIEW_SOFT_TTL_MS = 5 * 60 * 1000;
 
-// Module-scoped in-flight guard for the (expensive) storage scan. The Overview
-// panel unmounts when you switch maintenance tabs, so bouncing back before the
-// first scan finished used to remount and kick off a *second* concurrent walk.
-// Holding the live promise here (outside the component) lets a remount — or a
-// background revalidate colliding with itself — piggyback on the running scan.
-// A force refresh won't reuse a non-force scan; it needs genuinely fresh data.
-let inFlightOverviewScan: { force: boolean; promise: Promise<StorageOverviewData> } | null = null;
+// The overview loads in three parallel phases so the panel paints as early as
+// possible instead of blocking on the slowest one:
+//   1. fast  — DB sections + root sizes (`?include_fs=false&probe_health=false`)
+//   2. probe — per-root reachability dots (`/storage-roots?probe_health=true`)
+//   3. fs    — the expensive recursive FS walk + cleanup (`/storage-overview/filesystem`)
+const STORAGE_OVERVIEW_FAST_KEY = '/assets/storage-overview?include_fs=false&probe_health=false';
+const STORAGE_FILESYSTEM_KEY = '/assets/storage-overview/filesystem';
+const STORAGE_ROOTS_KEY = '/assets/storage-roots';
+
+// Filesystem-only slice (phase 3). Mirrors StorageFilesystemResponse.
+interface StorageFilesystemData {
+  total_size_bytes: number;
+  total_size_human: string;
+  scan_duration_ms: number;
+  directories: DirectorySize[];
+  media_subdirectories: SubdirectorySize[];
+  cleanup_opportunities: CleanupOpportunityInfo[];
+}
+
+// `/storage-roots` list response (phase 2).
+interface StorageRootsListData {
+  roots: StorageRootInfo[];
+  tiering_enabled: boolean;
+}
+
+// Empty skeleton so sections can render (as empty / loading) before every phase
+// has resolved.
+const EMPTY_OVERVIEW: StorageOverviewData = {
+  total_size_bytes: 0,
+  total_size_human: '—',
+  scan_duration_ms: 0,
+  directories: [],
+  media_subdirectories: [],
+  media_types: [],
+  db_tables: [],
+  unused_indexes: [],
+  cleanup_opportunities: [],
+  db_total_bytes: 0,
+  db_total_human: '—',
+  storage_roots: [],
+  tiering_enabled: false,
+};
+
+// Merge incoming roots over what we already show, preserving a known online
+// status when the incoming payload didn't probe (online === null). This keeps
+// the dots stable regardless of which of the fast/probe phases lands first.
+function mergeRootHealth(base: StorageRootInfo[], incoming: StorageRootInfo[]): StorageRootInfo[] {
+  const prevById = new Map(base.map((r) => [r.id, r]));
+  return incoming.map((r) => {
+    const prev = prevById.get(r.id);
+    return {
+      ...r,
+      online: r.online ?? prev?.online ?? null,
+      error: r.error ?? prev?.error ?? null,
+    };
+  });
+}
+
+// Module-scoped in-flight guard for the (expensive) FS scan. The Overview panel
+// unmounts when you switch maintenance tabs, so bouncing back before the first
+// walk finished used to remount and kick off a *second* concurrent walk. Holding
+// the live promise here lets a remount — or a background revalidate colliding
+// with itself — piggyback on the running scan. A force refresh won't reuse a
+// non-force scan; it needs genuinely fresh data.
+let inFlightFsScan: { force: boolean; promise: Promise<StorageFilesystemData> } | null = null;
 
 function readPersistedOverview(): { data: StorageOverviewData; at: number } | null {
   try {
-    const raw = sessionStorage.getItem(STORAGE_OVERVIEW_PERSIST_KEY);
+    const raw = localStorage.getItem(STORAGE_OVERVIEW_PERSIST_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && parsed.data && typeof parsed.at === 'number') return parsed;
   } catch {
-    /* sessionStorage unavailable or corrupt — ignore */
+    /* localStorage unavailable or corrupt — ignore */
   }
   return null;
 }
 
 function writePersistedOverview(data: StorageOverviewData): void {
   try {
-    sessionStorage.setItem(
+    localStorage.setItem(
       STORAGE_OVERVIEW_PERSIST_KEY,
       JSON.stringify({ data, at: Date.now() }),
     );
@@ -2353,6 +2412,10 @@ function StorageRootEditor({ onChanged }: { onChanged: () => void }) {
             />
             <label className="text-muted-foreground">Access key</label>
             <input
+              // browsers treat this as the "username" and autofill the secret
+              // below with a stale saved credential — disable that.
+              autoComplete="off"
+              name="storage-root-access-key"
               value={form.access_key}
               onChange={(e) => patch({ access_key: e.target.value })}
               disabled={busy}
@@ -2361,6 +2424,11 @@ function StorageRootEditor({ onChanged }: { onChanged: () => void }) {
             <label className="text-muted-foreground">Secret key</label>
             <input
               type="password"
+              // "new-password" is the only reliable signal that stops Chromium
+              // autofilling a saved password into this field (which then gets
+              // signed on Test → 403 and persisted on Save).
+              autoComplete="new-password"
+              name="storage-root-secret-key"
               placeholder={editingExisting ? '•••• (unchanged)' : ''}
               value={form.secret_key}
               onChange={(e) => patch({ secret_key: e.target.value })}
@@ -2555,14 +2623,15 @@ function StorageOverview({
 }) {
   const [data, setData] = useState<StorageOverviewData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fsLoading, setFsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionResult, setActionResult] = useState<ActionResult | null>(null);
   const [runningAction, setRunningAction] = useState<string | null>(null);
 
   const fetchData = useCallback(async (force = false) => {
     // Stale-while-revalidate. Show whatever we already have (memory or
-    // sessionStorage) instantly, and only hit the backend (which runs the FS
-    // walk) when there's nothing cached, the cache is stale, or force=true.
+    // localStorage) instantly, and only hit the backend when there's nothing
+    // cached, the cache is stale, or force=true.
     const memory = readStatsCache<StorageOverviewData>(STORAGE_OVERVIEW_KEY);
     const persisted = memory ? { data: memory, at: Date.now() } : readPersistedOverview();
     if (persisted && !force) {
@@ -2577,27 +2646,85 @@ function StorageOverview({
 
     const hadData = Boolean(persisted);
     if (!hadData) setLoading(true);
+    setFsLoading(true);
     setError(null);
-    // Reuse a running scan across remounts; only start a new request when none
-    // is in flight (or when a force refresh needs to supersede a non-force one).
-    if (!inFlightOverviewScan || (force && !inFlightOverviewScan.force)) {
-      // force re-scans the backend too (bypasses its own 60s cache).
-      const path = force ? `${STORAGE_OVERVIEW_KEY}?force=true` : STORAGE_OVERVIEW_KEY;
-      inFlightOverviewScan = { force, promise: maintGet<StorageOverviewData>(path, SURFACE) };
+
+    // Accumulate the merged result across phases; each phase patches in its own
+    // sections as it resolves so the panel paints progressively.
+    let acc: StorageOverviewData = persisted?.data ? { ...persisted.data } : { ...EMPTY_OVERVIEW };
+    const applyPatch = (patch: Partial<StorageOverviewData>) => {
+      const roots = patch.storage_roots
+        ? mergeRootHealth(acc.storage_roots, patch.storage_roots)
+        : acc.storage_roots;
+      acc = { ...acc, ...patch, storage_roots: roots };
+      setData({ ...acc });
+    };
+
+    // Phase 1 (fast): DB sections + root sizes — instant, no FS walk, no probe.
+    const fastP = maintGet<StorageOverviewData>(
+      STORAGE_OVERVIEW_FAST_KEY + (force ? '&force=true' : ''),
+      SURFACE,
+    ).then((r) => {
+      applyPatch({
+        media_types: r.media_types,
+        db_tables: r.db_tables,
+        unused_indexes: r.unused_indexes,
+        db_total_bytes: r.db_total_bytes,
+        db_total_human: r.db_total_human,
+        storage_roots: r.storage_roots,
+        tiering_enabled: r.tiering_enabled,
+      });
+    });
+
+    // Phase 2 (probe): per-root reachability — fills in the online/offline dots.
+    const probeP = maintGet<StorageRootsListData>(
+      `${STORAGE_ROOTS_KEY}?probe_health=true`,
+      SURFACE,
+    )
+      .then((r) => applyPatch({ storage_roots: r.roots, tiering_enabled: r.tiering_enabled }))
+      .catch(() => {
+        /* probe failure just leaves the dots at their last-known state */
+      });
+
+    // Phase 3 (fs): the expensive recursive walk + cleanup. Guarded so a remount
+    // or colliding revalidate piggybacks on the running scan.
+    if (!inFlightFsScan || (force && !inFlightFsScan.force)) {
+      inFlightFsScan = {
+        force,
+        promise: maintGet<StorageFilesystemData>(
+          STORAGE_FILESYSTEM_KEY + (force ? '?force=true' : ''),
+          SURFACE,
+        ),
+      };
     }
-    const scan = inFlightOverviewScan;
-    try {
-      const resp = await scan.promise;
-      writeStatsCache(STORAGE_OVERVIEW_KEY, resp);
-      writePersistedOverview(resp);
-      setData(resp);
-    } catch (err) {
-      // Don't blow away already-shown data on a background-revalidate failure.
-      if (!hadData) setError(extractErrorMessage(err) || 'Failed to load storage overview');
-    } finally {
-      if (inFlightOverviewScan === scan) inFlightOverviewScan = null;
-      setLoading(false);
+    const fsScan = inFlightFsScan;
+    const fsP = fsScan.promise
+      .then((r) => {
+        applyPatch({
+          directories: r.directories,
+          media_subdirectories: r.media_subdirectories,
+          total_size_bytes: r.total_size_bytes,
+          total_size_human: r.total_size_human,
+          scan_duration_ms: r.scan_duration_ms,
+          cleanup_opportunities: r.cleanup_opportunities,
+        });
+      })
+      .finally(() => {
+        if (inFlightFsScan === fsScan) inFlightFsScan = null;
+        setFsLoading(false);
+      });
+
+    const [fast] = await Promise.allSettled([fastP, probeP, fsP]);
+    if (fast.status === 'rejected') {
+      // The DB phase is the critical one — only surface an error if we have
+      // nothing on screen; never blow away already-shown data.
+      if (!hadData) setError(extractErrorMessage(fast.reason) || 'Failed to load storage overview');
+    } else {
+      setError(null);
+      writeStatsCache(STORAGE_OVERVIEW_KEY, acc);
+      writePersistedOverview(acc);
     }
+    setLoading(false);
   }, []);
 
   // Refresh button / global refresh forces a fresh scan.
@@ -2673,13 +2800,19 @@ function StorageOverview({
         <div className="flex items-baseline justify-between mb-1.5">
           <span className="text-xs font-medium">Storage Overview</span>
           <div className="flex items-center gap-2">
-            {loading && <Spinner className="w-3 h-3" />}
-            <span className="text-[10px] text-muted-foreground tabular-nums">
-              {data.total_size_human} total
-            </span>
-            <span className="text-[10px] text-muted-foreground/40 tabular-nums">
-              {data.scan_duration_ms}ms
-            </span>
+            {(loading || fsLoading) && <Spinner className="w-3 h-3" />}
+            {fsLoading && data.directories.length === 0 ? (
+              <span className="text-[10px] text-muted-foreground/60">scanning filesystem…</span>
+            ) : (
+              <>
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  {data.total_size_human} total
+                </span>
+                <span className="text-[10px] text-muted-foreground/40 tabular-nums">
+                  {data.scan_duration_ms}ms
+                </span>
+              </>
+            )}
           </div>
         </div>
         <StackedBar segments={barSegments} />
@@ -2723,6 +2856,12 @@ function StorageOverview({
       {/* Directories */}
       <Section title="Directories" defaultOpen count={data.directories.length}>
         <div className="px-3 pb-2 space-y-1">
+          {data.directories.length === 0 && fsLoading && (
+            <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground/60">
+              <Spinner className="w-3 h-3" />
+              <span>Scanning filesystem…</span>
+            </div>
+          )}
           {data.directories.map((d) => (
             <div key={d.path} className="flex items-center gap-2 text-[11px]">
               <span className={`w-2 h-2 rounded-sm shrink-0 ${dirColor(d.path, 'dot')}`} />
