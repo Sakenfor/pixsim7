@@ -1376,6 +1376,10 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
   // local blob (byte-level verify, not just size). Default ON — slower but the
   // strongest guarantee for irreplaceable originals. Apply-only (ignored on dry-run).
   const [verifyHash, setVerifyHash] = useState(initialCriteria.verifyHash);
+  // Run the relocate as a background job (drains ALL matching, non-blocking,
+  // cancellable) instead of a foreground batch. Not persisted — defaults off so
+  // reopening the panel can never silently arm a full-library move.
+  const [runInBackground, setRunInBackground] = useState(false);
   // Monotonic id so only the latest relocate-stats request applies its result.
   const statsReqIdRef = useRef(0);
 
@@ -1678,6 +1682,16 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
           />
           Verify hash before delete (re-hash the archive copy; slower, safest)
         </label>
+        <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={runInBackground}
+            onChange={(e) => setRunInBackground(e.target.checked)}
+            disabled={busy}
+            className="h-3 w-3 disabled:opacity-50"
+          />
+          Run in background (relocate ALL matching as a cancellable job — doesn&apos;t block)
+        </label>
 
         {manualSets.length > 0 && (
           <div className="flex items-start gap-1.5 flex-wrap">
@@ -1714,34 +1728,43 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
       )}
       {!nothing && (
         <div className="flex items-center gap-2 flex-wrap pl-5">
-          <label className="text-[10px] text-muted-foreground">Batch</label>
-          <input
-            type="number"
-            min={1}
-            max={500}
-            value={limit}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              if (Number.isFinite(n)) setLimit(Math.max(1, Math.min(500, Math.floor(n))));
-            }}
-            disabled={busy}
-            className="h-6 w-16 text-[11px] bg-transparent border border-border rounded px-1.5 tabular-nums disabled:opacity-50"
-          />
+          {/* Batch only bounds the foreground (blocking) run; the background job
+              drains the whole matching set, so the limit is moot there. */}
+          {!runInBackground && (
+            <>
+              <label className="text-[10px] text-muted-foreground">Batch</label>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={limit}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n)) setLimit(Math.max(1, Math.min(500, Math.floor(n))));
+                }}
+                disabled={busy}
+                className="h-6 w-16 text-[11px] bg-transparent border border-border rounded px-1.5 tabular-nums disabled:opacity-50"
+              />
+            </>
+          )}
           <Button onClick={() => run(true)} disabled={busy} variant="outline" size="sm">
             {busy ? <Spinner className="w-3 h-3" /> : 'Preview'}
           </Button>
-          <Button onClick={onApply} disabled={busy || noArchive} variant="primary" size="sm">
-            Relocate {fmt(Math.min(limit, stats.candidate_count))}
-          </Button>
-          <Button
-            onClick={startBackground}
-            disabled={busy || noArchive || bgActive}
-            variant="outline"
-            size="sm"
-            title="Relocate the WHOLE matching set as a background job (drains everything, cancellable)"
-          >
-            {bgActive ? 'Running…' : `Run all in background`}
-          </Button>
+          {runInBackground ? (
+            <Button
+              onClick={startBackground}
+              disabled={busy || noArchive || bgActive}
+              variant="primary"
+              size="sm"
+              title="Relocate the WHOLE matching set as a background job (cancellable)"
+            >
+              {bgActive ? 'Running…' : `Relocate all (${fmt(stats.candidate_count)}) in background`}
+            </Button>
+          ) : (
+            <Button onClick={onApply} disabled={busy || noArchive} variant="primary" size="sm">
+              Relocate {fmt(Math.min(limit, stats.candidate_count))}
+            </Button>
+          )}
         </div>
       )}
 
