@@ -4,7 +4,7 @@ import { useMemo, useState, useRef } from 'react';
 
 import { Icon, IconBadge, type IconName } from '@lib/icons';
 
-import { providerCapabilityRegistry } from '@features/providers';
+import { useProviderCapability } from '@features/providers';
 
 import { OPERATION_METADATA, OPERATION_TYPES, type OperationType } from '@/types/operations';
 
@@ -12,12 +12,19 @@ import { DROPDOWN_ITEM_CLS } from './constants';
 
 /** Operations shown in the icon button picker, filtered by provider when set. */
 function usePickerOperations(providerId?: string) {
+  // Drive off the reactive capability hook (not the bare singleton): on a fresh
+  // page load the registry is empty until its background fetch lands, and the
+  // singleton never notifies React — leaving the picker stuck on an empty list
+  // (the "thin empty box"). The hook re-renders us when capabilities arrive.
+  const { capability } = useProviderCapability(providerId);
   return useMemo(
     () => OPERATION_TYPES
       .filter((op) => OPERATION_METADATA[op].icon && OPERATION_METADATA[op].color)
-      .filter((op) => !providerId || providerCapabilityRegistry.supportsOperation(providerId, op))
+      // Only narrow by provider once its capability has loaded; while it's still
+      // fetching (capability == null) show all ops so the dropdown is never empty.
+      .filter((op) => !providerId || !capability || (capability.operations?.includes(op) ?? false))
       .map((op) => ({ op, ...OPERATION_METADATA[op] })),
-    [providerId],
+    [providerId, capability],
   );
 }
 
