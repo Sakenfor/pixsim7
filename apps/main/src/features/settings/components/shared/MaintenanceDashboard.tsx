@@ -1442,7 +1442,11 @@ function readRelocateCriteria(): RelocateCriteria {
 }
 
 function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
-  const [stats, setStats] = useState<RelocateStats | null>(null);
+  // Seed from the stats cache so a reopen within the cache TTL paints the last
+  // numbers instantly instead of flashing a spinner while it refetches.
+  const [stats, setStats] = useState<RelocateStats | null>(
+    () => readStatsCache<RelocateStats>(RELOCATE_STATS_KEY),
+  );
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
   // Relocation criteria (AND-ed), hydrated from the last session's selection.
@@ -1518,7 +1522,10 @@ function RelocateVideosAction({ onMoved }: { onMoved: () => void }) {
         `${RELOCATE_STATS_KEY}${qs ? `?${qs}` : ''}`,
         SURFACE,
       );
-      if (reqId === statsReqIdRef.current) setStats(s);
+      if (reqId === statsReqIdRef.current) {
+        setStats(s);
+        writeStatsCache(RELOCATE_STATS_KEY, s); // warm cache for instant reopen
+      }
     } catch {
       /* surfaced via the row above; keep the action quiet */
     }
@@ -1966,7 +1973,10 @@ interface RestoreResult {
 }
 
 function RestoreFromArchiveAction({ onChanged }: { onChanged: () => void }) {
-  const [stats, setStats] = useState<RestoreStats | null>(null);
+  // Seed from the stats cache so a reopen within the cache TTL is instant.
+  const [stats, setStats] = useState<RestoreStats | null>(
+    () => readStatsCache<RestoreStats>(RESTORE_STATS_KEY),
+  );
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [limit, setLimit] = useState(50);
@@ -1997,7 +2007,10 @@ function RestoreFromArchiveAction({ onChanged }: { onChanged: () => void }) {
         `${RESTORE_STATS_KEY}${qs ? `?${qs}` : ''}`,
         SURFACE,
       );
-      if (reqId === statsReqIdRef.current) setStats(s);
+      if (reqId === statsReqIdRef.current) {
+        setStats(s);
+        writeStatsCache(RESTORE_STATS_KEY, s); // warm cache for instant reopen
+      }
     } catch {
       /* surfaced elsewhere; keep quiet */
     }
@@ -2500,7 +2513,10 @@ const STORAGE_ROOTS_LIST_KEY = '/assets/storage-roots';
  * sizes/health list, the relocate action, and the add/edit-root editor.
  */
 function StorageTieringPanel() {
-  const [data, setData] = useState<StorageRootsList | null>(null);
+  // Seed from cache so a reopen within the TTL paints instantly (no empty frame).
+  const [data, setData] = useState<StorageRootsList | null>(
+    () => readStatsCache<StorageRootsList>(STORAGE_ROOTS_LIST_KEY),
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
