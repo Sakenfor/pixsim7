@@ -5,6 +5,9 @@ import { createPortal } from 'react-dom';
 import { Rnd } from 'react-rnd';
 
 import { Icon } from '@lib/icons';
+import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
+
+import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 
 interface FloatingToolPanelProps {
   open: boolean;
@@ -31,12 +34,34 @@ export function FloatingToolPanel({
   minWidth = 320,
   minHeight = 200,
 }: FloatingToolPanelProps) {
+  // Either signal forces the non-Rnd sheet: a narrow viewport, OR any touch
+  // device (react-rnd's drag handle swallows taps on its child close button,
+  // so the ✕ never fires onClick on a touchscreen regardless of width).
+  // Both hooks must run unconditionally — don't short-circuit with `||`.
+  const narrowViewport = useIsMobileViewport();
+  const coarsePointer = useIsCoarsePointer();
+  const isMobile = narrowViewport || coarsePointer;
   const [pos, setPos] = useState({ x: 200, y: 120 });
   const [size, setSize] = useState({ width: defaultWidth, height: defaultHeight });
   const initialised = useRef(false);
 
+  // Escape-to-close, matching the canonical Popover dismissal contract.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
-    if (!open || initialised.current) return;
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onCloseRef.current();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || isMobile || initialised.current) return;
 
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -60,7 +85,7 @@ export function FloatingToolPanel({
     setPos({ x: nextX, y: nextY });
     setSize({ width: defaultWidth, height: defaultHeight });
     initialised.current = true;
-  }, [open, anchor, defaultWidth, defaultHeight]);
+  }, [open, isMobile, anchor, defaultWidth, defaultHeight]);
 
   const handleDragStop = useCallback((_e: unknown, d: { x: number; y: number }) => {
     setPos({ x: d.x, y: d.y });
@@ -76,6 +101,57 @@ export function FloatingToolPanel({
 
   if (!open) return null;
 
+  // Header is the drag handle on desktop; on mobile it's a static title bar.
+  const panelChrome = (
+    <div className="flex flex-col h-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-2xl overflow-hidden">
+      <div
+        className={clsx(
+          !isMobile && DRAG_HANDLE_CLASS,
+          'flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 select-none shrink-0',
+          !isMobile && 'cursor-grab active:cursor-grabbing',
+        )}
+      >
+        <Icon name="wand" size={12} className="text-neutral-500 dark:text-neutral-400" />
+        <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300 flex-1">{title}</span>
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={onClose}
+          className={clsx(
+            'rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors',
+            isMobile ? 'p-1.5' : 'p-0.5',
+          )}
+        >
+          <Icon name="x" size={isMobile ? 16 : 12} />
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto">{children}</div>
+    </div>
+  );
+
+  // Mobile: a tap-dismiss backdrop + a clamped, on-screen sheet. No drag/resize —
+  // the desktop Rnd panel can render its close button off-screen on narrow widths.
+  if (isMobile) {
+    return createPortal(
+      <div
+        className="fixed inset-0 flex items-center justify-center p-3"
+        style={{ zIndex: Z.floatOverlay }}
+      >
+        <div
+          className="absolute inset-0 bg-black/40"
+          onClick={onClose}
+          aria-hidden
+        />
+        <div className="relative w-full max-w-[440px] max-h-[85vh] flex flex-col">
+          {panelChrome}
+        </div>
+      </div>,
+      document.body,
+    );
+  }
+
   return createPortal(
     <Rnd
       position={pos}
@@ -88,30 +164,7 @@ export function FloatingToolPanel({
       dragHandleClassName={DRAG_HANDLE_CLASS}
       style={{ zIndex: Z.floatOverlay }}
     >
-      <div className="flex flex-col h-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-2xl overflow-hidden">
-        {/* Header — drag handle */}
-        <div
-          className={clsx(
-            DRAG_HANDLE_CLASS,
-            'flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 cursor-grab active:cursor-grabbing select-none shrink-0',
-          )}
-        >
-          <Icon name="wand" size={12} className="text-neutral-500 dark:text-neutral-400" />
-          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300 flex-1">{title}</span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
-          >
-            <Icon name="x" size={12} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto">
-          {children}
-        </div>
-      </div>
+      {panelChrome}
     </Rnd>,
     document.body,
   );
