@@ -610,6 +610,28 @@ async def test_probe_root_nonlocal_health_check_pass_and_fail():
 
 
 @pytest.mark.asyncio
+async def test_probe_root_times_out_offline(monkeypatch):
+    """A slow/hung health_check must report offline within the probe ceiling, not
+    block the storage-overview tab (the off-network unreachable-archive case)."""
+    import asyncio as _asyncio
+
+    import pixsim7.backend.main.services.storage.storage_service as ss
+
+    monkeypatch.setattr(ss, "_PROBE_TIMEOUT_SECONDS", 0.1)
+
+    class _HangingStub(_NonLocalStub):
+        async def health_check(self):
+            await _asyncio.sleep(5.0)  # never completes within the ceiling
+
+    tier = TieredStorageService(
+        {LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp()), "archive": _HangingStub()}
+    )
+    probe = await tier.probe_root("archive")
+    assert probe["online"] is False
+    assert "timed out" in probe["error"]
+
+
+@pytest.mark.asyncio
 async def test_probe_root_no_health_check_is_unknown():
     # _NonLocalStub has no health_check() -> online is None (unknown), not False.
     tier = TieredStorageService(

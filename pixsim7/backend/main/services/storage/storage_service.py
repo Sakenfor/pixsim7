@@ -37,6 +37,10 @@ from pixsim7.backend.main.services.storage.roots import (
 
 logger = get_logger()
 
+# Hard ceiling on a single root's reachability probe so the storage-overview tab
+# can't block on an unreachable archive (laptop off the archive's LAN/ZeroTier).
+_PROBE_TIMEOUT_SECONDS = 5.0
+
 
 class StorageService:
     """
@@ -490,6 +494,15 @@ class S3StorageService(StorageService):
             read_timeout=float(read_timeout_seconds),
             retries={"max_attempts": int(max_attempts), "mode": "standard"},
         )
+        # A reachability probe (head_bucket) must fail FAST, not retry — otherwise
+        # an unreachable archive (e.g. laptop off the archive's LAN/ZeroTier) makes
+        # the storage-overview tab hang for connect_timeout × retries. Short connect,
+        # single attempt.
+        self._probe_config = Config(
+            connect_timeout=3.0,
+            read_timeout=3.0,
+            retries={"max_attempts": 1, "mode": "standard"},
+        )
         logger.info(
             "s3_storage_initialized",
             endpoint=endpoint_url,
@@ -502,14 +515,14 @@ class S3StorageService(StorageService):
     def _safe_key(key: str) -> str:
         return key.lstrip("/").replace("..", "")
 
-    def _client(self):
+    def _client(self, config=None):
         return self._session.create_client(
             "s3",
             endpoint_url=self._endpoint_url,
             aws_access_key_id=self._access_key,
             aws_secret_access_key=self._secret_key,
             region_name=self._region,
-            config=self._client_config,
+            config=config or self._client_config,
         )
 
     @staticmethod
@@ -622,8 +635,10 @@ class S3StorageService(StorageService):
         Used to tell "archive offline" (store down) from "object deleted" (store
         up, key gone) on the serve path and in the storage overview, instead of
         surfacing a bare 404 for both. See plan ``media-storage-tiering`` Phase H.
+        Uses the fast-fail probe client so an unreachable archive errors in ~3 s
+        instead of retrying for ~30 s.
         """
-        async with self._client() as client:
+        async with self._client(config=self._probe_config) as client:
             await client.head_bucket(Bucket=self._bucket)
 
     async def open_stream(self, key, range_header: Optional[str] = None):
@@ -740,8 +755,12 @@ class TieredStorageService(StorageService):
         if pinger is None:
             return {"online": None, "error": None}
         try:
-            await pinger()
+            # Hard ceiling so the storage-overview tab can never block on a slow
+            # probe, regardless of the backend's own client timeouts.
+            await asyncio.wait_for(pinger(), timeout=_PROBE_TIMEOUT_SECONDS)
             return {"online": True, "error": None}
+        except asyncio.TimeoutError:
+            return {"online": False, "error": "reachability probe timed out"}
         except Exception as exc:  # noqa: BLE001 — report, never raise
             return {"online": False, "error": str(exc)}
 
