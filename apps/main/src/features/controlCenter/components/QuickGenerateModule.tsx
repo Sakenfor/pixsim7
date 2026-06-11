@@ -3,9 +3,11 @@ import { useEffect, useRef, useCallback } from 'react';
 
 import { getDockviewPanels } from '@lib/dockview';
 
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useDockState, useDockUiStore } from '@features/docks/stores';
 import {
   useGenerationWebSocket,
+  useRegisterQuickGenOpener,
   QuickGenWidget,
   type QuickGenPanelHostRef,
   type QuickGenWidgetRenderContext,
@@ -24,6 +26,20 @@ export function QuickGenerateModule() {
     (open: boolean) => setDockOpen(DOCK_IDS.controlCenter, open),
     [setDockOpen],
   );
+
+  // Expose Control Center as an "Open With" target: switch it to Quick Generate
+  // and reveal the dock — works even while the widget reports closed (the dock
+  // toggle is global), so a routed intent can land here from anywhere.
+  const openControlCenterQuickGen = useCallback(() => {
+    useControlCenterStore.getState().setActiveModule('quickGenerate');
+    setDockOpen(DOCK_IDS.controlCenter, true);
+  }, [setDockOpen]);
+  useRegisterQuickGenOpener({
+    widgetId: 'controlCenter',
+    label: 'Control Center',
+    open: openControlCenterQuickGen,
+    order: 10,
+  });
 
   // Dockview wrapper ref for layout reset
   const dockviewRef = useRef<QuickGenPanelHostRef>(null);

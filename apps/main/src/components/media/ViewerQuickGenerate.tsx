@@ -37,6 +37,7 @@ import {
   QuickGenWidget,
   useGenerationSettingsStore,
   useQuickGenStagingStore,
+  useRegisterQuickGenOpener,
   type QuickGenWidgetRenderContext,
 } from '@features/generation';
 import { DOCK_IDS } from '@features/panels/lib/panelIds';
@@ -180,11 +181,16 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
   const controlCenterOpen = useDockState(DOCK_IDS.controlCenter, (dock) => dock.open);
   const openViewer = useAssetViewerStore((s) => s.openViewer);
   const setViewerMode = useAssetViewerStore((s) => s.setMode);
-  // Auto-expand when a "Load to Quick Gen" was staged from a surface with no
-  // live widget (e.g. the mobile gallery): opening the asset here should reveal
-  // Quick Gen and let it drain the staged load, not sit collapsed.
+  // Auto-expand when an intent was staged from a surface with no live widget
+  // (e.g. the mobile gallery): opening the asset here should reveal Quick Gen
+  // and let it drain the staged intent, not sit collapsed. Only react to
+  // intents this surface can drain (untargeted or routed to this widget).
   const [isExpanded, setIsExpanded] = useState(
-    () => alwaysExpanded || useQuickGenStagingStore.getState().pending !== null,
+    () =>
+      alwaysExpanded ||
+      useQuickGenStagingStore
+        .getState()
+        .pending.some((i) => !i.targetWidgetId || i.targetWidgetId === 'viewerQuickGenerate'),
   );
   // Mode is managed at top level to determine scope before rendering the toggle
   const [mode, setMode] = useState<GenerationSourceMode>('user');
@@ -202,6 +208,21 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
       if (!open) setIsExpanded(false);
     },
     [],
+  );
+
+  // Expose this viewer's Quick Gen as an "Open With" target — expanding it lets
+  // it drain a routed intent. The always-expanded panel variant is open by
+  // definition, so it registers no opener.
+  const expandViewerQuickGen = useCallback(() => setIsExpanded(true), []);
+  useRegisterQuickGenOpener(
+    alwaysExpanded
+      ? null
+      : {
+          widgetId: 'viewerQuickGenerate',
+          label: 'Viewer Quick Generate',
+          open: expandViewerQuickGen,
+          order: 20,
+        },
   );
   const handleOpenAssetInViewer = useCallback(
     (inputAsset: AssetModel, assetList?: AssetModel[]) => {

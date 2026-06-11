@@ -40,6 +40,12 @@ export interface QuickGenIntent {
   fallbackOperationType: OperationType;
   /** Strip the seed from restored params (only meaningful for 'load'). */
   withoutSeed?: boolean;
+  /**
+   * Route this intent to a specific Quick Gen surface (a QuickGenWidget's
+   * `widgetId`). When omitted, the first widget to open drains it. When set,
+   * only the matching widget consumes it — the basis for "Open With <surface>".
+   */
+  targetWidgetId?: string;
 }
 
 interface QuickGenStagingState {
@@ -48,8 +54,18 @@ interface QuickGenStagingState {
   stage: (intent: QuickGenIntent) => void;
   /** Atomically take and clear all pending intents (empty array if none). */
   consume: () => QuickGenIntent[];
+  /**
+   * Atomically take the intents this widget should run — untargeted ones plus
+   * those addressed to `widgetId` — leaving any addressed to other widgets
+   * queued for them. Returns an empty array if none match.
+   */
+  consumeFor: (widgetId: string) => QuickGenIntent[];
   /** Drop any pending intents without running them. */
   clear: () => void;
+}
+
+function matchesWidget(intent: QuickGenIntent, widgetId: string): boolean {
+  return !intent.targetWidgetId || intent.targetWidgetId === widgetId;
 }
 
 export const useQuickGenStagingStore = create<QuickGenStagingState>((set, get) => ({
@@ -59,6 +75,14 @@ export const useQuickGenStagingStore = create<QuickGenStagingState>((set, get) =
     const { pending } = get();
     if (pending.length) set({ pending: [] });
     return pending;
+  },
+  consumeFor: (widgetId) => {
+    const { pending } = get();
+    if (pending.length === 0) return [];
+    const taken = pending.filter((intent) => matchesWidget(intent, widgetId));
+    if (taken.length === 0) return [];
+    set({ pending: pending.filter((intent) => !matchesWidget(intent, widgetId)) });
+    return taken;
   },
   clear: () => set({ pending: [] }),
 }));

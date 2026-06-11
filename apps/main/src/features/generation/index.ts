@@ -59,6 +59,7 @@ export { useGenerationPresets } from './hooks/useGenerationPresets';
 export type { UseGenerationPresetsResult } from './hooks/useGenerationPresets';
 export { useProvideGenerationWidget } from './hooks/useProvideGenerationWidget';
 export type { UseProvideGenerationWidgetConfig } from './hooks/useProvideGenerationWidget';
+export { useRegisterQuickGenOpener } from './hooks/useRegisterQuickGenOpener';
 export { GenerationCapableHost } from './components/GenerationCapableHost';
 export type { GenerationCapableHostProps } from './components/GenerationCapableHost';
 export { useQuickGenPanelLayout } from './hooks/useQuickGenPanelLayout';
@@ -112,7 +113,13 @@ export type {
 } from './stores/generationPresetStore';
 export { useFanoutPresetStore } from './stores/fanoutPresetStore';
 export { useQuickGenStagingStore } from './stores/quickGenStagingStore';
-export type { QuickGenStagedLoad } from './stores/quickGenStagingStore';
+export type { QuickGenIntent, QuickGenIntentKind } from './stores/quickGenStagingStore';
+export {
+  useQuickGenOpenersStore,
+  getQuickGenOpener,
+  listQuickGenOpeners,
+} from './stores/quickGenOpenersStore';
+export type { QuickGenOpener } from './stores/quickGenOpenersStore';
 export { useGenerationHistoryStore } from './stores/generationHistoryStore';
 export type {
   AssetHistoryEntry,

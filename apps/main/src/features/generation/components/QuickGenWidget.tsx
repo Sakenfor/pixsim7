@@ -215,14 +215,16 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
       setOpen,
     });
 
-    // Drain any staged Quick Gen intents once this widget is open. Issued from
-    // surfaces with no live widget (e.g. the mobile gallery); the first widget
-    // to open consumes them (consume() is atomic, so multiple mounted widgets
-    // don't double-apply) and dispatches each against its own scoped stores.
+    // Drain staged Quick Gen intents addressed to this widget once it's open.
+    // Issued from surfaces with no live widget (e.g. the mobile gallery).
+    // consumeFor() atomically takes untargeted intents plus those routed to this
+    // widgetId (leaving others' targeted intents queued), so multiple mounted
+    // widgets don't double-apply and an "Open With <surface>" load lands only on
+    // the surface it named.
     const stagedIntents = useQuickGenStagingStore((s) => s.pending);
     useEffect(() => {
       if (!isOpen || stagedIntents.length === 0) return;
-      const intents = useQuickGenStagingStore.getState().consume();
+      const intents = useQuickGenStagingStore.getState().consumeFor(widgetId);
       if (intents.length === 0) return;
       void (async () => {
         for (const intent of intents) {
@@ -238,7 +240,7 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
           }
         }
       })();
-    }, [isOpen, stagedIntents, scopeId, setOpen, setOperationType]);
+    }, [isOpen, stagedIntents, widgetId, scopeId, setOpen, setOperationType]);
 
     // Step 4: Panel layout — panels, defaultLayout, resolvePanelPosition
     const layout = useQuickGenPanelLayout({ panelIds });
