@@ -1,21 +1,65 @@
-import type { HotspotActionType } from '@pixsim7/game.engine';
-import { Button, Panel, Input, Select } from '@pixsim7/shared.ui';
+import type { IDs } from '@pixsim7/shared.types';
+import {
+  Button,
+  HierarchicalSidebarNav,
+  Panel,
+  PanelShell,
+  Select,
+  SidebarPaneShell,
+  useSidebarNav,
+} from '@pixsim7/shared.ui';
 import { useEffect, useState } from 'react';
 
 import { resolveGameLocations } from '@lib/resolvers';
 
 import { InteractionPresetUsagePanel } from '@/components/game/panels/InteractionPresetUsagePanel';
+import { WorldValidationPanel } from '@/components/game/panels/WorldValidationPanel';
 import { useSharedWorldSelection } from '@/hooks';
 
+import { validateHotspots } from '../components/game/hotspotEditorModel';
+import { HotspotListEditor } from '../components/game/HotspotListEditor';
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
 import { RoomNavigationEditor } from '../components/game/RoomNavigationEditor';
 import { NpcSlotEditor } from '../components/NpcSlotEditor';
 import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO, GameWorldDetail } from '../lib/api/game';
 import { getGameLocation, saveGameLocationHotspots, getGameWorld } from '../lib/api/game';
 
+type GameWorldTab = 'hotspots' | '2d-layout' | 'room-nav' | 'presets' | 'usage' | 'validation';
+type GameWorldSection = 'location-tools' | 'world-tools';
 
+const TAB_SECTIONS: Array<{
+  id: GameWorldSection;
+  label: string;
+  children: { id: GameWorldTab; label: string }[];
+}> = [
+  {
+    id: 'location-tools',
+    label: 'Location Tools',
+    children: [
+      { id: 'hotspots', label: 'Hotspots' },
+      { id: '2d-layout', label: '2D Layout' },
+      { id: 'room-nav', label: 'Room Nav (Beta)' },
+    ],
+  },
+  {
+    id: 'world-tools',
+    label: 'World Tools',
+    children: [
+      { id: 'presets', label: 'Interaction Presets' },
+      { id: 'usage', label: 'Usage Stats' },
+      { id: 'validation', label: 'Validation' },
+    ],
+  },
+];
 
-
+const TAB_DESCRIPTIONS: Record<GameWorldTab, string> = {
+  hotspots: 'Configure mesh hotspots and linked actions for this location.',
+  '2d-layout': 'Manage 2D slot layout and world-linked actor placement.',
+  'room-nav': 'Define local room movement links and routing behavior.',
+  presets: 'Manage reusable interaction presets at world scope.',
+  usage: 'Inspect development usage metrics for interaction presets.',
+  validation: 'Check world health: behavior config validation and link integrity.',
+};
 
 export function GameWorld() {
   const {
@@ -29,11 +73,18 @@ export function GameWorld() {
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<GameLocationDetail | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [savedHotspotsJson, setSavedHotspotsJson] = useState<string>('[]');
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [isSavingHotspots, setIsSavingHotspots] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState<Record<number, boolean>>({});
-  const [activeTab, setActiveTab] = useState<'hotspots' | '2d-layout' | 'room-nav' | 'presets' | 'usage'>('hotspots');
   const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
+
+  const nav = useSidebarNav<GameWorldSection, GameWorldTab>({
+    sections: TAB_SECTIONS,
+    initial: 'hotspots',
+    storageKey: 'game-world-editor:nav',
+  });
+  const activeTab = nav.activeChildId ?? 'hotspots';
 
   useEffect(() => {
     if (!worldLoadError) return;
@@ -63,18 +114,20 @@ export function GameWorld() {
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
+      setSavedHotspotsJson('[]');
       return;
     }
-    setIsLoading(true);
+    setIsLoadingDetail(true);
     setError(null);
     (async () => {
       try {
-        const d = await getGameLocation(selectedId);
+        const d = await getGameLocation(selectedId as IDs.LocationId);
         setDetail(d);
+        setSavedHotspotsJson(JSON.stringify(d.hotspots));
       } catch (e: any) {
         setError(String(e?.message ?? e));
       } finally {
-        setIsLoading(false);
+        setIsLoadingDetail(false);
       }
     })();
   }, [selectedId]);
@@ -89,409 +142,242 @@ export function GameWorld() {
         const w = await getGameWorld(selectedWorldId);
         setWorldDetail(w);
       } catch (e: any) {
-        console.error('Failed to load world:', e);
+        setError(`Failed to load world: ${String(e?.message ?? e)}`);
         setWorldDetail(null);
       }
     })();
   }, [selectedWorldId]);
 
-  const handleHotspotChange = (index: number, patch: Partial<GameHotspotDTO>) => {
-    if (!detail) return;
-    const nextHotspots = detail.hotspots.map((h, i) =>
-      i === index ? { ...h, ...patch } : h,
-    );
-    setDetail({ ...detail, hotspots: nextHotspots });
+  const hasUnsavedHotspots =
+    detail != null && JSON.stringify(detail.hotspots) !== savedHotspotsJson;
+
+  // Other location editors (2D layout, room nav) reload the location after
+  // their own saves; treat that as a fresh hotspot baseline too.
+  const handleLocationUpdate = (updatedLocation: GameLocationDetail) => {
+    setDetail(updatedLocation);
+    setSavedHotspotsJson(JSON.stringify(updatedLocation.hotspots));
   };
 
-  const handleMeshTargetChange = (index: number, value: string) => {
-    if (!detail) return;
-    const h = detail.hotspots[index];
-    const nextTarget = { ...(h.target ?? {}) };
-    if (value) {
-      nextTarget.mesh = { object_name: value };
-    } else {
-      delete (nextTarget as any).mesh;
-    }
-    const hasTarget = Object.keys(nextTarget).length > 0;
-    handleHotspotChange(index, { target: hasTarget ? nextTarget : undefined });
-  };
-
-  const handleActionChange = (
-    index: number,
-    field: 'type' | 'scene_id' | 'target_location_id' | 'npc_id',
-    value: string | number | null
-  ) => {
-    if (!detail) return;
-    const h = detail.hotspots[index];
-    const action: any = { ...(h.action || {}) };
-
-    if (field === 'type') {
-      // When changing type, reset action to only have the new type
-      if (value) {
-        handleHotspotChange(index, { action: { type: value } as any });
-      } else {
-        handleHotspotChange(index, { action: undefined });
-      }
+  const handleSelectLocation = (nextId: number | null) => {
+    if (nextId === selectedId) return;
+    if (
+      hasUnsavedHotspots &&
+      !window.confirm('Discard unsaved hotspot changes for this location?')
+    ) {
       return;
-    } else {
-      action[field] = value || undefined;
-      // Clean up undefined values
-      if (!action[field]) {
-        delete action[field];
-      }
-      if (!action.type) {
-        handleHotspotChange(index, { action: undefined });
-        return;
-      }
     }
-
-    handleHotspotChange(index, { action });
+    setSelectedId(nextId);
   };
 
-  const handleAddHotspot = () => {
+  const handleSelectWorld = (nextId: number | null) => {
+    if (nextId === selectedWorldId) return;
+    if (
+      hasUnsavedHotspots &&
+      !window.confirm('Discard unsaved hotspot changes for this location?')
+    ) {
+      return;
+    }
+    setSelectedWorldId(nextId);
+  };
+
+  const handleHotspotsChange = (hotspots: GameHotspotDTO[]) => {
     if (!detail) return;
-    setDetail({
-      ...detail,
-      hotspots: [
-        ...detail.hotspots,
-        { hotspot_id: '', target: {}, action: undefined, meta: {} },
-      ],
-    });
+    setDetail({ ...detail, hotspots });
   };
 
-  const handleRemoveHotspot = (index: number) => {
-    if (!detail) return;
-    setDetail({
-      ...detail,
-      hotspots: detail.hotspots.filter((_, i) => i !== index),
-    });
-  };
+  const hotspotIssues = detail ? validateHotspots(detail.hotspots) : [];
 
   const handleSave = async () => {
     if (!detail) return;
-    setIsLoading(true);
+    if (hotspotIssues.length > 0) {
+      setError(
+        `Fix ${hotspotIssues.length} hotspot issue${hotspotIssues.length === 1 ? '' : 's'} before saving (highlighted below).`,
+      );
+      return;
+    }
+    setIsSavingHotspots(true);
     setError(null);
     try {
-      const cleaned = detail.hotspots.filter(
-        h => h.hotspot_id && h.target && Object.keys(h.target).length > 0,
-      );
-      const saved = await saveGameLocationHotspots(detail.id, cleaned);
+      const saved = await saveGameLocationHotspots(detail.id as IDs.LocationId, detail.hotspots);
       setDetail(saved);
+      setSavedHotspotsJson(JSON.stringify(saved.hotspots));
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
-      setIsLoading(false);
+      setIsSavingHotspots(false);
     }
   };
 
-  const toggleAdvanced = (index: number) => {
-    setShowAdvanced(prev => ({ ...prev, [index]: !prev[index] }));
-  };
+  const selectedWorldName = worlds.find((world) => world.id === selectedWorldId)?.name ?? 'None';
+  const selectedLocationName = locations.find((loc) => loc.id === selectedId)?.name ?? 'None';
 
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Game World Editor</h1>
-      {error && <p className="text-sm text-red-500">Error: {error}</p>}
-      <Panel className="space-y-3">
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium">Location</label>
-            <Select
-              value={selectedId ? String(selectedId) : ''}
-              onChange={(e: any) => setSelectedId(e.target.value ? Number(e.target.value) : null)}
-            >
-              <option value="">Select location...</option>
-              {locations.map(loc => (
-                <option key={loc.id} value={loc.id}>{loc.name}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium">World</label>
-            <Select
-              value={selectedWorldId ? String(selectedWorldId) : ''}
-              onChange={(e: any) => setSelectedWorldId(e.target.value ? Number(e.target.value) : null)}
-              disabled={isLoadingWorlds}
-            >
-              <option value="">Select world...</option>
-              {worlds.map(world => (
-                <option key={world.id} value={world.id}>{world.name}</option>
-              ))}
-            </Select>
-            <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-              ({selectedWorldSource})
-            </span>
-          </div>
-          {activeTab === 'hotspots' && (
-            <Button size="sm" variant="primary" onClick={handleSave} disabled={!detail || isLoading}>
-              {isLoading ? 'Saving…' : 'Save Hotspots'}
-            </Button>
-          )}
-        </div>
-        {detail && (
-          <div className="space-y-3">
-            <p className="text-xs text-neutral-500">
-              Asset ID: {detail.asset_id ?? 'none'} | Default spawn: {detail.default_spawn ?? 'none'}
-            </p>
+    <PanelShell
+      className="h-full min-h-0 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
+      sidebar={
+        <SidebarPaneShell
+          title="Game World"
+          variant="light"
+          widthClassName="w-full"
+          collapsible
+          resizable
+          expandedWidth={236}
+          persistKey="game-world-editor-sidebar"
+          autoHideTitle={false}
+        >
+          <div className="space-y-3 px-1">
+            <Panel className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                  World
+                </label>
+                <Select
+                  value={selectedWorldId ? String(selectedWorldId) : ''}
+                  onChange={(e: any) => handleSelectWorld(e.target.value ? Number(e.target.value) : null)}
+                  disabled={isLoadingWorlds}
+                  className="w-full"
+                >
+                  <option value="">Select world...</option>
+                  {worlds.map((world) => (
+                    <option key={world.id} value={world.id}>{world.name}</option>
+                  ))}
+                </Select>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  Source: {selectedWorldSource}
+                </p>
+              </div>
 
-            {/* Tab Navigation */}
-            <div className="flex gap-2 border-b border-neutral-200 dark:border-neutral-700">
-              <button
-                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'hotspots'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
-                }`}
-                onClick={() => setActiveTab('hotspots')}
-              >
-                Hotspots
-              </button>
-              <button
-                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === '2d-layout'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
-                }`}
-                onClick={() => setActiveTab('2d-layout')}
-              >
-                2D Layout
-              </button>
-              <button
-                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'room-nav'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
-                }`}
-                onClick={() => setActiveTab('room-nav')}
-              >
-                Room Nav (Beta)
-              </button>
-              <button
-                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'presets'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
-                }`}
-                onClick={() => setActiveTab('presets')}
-              >
-                Interaction Presets
-              </button>
-              <button
-                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'usage'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
-                }`}
-                onClick={() => setActiveTab('usage')}
-              >
-                Usage Stats (Dev)
-              </button>
-            </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                  Location
+                </label>
+                <Select
+                  value={selectedId ? String(selectedId) : ''}
+                  onChange={(e: any) => handleSelectLocation(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full"
+                >
+                  <option value="">Select location...</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </Select>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  {locations.length} location{locations.length === 1 ? '' : 's'} available
+                </p>
+              </div>
 
-            {/* Tab Content */}
-            {activeTab === 'hotspots' ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold">Hotspots</h2>
-                  <Button size="sm" variant="secondary" onClick={handleAddHotspot}>
-                    + Add Hotspot
-                  </Button>
-                </div>
-                <div className="space-y-3">
-              {detail.hotspots.map((h, idx) => {
-                const action: any = h.action || {};
-                const actionType: HotspotActionType | '' = action.type ?? '';
-
-                return (
-                  <div
-                    key={idx}
-                    className="p-3 border rounded bg-neutral-50 dark:bg-neutral-800/50 dark:border-neutral-700 space-y-2"
+              {activeTab === 'hotspots' && (
+                <div className="space-y-1">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={handleSave}
+                    disabled={!detail || isSavingHotspots || !hasUnsavedHotspots}
+                    className="w-full"
                   >
-                    {/* Basic Hotspot Info */}
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                    <Input
-                      placeholder="mesh name (from glTF)"
-                      value={h.target?.mesh?.object_name ?? ''}
-                      onChange={(e: any) => handleMeshTargetChange(idx, e.target.value)}
-                    />
-                      <Input
-                        placeholder="hotspot_id"
-                        value={h.hotspot_id}
-                        onChange={(e: any) => handleHotspotChange(idx, { hotspot_id: e.target.value })}
-                      />
-                    </div>
-
-                    {/* Structured Action Controls */}
-                    <div className="border-t pt-2 dark:border-neutral-700">
-                      <label className="block text-xs font-semibold mb-1">Hotspot Action</label>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <label className="block text-xs text-neutral-600 dark:text-neutral-400 mb-1">
-                            Action Type
-                          </label>
-                          <Select
-                            value={actionType}
-                            onChange={(e: any) => handleActionChange(idx, 'type', e.target.value)}
-                          >
-                            <option value="">None</option>
-                            <option value="play_scene">Play Scene</option>
-                            <option value="change_location">Change Location</option>
-                            <option value="npc_talk">NPC Talk</option>
-                          </Select>
-                        </div>
-
-                        {/* Conditional Action Fields */}
-                        {actionType === 'play_scene' && (
-                          <div>
-                            <label className="block text-xs text-neutral-600 dark:text-neutral-400 mb-1">
-                              Scene ID
-                            </label>
-                            <Input
-                              placeholder="Scene ID"
-                              value={action.scene_id ?? ''}
-                              onChange={(e: any) => {
-                                const v = e.target.value.trim();
-                                handleActionChange(idx, 'scene_id', v ? Number(v) : null);
-                              }}
-                            />
-                          </div>
-                        )}
-
-                        {actionType === 'change_location' && (
-                          <div>
-                            <label className="block text-xs text-neutral-600 dark:text-neutral-400 mb-1">
-                              Target Location ID
-                            </label>
-                            <Input
-                              placeholder="Location ID"
-                              value={action.target_location_id ?? ''}
-                              onChange={(e: any) => {
-                                const v = e.target.value.trim();
-                                handleActionChange(idx, 'target_location_id', v ? Number(v) : null);
-                              }}
-                            />
-                          </div>
-                        )}
-
-                        {actionType === 'npc_talk' && (
-                          <div>
-                            <label className="block text-xs text-neutral-600 dark:text-neutral-400 mb-1">
-                              NPC ID
-                            </label>
-                            <Input
-                              placeholder="NPC ID"
-                              value={action.npc_id ?? ''}
-                              onChange={(e: any) => {
-                                const v = e.target.value.trim();
-                                handleActionChange(idx, 'npc_id', v ? Number(v) : null);
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Advanced: Raw Meta JSON */}
-                    <div className="border-t pt-2 dark:border-neutral-700">
-                      <button
-                        onClick={() => toggleAdvanced(idx)}
-                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                      >
-                        {showAdvanced[idx] ? '▼ Hide' : '▶ Show'} Advanced (Raw Meta JSON)
-                      </button>
-                      {showAdvanced[idx] && (
-                        <div className="mt-2">
-                          <Input
-                            placeholder="Raw target JSON (mesh, rect2d, zone3d)"
-                            value={h.target ? JSON.stringify(h.target) : ''}
-                            onChange={(e: any) => {
-                              const v = e.target.value.trim();
-                              let parsed: Record<string, unknown> | undefined;
-                              if (v) {
-                                try {
-                                  parsed = JSON.parse(v);
-                                } catch {
-                                  parsed = h.target ?? {};
-                                }
-                              }
-                              handleHotspotChange(idx, { target: parsed });
-                            }}
-                            className="font-mono text-xs mb-2"
-                          />
-                          <Input
-                            placeholder="Raw meta JSON (for advanced use)"
-                            value={h.meta ? JSON.stringify(h.meta) : ''}
-                            onChange={(e: any) => {
-                              const v = e.target.value.trim();
-                              let parsed: Record<string, unknown> | undefined;
-                              if (v) {
-                                try {
-                                  parsed = JSON.parse(v);
-                                } catch {
-                                  parsed = h.meta ?? {};
-                                }
-                              }
-                              handleHotspotChange(idx, { meta: parsed });
-                            }}
-                            className="font-mono text-xs"
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Remove Button */}
-                    <div className="flex justify-end">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleRemoveHotspot(idx)}
-                        className="text-xs text-red-600 hover:text-red-700"
-                      >
-                        Remove Hotspot
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-                  {detail.hotspots.length === 0 && (
-                    <p className="text-xs text-neutral-500 text-center py-4">
-                      No hotspots yet. Click "Add Hotspot" above to create one.
+                    {isSavingHotspots ? 'Saving...' : 'Save Hotspots'}
+                  </Button>
+                  {hasUnsavedHotspots && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                      Unsaved changes
+                      {hotspotIssues.length > 0
+                        ? ` — ${hotspotIssues.length} issue${hotspotIssues.length === 1 ? '' : 's'} to fix`
+                        : ''}
                     </p>
                   )}
                 </div>
-              </>
-            ) : activeTab === '2d-layout' ? (
-              /* 2D Layout Tab */
-              <NpcSlotEditor
-                location={detail}
-                world={worldDetail}
-                onLocationUpdate={(updatedLocation) => setDetail(updatedLocation)}
-              />
-            ) : activeTab === 'room-nav' ? (
-              /* Room Navigation Tab */
-              <RoomNavigationEditor
-                location={detail}
-                onLocationUpdate={(updatedLocation) => setDetail(updatedLocation)}
-              />
-            ) : activeTab === 'presets' && worldDetail ? (
-              /* Interaction Presets Tab */
+              )}
+            </Panel>
+
+            <HierarchicalSidebarNav
+              items={TAB_SECTIONS}
+              expandedItemIds={nav.expandedSectionIds}
+              onToggleExpand={nav.toggleExpand}
+              onSelectItem={nav.selectSection}
+              onSelectChild={nav.selectChild}
+              getItemState={(item) => (item.id === nav.activeSectionId ? 'active' : 'inactive')}
+              getChildState={(_, child) => (child.id === activeTab ? 'active' : 'inactive')}
+              variant="light"
+              className="space-y-1"
+            />
+          </div>
+        </SidebarPaneShell>
+      }
+      sidebarWidth="w-auto"
+      bodyScroll={false}
+    >
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="shrink-0 border-b border-neutral-200 dark:border-neutral-800 px-6 py-4">
+          <h1 className="text-2xl font-semibold">Game World Editor</h1>
+          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
+            {TAB_DESCRIPTIONS[activeTab]}
+          </p>
+          <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+            World: {selectedWorldName} | Location: {selectedLocationName}
+          </p>
+        </div>
+
+        {error && (
+          <div className="shrink-0 border-b border-red-200 bg-red-50 px-6 py-2 text-sm text-red-700 dark:border-red-800/70 dark:bg-red-900/20 dark:text-red-300">
+            Error: {error}
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
+          {activeTab === 'presets' ? (
+            worldDetail ? (
               <InteractionPresetEditor
                 world={worldDetail}
                 onWorldUpdate={(updatedWorld) => setWorldDetail(updatedWorld)}
               />
-            ) : activeTab === 'usage' ? (
-              /* Usage Statistics Tab */
-              <InteractionPresetUsagePanel world={worldDetail} />
             ) : (
-              <div className="flex items-center justify-center h-64">
-                <p className="text-sm text-neutral-500">
-                  Select a world to manage interaction presets
+              <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-400">
+                Select a world to manage interaction presets.
+              </div>
+            )
+          ) : activeTab === 'usage' ? (
+            <InteractionPresetUsagePanel world={worldDetail} />
+          ) : activeTab === 'validation' ? (
+            selectedWorldId != null ? (
+              <WorldValidationPanel worldId={selectedWorldId} />
+            ) : (
+              <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-400">
+                Select a world to run validation checks.
+              </div>
+            )
+          ) : !detail ? (
+            <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-400">
+              {isLoadingDetail ? 'Loading location details...' : 'Select a world location to begin editing.'}
+            </div>
+          ) : activeTab === 'hotspots' ? (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold">Hotspots</h2>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  Asset ID: {(detail as GameLocationDetail & { asset_id?: number | null }).asset_id ?? 'none'} | Default spawn: {detail.default_spawn ?? 'none'}
                 </p>
               </div>
-            )}
-          </div>
-        )}
-      </Panel>
-    </div>
+              <HotspotListEditor
+                hotspots={detail.hotspots}
+                worldId={selectedWorldId}
+                locations={locations}
+                onChange={handleHotspotsChange}
+              />
+            </div>
+          ) : activeTab === '2d-layout' ? (
+            <NpcSlotEditor
+              location={detail}
+              world={worldDetail}
+              onLocationUpdate={handleLocationUpdate}
+            />
+          ) : activeTab === 'room-nav' ? (
+            <RoomNavigationEditor
+              location={detail}
+              onLocationUpdate={handleLocationUpdate}
+            />
+          ) : null}
+        </div>
+      </div>
+    </PanelShell>
   );
 }
