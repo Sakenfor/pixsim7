@@ -39,6 +39,14 @@ import {
   type RoomNavigationTraversalOption,
 } from '@lib/game/runtime/roomNavigationTraversal';
 
+import {
+  AssetPickerField,
+  fromAssetResponse,
+  getAsset,
+  getAssetDisplayUrls,
+  type PickedAsset,
+} from '@features/assets';
+
 import { SceneGizmoMiniGame } from '@/components/minigames/SceneGizmoMiniGame';
 
 import {
@@ -57,6 +65,82 @@ import {
 interface RoomNavigationEditorProps {
   location: GameLocationDetail;
   onLocationUpdate: (location: GameLocationDetail) => void;
+}
+
+interface RoomViewAssetFieldProps {
+  label: string;
+  assetId?: string;
+  onChange: (assetId: string | undefined) => void;
+}
+
+/**
+ * Asset picker for a checkpoint view slot. Room navigation stores asset ids
+ * as strings; this resolves the id to a thumbnail/name for display and lets
+ * the author pick a replacement via gallery or search instead of typing ids.
+ */
+function RoomViewAssetField({ label, assetId, onChange }: RoomViewAssetFieldProps) {
+  const [resolved, setResolved] = useState<PickedAsset | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!assetId) {
+      setResolved(null);
+      setResolveError(null);
+      return;
+    }
+
+    const numericId = Number(assetId);
+    if (!Number.isFinite(numericId)) {
+      // Non-numeric id (legacy/external ref): still show it so it can be
+      // inspected and cleared, just without a thumbnail.
+      setResolved({ id: -1, mediaType: 'unknown', name: assetId });
+      setResolveError(null);
+      return;
+    }
+
+    let isActive = true;
+    setResolveError(null);
+    // Show the raw id immediately while the lookup is in flight.
+    setResolved({ id: numericId, mediaType: 'unknown', name: `Asset #${numericId}` });
+    (async () => {
+      try {
+        const response = await getAsset(numericId);
+        const asset = fromAssetResponse(response);
+        if (!isActive) return;
+        const urls = getAssetDisplayUrls(asset);
+        setResolved({
+          id: asset.id,
+          mediaType: asset.mediaType,
+          thumbnailUrl: urls.thumbnailUrl,
+          url: urls.previewUrl || urls.mainUrl,
+          name: asset.description || `Asset ${asset.id}`,
+        });
+      } catch (lookupError: unknown) {
+        if (!isActive) return;
+        setResolveError(
+          lookupError instanceof Error ? lookupError.message : String(lookupError),
+        );
+      }
+    })();
+    return () => {
+      isActive = false;
+    };
+  }, [assetId]);
+
+  return (
+    <div className="space-y-1">
+      <AssetPickerField
+        label={label}
+        value={resolved}
+        onChange={(asset) => onChange(asset ? String(asset.id) : undefined)}
+      />
+      {resolveError && (
+        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+          Asset #{assetId} couldn't be loaded ({resolveError}); it may have been deleted.
+        </p>
+      )}
+    </div>
+  );
 }
 
 type DirectionKey = 'north' | 'east' | 'south' | 'west';
@@ -1334,81 +1418,40 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
               </div>
 
               {selectedCheckpoint.view.kind === 'cylindrical_pano' ? (
-                <div className="space-y-1">
-                  <label className="block text-xs font-medium">Pano Asset ID</label>
-                  <Input
-                    size="sm"
-                    value={selectedCheckpoint.view.pano_asset_id ?? ''}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                      updateCheckpoint(selectedCheckpoint.id, (checkpoint) => ({
-                        ...checkpoint,
-                        view: {
-                          ...checkpoint.view,
-                          pano_asset_id: event.target.value || undefined,
-                        },
-                      }))
-                    }
-                    placeholder="asset id"
-                  />
-                </div>
+                <RoomViewAssetField
+                  label="Pano Asset"
+                  assetId={selectedCheckpoint.view.pano_asset_id}
+                  onChange={(assetId) =>
+                    updateCheckpoint(selectedCheckpoint.id, (checkpoint) => ({
+                      ...checkpoint,
+                      view: {
+                        ...checkpoint.view,
+                        pano_asset_id: assetId,
+                      },
+                    }))
+                  }
+                />
               ) : (
                 <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    size="sm"
-                    value={selectedCheckpoint.view.north_asset_id ?? ''}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                      updateCheckpoint(selectedCheckpoint.id, (checkpoint) => ({
-                        ...checkpoint,
-                        view: {
-                          ...checkpoint.view,
-                          north_asset_id: event.target.value || undefined,
-                        },
-                      }))
-                    }
-                    placeholder="north_asset_id"
-                  />
-                  <Input
-                    size="sm"
-                    value={selectedCheckpoint.view.east_asset_id ?? ''}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                      updateCheckpoint(selectedCheckpoint.id, (checkpoint) => ({
-                        ...checkpoint,
-                        view: {
-                          ...checkpoint.view,
-                          east_asset_id: event.target.value || undefined,
-                        },
-                      }))
-                    }
-                    placeholder="east_asset_id"
-                  />
-                  <Input
-                    size="sm"
-                    value={selectedCheckpoint.view.south_asset_id ?? ''}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                      updateCheckpoint(selectedCheckpoint.id, (checkpoint) => ({
-                        ...checkpoint,
-                        view: {
-                          ...checkpoint.view,
-                          south_asset_id: event.target.value || undefined,
-                        },
-                      }))
-                    }
-                    placeholder="south_asset_id"
-                  />
-                  <Input
-                    size="sm"
-                    value={selectedCheckpoint.view.west_asset_id ?? ''}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                      updateCheckpoint(selectedCheckpoint.id, (checkpoint) => ({
-                        ...checkpoint,
-                        view: {
-                          ...checkpoint.view,
-                          west_asset_id: event.target.value || undefined,
-                        },
-                      }))
-                    }
-                    placeholder="west_asset_id"
-                  />
+                  {DIRECTIONS.map((direction) => {
+                    const key = `${direction}_asset_id` as const;
+                    return (
+                      <RoomViewAssetField
+                        key={key}
+                        label={`${direction.charAt(0).toUpperCase()}${direction.slice(1)} Asset`}
+                        assetId={selectedCheckpoint.view[key]}
+                        onChange={(assetId) =>
+                          updateCheckpoint(selectedCheckpoint.id, (checkpoint) => ({
+                            ...checkpoint,
+                            view: {
+                              ...checkpoint.view,
+                              [key]: assetId,
+                            },
+                          }))
+                        }
+                      />
+                    );
+                  })}
                 </div>
               )}
 
