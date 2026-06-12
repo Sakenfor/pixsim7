@@ -31,7 +31,7 @@ def test_parse_manifests_collects_matrix_presets() -> None:
                 "matrix_presets": [
                     {
                         "label": "Skirt shapes",
-                        "query": {"row_key": "tag:wardrobe_axis", "col_key": "tag:skirt_shape"},
+                        "query": {"row_key": "tag:tightness", "col_key": "tag:modifier_family"},
                     }
                 ],
             },
@@ -43,7 +43,7 @@ def test_parse_manifests_collects_matrix_presets() -> None:
         assert m["pack_name"] == "testpack"
         assert m["id"] == "x"
         assert m["matrix_presets"][0]["label"] == "Skirt shapes"
-        assert m["matrix_presets"][0]["query"]["row_key"] == "tag:wardrobe_axis"
+        assert m["matrix_presets"][0]["query"]["row_key"] == "tag:tightness"
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

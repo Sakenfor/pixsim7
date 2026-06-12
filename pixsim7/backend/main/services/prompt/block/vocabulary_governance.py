@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 class TagValidationEntry(BaseModel):
     key: str
-    status: str  # "valid" | "alias" | "deprecated" | "unknown"
+    status: str  # "valid" | "alias" | "deprecated" | "unknown" | "system"
     canonical_key: Optional[str] = None
     canonical_value: Optional[Any] = None
     message: Optional[str] = None
@@ -60,6 +60,7 @@ class VocabularyGovernanceService:
         from pixsim7.backend.main.services.prompt.block.tag_dictionary import (
             get_block_tag_alias_key_map,
             get_canonical_block_tag_dictionary,
+            is_exempt_tag_key,
         )
 
         canonical = get_canonical_block_tag_dictionary()
@@ -74,7 +75,13 @@ class VocabularyGovernanceService:
         for key, value in tags.items():
             key_str = str(key)
 
-            if key_str in canonical_keys:
+            if key_str not in canonical_keys and is_exempt_tag_key(key_str):
+                entries.append(TagValidationEntry(
+                    key=key_str,
+                    status="system",
+                    message=f"'{key_str}' is a system/convention tag (exempt from the canonical vocabulary).",
+                ))
+            elif key_str in canonical_keys:
                 meta = canonical[key_str]
                 status = str(meta.get("status", "active"))
 
@@ -245,6 +252,7 @@ class VocabularyGovernanceService:
         from pixsim7.backend.main.services.prompt.block.tag_dictionary import (
             get_block_tag_alias_key_map,
             get_canonical_block_tag_dictionary,
+            is_exempt_tag_key,
         )
 
         canonical = get_canonical_block_tag_dictionary()
@@ -257,8 +265,12 @@ class VocabularyGovernanceService:
         for key, value in tags.items():
             key_str = str(key)
 
-            # Check for unknown namespace
-            if key_str not in canonical_keys and key_str not in alias_map:
+            # Check for unknown namespace (system/convention keys are exempt)
+            if (
+                key_str not in canonical_keys
+                and key_str not in alias_map
+                and not is_exempt_tag_key(key_str)
+            ):
                 conflicts.append(ConflictRecord(
                     kind="unknown_namespace",
                     key=key_str,

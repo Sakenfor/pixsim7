@@ -390,18 +390,6 @@ tags:
         category: expression_behavior
     status: active
 
-  look_intensity:
-    label: "Look Intensity"
-    description: "Intensity of the subject's gaze/attention."
-    data_type: string
-    allowed_values: [low, medium, high]
-    aliases: [gaze_intensity]
-    value_aliases: {}
-    applies_to:
-      - role: subject
-        category: expression_behavior
-    status: active
-
   rack_focus:
     label: "Rack Focus"
     description: "Whether the shot performs a rack-focus transition."
@@ -608,42 +596,6 @@ tags:
         category: pose_lock
     status: active
 
-  approach:
-    label: "Approach"
-    description: "Pose-lock prompting approach variant."
-    data_type: string
-    allowed_values: [skeletal, contour, gravity, i2v]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: subject
-        category: pose_lock
-    status: active
-
-  scene_scope:
-    label: "Scene Scope"
-    description: "High-level scene semantics scope for generic image-edit fallback scene blocks."
-    data_type: string
-    allowed_values: [generic_real_world]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: environment
-        category: scene_build
-    status: active
-
-  edit_mode:
-    label: "Edit Mode"
-    description: "Editing mode tag for generic image-edit scene semantics."
-    data_type: string
-    allowed_values: [image_edit]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: environment
-        category: scene_build
-    status: active
-
   allure_level:
     label: "Allure Level"
     description: "Abstract styling dial for wardrobe selection (non-explicit)."
@@ -668,53 +620,6 @@ tags:
         category: wardrobe
     status: active
 
-  body_part:
-    label: "Body Part"
-    description: "Anatomical part ID emphasized or referenced by the block. Values are canonical part IDs from the anatomy vocabulary (without the `part:` prefix)."
-    data_type: string
-    allowed_values:
-      # from anatomy.yaml
-      - face
-      - hair
-      - expression
-      - body
-      - upper_body
-      - lower_body
-      - hands
-      - torso
-      - chest
-      - back
-      - groin
-      - between_legs
-      - buttocks
-      - shaft
-      - head_tip
-      # from anatomy_intimate.yaml (female)
-      - mammae
-      - papilla_mammaria
-      - vulva
-      - mons_pubis
-      - labia
-      - clitoris
-      # from anatomy_intimate.yaml (male)
-      - penis
-      - glans
-      - scrotum
-      - testes
-      # from anatomy_intimate.yaml (shared)
-      - perineum
-      - inguen
-      - femur_medialis
-    aliases: [part]
-    value_aliases: {}
-    applies_to:
-      - category: anatomy
-      - role: style
-        category: wardrobe
-      - role: action
-        category: motion_beat
-    status: active
-
   silhouette:
     label: "Silhouette"
     description: "Legacy broad wardrobe-outline descriptor. Prefer explicit garment-specific shape/fit axes for new content."
@@ -726,6 +631,7 @@ tags:
       - role: style
         category: wardrobe
     status: deprecated
+    replacement: tightness
 
   tightness:
     label: "Tightness"
@@ -829,18 +735,6 @@ tags:
         category: scene_build
     status: active
 
-  theme_family:
-    label: "Theme Family"
-    description: "Orthogonal theme overlay family that can combine with other domains."
-    data_type: string
-    allowed_values: [tribal_handcrafted]
-    aliases: [theme]
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: theme_cue
-    status: active
-
   variant:
     label: "Variant"
     description: "Style variant within an aesthetic. Values are aesthetic-specific; no global allowed_values constraint."
@@ -863,54 +757,6 @@ tags:
     applies_to:
       - role: style
         category: theme_cue
-    status: active
-
-  garment:
-    label: "Garment"
-    description: "Target garment domain for wardrobe descriptors."
-    data_type: string
-    allowed_values: [skirt]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: wardrobe
-    status: active
-
-  wardrobe_axis:
-    label: "Wardrobe Axis"
-    description: "Wardrobe descriptor axis (shape, texture, pattern, etc.)."
-    data_type: string
-    allowed_values: [shape]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: wardrobe
-    status: active
-
-  skirt_shape:
-    label: "Skirt Shape"
-    description: "Skirt shape descriptor."
-    data_type: string
-    allowed_values:
-      - pencil
-      - a_line
-      - pleated
-      - wrap
-      - circle
-      - tiered
-      - bias_cut
-      - tulip
-      - trumpet
-      - skater
-      - asym_hem
-      - slit
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: wardrobe
     status: active
 
   modifier_family:
@@ -1001,175 +847,6 @@ tags:
         category: aesthetic_preset
     status: active
 
-  tattoo_policy:
-    label: "Tattoo Policy"
-    description: "Edit policy for tattoo changes (allow additions vs require existing tattoos)."
-    data_type: string
-    allowed_values: [allow, require]
-    aliases: [tattoo_anchor]
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: body_art
-    status: active
-
-  tattoo_level:
-    label: "Tattoo Level"
-    description: "Tattoo intensity level. Policy belongs in tattoo_policy, not here."
-    data_type: string
-    allowed_values: [none, subtle, medium, heavy]
-    aliases: [tattoos_level]
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: body_art
-    status: active
-
-  bone_ornament_policy:
-    label: "Bone Ornament Policy"
-    description: "Edit policy for bone ornament changes (allow additions vs require existing ornaments)."
-    data_type: string
-    allowed_values: [allow, require]
-    aliases: [bone_anchor]
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: accessories
-    status: active
-
-  bone_ornament_level:
-    label: "Bone Ornament Level"
-    description: "Bone ornament intensity level. Policy belongs in bone_ornament_policy, not here."
-    data_type: string
-    allowed_values: [none, subtle, medium, heavy]
-    aliases: [bone_ornaments_level]
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: accessories
-    status: active
-
-  pattern_family:
-    label: "Pattern Family"
-    description: "Pattern motif family."
-    data_type: string
-    allowed_values: [pinstripe, plaid, check, polka_dot, floral, geometric]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: wardrobe_modifier
-    status: active
-
-  pattern_level:
-    label: "Pattern Level"
-    description: "Pattern intensity/readability level."
-    data_type: string
-    allowed_values: [none, subtle, clear]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: wardrobe_modifier
-    status: active
-
-  pattern_scale:
-    label: "Pattern Scale"
-    description: "Pattern scale descriptor."
-    data_type: string
-    allowed_values: [fine, small, medium]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: wardrobe_modifier
-    status: active
-
-  pattern_contrast:
-    label: "Pattern Contrast"
-    description: "Pattern contrast level."
-    data_type: string
-    allowed_values: [low, medium]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: wardrobe_modifier
-    status: active
-
-  texture_family:
-    label: "Texture Family"
-    description: "Fabric/material texture family."
-    data_type: string
-    allowed_values: [matte_clean, denim, knit, tweed, leather, linen, satin]
-    aliases: []
-    value_aliases:
-      satin_sheen: satin
-    applies_to:
-      - role: style
-        category: wardrobe_modifier
-    status: active
-
-  texture_level:
-    label: "Texture Level"
-    description: "Texture prominence level."
-    data_type: string
-    allowed_values: [subtle, clear]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: wardrobe_modifier
-    status: active
-
-  texture_sheen:
-    label: "Texture Sheen"
-    description: "Sheen characteristic for texture modifiers."
-    data_type: string
-    allowed_values: [matte, low, medium]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: wardrobe_modifier
-    status: active
-
-  texture_weight:
-    label: "Texture Weight"
-    description: "Visual weight of fabric texture."
-    data_type: string
-    allowed_values: [light, medium, heavy]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: wardrobe_modifier
-    status: active
-
-  wear_level:
-    label: "Wear Level"
-    description: "Overall wear/read of garment condition."
-    data_type: string
-    allowed_values: [pristine, light_wear, worn, rugged, distressed]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: wardrobe_modifier
-    status: active
-
-  damage_level:
-    label: "Damage Level"
-    description: "Damage severity descriptor for condition modifiers."
-    data_type: string
-    allowed_values: [none, minimal, light, moderate]
-    aliases: []
-    value_aliases: {}
-    applies_to:
-      - role: style
-        category: wardrobe_modifier
-    status: active
-
   delta_t:
     label: "Time Delta"
     description: "Approximate time-step delta intended by a progression beat."
@@ -1241,3 +918,72 @@ tags:
       - role: subject
         category: expression_behavior
     status: experimental
+
+  # ── Cross-pack structural tags (plan blocks-vocab-roles-drift cp-c) ──
+  # Block-level annotations used across op packs; registered here (hand-
+  # maintained canon) because they belong to no single CUE pack's
+  # tag_registry. Pack-local dimensions stay in cue_packs (generated).
+
+  modality_support:
+    label: "Modality Support"
+    description: "Which generation modalities the block supports (block-level gate; op-level modalities live in op.modalities)."
+    data_type: string
+    allowed_values: [image, video, both]
+    aliases: []
+    value_aliases: {}
+    applies_to: []
+    status: active
+
+  temporal:
+    label: "Temporal Character"
+    description: "Whether the block describes a static state or time-evolving behaviour (dynamic/anticipatory/continuous) — neutral when not applicable."
+    data_type: string
+    allowed_values: [neutral, dynamic, anticipatory, continuous]
+    aliases: []
+    value_aliases: {}
+    applies_to: []
+    status: active
+
+  camera_motion:
+    label: "Camera Motion"
+    description: "Camera-motion family token on core_camera variants (zoom, pan, orbit, ...)."
+    data_type: string
+    allowed_values: [zoom, pan, tilt, dolly, truck, pedestal, orbit]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: modifier
+        category: camera
+    status: active
+
+  direction:
+    label: "Direction"
+    description: "Directional axis token on core_direction variants."
+    data_type: string
+    allowed_values: [in, out, left, right, up, down, forward, backward, around]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: modifier
+        category: direction
+    status: active
+
+  image_surface:
+    label: "Image Surface Text"
+    description: "Surface phrasing used when the block renders into an image prompt (free text; variant-specific)."
+    data_type: string
+    allowed_values: []
+    aliases: []
+    value_aliases: {}
+    applies_to: []
+    status: active
+
+  video_surface:
+    label: "Video Surface Text"
+    description: "Surface phrasing used when the block renders into a video prompt (free text; variant-specific)."
+    data_type: string
+    allowed_values: []
+    aliases: []
+    value_aliases: {}
+    applies_to: []
+    status: active

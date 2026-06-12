@@ -257,3 +257,42 @@ class TestValidateOntologyIds:
         statuses = {e.key: e.status for e in result.entries}
         assert statuses["mood:happy"] == "valid"
         assert statuses["mood:nonexistent_xyz"] == "unknown"
+
+
+class TestExemptTagKeys:
+    """System-injected and convention tag keys are exempt from the canon
+    (plan blocks-vocab-roles-drift cp-c)."""
+
+    def test_system_tags_validate_as_system(self):
+        with _patch_dictionary(), _patch_alias_map():
+            service = VocabularyGovernanceService()
+            result = service.validate_tags({"source_pack": "core_camera", "op_id": "camera.motion.zoom"})
+            assert result.valid
+            assert all(e.status == "system" for e in result.entries)
+
+    def test_synonyms_convention_validates_as_system(self):
+        with _patch_dictionary(), _patch_alias_map():
+            service = VocabularyGovernanceService()
+            result = service.validate_tags({"manner_synonyms": ["gently"], "grade_context_synonyms": ["warm"]})
+            assert result.valid
+            assert all(e.status == "system" for e in result.entries)
+
+    def test_canonical_key_not_shadowed_by_exemption(self):
+        # A registered key stays "valid" even if it ever matched an exempt rule.
+        with _patch_dictionary(), _patch_alias_map():
+            service = VocabularyGovernanceService()
+            result = service.validate_tags({"intensity": "3"})
+            assert result.entries[0].status == "valid"
+
+    def test_unknown_key_still_errors(self):
+        with _patch_dictionary(), _patch_alias_map():
+            service = VocabularyGovernanceService()
+            result = service.validate_tags({"totally_made_up_key": "x"})
+            assert not result.valid
+            assert result.entries[0].status == "unknown"
+
+    def test_detect_conflicts_skips_exempt(self):
+        with _patch_dictionary(), _patch_alias_map():
+            service = VocabularyGovernanceService()
+            conflicts = service.detect_conflicts({"source_pack": "x", "action_synonyms": ["y"]})
+            assert conflicts == []

@@ -7,6 +7,40 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
+# Tag keys the projection/compile pipeline injects onto blocks. They are
+# bookkeeping, not authored vocabulary, so governance treats them as
+# "system" rather than unknown (plan blocks-vocab-roles-drift cp-c).
+SYSTEM_TAG_KEYS = frozenset({
+    "block_mode",
+    "composition_role",
+    "content_pack",
+    "legacy_category",
+    "ontology_ids",
+    "op_id",
+    "op_modalities",
+    "op_namespace",
+    "op_ref_capabilities",
+    "source_pack",
+})
+
+# Authoring conventions whose keys are open-ended by design: `*_synonyms`
+# (and `*_context_synonyms`) carry keyword lists harvested for matching,
+# not canonical tag dimensions.
+CONVENTION_TAG_KEY_SUFFIXES: Tuple[str, ...] = ("_synonyms",)
+
+
+def is_exempt_tag_key(key: str) -> bool:
+    """True when a tag key is exempt from canonical-vocabulary validation.
+
+    Covers system-injected bookkeeping tags and open-ended convention
+    families. Exempt keys are valid on blocks but are not part of the
+    authored prompt_block_tags canon.
+    """
+    normalized = str(key).strip().lower()
+    if normalized in SYSTEM_TAG_KEYS:
+        return True
+    return normalized.endswith(CONVENTION_TAG_KEY_SUFFIXES)
+
 
 def _registry_prompt_block_tag_dictionary() -> Dict[str, Dict[str, Any]]:
     """Load prompt-block tag schema from VocabularyRegistry (source of truth)."""

@@ -16,7 +16,7 @@ def test_registry_loads_prompt_block_tag_and_family_vocab_types() -> None:
 
     all_tags = registry.all_prompt_block_tags()
     all_families = registry.all_prompt_block_families()
-    assert any(item.id == "theme_family" for item in all_tags)
+    assert any(item.id == "tightness" for item in all_tags)
     assert any(item.id == "ten_seconds_forward" for item in all_families)
     assert any(item.id == "walk_turn_head_progression" for item in all_families)
 
@@ -27,10 +27,11 @@ def test_registry_loads_prompt_block_tag_and_family_vocab_types() -> None:
     silhouette = registry.get_prompt_block_tag("silhouette")
     assert silhouette is not None
     assert silhouette.data.get("status") == "deprecated"
+    assert silhouette.data.get("replacement") == "tightness"
 
-    tattoo_policy = registry.get_prompt_block_tag("tattoo_policy")
-    assert tattoo_policy is not None
-    assert "tattoo_anchor" in (tattoo_policy.data.get("aliases") or [])
+    role_in_sequence = registry.get_prompt_block_tag("role_in_sequence")
+    assert role_in_sequence is not None
+    assert "sequence_role" in (role_in_sequence.data.get("aliases") or [])
 
     rendering_technique = registry.get_prompt_block_tag("rendering_technique")
     assert rendering_technique is not None
