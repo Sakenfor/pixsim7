@@ -30,6 +30,15 @@ LOCAL_ROOT_ID = "local"
 
 _VALID_KINDS = ("local", "s3")
 
+# A root's role in the pipeline:
+#  - 'store'  : a normal read/write tier (the 'local' hot root, the 'archive'
+#               cold root). Tiering writes land here.
+#  - 'source' : a READ-ONLY external bucket the ingest pipeline enumerates to
+#               pull originals from (plan s3-source-root-ingest). Never written
+#               to, and never a tiering target (placement only targets the root
+#               literally named 'archive').
+_VALID_ROLES = ("store", "source")
+
 
 @dataclass(frozen=True)
 class RootSpec:
@@ -38,6 +47,7 @@ class RootSpec:
     id: str
     kind: str  # 'local' | 's3'
     config: dict[str, Any] = field(default_factory=dict)
+    role: str = "store"  # 'store' (read/write tier) | 'source' (read-only ingest source)
 
 
 def _parse_extra_roots(raw: Optional[str]) -> list[RootSpec]:
@@ -73,8 +83,12 @@ def _parse_extra_roots(raw: Optional[str]) -> list[RootSpec]:
         if kind not in _VALID_KINDS:
             logger.warning("media_storage_root_unknown_kind", id=rid, kind=kind)
             continue
-        cfg = {k: v for k, v in entry.items() if k not in ("id", "kind")}
-        specs.append(RootSpec(id=str(rid), kind=str(kind), config=cfg))
+        role = entry.get("role", "store")
+        if role not in _VALID_ROLES:
+            logger.warning("media_storage_root_unknown_role", id=rid, role=role)
+            role = "store"
+        cfg = {k: v for k, v in entry.items() if k not in ("id", "kind", "role")}
+        specs.append(RootSpec(id=str(rid), kind=str(kind), config=cfg, role=role))
     return specs
 
 
@@ -114,6 +128,14 @@ def get_root_specs() -> dict[str, RootSpec]:
             roots=[(s.id, s.kind) for s in roots.values()],
         )
     return roots
+
+
+def get_source_roots() -> dict[str, RootSpec]:
+    """Roots declared ``role='source'`` — read-only buckets the ingest pipeline
+    enumerates for originals (plan ``s3-source-root-ingest``). Excludes the
+    local + archive store tiers. Empty until at least one source root is
+    declared in ``media_storage_roots`` (or the DB/UI override)."""
+    return {rid: s for rid, s in get_root_specs().items() if s.role == "source"}
 
 
 def reset_root_specs_cache() -> None:

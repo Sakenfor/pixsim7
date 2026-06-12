@@ -244,11 +244,14 @@ class Settings(BaseSettings):
             "'local' (the path-registry media_root). Each entry: "
             "{\"id\": str, \"kind\": \"local\"|\"s3\", ...kind config}. "
             "For kind 's3' (MinIO/S3): endpoint_url, bucket, access_key, secret_key, "
-            "optional region and presigned_ttl_seconds. Example: "
+            "optional region and presigned_ttl_seconds. Optional 'role': 'store' "
+            "(default — a read/write tier like 'local'/'archive') or 'source' (a "
+            "READ-ONLY bucket the ingest pipeline enumerates; source roots take an "
+            "optional 'prefix' and are never tiering targets). Example: "
             "[{\"id\":\"archive\",\"kind\":\"s3\",\"endpoint_url\":\"http://10.243.1.2:9000\","
             "\"bucket\":\"pixsim-archive\",\"access_key\":\"...\",\"secret_key\":\"...\"}]. "
             "Tiering is a no-op until at least one extra root is declared. "
-            "See plan media-storage-tiering."
+            "See plans media-storage-tiering and s3-source-root-ingest."
         ),
     )
     media_archive_health_probe: bool = Field(

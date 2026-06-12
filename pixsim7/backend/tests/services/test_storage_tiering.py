@@ -91,6 +91,49 @@ def test_roots_skips_bad_entries(monkeypatch, raw):
     reset_root_specs_cache()
 
 
+def test_roots_role_defaults_to_store(monkeypatch):
+    _set_roots_json(
+        monkeypatch,
+        '[{"id":"archive","kind":"s3","endpoint_url":"http://x:9000",'
+        '"bucket":"b","access_key":"ak","secret_key":"sk"}]',
+    )
+    assert get_root_specs()["archive"].role == "store"
+    reset_root_specs_cache()
+
+
+def test_roots_unknown_role_defaults_store(monkeypatch):
+    _set_roots_json(
+        monkeypatch,
+        '[{"id":"archive","kind":"s3","role":"bogus","endpoint_url":"http://x:9000",'
+        '"bucket":"b","access_key":"ak","secret_key":"sk"}]',
+    )
+    assert get_root_specs()["archive"].role == "store"
+    reset_root_specs_cache()
+
+
+def test_roots_source_role_and_get_source_roots(monkeypatch):
+    """A role='source' root is parsed first-class (role lifted out of config,
+    prefix retained), and get_source_roots() returns only sources — not the
+    local or archive store tiers."""
+    _set_roots_json(
+        monkeypatch,
+        '[{"id":"archive","kind":"s3","endpoint_url":"http://x:9000","bucket":"arch",'
+        '"access_key":"ak","secret_key":"sk"},'
+        '{"id":"packs","kind":"s3","role":"source","prefix":"Susana/",'
+        '"endpoint_url":"http://x:9000","bucket":"src","access_key":"ak","secret_key":"sk"}]',
+    )
+    specs = get_root_specs()
+    assert specs["archive"].role == "store"
+    packs = specs["packs"]
+    assert packs.role == "source"
+    assert "role" not in packs.config  # lifted to first-class field
+    assert packs.config["prefix"] == "Susana/"  # stays in config for ingest
+
+    sources = roots_mod.get_source_roots()
+    assert set(sources) == {"packs"}
+    reset_root_specs_cache()
+
+
 # --------------------------------------------------------------------------- #
 # TieredStorageService routing + dedup
 # --------------------------------------------------------------------------- #
