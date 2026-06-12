@@ -50,6 +50,17 @@ export interface RelationRecipeContext {
   lhs_kind?: string;
   rhs_kind?: string;
   /**
+   * Facet-typed operands — the leading facet token of each side's var
+   * (`ACTOR1_HIP` → `HIP`). A recipe declaring these matches *only* when both
+   * sides carry the named facets, letting `ACTOR_HIP < ACTOR_HIP` (a spatial
+   * relation over anatomy-typed operands) carry different semantics than a bare
+   * `ACTOR < ACTOR`. Strictly more specific than lhs_kind/rhs_kind. No
+   * recipe declares these yet — the slot-backed content is a follow-on; the
+   * matcher tier is in place so authoring them is a data-only change.
+   */
+  lhs_facet?: string;
+  rhs_facet?: string;
+  /**
    * Generation-scope gates (operator-layer analog of an op signature's
    * allowed_modalities). A recipe declaring these is eligible only when the
    * active model / operation is in the list; absent = matches any. A scoped
@@ -153,6 +164,7 @@ function recipeIsScoped(recipe: RelationRecipe): boolean {
  * Find the best-matching recipe for a given context. Structural specificity is
  * the primary axis; generation-scope is the tiebreaker within each tier.
  * Resolution (most-specific first):
+ *   0. (…lhs_kind, rhs_kind, lhs_facet, rhs_facet) — facet-typed relation.
  *   1. (line_kind, prev_kind, next_kind, lhs_kind, rhs_kind) — typed relation.
  *   2. (line_kind, prev_kind, next_kind) on recipes that do NOT declare lhs/rhs.
  *   3. line_kind alone (no prev/next constraints).
@@ -169,6 +181,8 @@ export function matchRecipe(
     next_kind?: ChainElementKind;
     lhs_kind?: string;
     rhs_kind?: string;
+    lhs_facet?: string;
+    rhs_facet?: string;
     model_id?: string;
     operation_type?: string;
   },
@@ -182,7 +196,29 @@ export function matchRecipe(
     return candidates.find(recipeIsScoped) ?? candidates.find((r) => !recipeIsScoped(r)) ?? null;
   };
 
-  // Tier 1: fully-typed relation (both sides are vars of named kinds).
+  // Tier 0: facet-typed relation (both sides are facet-typed vars). Strictly
+  // more specific than Tier 1; only fires when a recipe declares matching
+  // lhs_facet/rhs_facet (none do yet — slot-backed content is a follow-on).
+  if (
+    context.prev_kind && context.next_kind &&
+    context.lhs_kind && context.rhs_kind &&
+    context.lhs_facet && context.rhs_facet
+  ) {
+    const facetTyped = pick(
+      (r) =>
+        r.context.line_kind === context.line_kind &&
+        r.context.prev_kind === context.prev_kind &&
+        r.context.next_kind === context.next_kind &&
+        r.context.lhs_kind === context.lhs_kind &&
+        r.context.rhs_kind === context.rhs_kind &&
+        r.context.lhs_facet === context.lhs_facet &&
+        r.context.rhs_facet === context.rhs_facet,
+    );
+    if (facetTyped) return facetTyped;
+  }
+  // Tier 1: fully-typed relation (both sides are vars of named kinds). Skip
+  // recipes that additionally declare facets — those belong to Tier 0 and must
+  // not match a pair whose facets differ (or are absent).
   if (context.prev_kind && context.next_kind && context.lhs_kind && context.rhs_kind) {
     const typed = pick(
       (r) =>
@@ -190,7 +226,9 @@ export function matchRecipe(
         r.context.prev_kind === context.prev_kind &&
         r.context.next_kind === context.next_kind &&
         r.context.lhs_kind === context.lhs_kind &&
-        r.context.rhs_kind === context.rhs_kind,
+        r.context.rhs_kind === context.rhs_kind &&
+        !r.context.lhs_facet &&
+        !r.context.rhs_facet,
     );
     if (typed) return typed;
   }

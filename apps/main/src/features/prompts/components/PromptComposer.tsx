@@ -2318,15 +2318,33 @@ export function PromptComposer({
                         next_kind: op.nextKind,
                         lhs_kind: op.prevVarKind,
                         rhs_kind: op.nextVarKind,
+                        lhs_facet: op.prevFacet,
+                        rhs_facet: op.nextFacet,
                         model_id: recipeContext?.modelId,
                         operation_type: recipeContext?.operationType,
                       });
                       // Match by raw op so `===>` finds the `>` entry via the
                       // last-char fallback inside matchOperator.
                       const recipeOp = matchOperator(recipe, op.raw);
+                      // Resolve each facet-typed operand for the popover's
+                      // operands row (class + recognised/unknown facet).
+                      const operandFor = (kind?: string, facet?: string) => {
+                        if (!kind || !facet) return undefined;
+                        const resolved = resolveFacet(kind, facet, facetVocab);
+                        return {
+                          kind,
+                          facet: resolved.facet,
+                          known: resolved.known,
+                          label: resolved.valueLabel ?? resolved.axis?.label ?? resolved.axis?.name,
+                        };
+                      };
                       return (
                         <OperatorEditPopover
                           operator={op}
+                          operands={{
+                            lhs: operandFor(op.prevVarKind, op.prevFacet),
+                            rhs: operandFor(op.nextVarKind, op.nextFacet),
+                          }}
                           swapTargets={contract.swapTargets}
                           maxRunLength={contract.maxRunLength}
                           recipe={recipe}

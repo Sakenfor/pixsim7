@@ -7,10 +7,27 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 
-import { varSemanticKind } from '../hooks/useRelationRecipes';
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 
 import { parseVariableName } from './promptVariableName';
+
+/** Class family of a var element (`ACTOR` from `ACTOR1` or `ACTOR1_HIP`), or
+ *  undefined when empty. Unlike the legacy `varSemanticKind` (trailing-index
+ *  strip only), this also splits off the facet, so a facet-typed var reports
+ *  its class — letting `ACTOR1_HIP` match a class-level `ACTOR` recipe and a
+ *  facet-level one. Equal to varSemanticKind for realistic facetless names. */
+function varClass(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  return parseVariableName(text).className || undefined;
+}
+
+/** Leading facet token of a var element (`HIP` from `ACTOR1_HIP`), or undefined
+ *  when the var has no facet. Pure helper over parseVariableName. */
+function leadingFacet(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const facets = parseVariableName(text).facets;
+  return facets.length > 0 ? facets[0] : undefined;
+}
 
 /**
  * Operator edit extension — decorates operator runs (`=`, `<`, `>`, `:`)
@@ -57,6 +74,14 @@ export interface OperatorRange {
    */
   prevVarKind?: string;
   nextVarKind?: string;
+  /**
+   * Leading facet token of the adjacent var operand, when it has one (e.g.
+   * `HIP` from `ACTOR1_HIP`). Pairs with prevVarKind/nextVarKind (the class)
+   * to give relation recipes a facet-typed operand — `ACTOR1_HIP < ACTOR2_HIP`
+   * is a relation over anatomy-typed operands, not just `ACTOR < ACTOR`.
+   */
+  prevFacet?: string;
+  nextFacet?: string;
   /**
    * Set only when `context === 'access'`. The entity/facet split of the
    * owning var token, so the host can resolve + describe the facet without
@@ -123,8 +148,10 @@ export function collectOperatorRanges(
             context: 'chain',
             prevKind: prevEl?.kind,
             nextKind: nextEl?.kind,
-            prevVarKind: prevEl?.kind === 'var' ? varSemanticKind(prevEl.text) : undefined,
-            nextVarKind: nextEl?.kind === 'var' ? varSemanticKind(nextEl.text) : undefined,
+            prevVarKind: prevEl?.kind === 'var' ? varClass(prevEl.text) : undefined,
+            nextVarKind: nextEl?.kind === 'var' ? varClass(nextEl.text) : undefined,
+            prevFacet: prevEl?.kind === 'var' ? leadingFacet(prevEl.text) : undefined,
+            nextFacet: nextEl?.kind === 'var' ? leadingFacet(nextEl.text) : undefined,
           });
         }
       }

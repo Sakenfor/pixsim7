@@ -87,6 +87,48 @@ describe('matchRecipe tiers', () => {
   });
 });
 
+describe('matchRecipe facet tier', () => {
+  const facetTyped: RelationRecipe = {
+    id: 'chain_actor_hip_to_actor_hip',
+    label: 'Hip alignment',
+    context: {
+      line_kind: 'chain',
+      prev_kind: 'var',
+      next_kind: 'var',
+      lhs_kind: 'ACTOR',
+      rhs_kind: 'ACTOR',
+      lhs_facet: 'HIP',
+      rhs_facet: 'HIP',
+    },
+    operators: [{ op: '<', swap_targets: ['<'] }],
+  };
+  const typed: RelationRecipe = {
+    id: 'chain_actor_to_actor',
+    context: { line_kind: 'chain', prev_kind: 'var', next_kind: 'var', lhs_kind: 'ACTOR', rhs_kind: 'ACTOR' },
+    operators: [{ op: '<', swap_targets: ['<'] }],
+  };
+  const recipes = [facetTyped, typed];
+  const base = {
+    line_kind: 'chain',
+    prev_kind: 'var',
+    next_kind: 'var',
+    lhs_kind: 'ACTOR',
+    rhs_kind: 'ACTOR',
+  } as const;
+
+  it('tier 0: matches the facet-typed recipe when both facets match', () => {
+    expect(matchRecipe(recipes, { ...base, lhs_facet: 'HIP', rhs_facet: 'HIP' })).toBe(facetTyped);
+  });
+
+  it('tier 1: falls back to the class-typed recipe when facets differ', () => {
+    expect(matchRecipe(recipes, { ...base, lhs_facet: 'HIP', rhs_facet: 'SHOULDER' })).toBe(typed);
+  });
+
+  it('tier 1: a facet recipe is never chosen for facetless operands', () => {
+    expect(matchRecipe(recipes, base)).toBe(typed);
+  });
+});
+
 describe('matchRecipe generation-scope gates', () => {
   const typed: RelationRecipe = {
     id: 'chain_actor_to_actor',

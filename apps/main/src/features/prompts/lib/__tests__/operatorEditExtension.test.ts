@@ -91,6 +91,49 @@ describe('collectOperatorRanges — access (`_`) operators', () => {
     expect(ranges[0].access).toMatchObject({ className: 'FOO', facet: 'BAR' });
   });
 
+  it('carries class + leading facet of both var operands on a relation op', () => {
+    const doc = Text.of(['ACTOR1_HIP < ACTOR2_HIP']);
+    const ranges = collectOperatorRanges(
+      [
+        chainLine(
+          [
+            { kind: 'var', text: 'ACTOR1_HIP', start: 0, end: 10 },
+            { kind: 'var', text: 'ACTOR2_HIP', start: 12, end: 23 },
+          ],
+          [{ op: '<', run: 1, op_start: 11, op_end: 12 }],
+        ),
+      ],
+      doc,
+    );
+    const rel = ranges.find((r) => r.context === 'chain');
+    expect(rel).toMatchObject({
+      prevVarKind: 'ACTOR',
+      nextVarKind: 'ACTOR',
+      prevFacet: 'HIP',
+      nextFacet: 'HIP',
+    });
+  });
+
+  it('leaves operand facets undefined for facetless vars', () => {
+    const doc = Text.of(['ACTOR1 < GOAL']);
+    const ranges = collectOperatorRanges(
+      [
+        chainLine(
+          [
+            { kind: 'var', text: 'ACTOR1', start: 0, end: 6 },
+            { kind: 'var', text: 'GOAL', start: 9, end: 13 },
+          ],
+          [{ op: '<', run: 1, op_start: 7, op_end: 8 }],
+        ),
+      ],
+      doc,
+    );
+    const rel = ranges.find((r) => r.context === 'chain');
+    expect(rel).toMatchObject({ prevVarKind: 'ACTOR', nextVarKind: 'GOAL' });
+    expect(rel?.prevFacet).toBeUndefined();
+    expect(rel?.nextFacet).toBeUndefined();
+  });
+
   it('decorates only the first `_` of a multi-facet var', () => {
     // "ACTOR1_UPPER_BODY" — first `_` at index 6 is the entity↔facet boundary.
     const doc = Text.of(['ACTOR1_UPPER_BODY']);

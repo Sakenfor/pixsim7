@@ -9,8 +9,26 @@ import type {
 } from '../hooks/useRelationRecipes';
 import type { OperatorRange } from '../lib/operatorEditExtension';
 
+/** Resolved typing of one chain operand flanking the operator. */
+export interface OperandTyping {
+  /** Operand class (e.g. `ACTOR`). */
+  kind: string;
+  /** Leading facet token (e.g. `HIP`), when the operand is facet-typed. */
+  facet?: string;
+  /** Human label for the resolved facet (vocab value / axis), for the title. */
+  label?: string;
+  /** Whether the facet resolves against the class's facet axes. */
+  known: boolean;
+}
+
 export interface OperatorEditPopoverProps {
   operator: OperatorRange;
+  /**
+   * Resolved facet typing of the operands flanking this operator, when they're
+   * facet-typed vars. Surfaces the relation as operating over typed operands
+   * (`ACTOR1_HIP < ACTOR2_HIP` = a relation over anatomy-typed operands).
+   */
+  operands?: { lhs?: OperandTyping; rhs?: OperandTyping };
   /** Universal swap targets from grammar.operator_vocabulary. Always allowed. */
   swapTargets: string[];
   /** Run length cap from grammar.operator_vocabulary. */
@@ -42,8 +60,33 @@ const CONTEXT_LABEL: Record<OperatorRange['context'], string> = {
   access: 'Access',
 };
 
+/** One operand chip — class plus the facet token coloured by recognition. */
+function OperandChip({ t }: { t?: OperandTyping }) {
+  if (!t) return <span className="text-neutral-400">—</span>;
+  return (
+    <span className="inline-flex items-center font-mono" title={t.label}>
+      <span className="text-neutral-600 dark:text-neutral-300">{t.kind}</span>
+      {t.facet && (
+        <>
+          <span className="text-neutral-400">_</span>
+          <span
+            className={clsx(
+              t.known
+                ? 'text-violet-600 dark:text-violet-400'
+                : 'text-amber-600 dark:text-amber-500',
+            )}
+          >
+            {t.facet}
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+
 export function OperatorEditPopover({
   operator,
+  operands,
   swapTargets,
   maxRunLength,
   recipe,
@@ -51,6 +94,7 @@ export function OperatorEditPopover({
   onApply,
   onCancel,
 }: OperatorEditPopoverProps) {
+  const hasFacetOperand = !!(operands?.lhs?.facet || operands?.rhs?.facet);
   const baseChar = inferBaseChar(operator.raw);
   const [selectedOp, setSelectedOp] = useState<string>(baseChar);
   const [run, setRun] = useState<number>(Math.max(1, operator.run));
@@ -94,6 +138,23 @@ export function OperatorEditPopover({
           </div>
         )}
       </div>
+
+      {/* Operands — the facet-typed sides of the relation */}
+      {hasFacetOperand && (
+        <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700">
+          <div className="text-[10px] uppercase tracking-wider text-neutral-400 mb-1.5">
+            Operands
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <OperandChip t={operands?.lhs} />
+            <span className="font-mono text-violet-600 dark:text-violet-400">{operator.raw}</span>
+            <OperandChip t={operands?.rhs} />
+          </div>
+          <p className="mt-1 text-[10px] text-neutral-400 italic">
+            Relation over facet-typed operands.
+          </p>
+        </div>
+      )}
 
       {/* Type swap — recommended first, universal as fallback row */}
       <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700">
