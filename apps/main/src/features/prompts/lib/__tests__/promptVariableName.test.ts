@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  allFacetVocabCategories,
   classifyFacet,
   facetAxesForClass,
   groupVariablesByEntity,
@@ -111,6 +112,13 @@ describe('facet recognition', () => {
     });
     expect(recognizeVariableFacet('ACTOR1')).toBeNull();
     expect(recognizeVariableFacet('GOAL')).toBeNull();
+  });
+
+  it('collects the distinct vocab categories across all default classes', () => {
+    // Derived from the vocab-backed axes (parts/poses/locations/camera); deduped
+    // (SCENE + SETTING both reference `locations`) and sorted. Freeform axes
+    // (PERSONALITY, DETAILS, …) contribute nothing.
+    expect(allFacetVocabCategories()).toEqual(['camera', 'locations', 'parts', 'poses']);
   });
 });
 

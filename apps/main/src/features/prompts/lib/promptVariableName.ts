@@ -151,6 +151,20 @@ export function facetAxesForClass(className: string): FacetAxis[] {
   return DEFAULT_VARIABLE_CLASSES[className]?.facets ?? [];
 }
 
+/** Every distinct vocab category referenced by any default class's facet axes
+ *  (e.g. `parts`, `poses`, `locations`, `camera`). Used to drive the single
+ *  `useVocabularies` fetch that backs facet recognition/autocomplete across all
+ *  classes. Sorted for a stable cache key. */
+export function allFacetVocabCategories(): string[] {
+  const cats = new Set<string>();
+  for (const cls of Object.values(DEFAULT_VARIABLE_CLASSES)) {
+    for (const axis of cls.facets ?? []) {
+      if (axis.source.kind === 'vocab') cats.add(axis.source.category);
+    }
+  }
+  return Array.from(cats).sort();
+}
+
 export interface FacetRecognition {
   /** The leading facet segment, uppercased (e.g. `POSE` from `ACTOR1_POSE_X`). */
   facet: string;

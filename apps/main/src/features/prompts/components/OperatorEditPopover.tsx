@@ -37,6 +37,9 @@ const CONTEXT_LABEL: Record<OperatorRange['context'], string> = {
   colon: 'Section header',
   angle_bracket: 'Bracket header',
   freestanding: 'Freestanding header',
+  // `access` operators are routed to the facet popover, never this one — keyed
+  // only to satisfy the exhaustive Record over the context union.
+  access: 'Access',
 };
 
 export function OperatorEditPopover({

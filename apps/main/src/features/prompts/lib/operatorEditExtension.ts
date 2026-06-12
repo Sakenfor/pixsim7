@@ -1,4 +1,4 @@
-import { Facet, type Extension, RangeSetBuilder } from '@codemirror/state';
+import { Facet, type Extension, RangeSetBuilder, type Text } from '@codemirror/state';
 import {
   Decoration,
   type DecorationSet,
@@ -9,6 +9,8 @@ import {
 
 import { varSemanticKind } from '../hooks/useRelationRecipes';
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
+
+import { parseVariableName } from './promptVariableName';
 
 /**
  * Operator edit extension — decorates operator runs (`=`, `<`, `>`, `:`)
@@ -36,8 +38,14 @@ export interface OperatorRange {
    * Today only `colon` headers and `chain` lines surface clickable
    * operators (angle_bracket / freestanding have no operator runs to
    * click), but the union is widened for forward-compat.
+   *
+   * `access` is the special intra-token `_` operator (e.g. the `_` in
+   * `ACTOR1_HIP`) — peer to the relation arrows but highest-precedence: it
+   * binds an entity to a facet drawn from that class's facet set. It carries
+   * no recipe semantics; the host routes it to a facet popover, not the
+   * operator type-swap popover.
    */
-  context: 'chain' | 'colon' | 'angle_bracket' | 'freestanding';
+  context: 'chain' | 'colon' | 'angle_bracket' | 'freestanding' | 'access';
   /** Element kind immediately before this operator (chain only). */
   prevKind?: 'var' | 'prose';
   /** Element kind immediately after this operator (chain only). */
@@ -49,6 +57,13 @@ export interface OperatorRange {
    */
   prevVarKind?: string;
   nextVarKind?: string;
+  /**
+   * Set only when `context === 'access'`. The entity/facet split of the
+   * owning var token, so the host can resolve + describe the facet without
+   * re-parsing. `facet` is the leading facet token (e.g. `HIP` from
+   * `ACTOR1_HIP`); `className` is the entity's class (e.g. `ACTOR`).
+   */
+  access?: { varName: string; className: string; facet: string };
 }
 
 export interface OperatorEditCallbacks {
@@ -59,12 +74,14 @@ const operatorTokensFacet = Facet.define<PromptTokenLine[] | undefined, PromptTo
   combine: (values) => values[0],
 });
 
-function collectOperatorRanges(
+/** Exported for unit tests — the host uses the extension, not this directly. */
+export function collectOperatorRanges(
   tokenLines: PromptTokenLine[] | undefined,
-  docLength: number,
+  doc: Text,
 ): OperatorRange[] {
   if (!tokenLines) return [];
   const out: OperatorRange[] = [];
+  const docLength = doc.length;
 
   for (const line of tokenLines) {
     if (line.kind === 'header') {
@@ -111,6 +128,43 @@ function collectOperatorRanges(
           });
         }
       }
+      // Intra-token `_` access operators. Each `var` element of the form
+      // ENTITY_FACET carries a high-precedence `_` binding the entity to a
+      // facet. We decorate that single `_` char (the first one — the
+      // entity↔facet boundary) so it's clickable like the relation arrows,
+      // reusing the same `.cm-prompt-op` mark. The element slot may include
+      // surrounding whitespace, so tighten via the doc text (mirrors
+      // variableTokenExtension).
+      for (const el of line.elements) {
+        if (el.kind !== 'var' || !el.text) continue;
+        if (
+          typeof el.start !== 'number' ||
+          typeof el.end !== 'number' ||
+          el.start < 0 ||
+          el.end > docLength ||
+          el.start >= el.end
+        ) {
+          continue;
+        }
+        const raw = doc.sliceString(el.start, el.end);
+        const leading = raw.length - raw.trimStart().length;
+        const name = raw.trim().toUpperCase();
+        const us = name.indexOf('_');
+        // Need a non-empty entity before the `_` and a facet after it.
+        if (us <= 0 || us >= name.length - 1) continue;
+        const parsed = parseVariableName(name);
+        if (parsed.facets.length === 0) continue;
+        const from = el.start + leading + us;
+        const to = from + 1;
+        if (from < 0 || to > docLength || from >= to) continue;
+        out.push({
+          from, to,
+          raw: '_',
+          run: 1,
+          context: 'access',
+          access: { varName: name, className: parsed.className, facet: parsed.facets[0] },
+        });
+      }
     }
   }
 
@@ -127,11 +181,12 @@ const operatorMark = Decoration.mark({
 
 function buildDecorations(
   tokenLines: PromptTokenLine[] | undefined,
-  docLength: number,
+  doc: Text,
 ): DecorationSet {
   try {
-    const ranges = collectOperatorRanges(tokenLines, docLength);
+    const ranges = collectOperatorRanges(tokenLines, doc);
     if (ranges.length === 0) return Decoration.none;
+    const docLength = doc.length;
     const builder = new RangeSetBuilder<Decoration>();
     for (const r of ranges) {
       // Skip zero-length or out-of-bounds ranges defensively — RangeSetBuilder
@@ -149,7 +204,7 @@ function buildDecorations(
 const operatorPlugin = ViewPlugin.define(
   (view) => {
     let lastTokens = view.state.facet(operatorTokensFacet);
-    let decorations = buildDecorations(lastTokens, view.state.doc.length);
+    let decorations = buildDecorations(lastTokens, view.state.doc);
 
     return {
       get decorations() {
@@ -160,7 +215,7 @@ const operatorPlugin = ViewPlugin.define(
         const tokensChanged = newTokens !== lastTokens;
         if (!update.docChanged && !tokensChanged) return;
         lastTokens = newTokens;
-        decorations = buildDecorations(newTokens, update.state.doc.length);
+        decorations = buildDecorations(newTokens, update.state.doc);
       },
     };
   },
@@ -181,7 +236,7 @@ function operatorClickHandler(callbacks: OperatorEditCallbacks) {
       if (pos === null) return false;
 
       const tokens = view.state.facet(operatorTokensFacet);
-      const ranges = collectOperatorRanges(tokens, view.state.doc.length);
+      const ranges = collectOperatorRanges(tokens, view.state.doc);
       const hit = ranges.find((r) => pos >= r.from && pos < r.to);
       if (!hit) return false;
 

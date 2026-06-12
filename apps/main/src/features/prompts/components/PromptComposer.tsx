@@ -50,6 +50,7 @@ import { openWorkspacePanel, useWorkspaceStore } from '@features/workspace';
 import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
+import { useCmFacetInput } from '../hooks/useCmFacetInput';
 import { useCmReferenceInput } from '../hooks/useCmReferenceInput';
 import { resolveOperatorContract, useOperatorVocabulary } from '../hooks/useOperatorVocabulary';
 import { usePromptHistory } from '../hooks/usePromptHistory';
@@ -57,8 +58,11 @@ import { usePromptVariables } from '../hooks/usePromptVariables';
 import { matchOperator, matchRecipe, useRelationRecipes } from '../hooks/useRelationRecipes';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
+import { useVocabularies } from '../hooks/useVocabularies';
+import { resolveFacet, suggestFacets } from '../lib/facetRecognition';
 import { ghostDiffExtension, type GhostDiffConfig } from '../lib/ghostDiffExtension';
 import { operatorEditExtension, type OperatorRange } from '../lib/operatorEditExtension';
+import { allFacetVocabCategories } from '../lib/promptVariableName';
 import type { PrimitiveProjectionHypothesis } from '../lib/parsePrimitiveMatch';
 import {
   getCachedAnalysis,
@@ -82,6 +86,7 @@ import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptTag } from '../types';
 
 
+import { FacetEditPopover } from './FacetEditPopover';
 import { FloatingToolPanel } from './FloatingToolPanel';
 import { InlineBlocksEditor } from './InlineBlocksEditor';
 import { OperatorEditPopover } from './OperatorEditPopover';
@@ -663,6 +668,16 @@ export function PromptComposer({
     variable: VariableRange;
   } | null>(null);
 
+  // --- Facet popover (CM path) — the intra-token `_` access operator ---
+  const [cmFacetPopover, setCmFacetPopover] = useState<{
+    anchor: HTMLElement;
+    access: NonNullable<OperatorRange['access']>;
+  } | null>(null);
+  // Vocab members backing facet recognition + the suggestion hints. One fetch
+  // for every category any default class references (parts/poses/locations/…);
+  // cached at module level by useVocabularies.
+  const facetVocab = useVocabularies(useMemo(() => allFacetVocabCategories(), []));
+
   // --- Compare-button dropdown menu (chevron next to the compare-media button) ---
   const [compareMenuAnchor, setCompareMenuAnchor] = useState<HTMLElement | null>(null);
   // --- Side-by-side compare popover (opened from the dropdown) ---
@@ -727,6 +742,30 @@ export function PromptComposer({
       });
     },
     [cmRefInput],
+  );
+
+  // Facet autocomplete (CM path) — triggers on `ENTITY_<partial>` for classes
+  // that declare facet axes; suggestions come from `suggestFacets` over the
+  // same VocabRegistry data that backs facet recognition. Shares the
+  // ReferencePicker chrome via a dedicated handle/items list.
+  const facetPickerRef = useRef<ReferencePickerHandle>(null);
+  const cmFacetInput = useCmFacetInput(facetPickerRef, promptEditorRef);
+  const facetItems = useMemo<ReferenceItem[]>(() => {
+    if (!cmFacetInput.active) return [];
+    return suggestFacets(cmFacetInput.className, cmFacetInput.partial, facetVocab).map((s) => ({
+      type: 'facet',
+      id: s.value,
+      label: s.label,
+      detail: s.detail,
+    }));
+  }, [cmFacetInput.active, cmFacetInput.className, cmFacetInput.partial, facetVocab]);
+  const handleFacetComplete = useCallback(
+    (item: ReferenceItem) => {
+      cmFacetInput.complete(item.id, (fn) => {
+        onChangeRef.current(fn(valueRef.current));
+      });
+    },
+    [cmFacetInput],
   );
 
   // Caret-anchored popup coords. Computed when the picker becomes active
@@ -1397,6 +1436,7 @@ export function PromptComposer({
         onRemovedSegments: setGhostRemoved,
       }),
       cmRefInput.extension,
+      cmFacetInput.extension,
       tagPillExtension(),
       // Phase 2b: live op-derived span provenance with auto-shifting
       // positions. Markers are added by handleAcceptOpOutput; consumers
@@ -1404,6 +1444,12 @@ export function PromptComposer({
       spanProvenanceField,
       operatorEditExtension(cmShadowTokenLines, {
         onOperatorClick: (operator, anchor) => {
+          // The intra-token `_` is an access operator, not a relation operator
+          // — route it to the facet popover instead of the type-swap popover.
+          if (operator.context === 'access' && operator.access) {
+            setCmFacetPopover({ access: operator.access, anchor });
+            return;
+          }
           setCmOperatorPopover({ operator, anchor });
         },
       }),
@@ -1423,6 +1469,7 @@ export function PromptComposer({
       cmGhostConfig?.precision,
       cmShadowTokenLines,
       cmRefInput.extension,
+      cmFacetInput.extension,
       savedVariableNames,
     ],
   );
@@ -2215,6 +2262,18 @@ export function PromptComposer({
                     className="w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-float-overlay-popover"
                     style={cmRefInput.anchor ?? undefined}
                   />
+                  <ReferencePicker
+                    ref={facetPickerRef}
+                    visible={cmFacetInput.active && cmFacetInput.anchor !== null}
+                    query={cmFacetInput.partial}
+                    items={facetItems}
+                    onSelect={handleFacetComplete}
+                    onClose={cmFacetInput.dismiss}
+                    allowedTypes={['facet']}
+                    portal
+                    className="w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-float-overlay-popover"
+                    style={cmFacetInput.anchor ?? undefined}
+                  />
                   <Popover
                     anchor={cmShadowPopover?.anchor ?? null}
                     placement="bottom"
@@ -2244,6 +2303,10 @@ export function PromptComposer({
                   >
                     {cmOperatorPopover && (() => {
                       const op = cmOperatorPopover.operator;
+                      // `access` (`_`) operators are routed to the facet popover
+                      // before reaching here; this branch only handles relation
+                      // operators, so narrow the context off the union.
+                      if (op.context === 'access') return null;
                       // Scope suggested swaps + run-length cap to this line
                       // kind's operator contract (per-context override of the
                       // global vocabulary).
@@ -2322,6 +2385,29 @@ export function PromptComposer({
                             if (result.ok) toast.success(`Removed ${variable.name}`);
                             else toast.error(result.message ?? `Failed to remove ${variable.name}`);
                           }}
+                        />
+                      );
+                    })()}
+                  </Popover>
+                  <Popover
+                    anchor={cmFacetPopover?.anchor ?? null}
+                    placement="bottom"
+                    align="start"
+                    offset={6}
+                    open={!!cmFacetPopover}
+                    onClose={() => setCmFacetPopover(null)}
+                  >
+                    {cmFacetPopover && (() => {
+                      const { access } = cmFacetPopover;
+                      const resolved = resolveFacet(access.className, access.facet, facetVocab);
+                      const suggestions = suggestFacets(access.className, '', facetVocab);
+                      return (
+                        <FacetEditPopover
+                          varName={access.varName}
+                          className={access.className}
+                          resolved={resolved}
+                          suggestions={suggestions}
+                          onClose={() => setCmFacetPopover(null)}
                         />
                       );
                     })()}
