@@ -191,9 +191,12 @@ export type { ValidationStatus } from './generation/validator';
 // ===== Interactions =====
 export {
   parseHotspotAction,
+  gameActionRegistry,
+  validateAction,
   deriveScenePlaybackPhase,
   isPlayingPhase,
   type BaseScenePlaybackPhase,
+  type GameActionMeta,
 } from './interactions/hotspot';
 
 // Interaction exports now handled by blanket re-exports at bottom

@@ -154,15 +154,54 @@ export async function listGameLocations(opts?: { worldId?: number | null }): Pro
   return gameApi.listLocations(opts);
 }
 
+// The backend serializes hotspot DTOs with camelCase aliases (hotspotId,
+// locationId, ...) while the frontend GameHotspotDTO uses snake_case.
+// Normalize at this boundary so panels never see half-empty hotspots.
+function _normalizeHotspotDTO(raw: unknown): GameHotspotDTO {
+  const record = (raw ?? {}) as Record<string, unknown>;
+  const { hotspotId, worldId, locationId, sceneId, ...rest } = record;
+  return {
+    ...rest,
+    hotspot_id: (record.hotspot_id ?? hotspotId ?? '') as string,
+    world_id: (record.world_id ?? worldId ?? null) as number | null,
+    location_id: (record.location_id ?? locationId ?? null) as number | null,
+    scene_id: (record.scene_id ?? sceneId ?? null) as number | null,
+  } as GameHotspotDTO;
+}
+
+function _hotspotToWirePayload(hotspot: GameHotspotDTO): Record<string, unknown> {
+  const { hotspot_id, world_id, location_id, scene_id, ...rest } =
+    hotspot as unknown as Record<string, unknown>;
+  return {
+    ...rest,
+    hotspotId: hotspot_id,
+    worldId: world_id ?? null,
+    locationId: location_id ?? null,
+    sceneId: scene_id ?? null,
+  };
+}
+
+function _normalizeGameLocationDetail(raw: unknown): GameLocationDetail {
+  const record = (raw ?? {}) as Record<string, unknown>;
+  return {
+    ...record,
+    default_spawn: (record.default_spawn ?? record.defaultSpawn ?? null) as string | null,
+    hotspots: Array.isArray(record.hotspots) ? record.hotspots.map(_normalizeHotspotDTO) : [],
+  } as unknown as GameLocationDetail;
+}
+
 export async function getGameLocation(locationId: IDs.LocationId): Promise<GameLocationDetail> {
-  return gameApi.getLocation(locationId);
+  return _normalizeGameLocationDetail(await gameApi.getLocation(locationId));
 }
 
 export async function saveGameLocationHotspots(
   locationId: IDs.LocationId,
   hotspots: GameHotspotDTO[],
 ): Promise<GameLocationDetail> {
-  return gameApi.saveLocationHotspots(locationId, hotspots);
+  const response = await pixsimClient.put<unknown>(`/game/locations/${locationId}/hotspots`, {
+    hotspots: hotspots.map(_hotspotToWirePayload),
+  });
+  return _normalizeGameLocationDetail(response);
 }
 
 // App-specific: meta update endpoint
@@ -467,6 +506,23 @@ export function setWorldManifest(world: GameWorldDetail, manifest: WorldManifest
 
 export async function getGameScene(sceneId: IDs.SceneId): Promise<Scene> {
   return gameApi.getScene(sceneId);
+}
+
+export interface GameSceneSummary {
+  id: number;
+  worldId?: number | null;
+  title: string;
+  description?: string | null;
+  entryNodeId?: number | null;
+}
+
+export async function listGameScenes(opts?: {
+  worldId?: number | null;
+}): Promise<GameSceneSummary[]> {
+  const query = _buildWorldScopeQuery(opts?.worldId ?? null);
+  return pixsimClient.get<GameSceneSummary[]>(
+    query ? `/game/scenes/${query}` : '/game/scenes/'
+  );
 }
 
 // =============================================================================
@@ -850,7 +906,13 @@ export async function deleteProjectDraft(
 // NPCs API
 // =============================================================================
 
-export async function listGameNpcs(): Promise<GameNpcSummary[]> {
+export async function listGameNpcs(opts?: {
+  worldId?: number | null;
+}): Promise<GameNpcSummary[]> {
+  const query = _buildWorldScopeQuery(opts?.worldId ?? null);
+  if (query) {
+    return pixsimClient.get<GameNpcSummary[]>(`/game/npcs/${query}`);
+  }
   return gameApi.listNpcs();
 }
 
@@ -1040,4 +1102,50 @@ export async function resolveTemplateBatch(
   sharedContext?: Record<string, unknown>
 ): Promise<ResolveBatchResponse> {
   return gameApi.resolveTemplateBatch(refs, sharedContext);
+}
+
+// =============================================================================
+// Link Integrity API (ObjectLink system)
+// =============================================================================
+
+export interface LinkIntegrityReport {
+  generated_at: string;
+  total_links: number;
+  enabled_links: number;
+  disabled_links: number;
+  links_by_mapping: Record<string, number>;
+  orphaned_links_sample: number;
+  orphans_by_type: Record<string, number>;
+  has_integrity_issues: boolean;
+  sample_orphans: Array<Record<string, unknown>>;
+}
+
+export async function getLinkIntegrityReport(): Promise<LinkIntegrityReport> {
+  return pixsimClient.get<LinkIntegrityReport>('/game/links/integrity/report');
+}
+
+// =============================================================================
+// World Behavior API
+// =============================================================================
+
+export interface BehaviorValidationResult {
+  is_valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export async function getWorldBehaviorConfig(
+  worldId: number,
+): Promise<Record<string, unknown>> {
+  return pixsimClient.get<Record<string, unknown>>(`/game/worlds/${worldId}/behavior`);
+}
+
+export async function validateWorldBehaviorConfig(
+  worldId: number,
+  config: Record<string, unknown>,
+): Promise<BehaviorValidationResult> {
+  return pixsimClient.post<BehaviorValidationResult>(
+    `/game/worlds/${worldId}/behavior/validate`,
+    { config },
+  );
 }
