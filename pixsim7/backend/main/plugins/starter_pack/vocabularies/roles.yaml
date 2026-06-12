@@ -425,3 +425,15 @@ category_mappings:
   character_pose: role:entities:subject
   pose: role:entities:subject
   anatomy: role:entities:main_character
+  # Op-pack categories (plan blocks-vocab-roles-drift cp-b)
+  camera: role:camera
+  composition: role:camera:composition
+  scene: role:world:environment
+  character_anatomy: role:entities:main_character
+  interaction_beat: role:animation:action
+  direction: role:animation
+  manner: role:animation
+  # Deliberately unmapped (no composition-role semantics — keep the drift
+  # sweep's exempt list in sync when changing these):
+  #   latin_enhancer  — pack-family grouping, not a render dimension
+  #   continuity      — sequence/meta ops (role_in_sequence etc.)
