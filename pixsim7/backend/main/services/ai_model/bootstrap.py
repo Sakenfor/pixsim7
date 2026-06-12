@@ -135,6 +135,69 @@ def initialize_ai_models() -> None:
         )
     )
 
+    # Version-pinned Claude models. The bare aliases above resolve to "latest"
+    # of each tier; these pin a specific snapshot. IDs carry the full model
+    # name after the `anthropic:` prefix — the bridge strips the prefix and
+    # passes the remainder straight to `claude --model`, which accepts both the
+    # short aliases and these fully-qualified IDs.
+    ai_model_registry.register(
+        AiModel(
+            id="anthropic:claude-fable-5",
+            label="Fable 5",
+            provider_id="anthropic",
+            kind=AiModelKind.LLM,
+            capabilities=[
+                AiModelCapability.PROMPT_EDIT,
+                AiModelCapability.ASSISTANT_CHAT,
+            ],
+            supported_methods=[DeliveryMethod.API, DeliveryMethod.REMOTE],
+            description="Anthropic Fable 5",
+        )
+    )
+    ai_model_registry.register(
+        AiModel(
+            id="anthropic:claude-opus-4-8",
+            label="Claude Opus 4.8",
+            provider_id="anthropic",
+            kind=AiModelKind.LLM,
+            capabilities=[
+                AiModelCapability.PROMPT_EDIT,
+                AiModelCapability.ASSISTANT_CHAT,
+            ],
+            supported_methods=[DeliveryMethod.API, DeliveryMethod.REMOTE],
+            description="Anthropic Claude Opus 4.8 — highest capability, version-pinned",
+        )
+    )
+    ai_model_registry.register(
+        AiModel(
+            id="anthropic:claude-sonnet-4-6",
+            label="Claude Sonnet 4.6",
+            provider_id="anthropic",
+            kind=AiModelKind.LLM,
+            capabilities=[
+                AiModelCapability.PROMPT_EDIT,
+                AiModelCapability.ASSISTANT_CHAT,
+            ],
+            supported_methods=[DeliveryMethod.API, DeliveryMethod.REMOTE],
+            description="Anthropic Claude Sonnet 4.6 — balanced, version-pinned",
+        )
+    )
+    ai_model_registry.register(
+        AiModel(
+            id="anthropic:claude-haiku-4-5-20251001",
+            label="Claude Haiku 4.5",
+            provider_id="anthropic",
+            kind=AiModelKind.LLM,
+            capabilities=[
+                AiModelCapability.PROMPT_EDIT,
+                AiModelCapability.TAG_SUGGEST,
+                AiModelCapability.ASSISTANT_CHAT,
+            ],
+            supported_methods=[DeliveryMethod.API, DeliveryMethod.REMOTE],
+            description="Anthropic Claude Haiku 4.5 — fast and lightweight, version-pinned",
+        )
+    )
+
     # Local LLM (SmolLM2 etc.)
     ai_model_registry.register(
         AiModel(

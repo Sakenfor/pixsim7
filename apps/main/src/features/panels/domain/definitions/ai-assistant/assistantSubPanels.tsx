@@ -314,7 +314,7 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
       <button
         ref={ref}
         onClick={() => setOpen(!open)}
-        className="text-th-muted hover:text-th"
+        className="tap-target text-th-muted hover:text-th"
         title="Resume session"
       >
         <Icon name="history" size={12} />
@@ -1016,7 +1016,7 @@ export function BridgeSettingsPopover() {
       <button
         ref={ref}
         onClick={() => setOpen(!open)}
-        className="text-th-muted hover:text-th"
+        className="tap-target text-th-muted hover:text-th"
         title="Bridge settings"
       >
         <Icon name="settings" size={12} />
@@ -1154,8 +1154,8 @@ export function NotificationMutePopover() {
         onClick={() => setOpen(!open)}
         className={
           anyMuted
-            ? 'text-signal-warning hover:opacity-80'
-            : 'text-th-muted hover:text-th'
+            ? 'tap-target text-signal-warning hover:opacity-80'
+            : 'tap-target text-th-muted hover:text-th'
         }
         title={anyMuted ? 'Nudges muted' : 'Mute chat / question nudges'}
       >
@@ -1405,6 +1405,12 @@ export function useModelsForEngine(engine: AgentEngine) {
   return { models, grouped };
 }
 
+// Native <option>/<optgroup> popups default to a white system background, which
+// clashes with dark themes and renders th-secondary text hard to read. Chromium
+// (and thus Electron) honors bg/color set on these elements in the popup list,
+// so theme them explicitly to match the surrounding surface.
+const MODEL_OPTION_CLASS = 'bg-surface-secondary text-th';
+
 /** Compact model selector for the chat input bar */
 export function ModelSelector({ value, onChange, disabled, engine }: {
   value: string | null;
@@ -1419,14 +1425,14 @@ export function ModelSelector({ value, onChange, disabled, engine }: {
       value={value || ''}
       onChange={(e) => onChange(e.target.value || null)}
       disabled={disabled}
-      className="shrink-0 h-8 px-1 text-[9px] text-th-secondary bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer disabled:opacity-40"
+      className="shrink-0 h-8 px-1 text-[9px] text-th bg-surface-secondary rounded-lg border-0 focus:outline-none focus:ring-0 cursor-pointer disabled:opacity-40"
       title={value ? `Model: ${value}` : 'Model (profile default)'}
     >
-      <option value="">model</option>
+      <option value="" className={MODEL_OPTION_CLASS}>model</option>
       {Array.from(grouped.entries()).map(([provider, items]) => (
-        <optgroup key={provider} label={provider}>
+        <optgroup key={provider} label={provider} className={MODEL_OPTION_CLASS}>
           {items.map((m) => (
-            <option key={m.id} value={m.id}>{m.hidden ? '\u00B7 ' : ''}{m.label || m.id}{m.is_default ? ' \u2605' : ''}</option>
+            <option key={m.id} value={m.id} className={MODEL_OPTION_CLASS}>{m.hidden ? '\u00B7 ' : ''}{m.label || m.id}{m.is_default ? ' \u2605' : ''}</option>
           ))}
         </optgroup>
       ))}
@@ -1450,9 +1456,9 @@ function ProfileModelSelect({ value, onChange, agentType, className }: {
       onChange={(e) => onChange(e.target.value)}
       className={className}
     >
-      <option value="">Default (no override)</option>
+      <option value="" className={MODEL_OPTION_CLASS}>Default (no override)</option>
       {models.map((m) => (
-        <option key={m.id} value={m.id}>{m.hidden ? '\u00B7 ' : ''}{m.label || m.id}{m.is_default ? ' \u2605' : ''}</option>
+        <option key={m.id} value={m.id} className={MODEL_OPTION_CLASS}>{m.hidden ? '\u00B7 ' : ''}{m.label || m.id}{m.is_default ? ' \u2605' : ''}</option>
       ))}
     </select>
   );
@@ -1463,10 +1469,10 @@ function ProfileModelSelect({ value, onChange, agentType, className }: {
 // =============================================================================
 
 export const QUICK_SHORTCUTS = [
-  { label: 'What can you help with?', prompt: 'What capabilities do you have? What can I ask you to do?', icon: 'compass' as IconName },
-  { label: 'List my assets', prompt: 'List my most recent assets with their types and status.', icon: 'image' as IconName },
-  { label: 'Generation status', prompt: 'What generations are currently running or recently completed?', icon: 'sparkles' as IconName },
-  { label: 'List characters', prompt: 'List the characters in the current world with their basic info.', icon: 'user' as IconName },
+  { label: 'What can you help with?', shortLabel: 'Help', prompt: 'What capabilities do you have? What can I ask you to do?', icon: 'compass' as IconName },
+  { label: 'List my assets', shortLabel: 'Assets', prompt: 'List my most recent assets with their types and status.', icon: 'image' as IconName },
+  { label: 'Generation status', shortLabel: 'Gen status', prompt: 'What generations are currently running or recently completed?', icon: 'sparkles' as IconName },
+  { label: 'List characters', shortLabel: 'Characters', prompt: 'List the characters in the current world with their basic info.', icon: 'user' as IconName },
 ];
 
 // =============================================================================
