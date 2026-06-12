@@ -320,7 +320,8 @@ export function InteractionPresetEditor({
               onClick={handleImportClick}
               disabled={isImporting}
             >
-              📥 Import
+              <Icon name="upload" size={14} className="mr-1" />
+              Import
             </Button>
             <Button
               variant="secondary"
@@ -329,7 +330,8 @@ export function InteractionPresetEditor({
               disabled={!selectedPreset || isCreating}
               title="Export selected preset"
             >
-              📤 Export Selected
+              <Icon name="download" size={14} className="mr-1" />
+              Export Selected
             </Button>
             <Button
               variant="secondary"
@@ -337,7 +339,8 @@ export function InteractionPresetEditor({
               onClick={handleExportAll}
               title={`Export ${scopeFilter === 'all' ? 'all' : scopeFilter} presets`}
             >
-              📦 Export {scopeFilter === 'all' ? 'All' : scopeFilter === 'global' ? 'Global' : 'World'}
+              <Icon name="package" size={14} className="mr-1" />
+              Export {scopeFilter === 'all' ? 'All' : scopeFilter === 'global' ? 'Global' : 'World'}
             </Button>
           </div>
         </div>
@@ -374,8 +377,8 @@ export function InteractionPresetEditor({
                 value={importTarget}
                 onChange={(e) => setImportTarget(e.target.value as 'global' | 'world')}
               >
-                <option value="world">🗺️ This World</option>
-                <option value="global">🌍 Global Presets</option>
+                <option value="world">This World</option>
+                <option value="global">Global Presets</option>
               </Select>
               <p className="text-xs text-neutral-500 mt-1">
                 {importTarget === 'global'
@@ -431,8 +434,8 @@ export function InteractionPresetEditor({
               className="w-24"
             >
               <option value="all">All</option>
-              <option value="global">🌍 Global</option>
-              <option value="world">🗺️ World</option>
+              <option value="global">Global</option>
+              <option value="world">World</option>
             </Select>
           </div>
           {filteredPresets.length === 0 ? (
@@ -458,14 +461,19 @@ export function InteractionPresetEditor({
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-medium flex items-center gap-1">
-                        {plugin?.icon && <Icon name={plugin.icon} size={14} />}
+                        {plugin?.icon && (
+                          <span className="text-sm leading-none" aria-hidden>
+                            {plugin.icon}
+                          </span>
+                        )}
                         {preset.name}
                       </span>
                       <Badge
                         color={preset.scope === 'global' ? 'blue' : 'purple'}
                         className="text-[10px]"
+                        title={preset.scope === 'global' ? 'Global preset' : 'World preset'}
                       >
-                        {preset.scope === 'global' ? '🌍' : '🗺️'}
+                        <Icon name={preset.scope === 'global' ? 'globe' : 'map'} size={10} />
                       </Badge>
                     </div>
                     <div className="flex items-center gap-1 flex-wrap">
@@ -556,8 +564,8 @@ export function InteractionPresetEditor({
                     value={newPresetScope}
                     onChange={(e) => setNewPresetScope(e.target.value as 'global' | 'world')}
                   >
-                    <option value="world">🗺️ World (this world only)</option>
-                    <option value="global">🌍 Global (all worlds)</option>
+                    <option value="world">World (this world only)</option>
+                    <option value="global">Global (all worlds)</option>
                   </Select>
                 </div>
 
@@ -586,9 +594,10 @@ export function InteractionPresetEditor({
                   <h3 className="text-sm font-semibold">Edit Preset: {selectedPreset.name}</h3>
                   <Badge
                     color={selectedPreset.scope === 'global' ? 'blue' : 'purple'}
-                    className="text-[10px]"
+                    className="gap-1 text-[10px]"
                   >
-                    {selectedPreset.scope === 'global' ? '🌍 Global' : '🗺️ World'}
+                    <Icon name={selectedPreset.scope === 'global' ? 'globe' : 'map'} size={10} />
+                    {selectedPreset.scope === 'global' ? 'Global' : 'World'}
                   </Badge>
                 </div>
                 <div className="flex gap-2">
@@ -599,7 +608,8 @@ export function InteractionPresetEditor({
                       onClick={() => handlePromoteToGlobal(selectedPreset)}
                       title="Copy to global presets"
                     >
-                      → 🌍
+                      <Icon name="globe" size={14} className="mr-1" />
+                      To Global
                     </Button>
                   )}
                   {selectedPreset.scope === 'global' && (
@@ -609,7 +619,8 @@ export function InteractionPresetEditor({
                       onClick={() => handleCopyToWorld(selectedPreset)}
                       title="Copy to world presets"
                     >
-                      → 🗺️
+                      <Icon name="map" size={14} className="mr-1" />
+                      To World
                     </Button>
                   )}
                   <Button

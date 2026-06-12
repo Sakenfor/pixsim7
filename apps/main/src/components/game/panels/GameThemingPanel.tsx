@@ -10,7 +10,7 @@
 
 import { useState } from 'react';
 
-import { Icon } from '@lib/icons';
+import { Icon, type IconName } from '@lib/icons';
 
 import { DynamicThemeRulesPanel } from './DynamicThemeRulesPanel';
 import { SessionOverridePanel } from './SessionOverridePanel';
@@ -45,11 +45,11 @@ export function GameThemingPanel({
 }: GameThemingPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
 
-  const tabs = [
-    { id: 'session' as const, label: 'Session Override', icon: '✨', description: 'Temporary theme for special moments' },
-    { id: 'rules' as const, label: 'Dynamic Rules', icon: '⚙️', description: 'Automatic theme changes' },
-    { id: 'packs' as const, label: 'Theme Packs', icon: '📦', description: 'Import/export collections' },
-    { id: 'preferences' as const, label: 'User Preferences', icon: '👤', description: 'Accessibility settings' },
+  const tabs: Array<{ id: TabId; label: string; icon: IconName; description: string }> = [
+    { id: 'session', label: 'Session Override', icon: 'sparkles', description: 'Temporary theme for special moments' },
+    { id: 'rules', label: 'Dynamic Rules', icon: 'settings', description: 'Automatic theme changes' },
+    { id: 'packs', label: 'Theme Packs', icon: 'package', description: 'Import/export collections' },
+    { id: 'preferences', label: 'User Preferences', icon: 'user', description: 'Accessibility settings' },
   ];
 
   return (
