@@ -946,7 +946,8 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
           lockedTimestamp: picker?.lockedTimestamp,
           onGenerate: picker?.onGenerate,
           generating: picker?.generating,
-          hasUploadStrip: !!picker?.onUploadToProvider,
+          onUploadToProvider: picker?.onUploadToProvider,
+          uploadingToProvider: picker?.uploadingToProvider,
         })
       : [];
 
@@ -1047,6 +1048,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     picker?.onGenerate,
     picker?.generating,
     picker?.onUploadToProvider,
+    picker?.uploadingToProvider,
     customWidgets,
     customOverlayConfig,
     effectivePresetId,
@@ -1385,19 +1387,6 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
           {picker?.queue && <MediaCardQueueNav queue={picker.queue} />}
         </div>
       </OverlayContainer>
-      {picker?.onUploadToProvider && (
-        <button
-          onClick={(e) => { e.stopPropagation(); picker.onUploadToProvider?.(); }}
-          className="w-full flex items-center justify-center gap-1 py-0.5 bg-accent/90 hover:bg-accent text-accent-text text-[10px] font-medium transition-colors disabled:opacity-40"
-          title="Upload to provider"
-          disabled={picker.uploadingToProvider}
-        >
-          {picker.uploadingToProvider
-            ? <Icon name="loader" size={10} className="animate-spin" color="#fff" />
-            : <Icon name="upload" size={10} className="text-white" color="#fff" />}
-          <span>{picker.uploadingToProvider ? 'Uploading…' : 'Upload'}</span>
-        </button>
-      )}
       {isCompact && !layout?.hideFooter && (
         <div className="px-2 py-1 text-[10px] text-neutral-600 dark:text-neutral-400 border-t border-neutral-200 dark:border-neutral-700">
           <div className="truncate font-medium">{contextMenuAsset?.providerAssetId || `ID: ${id}`}</div>

@@ -25,9 +25,11 @@ export interface MediaCardPickerWidgetsOptions {
   lockedTimestamp?: number;
   onGenerate?: () => void;
   generating?: boolean;
-  /** When onUploadToProvider is wired, the below-image upload strip handles
-   *  upload — so we skip the generate widget to avoid duplicate action. */
-  hasUploadStrip?: boolean;
+  /** Provider-upload action for assets not yet on the active provider. Rendered
+   *  as a top-right overlay button; when wired we skip the generate widget
+   *  (upload must happen first) to avoid a duplicate primary action. */
+  onUploadToProvider?: () => void;
+  uploadingToProvider?: boolean;
 }
 
 export function buildMediaCardPickerWidgets({
@@ -39,7 +41,8 @@ export function buildMediaCardPickerWidgets({
   lockedTimestamp,
   onGenerate,
   generating = false,
-  hasUploadStrip,
+  onUploadToProvider,
+  uploadingToProvider = false,
 }: MediaCardPickerWidgetsOptions): OverlayWidget[] {
   const widgets: OverlayWidget[] = [];
 
@@ -85,7 +88,27 @@ export function buildMediaCardPickerWidgets({
     });
   }
 
-  if (!hasUploadStrip && onGenerate) {
+  if (onUploadToProvider) {
+    // Canonical circular top-right badge (stacks with skip/remove via
+    // BADGE_SLOT.topRight), replacing the old full-width below-image strip.
+    // Lower priority than the persistent remove "x" so it sits at the bottom of
+    // the stack; hover-only by default, pinned while an upload is in flight.
+    widgets.push(createBadgeWidget({
+      id: 'upload-to-provider',
+      ...BADGE_SLOT.topRight,
+      visibility: { trigger: uploadingToProvider ? 'always' : 'hover-container' },
+      variant: 'icon',
+      icon: uploadingToProvider ? 'loader' : 'upload',
+      color: 'accent',
+      shape: 'circle',
+      tooltip: 'Upload to provider',
+      onClick: uploadingToProvider ? undefined : onUploadToProvider,
+      className: uploadingToProvider ? 'opacity-70 [&_svg]:animate-spin' : '',
+      priority: BADGE_PRIORITY.interactive,
+    }));
+  }
+
+  if (!onUploadToProvider && onGenerate) {
     // Lift generate above the video scrubber's timeline strip; the render
     // element adds an extra bottom margin via Tailwind when video so the
     // lift scales with container-query sizing instead of fixed pixels.
