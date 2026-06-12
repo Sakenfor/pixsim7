@@ -152,10 +152,17 @@ class VocabularyGovernanceService:
             )
 
         for concept_id in ids:
-            try:
-                is_known = registry.is_known_concept(concept_id)
-            except Exception:
+            # is_known_concept takes (kind, concept_id); the kind is the ID's
+            # namespace prefix ("pose:standing" → "pose"). Un-prefixed IDs
+            # have no resolvable kind and are reported unknown.
+            kind, sep, _ = str(concept_id).partition(":")
+            if not sep or not kind.strip():
                 is_known = False
+            else:
+                try:
+                    is_known = registry.is_known_concept(kind.strip().lower(), concept_id)
+                except Exception:
+                    is_known = False
 
             if is_known:
                 entries.append(TagValidationEntry(

@@ -223,3 +223,37 @@ class TestResolveCanonical:
             result = service.resolve_canonical("intensity", "3")
             assert result["original_key"] == "intensity"
             assert result["canonical_key"] == "intensity"
+
+
+class TestValidateOntologyIds:
+    """Regression coverage for the is_known_concept arity bug: the service
+    used to call ``registry.is_known_concept(concept_id)`` (one argument),
+    the swallowed TypeError made every ID report unknown."""
+
+    def test_known_concepts_validate(self):
+        service = VocabularyGovernanceService()
+        result = service.validate_ontology_ids(
+            ["pose:standing_neutral", "mood:neutral", "role:entities"]
+        )
+        assert result.valid
+        assert [e.status for e in result.entries] == ["valid", "valid", "valid"]
+
+    def test_unknown_concept_flagged(self):
+        service = VocabularyGovernanceService()
+        result = service.validate_ontology_ids(["pose:definitely_not_a_pose_xyz"])
+        assert not result.valid
+        assert result.entries[0].status == "unknown"
+
+    def test_unprefixed_id_is_unknown(self):
+        service = VocabularyGovernanceService()
+        result = service.validate_ontology_ids(["standing_neutral"])
+        assert not result.valid
+        assert result.entries[0].status == "unknown"
+
+    def test_mixed_ids(self):
+        service = VocabularyGovernanceService()
+        result = service.validate_ontology_ids(["mood:happy", "mood:nonexistent_xyz"])
+        assert not result.valid
+        statuses = {e.key: e.status for e in result.entries}
+        assert statuses["mood:happy"] == "valid"
+        assert statuses["mood:nonexistent_xyz"] == "unknown"
