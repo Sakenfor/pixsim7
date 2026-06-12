@@ -67,6 +67,7 @@ def _registry_prompt_block_tag_dictionary() -> Dict[str, Dict[str, Any]]:
             "applies_to": raw.get("applies_to", []) or [],
             "status": raw.get("status", "active"),
             **({"label": raw.get("label")} if raw.get("label") is not None else {}),
+            **({"replacement": raw.get("replacement")} if raw.get("replacement") is not None else {}),
         }
     return out
 
