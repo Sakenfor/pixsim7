@@ -146,6 +146,13 @@ export interface VideoScrubWidgetRendererProps {
   hoverSound?: boolean;
   videoProps?: React.VideoHTMLAttributes<HTMLVideoElement>;
   className?: string;
+  /**
+   * Play the video without revealing hover chrome (timeline, gen-menu). Driven
+   * by the viewport-autoplay-focus coordinator on touch surfaces so the
+   * most-on-screen card auto-loops while scrolling. Distinct from `isHovering`,
+   * which both plays AND shows the scrub UI.
+   */
+  forcePlay?: boolean;
   onScrub?: (timestamp: number, data?: any) => void;
   onClick?: (data?: any) => void;
   /** Called when dot is clicked - for frame extraction or frame locking */
@@ -224,6 +231,7 @@ export function VideoScrubWidgetRenderer({
   hoverSound = false,
   videoProps = {},
   className = '',
+  forcePlay = false,
   onScrub,
   onClick,
   onDotClick,
@@ -254,10 +262,15 @@ export function VideoScrubWidgetRenderer({
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // `forcePlay` (scroll-focus autoplay) drives playback exactly like hover for
+  // the decoder/play lifecycle, but WITHOUT revealing the scrub timeline /
+  // timestamp / active-card chrome (those stay gated on the real `isHovering`).
+  const playWanted = isHovering || forcePlay;
+
   // Drop the decoder while the tab is backgrounded even if a recent hover left
   // the src warm (keepSrcWhilePaused) — no point holding GPU memory unseen.
   const suspended = useMediaSuspended();
-  const mediaActive = (isHovering || keepSrcWhilePaused) && !suspended;
+  const mediaActive = (playWanted || keepSrcWhilePaused) && !suspended;
   const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: mediaActive, mediaType: 'video' });
   const isBackendMediaUrl = Boolean(url && isBackendUrl(url, BACKEND_BASE));
   const resolvedUrl = useMemo(() => {
@@ -337,7 +350,7 @@ export function VideoScrubWidgetRenderer({
   // Re-calling load() would wipe the decoded frame buffer, making re-hover
   // flash blank/thumbnail.
   useEffect(() => {
-    if (!isHovering || !shouldAttachVideoSrc || !videoRef.current || !effectiveUrl) return;
+    if (!playWanted || !shouldAttachVideoSrc || !videoRef.current || !effectiveUrl) return;
     const current = videoRef.current;
     // If the element already has this URL loaded and ready, don't reload.
     // current.src is browser-normalized (absolute), so compare against a
@@ -355,7 +368,7 @@ export function VideoScrubWidgetRenderer({
     setCacheBustToken(null);
     current.src = effectiveUrl;
     current.load();
-  }, [isHovering, effectiveUrl, shouldAttachVideoSrc]);
+  }, [playWanted, effectiveUrl, shouldAttachVideoSrc]);
 
   // Use provided duration or detected duration
   const videoDuration = duration || configDuration || 0;
@@ -455,9 +468,12 @@ export function VideoScrubWidgetRenderer({
   // the video sits paused on its first frame.
   const isCoarsePointer = useIsCoarsePointer();
   useEffect(() => {
-    if (!isCoarsePointer || !isHovering || !isVideoLoaded) return;
+    // Auto-loop when there's no mousemove to kick playback off: a touch
+    // "hover" (tap-reveal) OR scroll-focus autoplay (`forcePlay`, which is only
+    // ever set on coarse pointers by the viewport-focus coordinator).
+    if ((!isCoarsePointer && !forcePlay) || !playWanted || !isVideoLoaded) return;
     startPlaying();
-  }, [isCoarsePointer, isHovering, isVideoLoaded, startPlaying]);
+  }, [isCoarsePointer, forcePlay, playWanted, isVideoLoaded, startPlaying]);
 
   // Find mark near a given time (within threshold)
   const findNearbyMark = useCallback(
@@ -996,9 +1012,9 @@ export function VideoScrubWidgetRenderer({
     return () => { onRegisterSeekFn(null); };
   }, [seekTo, onRegisterSeekFn]);
 
-  // Reset video when hover ends
+  // Reset video when playback intent ends (hover-out OR scroll-focus lost)
   useEffect(() => {
-    if (isHovering) {
+    if (playWanted) {
       // Re-entering: cancel any pending src release from previous leave.
       if (srcReleaseTimerRef.current) {
         clearTimeout(srcReleaseTimerRef.current);
@@ -1050,7 +1066,7 @@ export function VideoScrubWidgetRenderer({
       // Also drop the captured frame — card reverts to thumbnail.
       if (url) clearCapturedFrame(url);
     }, SRC_RELEASE_IDLE_MS);
-  }, [isHovering, pauseOnLeave]);
+  }, [playWanted, pauseOnLeave]);
 
   // Cleanup src-release timer on unmount.  Also clear captured frame.
   useEffect(() => {
@@ -1463,6 +1479,7 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
       const resolvedDuration = resolveDataBinding(durationBinding, data);
       // Use container hover state since our onMouseEnter won't fire when we appear under cursor
       const isHovering = context?.isHovered ?? false;
+      const forcePlay = context?.customState?.forcePlay ?? false;
       const gesturePhase = context?.customState?.gesturePhase ?? 'idle';
       const gestureEdgeInset = context?.customState?.edgeInset;
 
@@ -1495,6 +1512,7 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
           hoverSound={hoverSound}
           videoProps={videoProps}
           className={className}
+          forcePlay={forcePlay}
           onScrub={onScrub}
           onClick={onClick}
           onDotClick={resolvedOnDotClick}

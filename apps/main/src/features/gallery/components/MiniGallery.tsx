@@ -736,7 +736,7 @@ function MiniGalleryContent({
         {displayItems.length > 0 && (
           <div
             className="grid gap-2"
-            style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))` }}
+            style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardSize}px, 100%), 1fr))` }}
           >
             {displayItems.map((asset) => (
               <MiniGalleryItem

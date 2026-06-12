@@ -735,7 +735,7 @@ export function LocalFoldersContent({
             <div
               className="grid"
               style={{
-                gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
+                gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardSize}px, 100%), 1fr))`,
                 rowGap: '12px',
                 columnGap: '12px',
               }}

@@ -663,7 +663,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
       <div
         className="grid"
         style={{
-          gridTemplateColumns: `repeat(auto-fill, minmax(${resolvedCardSize}px, 1fr))`,
+          gridTemplateColumns: `repeat(auto-fill, minmax(min(${resolvedCardSize}px, 100%), 1fr))`,
           rowGap: `${rowGap}px`,
           columnGap: `${columnGap}px`,
         }}
@@ -822,7 +822,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
       <div
         className="grid"
         style={{
-          gridTemplateColumns: `repeat(auto-fill, minmax(${resolvedCardSize}px, 1fr))`,
+          gridTemplateColumns: `repeat(auto-fill, minmax(min(${resolvedCardSize}px, 100%), 1fr))`,
           rowGap: `${rowGap}px`,
           columnGap: `${columnGap}px`,
         }}

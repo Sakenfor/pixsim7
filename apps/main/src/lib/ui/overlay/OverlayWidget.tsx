@@ -86,8 +86,9 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = React.memo(({
     [widget.visibility],
   );
 
-  // Determine if widget should be visible
-  const isVisible = shouldShowWidget(visibility.trigger, {
+  // Determine if widget should be visible. `alsoVisibleWhen` OR-s in a bespoke
+  // customState flag (e.g. scroll-focus autoplay) on top of the hover trigger.
+  const triggerVisible = shouldShowWidget(visibility.trigger, {
     isHovered: isWidgetHovered,
     isContainerHovered: context.isHovered,
     isSiblingHovered,
@@ -95,6 +96,15 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = React.memo(({
     isActive: false, // TODO: Track active state
     customConditions: context.customState,
   });
+  // Visible-only-via-`alsoVisibleWhen` is a passive reveal (show the playing
+  // clip) — it must NOT make the widget interactive, or a scroll-focused card
+  // would swallow the first tap meant to reveal/open. Pointer events stay off
+  // until the real trigger (hover/tap-reveal) fires.
+  const extraVisible =
+    !triggerVisible &&
+    !!visibility.alsoVisibleWhen &&
+    !!context.customState?.[visibility.alsoVisibleWhen];
+  const isVisible = triggerVisible || extraVisible;
 
   // Calculate position styles (skipped when inside a stack group flex container)
   const positionStyles = useMemo(
@@ -182,7 +192,7 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = React.memo(({
         height: widget.style?.height,
         maxWidth: widget.style?.maxWidth,
         maxHeight: widget.style?.maxHeight,
-        pointerEvents: widget.style?.pointerEvents ?? (isVisible ? 'auto' : 'none'),
+        pointerEvents: widget.style?.pointerEvents ?? (triggerVisible ? 'auto' : 'none'),
         ...(sizeValue ? { width: sizeValue, height: sizeValue } : {}),
       };
 

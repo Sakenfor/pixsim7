@@ -1478,8 +1478,13 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
         )}
       </div>
 
-      {/* Scrollable gallery */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-auto mt-4">
+      {/* Scrollable gallery. overflow-x-hidden (not overflow-auto): a vertical
+          gallery must never scroll sideways. With overflow-x:auto, a single wide
+          child (pagination row, nowrap breadcrumb) grows the scroller's content
+          width, and the auto-width MasonryGrid stretches past the viewport with
+          it — clipping the right edge of every card on mobile. min-w-0 keeps the
+          flex child from being forced wider than its parent. */}
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 mt-4">
         {hasGrouping && groupPath.length > 0 && (
           <GroupBreadcrumb
             groupPath={groupPath}
@@ -1525,7 +1530,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
               <div
                 className="grid"
                 style={{
-                  gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
+                  // min(cardSize, 100%) caps the track at the container width so a
+                  // single column on a narrow phone shrinks to fit instead of
+                  // forcing the grid wider than the viewport (right-edge crop).
+                  gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardSize}px, 100%), 1fr))`,
                   rowGap: `${layoutSettings.rowGap}px`,
                   columnGap: `${layoutSettings.columnGap}px`,
                 }}
@@ -1561,7 +1569,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           <div
             className="grid"
             style={{
-              gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
+              // min(cardSize, 100%) caps the track at the container width so a
+              // single column on a narrow phone shrinks to fit instead of
+              // forcing the grid wider than the viewport (right-edge crop).
+              gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardSize}px, 100%), 1fr))`,
               rowGap: `${layoutSettings.rowGap}px`,
               columnGap: `${layoutSettings.columnGap}px`,
             }}
@@ -1591,7 +1602,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           <div
             className="grid"
             style={{
-              gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
+              // min(cardSize, 100%) caps the track at the container width so a
+              // single column on a narrow phone shrinks to fit instead of
+              // forcing the grid wider than the viewport (right-edge crop).
+              gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardSize}px, 100%), 1fr))`,
               rowGap: `${layoutSettings.rowGap}px`,
               columnGap: `${layoutSettings.columnGap}px`,
             }}

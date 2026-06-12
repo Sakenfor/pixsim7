@@ -893,7 +893,10 @@ export function createVideoScrubber(props: MediaCardResolvedProps): OverlayWidge
   return createVideoScrubWidget({
     id: 'video-scrubber',
     position: { anchor: 'top-left', offset: { x: 0, y: 0 } },
-    visibility: { trigger: 'hover-container' },
+    // `alsoVisibleWhen: 'forcePlay'` reveals the (playing) clip on touch
+    // scroll-focus autoplay without showing the scrub timeline, which stays
+    // gated on real hover inside the widget. See viewportAutoplayFocus.
+    visibility: { trigger: 'hover-container', alsoVisibleWhen: 'forcePlay' },
     // Use videoSrc (processed URL that works with auth) instead of remoteUrl
     videoUrlBinding: createBindingFromValue('videoUrl', (data: MediaCardOverlayData) => data.videoSrc || data.remoteUrl),
     durationBinding: createBindingFromValue('duration', (data: MediaCardOverlayData) => data.durationSec),

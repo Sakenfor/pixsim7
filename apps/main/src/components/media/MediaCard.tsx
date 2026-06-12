@@ -33,6 +33,7 @@ import {
 import { Icon } from '@lib/icons';
 import { useCapturedFrame } from '@lib/media/capturedFrameStore';
 import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
+import { useViewportAutoplayFocus } from '@lib/media/viewportAutoplayFocus';
 import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 import {
   OverlayContainer,
@@ -416,6 +417,15 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   const [isNearViewport, setIsNearViewport] = useState(false);
   const shouldActivateVideoMedia =
     mediaType === 'video' && isNearViewport && !thumbUrl && !previewUrl;
+
+  // Touch-only: the single most-on-screen video card auto-plays while scrolling
+  // (no hover on a finger). Feeds a play-only signal into the scrub widget —
+  // it loops the clip without revealing the scrub timeline / gen-menu chrome,
+  // which still requires an explicit tap. Desktop / non-video opt out.
+  const isAutoplayFocused = useViewportAutoplayFocus(
+    mediaContainerRef,
+    isCoarsePointer && mediaType === 'video',
+  );
 
   const { thumbSrc, thumbFailed, thumbRetry: retryThumb, videoSrc } =
     useMediaPreviewSource({
@@ -1213,7 +1223,8 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
         customState={useMemo(() => ({
           gesturePhase: gesture.phase,
           edgeInset: gesture.edgeInset,
-        }), [gesture.phase, gesture.edgeInset])}
+          forcePlay: isAutoplayFocused,
+        }), [gesture.phase, gesture.edgeInset, isAutoplayFocused])}
         onWidgetClick={undefined}
       >
         <div

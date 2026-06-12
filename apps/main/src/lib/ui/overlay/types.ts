@@ -114,6 +114,16 @@ export interface VisibilityConfig {
    * @example { trigger: 'hover-container', touchFallback: 'always' }
    */
   touchFallback?: VisibilityTrigger;
+
+  /**
+   * Name of a `customState` key that, when truthy, ALSO makes the widget
+   * visible — OR-ed with `trigger`. Lets a widget reveal on a bespoke signal
+   * without abandoning its hover trigger. Used by the video scrubber so the
+   * scroll-focus autoplay signal (`forcePlay`) shows the playing clip while the
+   * scrub timeline/timestamp stay gated on real hover inside the widget.
+   * @example { trigger: 'hover-container', alsoVisibleWhen: 'forcePlay' }
+   */
+  alsoVisibleWhen?: string;
 }
 
 // ============================================================================

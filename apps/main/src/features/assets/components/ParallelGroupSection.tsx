@@ -85,7 +85,7 @@ export function ParallelGroupSection({
             <div
               className="grid"
               style={{
-                gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
+                gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardSize}px, 100%), 1fr))`,
                 rowGap: `${layoutSettings.rowGap}px`,
                 columnGap: `${layoutSettings.columnGap}px`,
               }}
