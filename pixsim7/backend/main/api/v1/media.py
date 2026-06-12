@@ -368,6 +368,41 @@ def _archive_serve_mode() -> str:
     return mode if mode in ("redirect", "proxy") else "redirect"
 
 
+async def _archive_remote_fallback(db, user_id: int, key: str) -> Optional[RedirectResponse]:
+    """
+    Fall back to the asset's provider ``remote_url`` when an archived original
+    can't be served from its storage root (store offline, or object deleted).
+
+    Looks the asset up by ``stored_key`` (user-scoped) and, if it still carries a
+    valid HTTP(S) ``remote_url`` (e.g. the pixverse CDN copy), returns a 307 to
+    it so the gallery keeps working off the second copy. Returns None when the
+    feature is disabled or no usable remote URL exists — the caller then raises
+    the classified 503/404 miss. See plan media-storage-tiering Phase H.
+    """
+    if not getattr(app_settings, "media_archive_remote_fallback", True):
+        return None
+
+    from sqlalchemy import select
+    from pixsim7.backend.main.domain.assets.models import Asset
+
+    try:
+        remote_url = (
+            await db.execute(
+                select(Asset.remote_url)
+                .where(Asset.user_id == user_id, Asset.stored_key == key)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    except Exception as e:  # noqa: BLE001 — fallback is best-effort
+        logger.warning("archive_remote_fallback_lookup_failed", key=key, error=str(e))
+        return None
+
+    if remote_url and remote_url.startswith(("http://", "https://")):
+        logger.info("archive_remote_fallback", key=key, remote_url=remote_url[:80])
+        return RedirectResponse(remote_url, status_code=307)
+    return None
+
+
 async def _archive_miss(storage, key: str, root_id: str) -> HTTPException:
     """
     Classify a "can't serve this archived original" miss.
@@ -390,7 +425,7 @@ async def _archive_miss(storage, key: str, root_id: str) -> HTTPException:
     return HTTPException(status_code=404, detail="File not found")
 
 
-async def _proxy_archive_stream(storage, key: str, root_id: str, request: Request):
+async def _proxy_archive_stream(storage, key: str, root_id: str, request: Request, db=None, user_id: Optional[int] = None):
     """Stream a non-local object through the backend (proxy fallback)."""
     range_header = request.headers.get("range")
     try:
@@ -398,7 +433,12 @@ async def _proxy_archive_stream(storage, key: str, root_id: str, request: Reques
             key, root_id=root_id, range_header=range_header
         )
     except FileNotFoundError:
-        # Could be offline (store down) or deleted (object gone) — classify.
+        # Could be offline (store down) or deleted (object gone). Prefer the
+        # provider remote_url second copy before failing with a classified miss.
+        if db is not None and user_id is not None:
+            fb = await _archive_remote_fallback(db, user_id, key)
+            if fb is not None:
+                return fb
         raise await _archive_miss(storage, key, root_id)
     except NotImplementedError:
         raise HTTPException(status_code=500, detail="Archive backend cannot stream")
@@ -477,7 +517,7 @@ async def serve_media(
     # Non-local (archive) originals: ownership is already validated above.
     if not storage.is_local(root_id):
         if _archive_serve_mode() == "proxy":
-            return await _proxy_archive_stream(storage, key, root_id, request)
+            return await _proxy_archive_stream(storage, key, root_id, request, db, user.id)
         # Default: redirect to a short-lived presigned URL (direct stream).
         # Presigning is purely local (no network), so by itself it can't tell an
         # offline archive from a deleted object — the browser would just get a
@@ -488,13 +528,21 @@ async def serve_media(
                 present = await storage.exists(key, root_id=root_id)
             except Exception as e:  # noqa: BLE001 — treat probe failure as unreachable
                 logger.warning("archive_exists_check_failed", key=key, root_id=root_id, error=str(e))
-                raise await _archive_miss(storage, key, root_id)
+                present = None
             if not present:
+                # Store offline or object gone — try the provider second copy
+                # (e.g. pixverse CDN) before returning the classified miss.
+                fb = await _archive_remote_fallback(db, user.id, key)
+                if fb is not None:
+                    return fb
                 raise await _archive_miss(storage, key, root_id)
         try:
             url = storage.get_url(key, root_id=root_id)
         except Exception as e:  # noqa: BLE001
             logger.error("archive_presign_failed", key=key, root_id=root_id, error=str(e))
+            fb = await _archive_remote_fallback(db, user.id, key)
+            if fb is not None:
+                return fb
             raise HTTPException(status_code=502, detail="Archive storage unavailable")
         return RedirectResponse(url, status_code=307)
 

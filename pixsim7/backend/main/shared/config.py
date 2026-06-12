@@ -262,6 +262,17 @@ class Settings(BaseSettings):
             "media-storage-tiering Phase H."
         ),
     )
+    media_archive_remote_fallback: bool = Field(
+        default=True,
+        description=(
+            "When an archived (non-local) original can't be served — store offline "
+            "or the object is gone — fall back to the asset's provider remote_url "
+            "(e.g. the pixverse CDN copy) with a 307 redirect instead of failing "
+            "with 503/404. Keeps the gallery working off the second copy when the "
+            "archive host (e.g. MinIO over ZeroTier) is down. See plan "
+            "media-storage-tiering Phase H."
+        ),
+    )
 
     # ===== PROVIDERS =====
     pixverse_timeout: int = Field(

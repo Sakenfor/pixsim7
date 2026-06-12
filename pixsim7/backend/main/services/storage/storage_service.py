@@ -124,6 +124,17 @@ class StorageService:
         """
         raise NotImplementedError
 
+    async def list_objects(self, prefix: str = "", *, page_size: int = 1000):
+        """
+        Yield stored objects under ``prefix`` as dicts:
+        ``{"key", "size", "etag", "last_modified"}``.
+
+        Object-store backends only (used by S3 source-root ingest, plan
+        ``s3-source-root-ingest``). Local/derivative roots don't implement it.
+        """
+        raise NotImplementedError("list_objects requires an object-store backend")
+        yield  # pragma: no cover — unreachable; marks this as an async generator
+
     def get_content_addressed_key(self, user_id: int, sha256: str, extension: str = "") -> str:
         """
         Generate content-addressed storage key (root-agnostic).
@@ -681,6 +692,45 @@ class S3StorageService(StorageService):
 
         return status, headers, content_type, _iter()
 
+    async def list_objects(self, prefix: str = "", *, page_size: int = 1000):
+        """
+        Stream objects under ``prefix`` via paginated ``list_objects_v2``.
+
+        Yields ``{"key", "size", "etag", "last_modified"}`` per object, following
+        ContinuationToken so a large source bucket is never materialized in
+        memory. Skips "directory" placeholder keys (trailing ``/``). ETag quotes
+        are stripped (note: S3 ETag is NOT a sha256 for multipart objects —
+        ingest hashes bytes itself). Read-only; used by S3 source-root ingest
+        (plan ``s3-source-root-ingest``).
+        """
+        safe_prefix = prefix.lstrip("/") if prefix else ""
+        token = None
+        async with self._client() as client:
+            while True:
+                kwargs = {
+                    "Bucket": self._bucket,
+                    "Prefix": safe_prefix,
+                    "MaxKeys": int(page_size),
+                }
+                if token:
+                    kwargs["ContinuationToken"] = token
+                resp = await client.list_objects_v2(**kwargs)
+                for obj in resp.get("Contents") or []:
+                    key = obj.get("Key", "")
+                    if not key or key.endswith("/"):
+                        continue
+                    yield {
+                        "key": key,
+                        "size": obj.get("Size", 0),
+                        "etag": (obj.get("ETag") or "").strip('"'),
+                        "last_modified": obj.get("LastModified"),
+                    }
+                if not resp.get("IsTruncated"):
+                    break
+                token = resp.get("NextContinuationToken")
+                if not token:
+                    break
+
     def _get_presign_client(self):
         if self._presign_client is None:
             import botocore.session
@@ -835,6 +885,13 @@ class TieredStorageService(StorageService):
                 f"backend for root '{root_id}' does not support streaming proxy"
             )
         return await opener(key, range_header=range_header)
+
+    async def list_objects(self, prefix: str = "", *, root_id: Optional[str] = None, page_size: int = 1000):
+        """Delegate object listing to the backend for ``root_id`` (S3 source/
+        archive roots). Re-yields so callers ``async for`` over the tiered
+        service. Used by S3 source-root ingest."""
+        async for entry in self._backend(root_id).list_objects(prefix, page_size=page_size):
+            yield entry
 
     async def ensure_local_copy(self, key, root_id=None):
         """

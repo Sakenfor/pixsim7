@@ -1032,6 +1032,84 @@ async def test_single_local_tier_io_matches_local():
 
 
 # --------------------------------------------------------------------------- #
+# S3 source-root ingest (plan s3-source-root-ingest) — object enumeration.
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_s3_list_objects_paginates_and_filters():
+    """list_objects follows ContinuationToken, strips ETag quotes, skips
+    'directory' placeholder keys, and lstrips the prefix — all without a live
+    store (fake aiobotocore client injected via _client)."""
+    from pixsim7.backend.main.services.storage.storage_service import S3StorageService
+
+    class _FakeS3Client:
+        def __init__(self, pages):
+            self._pages = pages
+            self.calls = []
+
+        async def list_objects_v2(self, **kwargs):
+            self.calls.append(kwargs)
+            return self._pages[kwargs.get("ContinuationToken")]
+
+    class _CM:
+        def __init__(self, c):
+            self._c = c
+
+        async def __aenter__(self):
+            return self._c
+
+        async def __aexit__(self, *a):
+            return False
+
+    page1 = {
+        "Contents": [
+            {"Key": "Susana/a.jpg", "Size": 10, "ETag": '"abc"', "LastModified": "t1"},
+            {"Key": "Susana/sub/", "Size": 0, "ETag": '""'},  # placeholder → skipped
+        ],
+        "IsTruncated": True,
+        "NextContinuationToken": "tok2",
+    }
+    page2 = {
+        "Contents": [{"Key": "Susana/b.jpg", "Size": 20, "ETag": "noquotes"}],
+        "IsTruncated": False,
+    }
+    svc = S3StorageService(
+        endpoint_url="http://x:9000", bucket="b", access_key="k", secret_key="s"
+    )
+    client = _FakeS3Client({None: page1, "tok2": page2})
+    svc._client = lambda config=None: _CM(client)
+
+    entries = [e async for e in svc.list_objects("/Susana/", page_size=500)]
+    assert [e["key"] for e in entries] == ["Susana/a.jpg", "Susana/b.jpg"]
+    assert entries[0]["etag"] == "abc"  # quotes stripped
+    assert entries[1]["etag"] == "noquotes"
+    assert entries[0]["size"] == 10
+    assert client.calls[0]["Prefix"] == "Susana/"  # leading slash stripped
+    assert client.calls[0]["MaxKeys"] == 500
+    assert client.calls[1]["ContinuationToken"] == "tok2"  # pagination followed
+    assert len(client.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_tiered_list_objects_delegates_and_local_unsupported():
+    class _Src(_NonLocalStub):
+        async def list_objects(self, prefix="", *, page_size=1000):
+            for k in ["x/1.jpg", "x/2.jpg", "y/3.jpg"]:
+                if k.startswith(prefix):
+                    yield {"key": k, "size": 1, "etag": "e", "last_modified": None}
+
+    tier = TieredStorageService(
+        {LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp()), "src": _Src()}
+    )
+    got = [e["key"] async for e in tier.list_objects("x/", root_id="src")]
+    assert got == ["x/1.jpg", "x/2.jpg"]
+
+    # The local root has no object listing — iterating raises NotImplementedError.
+    with pytest.raises(NotImplementedError):
+        _ = [e async for e in tier.list_objects("u/1/", root_id=LOCAL_ROOT_ID)]
+
+
+# --------------------------------------------------------------------------- #
 # g1 — S3StorageService real I/O (store/get/exists/delete/dedup).
 #
 # Exercises the actual aiobotocore code path against a live S3-compatible store
@@ -1082,6 +1160,12 @@ async def test_s3_store_get_exists_delete_dedup_live():
         k2 = await svc.store_with_hash(0, sha, data, extension=".bin")
         assert k1 == k2 == dedup_key
         assert await svc.exists(dedup_key) is True
+
+        # list_objects: the stored key appears under its prefix, with metadata.
+        prefix = key.rsplit("/", 1)[0] + "/"
+        listed = [e async for e in svc.list_objects(prefix)]
+        assert any(e["key"] == key for e in listed)
+        assert all(("etag" in e and "size" in e and "key" in e) for e in listed)
     finally:
         await svc.delete(key)
         await svc.delete(dedup_key)
@@ -1175,3 +1259,122 @@ async def test_serve_media_archive_offline_returns_503(monkeypatch):
         assert ei.value.headers.get("X-Media-State") == "archived-offline"
     finally:
         set_storage_service(None)
+
+
+class _SeqDB:
+    """Fake async session that answers successive execute() calls from a list.
+
+    serve_media reads twice for an archive content key: first the storage root
+    (``_resolve_storage_root_id``), then the asset's ``remote_url``
+    (``_archive_remote_fallback``).
+    """
+
+    def __init__(self, values):
+        self._values = list(values)
+
+    async def execute(self, *a, **k):
+        value = self._values.pop(0) if self._values else None
+        return _FakeResult(value)
+
+
+@pytest.mark.asyncio
+async def test_serve_media_archive_offline_falls_back_to_remote_url(monkeypatch):
+    """When the archive is unreachable but the asset still has a provider
+    remote_url, serve redirects to that second copy instead of failing 503."""
+    from types import SimpleNamespace
+
+    from starlette.responses import RedirectResponse
+
+    from pixsim7.backend.main.api.v1 import media as media_mod
+
+    class _OfflineArchive(_NonLocalStub):
+        async def exists(self, key):
+            raise ConnectionError("unreachable")
+
+        async def health_check(self):
+            raise ConnectionError("unreachable")
+
+    tier = TieredStorageService(
+        {LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp()), "archive": _OfflineArchive()}
+    )
+    set_storage_service(tier)
+    monkeypatch.setattr(media_mod, "get_media_settings", lambda: SimpleNamespace(), raising=True)
+    monkeypatch.setattr(media_mod.app_settings, "media_archive_serve_mode", "redirect", raising=False)
+    monkeypatch.setattr(media_mod.app_settings, "media_archive_remote_fallback", True, raising=False)
+    remote = "https://media.pixverse.ai/openapi/abc_auto.jpg"
+    try:
+        resp = await media_mod.serve_media(
+            "u/1/content/ab/" + "a" * 64 + ".jpg",
+            SimpleNamespace(id=1),
+            _SeqDB(["archive", remote]),
+            request=SimpleNamespace(headers={}),
+            response=SimpleNamespace(),
+        )
+        assert isinstance(resp, RedirectResponse)
+        assert resp.status_code == 307
+        assert resp.headers["location"] == remote
+    finally:
+        set_storage_service(None)
+
+
+@pytest.mark.asyncio
+async def test_serve_media_archive_offline_no_remote_still_503(monkeypatch):
+    """With the fallback flag on but no usable remote_url, an unreachable archive
+    still returns the classified archived-offline 503 (no silent success)."""
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from pixsim7.backend.main.api.v1 import media as media_mod
+
+    class _OfflineArchive(_NonLocalStub):
+        async def exists(self, key):
+            raise ConnectionError("unreachable")
+
+        async def health_check(self):
+            raise ConnectionError("unreachable")
+
+    tier = TieredStorageService(
+        {LOCAL_ROOT_ID: LocalStorageService(root_path=tempfile.mkdtemp()), "archive": _OfflineArchive()}
+    )
+    set_storage_service(tier)
+    monkeypatch.setattr(media_mod, "get_media_settings", lambda: SimpleNamespace(), raising=True)
+    monkeypatch.setattr(media_mod.app_settings, "media_archive_serve_mode", "redirect", raising=False)
+    monkeypatch.setattr(media_mod.app_settings, "media_archive_remote_fallback", True, raising=False)
+    try:
+        with pytest.raises(HTTPException) as ei:
+            await media_mod.serve_media(
+                "u/1/content/ab/" + "a" * 64 + ".jpg",
+                SimpleNamespace(id=1),
+                _SeqDB(["archive", None]),  # no remote_url
+                request=SimpleNamespace(headers={}),
+                response=SimpleNamespace(),
+            )
+        assert ei.value.status_code == 503
+        assert ei.value.headers.get("X-Media-State") == "archived-offline"
+    finally:
+        set_storage_service(None)
+
+
+@pytest.mark.asyncio
+async def test_proxy_archive_stream_falls_back_to_remote_url(monkeypatch):
+    """Proxy serve mode: a missing archived object falls back to remote_url."""
+    from starlette.responses import RedirectResponse
+
+    from pixsim7.backend.main.api.v1 import media as media_mod
+
+    monkeypatch.setattr(media_mod.app_settings, "media_archive_remote_fallback", True, raising=False)
+
+    class _Req:
+        headers = {}
+
+    class _Storage:
+        async def open_stream(self, key, root_id=None, range_header=None):
+            raise FileNotFoundError(key)
+
+    remote = "https://media.pixverse.ai/openapi/def_auto.jpg"
+    resp = await media_mod._proxy_archive_stream(
+        _Storage(), "u/1/content/ab/x.jpg", "archive", _Req(), _SeqDB([remote]), 1
+    )
+    assert isinstance(resp, RedirectResponse)
+    assert resp.headers["location"] == remote
