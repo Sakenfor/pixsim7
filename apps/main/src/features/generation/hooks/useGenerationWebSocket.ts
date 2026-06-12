@@ -327,8 +327,25 @@ function handleLegacyGenerationUpdate(message: WebSocketRecord): void {
   });
 }
 
+// The server sends a `connected` welcome on every (re)connection. The first
+// one is the initial connect — the gallery just loaded, nothing to backfill.
+// Every subsequent one is a RECONNECT after a drop (mobile backgrounding,
+// network handoff, backend restart): the server has no event replay, so any
+// asset:created/updated that fired during the gap was lost. Ask live surfaces
+// to re-fetch their head page. Survives HMR so a dev re-eval doesn't replay it.
+const connectionState = hmrSingleton(
+  'generationWsConnectionState',
+  () => ({ hasConnectedBefore: false }),
+);
+
 function handleConnected(message: WebSocketRecord): void {
   debugFlags.log('websocket', 'Connection acknowledged:', message);
+  if (connectionState.hasConnectedBefore) {
+    debugFlags.log('websocket', 'Reconnected — requesting asset resync');
+    assetEvents.emitResync();
+  } else {
+    connectionState.hasConnectedBefore = true;
+  }
 }
 
 // HMR-safe handler indirection: the `wsManager.on(...)` registrations

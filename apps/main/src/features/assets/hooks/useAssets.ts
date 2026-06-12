@@ -449,6 +449,11 @@ export function useAssets(options?: {
     }
   }, [loading, limit, buildQueryParams]);
 
+  // Stable handle to goToPage for event subscriptions that shouldn't re-bind
+  // every time `loading` toggles (goToPage's identity changes with it).
+  const goToPageRef = useRef(goToPage);
+  goToPageRef.current = goToPage;
+
   const reset = useCallback((pageOverride?: number) => {
     const nextPage = pageOverride && pageOverride > 0 ? pageOverride : 1;
     // Increment request ID to invalidate any in-flight requests
@@ -630,6 +635,25 @@ export function useAssets(options?: {
 
     return unsubscribe;
   }, [livePrepend, filterParams, prependAsset]);
+
+  // Re-fetch the head page when the realtime feed reconnects. The server has
+  // no event replay, so asset events that fired while the socket was down (a
+  // mobile backgrounding, network handoff, or backend restart) are otherwise
+  // lost until a manual refresh. Only resync when actually viewing the live
+  // head (page 1, default newest-first sort) so paginated/sorted browsing
+  // isn't yanked out from under the user.
+  useEffect(() => {
+    if (!livePrepend) return;
+    const unsubscribe = assetEvents.subscribeToResync(() => {
+      const isDefaultSort =
+        !filterParams.sort_by ||
+        (filterParams.sort_by === 'created_at' && filterParams.sort_dir === 'desc');
+      if (currentPageRef.current === 1 && isDefaultSort) {
+        void goToPageRef.current(1);
+      }
+    });
+    return unsubscribe;
+  }, [livePrepend, filterParams]);
 
   // Subscribe to asset update events (from sync completions)
   useEffect(() => {

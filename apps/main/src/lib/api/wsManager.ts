@@ -70,6 +70,10 @@ function computeWebSocketUrl(): string {
   return 'ws://localhost:8000/api/v1/ws/generations';
 }
 
+// How often to ping + check liveness. A zombie socket is detected within ~2
+// intervals (one to send the unanswered ping, one to notice no reply).
+const HEARTBEAT_INTERVAL_MS = 15000;
+
 const WS_CANDIDATES = Array.from(
   new Set(
     [
@@ -101,6 +105,66 @@ export class WebSocketManager {
   private _lastError: string | null = null;
   private _reconnectAttempts = 0;
   private _currentUrl: string | null = null;
+  private wasHidden = false;
+  // Whether the CURRENT socket ever reached OPEN. Used to decide, on close,
+  // whether to rotate to the next candidate URL (a candidate that never
+  // connected) or retry the same one (a known-good URL that merely dropped).
+  private connectionOpened = false;
+  // Heartbeat: we ping the server each interval; it replies `pong`. ANY inbound
+  // message (pong or a real event) clears `awaitingPong`. If a full interval
+  // passes with a ping outstanding and nothing received, the socket is a zombie
+  // (readyState still OPEN but no traffic — common on mobile network handoffs)
+  // and we force a reconnect.
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private awaitingPong = false;
+
+  constructor() {
+    this.installResumeListeners();
+  }
+
+  /**
+   * Wire foreground/resume recovery. Mobile browsers suspend backgrounded
+   * tabs and kill the socket — frequently WITHOUT firing `onclose` in time,
+   * and the 5s reconnect timer is frozen while suspended. So when the tab
+   * comes back we proactively reconnect if the socket isn't healthy.
+   *
+   * Mirrors the visibility/focus/pageshow pattern already used by
+   * `mediaSuspendStore` and `bridgeStatusStore`. `focus`/`pageshow` are
+   * belt-and-suspenders for missed/coalesced `visibilitychange` events and
+   * bfcache restores.
+   */
+  private installResumeListeners() {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    window.addEventListener('focus', this.handleResume);
+    window.addEventListener('pageshow', this.handleResume);
+  }
+
+  private handleVisibilityChange = () => {
+    if (document.hidden) {
+      this.wasHidden = true;
+      return;
+    }
+    this.handleResume();
+  };
+
+  private handleResume = () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    // Only recover when something actually wants the connection. Skip if the
+    // tab was never backgrounded (avoids needless churn on plain focus events).
+    if (!this.wasHidden) return;
+    this.wasHidden = false;
+    if (this.refCount === 0) return;
+
+    const state = this.ws?.readyState;
+    if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) return;
+
+    // CLOSED / CLOSING / null after a suspend — `onclose` may not have fired
+    // yet, but readyState still reflects the dead socket. Reconnect now rather
+    // than waiting on a frozen 5s timer that never resumed.
+    debugFlags.log('websocket', 'Tab resumed with dead socket (state:', state, '), forcing reconnect');
+    this.forceReconnect();
+  };
 
   subscribe(callback: () => void) {
     this.subscribers.add(callback);
@@ -161,8 +225,8 @@ export class WebSocketManager {
 
   forceReconnect() {
     debugFlags.log('websocket', 'Force reconnect requested');
+    this.stopHeartbeat();
     this._reconnectAttempts = 0;
-    this._lastError = null;
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -208,6 +272,42 @@ export class WebSocketManager {
     this.subscribers.forEach(callback => callback());
   }
 
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.awaitingPong = false;
+    this.heartbeatTimer = setInterval(() => {
+      const ws = this.ws;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        this.stopHeartbeat();
+        return;
+      }
+      if (this.awaitingPong) {
+        // Previous ping went unanswered and nothing else arrived in the
+        // interval — the socket is dead despite readyState OPEN. Reconnect.
+        debugFlags.log('websocket', 'Heartbeat timed out (no pong) — forcing reconnect');
+        this._lastError = 'heartbeat timeout (no pong)';
+        this.forceReconnect();
+        return;
+      }
+      this.awaitingPong = true;
+      try {
+        ws.send('ping');
+      } catch (err) {
+        // Send failed on a half-dead socket — let forceReconnect recover it.
+        debugFlags.log('websocket', 'Heartbeat ping send failed — forcing reconnect', err);
+        this.forceReconnect();
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    this.awaitingPong = false;
+  }
+
   private connect = () => {
     if (this.isConnecting) {
       debugFlags.log('websocket', 'Already connecting, skipping...');
@@ -225,26 +325,25 @@ export class WebSocketManager {
       const targetUrl = WS_CANDIDATES[currentIndex];
       this._currentUrl = targetUrl;
       debugFlags.log('websocket', `Connecting to generation updates (${targetUrl})...`);
+      this.connectionOpened = false;
       const ws = new WebSocket(targetUrl);
 
       ws.onopen = () => {
         debugFlags.log('websocket', 'Connected to generation updates via', targetUrl);
+        this.connectionOpened = true;
         this.isConnecting = false;
         this.isConnected = true;
         this._lastError = null;
         this._reconnectAttempts = 0;
         this.notify();
-
-        const pingInterval = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send('ping');
-          } else {
-            clearInterval(pingInterval);
-          }
-        }, 30000);
+        this.startHeartbeat();
       };
 
       ws.onmessage = (event) => {
+        // Any inbound traffic proves the socket is alive — clear the pending
+        // heartbeat. (The server's `pong` reply lands here too; parsing it as
+        // a message is a no-op, but its arrival is the liveness signal.)
+        this.awaitingPong = false;
         this.handleMessage(event);
       };
 
@@ -258,6 +357,7 @@ export class WebSocketManager {
 
       ws.onclose = (event) => {
         debugFlags.log('websocket', 'Disconnected from', targetUrl, '- will attempt reconnect in 5s…');
+        this.stopHeartbeat();
         this.isConnecting = false;
         this.isConnected = false;
         if (!this._lastError) {
@@ -265,7 +365,14 @@ export class WebSocketManager {
         }
         this.notify();
 
-        this.candidateIndex = (this.candidateIndex + 1) % WS_CANDIDATES.length;
+        // Only rotate to the next candidate when THIS attempt never opened —
+        // i.e. the candidate is genuinely unreachable. A clean drop of a
+        // previously-open socket retries the SAME known-good URL instead of
+        // wandering onto fallbacks (e.g. ws://localhost:8000) that are
+        // unreachable from a remote/mobile client over ZeroTier.
+        if (!this.connectionOpened) {
+          this.candidateIndex = (this.candidateIndex + 1) % WS_CANDIDATES.length;
+        }
 
         if (this.refCount > 0) {
           this._reconnectAttempts++;
@@ -330,6 +437,7 @@ export class WebSocketManager {
   }
 
   private disconnect() {
+    this.stopHeartbeat();
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;

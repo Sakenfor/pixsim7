@@ -14,11 +14,13 @@ type AssetUpdateCallback = (asset: AssetResponse) => void;
 type AssetDeleteCallback = (assetId: number | string) => void;
 type RetryCallback = () => void;
 type OpenToolsPanelCallback = (assetIds: number[]) => void;
+type ResyncCallback = () => void;
 
 class AssetEventEmitter {
   private listeners: Set<AssetEventCallback> = new Set();
   private updateListeners: Set<AssetUpdateCallback> = new Set();
   private deleteListeners: Set<AssetDeleteCallback> = new Set();
+  private resyncListeners: Set<ResyncCallback> = new Set();
   private retryListeners: Set<RetryCallback> = new Set();
   private openToolsPanelListeners: Set<OpenToolsPanelCallback> = new Set();
 
@@ -90,6 +92,33 @@ class AssetEventEmitter {
         callback(assetId);
       } catch (err) {
         console.error('[AssetEvents] Delete listener error:', err);
+      }
+    });
+  }
+
+  /**
+   * Subscribe to "resync" events — fired when the realtime feed reconnects
+   * after a drop. The server has no event replay, so asset:created/updated
+   * events that fired while the socket was down are lost; live surfaces
+   * should re-fetch their head page to backfill the gap.
+   */
+  subscribeToResync(callback: ResyncCallback): () => void {
+    this.resyncListeners.add(callback);
+    return () => {
+      this.resyncListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Emit a "resync" event after a websocket reconnect.
+   */
+  emitResync(): void {
+    console.log('[AssetEvents] Resync requested (websocket reconnected)');
+    this.resyncListeners.forEach((callback) => {
+      try {
+        callback();
+      } catch (err) {
+        console.error('[AssetEvents] Resync listener error:', err);
       }
     });
   }
