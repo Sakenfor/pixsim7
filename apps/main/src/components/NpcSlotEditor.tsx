@@ -60,6 +60,7 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
   const [backgroundAsset, setBackgroundAsset] = useState<AssetModel | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncingSlots, setIsSyncingSlots] = useState(false);
+  const [slotSyncWarning, setSlotSyncWarning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -92,6 +93,7 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
 
     let isActive = true;
     setIsSyncingSlots(true);
+    setSlotSyncWarning(null);
     (async () => {
       try {
         const loadedSlots = await getGameLocationNpcSlots2d(location.id);
@@ -100,8 +102,14 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
         setSelectedSlotId(prev =>
           prev && loadedSlots.some(slot => slot.id === prev) ? prev : null
         );
-      } catch {
-        // Keep fallback slots from local meta when endpoint fetch fails.
+      } catch (e: unknown) {
+        // Keep fallback slots from local meta, but tell the author they may
+        // be editing stale data instead of failing silently.
+        if (isActive) {
+          setSlotSyncWarning(
+            `Couldn't refresh slots from the server (${e instanceof Error ? e.message : String(e)}); showing locally cached layout.`
+          );
+        }
       } finally {
         if (isActive) {
           setIsSyncingSlots(false);
@@ -246,6 +254,9 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
       </div>
 
       {error && <p className="text-sm text-red-500">Error: {error}</p>}
+      {slotSyncWarning && (
+        <p className="text-sm text-amber-600 dark:text-amber-400">{slotSyncWarning}</p>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Background with clickable slots */}
