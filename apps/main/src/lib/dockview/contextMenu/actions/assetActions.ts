@@ -1128,6 +1128,31 @@ function getActiveManualSet(): ManualAssetSet | undefined {
   return getManualAssetSets().find((set) => set.id === activeId);
 }
 
+/** How many of the given asset ids are already members of the set. */
+function countAlreadyInSet(set: ManualAssetSet, assetIds: number[]): number {
+  if (!assetIds.length) return 0;
+  const members = new Set(set.assetIds);
+  return assetIds.reduce((n, id) => (members.has(id) ? n + 1 : n), 0);
+}
+
+/**
+ * Toast that reflects what actually changed. The backend dedupes membership
+ * (composite PK on asset_set_member), so re-adding an existing member is a
+ * no-op — say so instead of claiming a phantom "Added".
+ */
+function notifyAddResult(setName: string, total: number, alreadyIn: number): void {
+  const added = total - alreadyIn;
+  if (added <= 0) {
+    notify(
+      'info',
+      total === 1 ? `Already in "${setName}".` : `All ${total} already in "${setName}".`,
+    );
+    return;
+  }
+  const base = `Added ${added} asset${added === 1 ? '' : 's'} to "${setName}".`;
+  notify('success', alreadyIn > 0 ? `${base} (${alreadyIn} already there)` : base);
+}
+
 const addToActiveSetAction: MenuAction = {
   id: 'asset:sets:add-to-active',
   label: 'Add to Active Set',
@@ -1146,8 +1171,10 @@ const addToActiveSetAction: MenuAction = {
     if (!active) return;
     const assets = resolveAssets(ctx);
     if (!assets.length) return;
-    void useAssetSetStore.getState().addAssetsToSet(active.id, assets.map((asset) => asset.id));
-    notify('success', `Added ${assets.length} asset${assets.length === 1 ? '' : 's'} to "${active.name}".`);
+    const ids = assets.map((asset) => asset.id);
+    const alreadyIn = countAlreadyInSet(active, ids);
+    void useAssetSetStore.getState().addAssetsToSet(active.id, ids);
+    notifyAddResult(active.name, ids.length, alreadyIn);
   },
 };
 
@@ -1225,15 +1252,29 @@ const addToAnySetSubmenuAction: MenuAction = {
       ];
     }
 
-    return manualSets.map((set) => ({
-      id: `asset:sets:add-to:${set.id}`,
-      label: `${set.name} (${set.assetIds.length})`,
-      icon: 'folder',
-      execute: () => {
-        void useAssetSetStore.getState().addAssetsToSet(set.id, assets.map((asset) => asset.id));
-        notify('success', `Added ${assets.length} asset${assets.length === 1 ? '' : 's'} to "${set.name}".`);
-      },
-    }));
+    const ids = assets.map((asset) => asset.id);
+    return manualSets.map((set) => {
+      const alreadyIn = countAlreadyInSet(set, ids);
+      const allIn = ids.length > 0 && alreadyIn === ids.length;
+      const memberSuffix =
+        alreadyIn === 0 ? '' : ids.length === 1 ? ' ✓' : ` ✓ ${alreadyIn}/${ids.length}`;
+      return {
+        id: `asset:sets:add-to:${set.id}`,
+        label: `${set.name} (${set.assetIds.length})${memberSuffix}`,
+        icon: allIn ? 'check' : 'folder',
+        disabled: () =>
+          allIn
+            ? ids.length === 1
+              ? 'Already in this set'
+              : 'All selected already in this set'
+            : false,
+        execute: () => {
+          const before = countAlreadyInSet(set, ids);
+          void useAssetSetStore.getState().addAssetsToSet(set.id, ids);
+          notifyAddResult(set.name, ids.length, before);
+        },
+      };
+    });
   },
   execute: () => {},
 };

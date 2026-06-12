@@ -18,7 +18,13 @@ import { SmartFilterEditor } from './SmartFilterEditor';
 
 // ── Inline search for adding assets to manual sets ─────────────────────
 
-function AssetSearchAdder({ onAdd }: { onAdd: (asset: AssetModel) => void }) {
+function AssetSearchAdder({
+  onAdd,
+  memberIds,
+}: {
+  onAdd: (asset: AssetModel) => void;
+  memberIds: Set<number>;
+}) {
   const [query, setQuery] = useState('');
   const { items, loading } = useAssets({
     limit: 12,
@@ -36,17 +42,29 @@ function AssetSearchAdder({ onAdd }: { onAdd: (asset: AssetModel) => void }) {
       />
       {items.length > 0 && (
         <div className="grid grid-cols-4 gap-1 max-h-[200px] overflow-y-auto thin-scrollbar">
-          {items.map((asset) => (
-            <button
-              key={asset.id}
-              type="button"
-              onClick={() => onAdd(asset)}
-              className="rounded-lg overflow-hidden hover:ring-2 ring-accent transition-shadow"
-              title={`Add asset #${asset.id}`}
-            >
-              <MediaCard asset={asset} layout={{ density: 'compact', hideFooter: true, aspectSquare: true }} />
-            </button>
-          ))}
+          {items.map((asset) => {
+            const inSet = memberIds.has(asset.id);
+            return (
+              <button
+                key={asset.id}
+                type="button"
+                disabled={inSet}
+                onClick={() => onAdd(asset)}
+                className={clsx(
+                  'relative rounded-lg overflow-hidden transition-shadow',
+                  inSet ? 'cursor-default' : 'hover:ring-2 ring-accent',
+                )}
+                title={inSet ? `Already in set (#${asset.id})` : `Add asset #${asset.id}`}
+              >
+                <MediaCard asset={asset} layout={{ density: 'compact', hideFooter: true, aspectSquare: true }} />
+                {inSet && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/50">
+                    <Icon name="check" size={18} className="text-emerald-400" />
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
       {loading && (
@@ -204,6 +222,7 @@ export function SetEditView({
           {showSearch && (
             <AssetSearchAdder
               onAdd={(asset) => void addAssetsToSet(set.id, [asset.id])}
+              memberIds={new Set(set.kind === 'manual' ? set.assetIds : [])}
             />
           )}
         </div>

@@ -1,4 +1,4 @@
-import { Button } from '@pixsim7/shared.ui';
+import { Button, useToastStore } from '@pixsim7/shared.ui';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -1131,7 +1131,25 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
 
   const addSelectedToActiveManualSet = useCallback(() => {
     if (!activeManualSet || selectedAssets.length === 0) return;
-    void addAssetsToSet(activeManualSet.id, selectedAssets.map((asset) => asset.id));
+    const ids = selectedAssets.map((asset) => asset.id);
+    const members = new Set(activeManualSet.assetIds);
+    const alreadyIn = ids.reduce((n, id) => (members.has(id) ? n + 1 : n), 0);
+    const added = ids.length - alreadyIn;
+    void addAssetsToSet(activeManualSet.id, ids);
+    if (added <= 0) {
+      useToastStore.getState().addToast({
+        type: 'info',
+        message: `All ${ids.length} already in "${activeManualSet.name}".`,
+        duration: 4000,
+      });
+    } else {
+      const base = `Added ${added} asset${added === 1 ? '' : 's'} to "${activeManualSet.name}".`;
+      useToastStore.getState().addToast({
+        type: 'success',
+        message: alreadyIn > 0 ? `${base} (${alreadyIn} already there)` : base,
+        duration: 4000,
+      });
+    }
   }, [activeManualSet, addAssetsToSet, selectedAssets]);
 
   const handleCreateSet = useCallback(async () => {
