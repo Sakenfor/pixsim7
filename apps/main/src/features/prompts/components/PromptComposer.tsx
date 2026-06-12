@@ -1454,7 +1454,7 @@ export function PromptComposer({
         },
       }),
       variableTokenExtension(
-        { tokenLines: cmShadowTokenLines, savedNames: savedVariableNames },
+        { tokenLines: cmShadowTokenLines, savedNames: savedVariableNames, facetVocab },
         {
           onVariableClick: (variable, anchor) => {
             setCmVariablePopover({ variable, anchor });
@@ -1471,6 +1471,7 @@ export function PromptComposer({
       cmRefInput.extension,
       cmFacetInput.extension,
       savedVariableNames,
+      facetVocab,
     ],
   );
   const hasShadowExt =

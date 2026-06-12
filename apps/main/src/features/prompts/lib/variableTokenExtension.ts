@@ -9,7 +9,8 @@ import {
 
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 
-import { isDefaultVariableClass } from './promptVariableName';
+import { resolveFacet, type FacetVocab } from './facetRecognition';
+import { facetAxesForClass, isDefaultVariableClass, parseVariableName } from './promptVariableName';
 import { getVariableClassVisual } from './variableClassVisuals';
 
 /**
@@ -36,6 +37,13 @@ export interface VariableRange {
   defaultClass: boolean;
   /** Class colour hex (from the role taxonomy), when the class has one. */
   colorHex?: string;
+  /**
+   * Facet sub-range — the portion after the first `_` (e.g. `HIP` in
+   * `ACTOR1_HIP`) plus its recognition, set only when the class declares
+   * facet axes and the token has a facet. Drives a nested mark coloured by
+   * whether the facet resolves (typed) or not (unrecognised within the class).
+   */
+  facet?: { from: number; to: number; known: boolean };
 }
 
 export interface VariableTokenCallbacks {
@@ -45,16 +53,25 @@ export interface VariableTokenCallbacks {
 export interface VariableTokensConfig {
   tokenLines: PromptTokenLine[] | undefined;
   savedNames: ReadonlySet<string>;
+  /** Vocab members for value-level facet recognition (`HIP` → `part:hip`).
+   *  Empty/omitted = axis-level only (`POSE` still resolves; concrete values
+   *  fall back to unrecognised). Threaded from `useVocabularies`. */
+  facetVocab?: FacetVocab;
 }
 
-const EMPTY_CONFIG: VariableTokensConfig = { tokenLines: undefined, savedNames: new Set() };
+const EMPTY_CONFIG: VariableTokensConfig = {
+  tokenLines: undefined,
+  savedNames: new Set(),
+  facetVocab: {},
+};
 
 const variableTokensFacet = Facet.define<VariableTokensConfig, VariableTokensConfig>({
   combine: (values) => values[0] ?? EMPTY_CONFIG,
 });
 
-function collectVariableRanges(config: VariableTokensConfig, doc: Text): VariableRange[] {
-  const { tokenLines, savedNames } = config;
+/** Exported for unit tests — the host uses the extension, not this directly. */
+export function collectVariableRanges(config: VariableTokensConfig, doc: Text): VariableRange[] {
+  const { tokenLines, savedNames, facetVocab } = config;
   if (!tokenLines) return [];
   const out: VariableRange[] = [];
   const docLength = doc.length;
@@ -81,6 +98,22 @@ function collectVariableRanges(config: VariableTokensConfig, doc: Text): Variabl
       const from = el.start + leading;
       const to = from + raw.trim().length;
       if (from >= to || to > docLength) continue;
+      // Facet sub-range: the portion after the first `_`, coloured by whether
+      // it resolves against the class's facet axes. Only for facet-declaring
+      // classes (matches the autocomplete gating) so prose-ish `FOO_BAR` and
+      // facetless classes stay un-flagged.
+      const parsed = parseVariableName(name);
+      let facet: VariableRange['facet'];
+      if (parsed.facets.length > 0 && facetAxesForClass(parsed.className).length > 0) {
+        const us = name.indexOf('_');
+        if (us > 0 && us < name.length - 1) {
+          const facetFrom = from + us + 1;
+          if (facetFrom < to && to <= docLength) {
+            const resolved = resolveFacet(parsed.className, parsed.facets[0], facetVocab ?? {});
+            facet = { from: facetFrom, to, known: resolved.known };
+          }
+        }
+      }
       out.push({
         from,
         to,
@@ -88,6 +121,7 @@ function collectVariableRanges(config: VariableTokensConfig, doc: Text): Variabl
         saved: savedNames.has(name),
         defaultClass: isDefaultVariableClass(name),
         colorHex: getVariableClassVisual(name)?.hex,
+        facet,
       });
     }
   }
@@ -126,6 +160,29 @@ function markFor(range: VariableRange): Decoration {
   return mark;
 }
 
+// Facet sub-mark — nested inside the var mark over the facet portion. Known
+// (typed) facets get a faint violet wash echoing the access-operator/popover
+// hue; unrecognised-within-class facets get an amber dashed underline to flag
+// "this isn't a facet of that class". Two cached marks (known/unknown).
+const _facetMarkCache = new Map<boolean, Decoration>();
+
+function facetMarkFor(known: boolean): Decoration {
+  let mark = _facetMarkCache.get(known);
+  if (!mark) {
+    const style = known
+      ? 'background-color:rgba(168,85,247,0.12);border-radius:2px'
+      : 'background-color:rgba(245,158,11,0.13);border-bottom:1px dashed rgba(217,119,6,0.85)';
+    mark = Decoration.mark({
+      attributes: {
+        class: known ? 'cm-prompt-facet cm-prompt-facet-known' : 'cm-prompt-facet cm-prompt-facet-unknown',
+        style,
+      },
+    });
+    _facetMarkCache.set(known, mark);
+  }
+  return mark;
+}
+
 function buildDecorations(config: VariableTokensConfig, doc: Text): DecorationSet {
   try {
     const ranges = collectVariableRanges(config, doc);
@@ -134,6 +191,11 @@ function buildDecorations(config: VariableTokensConfig, doc: Text): DecorationSe
     for (const r of ranges) {
       if (r.from >= r.to || r.from < 0 || r.to > doc.length) continue;
       builder.add(r.from, r.to, markFor(r));
+      // Nested facet mark — added after the base mark and at a strictly later
+      // `from` (after the `_`), so the builder stays monotonic.
+      if (r.facet && r.facet.from > r.from && r.facet.from < r.facet.to && r.facet.to <= doc.length) {
+        builder.add(r.facet.from, r.facet.to, facetMarkFor(r.facet.known));
+      }
     }
     return builder.finish();
   } catch (err) {
@@ -199,6 +261,12 @@ const variableTheme = EditorView.baseTheme({
   },
   '.cm-prompt-var:hover': {
     backgroundColor: 'rgba(168, 85, 247, 0.18)',
+  },
+  // Facet portion (nested) — layout/transition only; the known/unknown colour
+  // is an inline style applied per-token by facetMarkFor().
+  '.cm-prompt-facet': {
+    borderRadius: '2px',
+    transition: 'background-color 100ms ease, border-color 100ms ease',
   },
 });
 
