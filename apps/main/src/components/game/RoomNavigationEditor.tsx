@@ -44,10 +44,12 @@ import {
   fromAssetResponse,
   getAsset,
   getAssetDisplayUrls,
+  type AssetModel,
   type PickedAsset,
 } from '@features/assets';
 
 import { SceneGizmoMiniGame } from '@/components/minigames/SceneGizmoMiniGame';
+import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import {
   addRoomCheckpoint,
@@ -834,6 +836,58 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
       : `Missing ${key}`;
   }, [activeCheckpoint, viewerDirection]);
 
+  // Asset id the preview should show for the current checkpoint + facing.
+  const activeViewAssetId = useMemo(() => {
+    if (!activeCheckpoint) {
+      return undefined;
+    }
+    if (activeCheckpoint.view.kind === 'cylindrical_pano') {
+      return activeCheckpoint.view.pano_asset_id;
+    }
+    return activeCheckpoint.view[`${viewerDirection}_asset_id` as const];
+  }, [activeCheckpoint, viewerDirection]);
+
+  const [previewAsset, setPreviewAsset] = useState<AssetModel | null>(null);
+
+  useEffect(() => {
+    const numericId = activeViewAssetId ? Number(activeViewAssetId) : null;
+    if (numericId == null || !Number.isFinite(numericId)) {
+      setPreviewAsset(null);
+      return;
+    }
+
+    let isActive = true;
+    (async () => {
+      try {
+        const response = await getAsset(numericId);
+        if (!isActive) return;
+        const asset = fromAssetResponse(response);
+        setPreviewAsset(
+          asset.mediaType === 'image' || asset.mediaType === 'video' ? asset : null,
+        );
+      } catch {
+        // Preview falls back to the placeholder gradient; the asset label
+        // already tells the author which id is set.
+        if (isActive) {
+          setPreviewAsset(null);
+        }
+      }
+    })();
+    return () => {
+      isActive = false;
+    };
+  }, [activeViewAssetId]);
+
+  const previewUrls = useMemo(
+    () => (previewAsset ? getAssetDisplayUrls(previewAsset) : null),
+    [previewAsset],
+  );
+  const previewCandidate = previewUrls?.previewUrl || previewUrls?.mainUrl;
+  const { mediaSrc: previewSrc } = useResolvedAssetMedia({
+    mediaUrl: previewCandidate,
+    mediaType: previewAsset?.mediaType === 'video' ? 'video' : 'image',
+  });
+
   const transitionCacheSnapshot = useMemo(() => {
     const cachePayload = (location.meta as Record<string, unknown> | null | undefined)?.[
       ROOM_NAVIGATION_TRANSITION_CACHE_META_KEY
@@ -991,17 +1045,46 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
         ) : (
           <>
             <div className="relative w-full aspect-video rounded overflow-hidden border border-neutral-300 dark:border-neutral-700 bg-neutral-950 text-neutral-100">
+              {previewSrc && previewAsset?.mediaType === 'video' ? (
+                <video
+                  src={previewSrc}
+                  className="absolute inset-0 h-full w-full object-cover"
+                  muted
+                  loop
+                  autoPlay
+                  playsInline
+                />
+              ) : previewSrc ? (
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    backgroundImage: `url(${previewSrc})`,
+                    // Pan the image with the look controls. Pano views scan a
+                    // wider horizontal range than directional stills.
+                    backgroundSize:
+                      activeCheckpoint.view.kind === 'cylindrical_pano' ? 'auto 100%' : 'cover',
+                    backgroundRepeat:
+                      activeCheckpoint.view.kind === 'cylindrical_pano' ? 'repeat-x' : 'no-repeat',
+                    backgroundPosition: `${50 + viewerYaw / 3.6}% ${50 - viewerPitch / 1.8}%`,
+                  }}
+                />
+              ) : (
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background:
+                      activeCheckpoint.view.kind === 'cylindrical_pano'
+                        ? 'radial-gradient(circle at center, #1f2937 0%, #0f172a 55%, #020617 100%)'
+                        : 'linear-gradient(135deg, #1f2937 0%, #0f172a 60%, #111827 100%)',
+                    backgroundPosition: `${50 + viewerYaw / 4}% ${50 - viewerPitch / 3}%`,
+                  }}
+                />
+              )}
               <div
-                className="absolute inset-0"
-                style={{
-                  background:
-                    activeCheckpoint.view.kind === 'cylindrical_pano'
-                      ? 'radial-gradient(circle at center, #1f2937 0%, #0f172a 55%, #020617 100%)'
-                      : 'linear-gradient(135deg, #1f2937 0%, #0f172a 60%, #111827 100%)',
-                  backgroundPosition: `${50 + viewerYaw / 4}% ${50 - viewerPitch / 3}%`,
-                }}
+                className={`absolute inset-0 bg-gradient-to-t from-black/70 via-transparent ${
+                  previewSrc ? 'to-black/20' : 'to-black/40'
+                }`}
               />
-              <div className="absolute inset-0 bg-black/40" />
               <div className="absolute inset-0 p-4 flex flex-col justify-between">
                 <div className="text-xs font-medium uppercase tracking-wide opacity-80">
                   {activeCheckpoint.label} ({activeCheckpoint.id})
