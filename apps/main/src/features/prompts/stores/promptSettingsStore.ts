@@ -29,6 +29,11 @@ export interface PromptSettings {
   // persisted elsewhere; these are the "how I like the composer arranged"
   // view choices that previously reset on every remount).
   composerMode: 'text' | 'blocks';
+  // Structure/Syntax layer: the mini-language decorations (operators +
+  // variables + facets + click-to-edit) driven by the client-side tokenizer.
+  // Independent of composerShowAnalysis (the heavy role-analysis overlay):
+  // structure is cheap/offline and on by default; analysis is opt-in.
+  composerShowStructure: boolean;
   composerShowAnalysis: boolean;
   composerShowTools: boolean;
 
@@ -64,6 +69,7 @@ interface PromptSettingsStore extends PromptSettings {
   setPromptRoleColors: (colors: Record<string, string>) => void;
   setBlocksLayout: (value: PromptSettings['blocksLayout']) => void;
   setComposerMode: (value: PromptSettings['composerMode']) => void;
+  setComposerShowStructure: (value: boolean) => void;
   setComposerShowAnalysis: (value: boolean) => void;
   setComposerShowTools: (value: boolean) => void;
   setSemanticEnabled: (value: boolean) => void;
@@ -84,6 +90,7 @@ const DEFAULT_SETTINGS: PromptSettings = {
   ghostDiffPrecision: 'coarse',
   blocksLayout: 'stacked',
   composerMode: 'text',
+  composerShowStructure: true,
   composerShowAnalysis: false,
   composerShowTools: false,
   semanticEnabled: false,
@@ -114,6 +121,7 @@ export const usePromptSettingsStore = create<PromptSettingsStore>()(
       setPromptRoleColors: (colors) => set({ promptRoleColors: { ...colors } }),
       setBlocksLayout: (value) => set({ blocksLayout: value }),
       setComposerMode: (value) => set({ composerMode: value }),
+      setComposerShowStructure: (value) => set({ composerShowStructure: value }),
       setComposerShowAnalysis: (value) => set({ composerShowAnalysis: value }),
       setComposerShowTools: (value) => set({ composerShowTools: value }),
       setSemanticEnabled: (value) => set({ semanticEnabled: value }),

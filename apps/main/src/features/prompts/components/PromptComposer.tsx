@@ -403,6 +403,8 @@ export function PromptComposer({
 
   const showShadow = usePromptSettingsStore((state) => state.composerShowAnalysis);
   const setShowShadow = usePromptSettingsStore((state) => state.setComposerShowAnalysis);
+  const showStructure = usePromptSettingsStore((state) => state.composerShowStructure);
+  const setShowStructure = usePromptSettingsStore((state) => state.setComposerShowStructure);
   const [showHistory, setShowHistory] = useState(false);
   const [, forceHistoryRender] = useState(0);
   const [promotingHistoryIndex, setPromotingHistoryIndex] = useState<number | null>(null);
@@ -1384,6 +1386,11 @@ export function PromptComposer({
   // doc == value), matching what those extensions already expect. The heavier
   // ANALYSIS layer (role candidates + side panel) still rides cmShadowTokenLines.
   const clientTokenLines = useClientTokens(value);
+  // The Structure/Syntax toggle gates the whole mini-language layer (operators
+  // + variables + facets + click-to-edit). Off → feed the extensions undefined
+  // so they render nothing; the analyze-driven ANALYSIS layer is gated
+  // separately by showShadow.
+  const structureTokenLines = showStructure ? clientTokenLines : undefined;
 
   // --- CM extensions for CodeMirror mode ---
   // Diff precision is a user-controlled setting (toolbar dropdown) so both
@@ -1465,7 +1472,7 @@ export function PromptComposer({
       // positions. Markers are added by handleAcceptOpOutput; consumers
       // snapshot via getSpanProvenance(view.state) at save time.
       spanProvenanceField,
-      operatorEditExtension(clientTokenLines, {
+      operatorEditExtension(structureTokenLines, {
         onOperatorClick: (operator, anchor) => {
           // The intra-token `_` is an access operator, not a relation operator
           // — route it to the facet popover instead of the type-swap popover.
@@ -1477,7 +1484,7 @@ export function PromptComposer({
         },
       }),
       variableTokenExtension(
-        { tokenLines: clientTokenLines, savedNames: savedVariableNames, facetVocab },
+        { tokenLines: structureTokenLines, savedNames: savedVariableNames, facetVocab },
         {
           onVariableClick: (variable, anchor) => {
             setCmVariablePopover({ variable, anchor });
@@ -1490,7 +1497,7 @@ export function PromptComposer({
       cmGhostConfig?.comparisonText,
       cmGhostConfig?.stepDistance,
       cmGhostConfig?.precision,
-      clientTokenLines,
+      structureTokenLines,
       cmRefInput.extension,
       cmFacetInput.extension,
       savedVariableNames,
@@ -2130,6 +2137,27 @@ export function PromptComposer({
         >
           <Icon name={pinnedTemplateId ? 'pin' : 'shuffle'} size={14} />
         </button>
+
+        {mode === 'text' && useCodemirror && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setShowStructure(!showStructure)}
+            title={
+              showStructure
+                ? 'Hide structure (operators, variables, facets)'
+                : 'Show structure (operators, variables, facets)'
+            }
+            className={clsx(
+              'p-1 rounded transition-colors',
+              showStructure
+                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+            )}
+          >
+            <Icon name="code" size={14} />
+          </button>
+        )}
 
         {mode === 'text' && autoAnalyze && (
           <button
