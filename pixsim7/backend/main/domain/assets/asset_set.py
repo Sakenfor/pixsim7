@@ -57,6 +57,11 @@ class AssetSet(SQLModel, table=True):
     )
     description: Optional[str] = Field(default=None, max_length=1000)
     color: Optional[str] = Field(default=None, max_length=32)
+    icon: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Optional @lib/icons name shown on set badges/hover toggles",
+    )
 
     # ===== SMART-SET CRITERIA (null for manual sets) =====
     filters: Optional[Dict[str, Any]] = Field(

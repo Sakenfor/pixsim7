@@ -51,6 +51,7 @@ class AssetSetResponse(BaseModel):
     kind: str
     description: Optional[str] = None
     color: Optional[str] = None
+    icon: Optional[str] = None
     # Smart-set criteria (null for manual sets).
     filters: Optional[Dict[str, Any]] = None
     maxResults: Optional[int] = None
@@ -73,6 +74,7 @@ class AssetSetCreateRequest(BaseModel):
     kind: str = Field("manual", description="manual | smart")
     description: Optional[str] = Field(None, max_length=1000)
     color: Optional[str] = Field(None, max_length=32)
+    icon: Optional[str] = Field(None, max_length=200)
     is_shared: bool = False
     # Smart-set criteria.
     filters: Optional[Dict[str, Any]] = None
@@ -91,6 +93,7 @@ class AssetSetUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = Field(None, max_length=1000)
     color: Optional[str] = Field(None, max_length=32)
+    icon: Optional[str] = Field(None, max_length=200)
     is_shared: Optional[bool] = None
     filters: Optional[Dict[str, Any]] = None
     max_results: Optional[int] = None
@@ -129,6 +132,7 @@ def _to_response(
         kind=s.kind,
         description=s.description,
         color=s.color,
+        icon=s.icon,
         filters=s.filters,
         maxResults=s.max_results,
         isShared=s.is_shared,
