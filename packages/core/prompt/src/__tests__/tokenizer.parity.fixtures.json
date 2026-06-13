@@ -1,0 +1,1093 @@
+{
+  "generated_from": "pixsim7/backend/main/services/prompt/parser/tokenizer.py",
+  "corpus": "tokenizer.parity.corpus.json",
+  "cases": [
+    {
+      "id": "empty",
+      "text": "",
+      "output": {
+        "lines": []
+      }
+    },
+    {
+      "id": "colon-header-simple",
+      "text": "SCENE:",
+      "output": {
+        "lines": [
+          {
+            "kind": "header",
+            "pattern": "colon",
+            "label": "SCENE",
+            "start": 0,
+            "end": 6,
+            "body_start": 6,
+            "op_start": 5,
+            "op_end": 6
+          }
+        ]
+      }
+    },
+    {
+      "id": "colon-not-header-trailing-text",
+      "text": "Scene: a wide shot",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "Scene",
+                "start": 0,
+                "end": 5
+              },
+              {
+                "kind": "prose",
+                "text": "a wide shot",
+                "start": 7,
+                "end": 18
+              }
+            ],
+            "operators": [
+              {
+                "op": ":",
+                "run": 1,
+                "op_start": 5,
+                "op_end": 6
+              }
+            ],
+            "start": 0,
+            "end": 18
+          }
+        ]
+      }
+    },
+    {
+      "id": "colon-header-mixed-ampersand",
+      "text": "Wardrobe & Makeup:",
+      "output": {
+        "lines": [
+          {
+            "kind": "header",
+            "pattern": "colon",
+            "label": "Wardrobe & Makeup",
+            "start": 0,
+            "end": 18,
+            "body_start": 18,
+            "op_start": 17,
+            "op_end": 18
+          }
+        ]
+      }
+    },
+    {
+      "id": "colon-header-mixed-dash-slash",
+      "text": "Lens-50mm/Wide:",
+      "output": {
+        "lines": [
+          {
+            "kind": "header",
+            "pattern": "colon",
+            "label": "Lens-50mm/Wide",
+            "start": 0,
+            "end": 15,
+            "body_start": 15,
+            "op_start": 14,
+            "op_end": 15
+          }
+        ]
+      }
+    },
+    {
+      "id": "colon-header-digit-label",
+      "text": "SCENE2:",
+      "output": {
+        "lines": [
+          {
+            "kind": "header",
+            "pattern": "colon",
+            "label": "SCENE2",
+            "start": 0,
+            "end": 7,
+            "body_start": 7,
+            "op_start": 6,
+            "op_end": 7
+          }
+        ]
+      }
+    },
+    {
+      "id": "colon-mixedcase-label",
+      "text": "MixedCase: body",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "MixedCase",
+                "start": 0,
+                "end": 9
+              },
+              {
+                "kind": "prose",
+                "text": "body",
+                "start": 11,
+                "end": 15
+              }
+            ],
+            "operators": [
+              {
+                "op": ":",
+                "run": 1,
+                "op_start": 9,
+                "op_end": 10
+              }
+            ],
+            "start": 0,
+            "end": 15
+          }
+        ]
+      }
+    },
+    {
+      "id": "colon-lowercase-not-header",
+      "text": "lowercase: body",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "lowercase",
+                "start": 0,
+                "end": 9
+              },
+              {
+                "kind": "prose",
+                "text": "body",
+                "start": 11,
+                "end": 15
+              }
+            ],
+            "operators": [
+              {
+                "op": ":",
+                "run": 1,
+                "op_start": 9,
+                "op_end": 10
+              }
+            ],
+            "start": 0,
+            "end": 15
+          }
+        ]
+      }
+    },
+    {
+      "id": "colon-only",
+      "text": ":",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "",
+                "start": 0,
+                "end": 0
+              },
+              {
+                "kind": "prose",
+                "text": "",
+                "start": 1,
+                "end": 1
+              }
+            ],
+            "operators": [
+              {
+                "op": ":",
+                "run": 1,
+                "op_start": 0,
+                "op_end": 1
+              }
+            ],
+            "start": 0,
+            "end": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "angle-header",
+      "text": ">CAMERA<",
+      "output": {
+        "lines": [
+          {
+            "kind": "header",
+            "pattern": "angle_bracket",
+            "label": "CAMERA",
+            "start": 0,
+            "end": 8,
+            "body_start": 8
+          }
+        ]
+      }
+    },
+    {
+      "id": "angle-header-spaced",
+      "text": "> Wide Angle <",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "",
+                "start": 0,
+                "end": 0
+              },
+              {
+                "kind": "prose",
+                "text": "Wide Angle",
+                "start": 2,
+                "end": 12
+              },
+              {
+                "kind": "prose",
+                "text": "",
+                "start": 14,
+                "end": 14
+              }
+            ],
+            "operators": [
+              {
+                "op": ">",
+                "run": 1,
+                "op_start": 0,
+                "op_end": 1
+              },
+              {
+                "op": "<",
+                "run": 1,
+                "op_start": 13,
+                "op_end": 14
+              }
+            ],
+            "start": 0,
+            "end": 14
+          }
+        ]
+      }
+    },
+    {
+      "id": "angle-mixedcase-falls-to-chain",
+      "text": ">Camera<",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "",
+                "start": 0,
+                "end": 0
+              },
+              {
+                "kind": "prose",
+                "text": "Camera",
+                "start": 1,
+                "end": 7
+              },
+              {
+                "kind": "prose",
+                "text": "",
+                "start": 8,
+                "end": 8
+              }
+            ],
+            "operators": [
+              {
+                "op": ">",
+                "run": 1,
+                "op_start": 0,
+                "op_end": 1
+              },
+              {
+                "op": "<",
+                "run": 1,
+                "op_start": 7,
+                "op_end": 8
+              }
+            ],
+            "start": 0,
+            "end": 8
+          }
+        ]
+      }
+    },
+    {
+      "id": "freestanding-header",
+      "text": "ACTOR1",
+      "output": {
+        "lines": [
+          {
+            "kind": "header",
+            "pattern": "freestanding",
+            "label": "ACTOR1",
+            "start": 0,
+            "end": 6,
+            "body_start": 6
+          }
+        ]
+      }
+    },
+    {
+      "id": "too-short-for-freestanding",
+      "text": "AB",
+      "output": {
+        "lines": [
+          {
+            "kind": "prose",
+            "text": "AB",
+            "start": 0,
+            "end": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "freestanding-with-underscore",
+      "text": "ACTOR1_HIP",
+      "output": {
+        "lines": [
+          {
+            "kind": "header",
+            "pattern": "freestanding",
+            "label": "ACTOR1_HIP",
+            "start": 0,
+            "end": 10,
+            "body_start": 10
+          }
+        ]
+      }
+    },
+    {
+      "id": "chain-var-assign-prose",
+      "text": "ACTOR1 = standing by the window",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR1",
+                "start": 0,
+                "end": 6
+              },
+              {
+                "kind": "prose",
+                "text": "standing by the window",
+                "start": 9,
+                "end": 31
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 7,
+                "op_end": 8
+              }
+            ],
+            "start": 0,
+            "end": 31
+          }
+        ]
+      }
+    },
+    {
+      "id": "chain-var-eq-var",
+      "text": "ACTOR1=GOAL",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR1",
+                "start": 0,
+                "end": 6
+              },
+              {
+                "kind": "var",
+                "text": "GOAL",
+                "start": 7,
+                "end": 11
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 6,
+                "op_end": 7
+              }
+            ],
+            "start": 0,
+            "end": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "chain-trailing-underscore-ident",
+      "text": "ACTOR1_=GOAL",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR1_",
+                "start": 0,
+                "end": 7
+              },
+              {
+                "kind": "var",
+                "text": "GOAL",
+                "start": 8,
+                "end": 12
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 7,
+                "op_end": 8
+              }
+            ],
+            "start": 0,
+            "end": 12
+          }
+        ]
+      }
+    },
+    {
+      "id": "chain-multi-op",
+      "text": "A<B<C = body",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "A",
+                "start": 0,
+                "end": 1
+              },
+              {
+                "kind": "var",
+                "text": "B",
+                "start": 2,
+                "end": 3
+              },
+              {
+                "kind": "var",
+                "text": "C",
+                "start": 4,
+                "end": 5
+              },
+              {
+                "kind": "prose",
+                "text": "body",
+                "start": 8,
+                "end": 12
+              }
+            ],
+            "operators": [
+              {
+                "op": "<",
+                "run": 1,
+                "op_start": 1,
+                "op_end": 2
+              },
+              {
+                "op": "<",
+                "run": 1,
+                "op_start": 3,
+                "op_end": 4
+              },
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 6,
+                "op_end": 7
+              }
+            ],
+            "start": 0,
+            "end": 12
+          }
+        ]
+      }
+    },
+    {
+      "id": "chain-bidirectional",
+      "text": "ACTOR1 ===> SCENE <=== ACTOR2",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR1",
+                "start": 0,
+                "end": 6
+              },
+              {
+                "kind": "var",
+                "text": "SCENE",
+                "start": 12,
+                "end": 17
+              },
+              {
+                "kind": "var",
+                "text": "ACTOR2",
+                "start": 23,
+                "end": 29
+              }
+            ],
+            "operators": [
+              {
+                "op": "===>",
+                "run": 4,
+                "op_start": 7,
+                "op_end": 11
+              },
+              {
+                "op": "<===",
+                "run": 4,
+                "op_start": 18,
+                "op_end": 22
+              }
+            ],
+            "start": 0,
+            "end": 29
+          }
+        ]
+      }
+    },
+    {
+      "id": "chain-empty-elements",
+      "text": "=====>",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "",
+                "start": 0,
+                "end": 0
+              },
+              {
+                "kind": "prose",
+                "text": "",
+                "start": 6,
+                "end": 6
+              }
+            ],
+            "operators": [
+              {
+                "op": "=====>",
+                "run": 6,
+                "op_start": 0,
+                "op_end": 6
+              }
+            ],
+            "start": 0,
+            "end": 6
+          }
+        ]
+      }
+    },
+    {
+      "id": "chain-mixed-runs",
+      "text": "a === b ==> c",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "a",
+                "start": 0,
+                "end": 1
+              },
+              {
+                "kind": "prose",
+                "text": "b",
+                "start": 6,
+                "end": 7
+              },
+              {
+                "kind": "prose",
+                "text": "c",
+                "start": 12,
+                "end": 13
+              }
+            ],
+            "operators": [
+              {
+                "op": "===",
+                "run": 3,
+                "op_start": 2,
+                "op_end": 5
+              },
+              {
+                "op": "==>",
+                "run": 3,
+                "op_start": 8,
+                "op_end": 11
+              }
+            ],
+            "start": 0,
+            "end": 13
+          }
+        ]
+      }
+    },
+    {
+      "id": "chain-unicode-bmp",
+      "text": "ACTOR1 < Lingua ūmida sotto la pioggia",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR1",
+                "start": 0,
+                "end": 6
+              },
+              {
+                "kind": "prose",
+                "text": "Lingua ūmida sotto la pioggia",
+                "start": 9,
+                "end": 38
+              }
+            ],
+            "operators": [
+              {
+                "op": "<",
+                "run": 1,
+                "op_start": 7,
+                "op_end": 8
+              }
+            ],
+            "start": 0,
+            "end": 38
+          }
+        ]
+      }
+    },
+    {
+      "id": "chain-double-colon",
+      "text": "A: B: C",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "A",
+                "start": 0,
+                "end": 1
+              },
+              {
+                "kind": "var",
+                "text": "B",
+                "start": 3,
+                "end": 4
+              },
+              {
+                "kind": "var",
+                "text": "C",
+                "start": 6,
+                "end": 7
+              }
+            ],
+            "operators": [
+              {
+                "op": ":",
+                "run": 1,
+                "op_start": 1,
+                "op_end": 2
+              },
+              {
+                "op": ":",
+                "run": 1,
+                "op_start": 4,
+                "op_end": 5
+              }
+            ],
+            "start": 0,
+            "end": 7
+          }
+        ]
+      }
+    },
+    {
+      "id": "chain-underscore-ident-assign",
+      "text": "ACTOR1_HIP = down",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR1_HIP",
+                "start": 0,
+                "end": 10
+              },
+              {
+                "kind": "prose",
+                "text": "down",
+                "start": 13,
+                "end": 17
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 11,
+                "op_end": 12
+              }
+            ],
+            "start": 0,
+            "end": 17
+          }
+        ]
+      }
+    },
+    {
+      "id": "chain-goal-arrow",
+      "text": "GOAL ===> goal text here",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "GOAL",
+                "start": 0,
+                "end": 4
+              },
+              {
+                "kind": "prose",
+                "text": "goal text here",
+                "start": 10,
+                "end": 24
+              }
+            ],
+            "operators": [
+              {
+                "op": "===>",
+                "run": 4,
+                "op_start": 5,
+                "op_end": 9
+              }
+            ],
+            "start": 0,
+            "end": 24
+          }
+        ]
+      }
+    },
+    {
+      "id": "chain-tab-whitespace",
+      "text": "ACTOR1\t=\tvalue",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR1",
+                "start": 0,
+                "end": 6
+              },
+              {
+                "kind": "prose",
+                "text": "value",
+                "start": 9,
+                "end": 14
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 7,
+                "op_end": 8
+              }
+            ],
+            "start": 0,
+            "end": 14
+          }
+        ]
+      }
+    },
+    {
+      "id": "prose-plain",
+      "text": "the cat sat on the mat",
+      "output": {
+        "lines": [
+          {
+            "kind": "prose",
+            "text": "the cat sat on the mat",
+            "start": 0,
+            "end": 22
+          }
+        ]
+      }
+    },
+    {
+      "id": "prose-parens-plus",
+      "text": "scene (wide) + closeup",
+      "output": {
+        "lines": [
+          {
+            "kind": "prose",
+            "text": "scene (wide) + closeup",
+            "start": 0,
+            "end": 22
+          }
+        ]
+      }
+    },
+    {
+      "id": "access-underscore-standalone-prose",
+      "text": "ACTOR1 _ HIP",
+      "output": {
+        "lines": [
+          {
+            "kind": "prose",
+            "text": "ACTOR1 _ HIP",
+            "start": 0,
+            "end": 12
+          }
+        ]
+      }
+    },
+    {
+      "id": "freestanding-multi-facet-arrow",
+      "text": "ACTOR1_HIP_KNEE > pose",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR1_HIP_KNEE",
+                "start": 0,
+                "end": 15
+              },
+              {
+                "kind": "prose",
+                "text": "pose",
+                "start": 18,
+                "end": 22
+              }
+            ],
+            "operators": [
+              {
+                "op": ">",
+                "run": 1,
+                "op_start": 16,
+                "op_end": 17
+              }
+            ],
+            "start": 0,
+            "end": 22
+          }
+        ]
+      }
+    },
+    {
+      "id": "colon-header-padded",
+      "text": "  SCENE:  ",
+      "output": {
+        "lines": [
+          {
+            "kind": "header",
+            "pattern": "colon",
+            "label": "SCENE",
+            "start": 0,
+            "end": 10,
+            "body_start": 10,
+            "op_start": 7,
+            "op_end": 8
+          }
+        ]
+      }
+    },
+    {
+      "id": "stmt-sep-splits",
+      "text": "foo;bar",
+      "output": {
+        "lines": [
+          {
+            "kind": "prose",
+            "text": "foo",
+            "start": 0,
+            "end": 3
+          },
+          {
+            "kind": "prose",
+            "text": "bar",
+            "start": 4,
+            "end": 7
+          }
+        ]
+      }
+    },
+    {
+      "id": "multiline-mixed",
+      "text": "SCENE:\nACTOR1 = hi\n>END<",
+      "output": {
+        "lines": [
+          {
+            "kind": "header",
+            "pattern": "colon",
+            "label": "SCENE",
+            "start": 0,
+            "end": 6,
+            "body_start": 7,
+            "op_start": 5,
+            "op_end": 6
+          },
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR1",
+                "start": 7,
+                "end": 13
+              },
+              {
+                "kind": "prose",
+                "text": "hi",
+                "start": 16,
+                "end": 18
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 14,
+                "op_end": 15
+              }
+            ],
+            "start": 7,
+            "end": 18
+          },
+          {
+            "kind": "header",
+            "pattern": "angle_bracket",
+            "label": "END",
+            "start": 19,
+            "end": 24,
+            "body_start": 24
+          }
+        ]
+      }
+    },
+    {
+      "id": "crlf",
+      "text": "line one\r\nline two",
+      "output": {
+        "lines": [
+          {
+            "kind": "prose",
+            "text": "line one",
+            "start": 0,
+            "end": 8
+          },
+          {
+            "kind": "prose",
+            "text": "line two",
+            "start": 10,
+            "end": 18
+          }
+        ]
+      }
+    },
+    {
+      "id": "trailing-newline",
+      "text": "SCENE:\n",
+      "output": {
+        "lines": [
+          {
+            "kind": "header",
+            "pattern": "colon",
+            "label": "SCENE",
+            "start": 0,
+            "end": 6,
+            "body_start": 7,
+            "op_start": 5,
+            "op_end": 6
+          }
+        ]
+      }
+    },
+    {
+      "id": "blank-lines-between",
+      "text": "A\n\nB",
+      "output": {
+        "lines": [
+          {
+            "kind": "prose",
+            "text": "A",
+            "start": 0,
+            "end": 1
+          },
+          {
+            "kind": "prose",
+            "text": "",
+            "start": 2,
+            "end": 2
+          },
+          {
+            "kind": "prose",
+            "text": "B",
+            "start": 3,
+            "end": 4
+          }
+        ]
+      }
+    }
+  ]
+}

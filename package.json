@@ -39,6 +39,8 @@
     "cue:projection-corpus:check": "tsx tools/codegen/generate-primitive-projection-corpus.ts --check",
     "prompt-role-authority:report": "python scripts/check_prompt_role_authority.py",
     "prompt-role-authority:check": "python scripts/check_prompt_role_authority.py --check",
+    "tokenizer-parity:gen": "python scripts/gen_tokenizer_parity_fixtures.py",
+    "tokenizer-parity:check": "python scripts/gen_tokenizer_parity_fixtures.py --check && tsx tools/codegen/check-tokenizer-parity.ts",
     "upload-context:gen": "tsx tools/codegen/generate-upload-context.ts",
     "upload-context:check": "tsx tools/codegen/generate-upload-context.ts --check",
     "types:gen": "pnpm codegen -- --group types",
