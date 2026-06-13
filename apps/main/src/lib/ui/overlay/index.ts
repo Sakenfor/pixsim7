@@ -73,6 +73,7 @@ export type { OverlayWidgetProps } from './OverlayWidget';
 // Built-in widgets
 export {
   createBadgeWidget,
+  createExpandableBadge,
   BadgePresets,
   BADGE_SLOT,
   BADGE_PRIORITY,
@@ -92,19 +93,19 @@ export {
   buildRemoveWidget,
   buildPinToggleWidget,
   buildCountBadgeWidget,
-  buildSetIndicatorWidget,
-  buildAddToSetWidget,
+  buildTargetToggleWidget,
 } from './widgetPresets';
 
 export type {
   RemoveWidgetOptions,
   CountBadgeOptions,
-  SetIndicatorWidgetOptions,
-  AddToSetWidgetOptions,
+  TargetToggleWidgetOptions,
 } from './widgetPresets';
 
 export type {
   BadgeWidgetConfig,
+  ExpandableBadgeConfig,
+  ExpandableBadgeItem,
   ButtonWidgetConfig,
   PanelWidgetConfig,
   MenuWidgetConfig,

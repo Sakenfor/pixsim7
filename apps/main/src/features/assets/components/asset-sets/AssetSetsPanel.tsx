@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { Icon } from '@lib/icons';
+import { Icon, type IconName } from '@lib/icons';
 
 import {
   useAssetSets,
@@ -95,7 +95,7 @@ export function AssetSetsPanel() {
             style={{ backgroundColor: set.color || (set.kind === 'manual' ? '#3B82F6' : '#10B981') }}
           >
             <Icon
-              name={set.kind === 'manual' ? 'layers' : 'search'}
+              name={(set.icon as IconName) || (set.kind === 'manual' ? 'layers' : 'search')}
               size={14}
               color="#fff"
             />

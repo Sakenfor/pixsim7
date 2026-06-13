@@ -8,7 +8,7 @@ import { listAssetGroups } from '@lib/api/assets';
 import type { AssetGroupListResponse, AssetGroupRequest } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { Icon } from '@lib/icons';
-import { buildSetIndicatorWidget, buildAddToSetWidget, getMediaCardPreset } from '@lib/ui/overlay';
+import { getMediaCardPreset } from '@lib/ui/overlay';
 
 import { FilterChip, useFilterChipState } from '@features/gallery';
 import type { GalleryToolContext, GalleryAsset } from '@features/gallery/lib/core/types';
@@ -33,12 +33,14 @@ import { MediaCard } from '@/components/media/MediaCard';
 import type { AssetFilters, AssetModel } from '../hooks/useAssets';
 import { useAssetsController } from '../hooks/useAssetsController';
 import { useAssetViewer, useViewerScopeSync } from '../hooks/useAssetViewer';
+import { buildActiveTargetWidgets, selectActiveTargetSets } from '../lib/activeTargetWidgets';
 import { assetEvents } from '../lib/assetEvents';
 import { buildRemoteAssetActions } from '../lib/buildRemoteAssetActions';
 import { clusterAssets, isCluster } from '../lib/clusterHelpers';
 import { toggleFavoriteTag } from '../lib/favoriteTag';
 import { GROUP_BY_LABELS, normalizeGroupBySelection } from '../lib/groupBy';
 import { normalizeGroupScopeSelection } from '../lib/groupScope';
+import { normalizeTagInput } from '../lib/quickTag';
 import { buildAssetSearchRequest } from '../lib/searchParams';
 import { fromAssetResponses, toViewerAssets } from '../models/asset';
 import { useAssetSets, useAssetSetStore, type ManualAssetSet } from '../stores/assetSetStore';
@@ -86,10 +88,10 @@ function AssetSetChip({
   chipKey,
   chipState,
   manualSets,
-  activeManualSet,
+  activeSetIds,
   filterSetIds,
   onToggleFilter,
-  onSetTarget,
+  onToggleTarget,
   onBrowseSet,
   selectedCount,
   onAddSelected,
@@ -100,10 +102,10 @@ function AssetSetChip({
   chipKey: string;
   chipState: ReturnType<typeof useFilterChipState>;
   manualSets: ManualAssetSet[];
-  activeManualSet: ManualAssetSet | undefined;
+  activeSetIds: number[];
   filterSetIds: number[];
   onToggleFilter: (setId: number) => void;
-  onSetTarget: (setId?: number) => void;
+  onToggleTarget: (setId: number) => void;
   onBrowseSet: (set: ManualAssetSet) => void;
   selectedCount: number;
   onAddSelected: () => void;
@@ -157,7 +159,8 @@ function AssetSetChip({
   );
 
   if (manualSets.length === 0) return null;
-  const activeCount = filterSetIds.length + (activeManualSet ? 1 : 0);
+  const activeTargetSets = manualSets.filter((s) => activeSetIds.includes(s.id));
+  const activeCount = filterSetIds.length + activeTargetSets.length;
   return (
     <FilterChip
       chipKey={chipKey}
@@ -190,7 +193,7 @@ function AssetSetChip({
         </div>
         {manualSets.map((s) => {
           const isFiltered = filterSetIds.includes(s.id);
-          const isTarget = activeManualSet?.id === s.id;
+          const isTarget = activeSetIds.includes(s.id);
           const isEditing = editingId === s.id;
           return (
             <div
@@ -213,11 +216,11 @@ function AssetSetChip({
                 title={isFiltered ? 'Stop filtering by this set' : 'Filter gallery to this set'}
                 className="accent-blue-500 w-4 h-4 flex-shrink-0 cursor-pointer"
               />
-              {/* Target toggle */}
+              {/* Target toggle (multi-select, capped) */}
               <button
                 type="button"
-                onClick={() => onSetTarget(isTarget ? undefined : s.id)}
-                title={isTarget ? 'Clear add target' : 'Set as add target'}
+                onClick={() => onToggleTarget(s.id)}
+                title={isTarget ? 'Remove from add targets' : 'Add as add target'}
                 className="flex-shrink-0 w-4 h-4 flex items-center justify-center"
               >
                 <span className={`w-2.5 h-2.5 rounded-full transition-colors ${
@@ -292,7 +295,7 @@ function AssetSetChip({
           );
         })}
         {/* Add selected action */}
-        {selectedCount > 0 && activeManualSet && (
+        {selectedCount > 0 && activeTargetSets.length > 0 && (
           <>
             <div className="border-t border-neutral-200 dark:border-neutral-700 my-1" />
             <button
@@ -301,7 +304,12 @@ function AssetSetChip({
               className="flex items-center gap-1.5 px-1.5 py-1 text-sm text-emerald-700 dark:text-emerald-300 rounded hover:bg-emerald-500/10 transition-colors"
             >
               <Icon name="plus" size={12} />
-              <span>Add {selectedCount} to {activeManualSet.name}</span>
+              <span>
+                Add {selectedCount} to{' '}
+                {activeTargetSets.length === 1
+                  ? activeTargetSets[0].name
+                  : `${activeTargetSets.length} sets`}
+              </span>
             </button>
           </>
         )}
@@ -404,9 +412,9 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   const createSet = useAssetSetStore((s) => s.createSet);
   const renameSet = useAssetSetStore((s) => s.renameSet);
   const deleteSet = useAssetSetStore((s) => s.deleteSet);
-  const activeManualSetId = useGalleryApplyTargetStore((s) => s.activeManualSetId);
-  const setActiveManualSetId = useGalleryApplyTargetStore((s) => s.setActiveManualSetId);
-  const clearActiveManualSetId = useGalleryApplyTargetStore((s) => s.clearActiveManualSetId);
+  const activeManualSetIds = useGalleryApplyTargetStore((s) => s.activeManualSetIds);
+  const toggleActiveTarget = useGalleryApplyTargetStore((s) => s.toggleActiveTarget);
+  const setActiveTargets = useGalleryApplyTargetStore((s) => s.setActiveTargets);
   const filterSetIds = useGalleryApplyTargetStore((s) => s.filterSetIds);
   const toggleFilterSet = useGalleryApplyTargetStore((s) => s.toggleFilterSet);
   const setChipState = useFilterChipState();
@@ -497,13 +505,9 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   // Layout settings (gaps)
   const [layoutSettings] = useState({ rowGap: 16, columnGap: 16 });
   const [expandedToolId, setExpandedToolId] = useState<string | null>(null);
-  const activeManualSet = useMemo(
-    () => manualSets.find((set) => set.id === activeManualSetId),
-    [manualSets, activeManualSetId],
-  );
-  const activeManualSetAssetIds = useMemo(
-    () => new Set(activeManualSet?.assetIds ?? []),
-    [activeManualSet],
+  const activeSets = useMemo(
+    () => selectActiveTargetSets(allSets, activeManualSetIds),
+    [allSets, activeManualSetIds],
   );
 
   // Get overlay configuration from preset
@@ -521,10 +525,14 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   }, [controller.selectedAssetIds.size]);
 
   useEffect(() => {
-    if (activeManualSetId && !activeManualSet) {
-      clearActiveManualSetId();
+    // Drop any active-target ids that no longer resolve to a manual set.
+    const valid = activeManualSetIds.filter((id) =>
+      manualSets.some((set) => set.id === id),
+    );
+    if (valid.length !== activeManualSetIds.length) {
+      setActiveTargets(valid);
     }
-  }, [activeManualSet, activeManualSetId, clearActiveManualSetId]);
+  }, [manualSets, activeManualSetIds, setActiveTargets]);
 
   // Subscribe to open-tools-panel events (from context menu)
   useEffect(() => {
@@ -1082,6 +1090,27 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     rememberPresetPage(currentPresetId, page);
   }, [controller.goToPage, syncPageInUrl, rememberPresetPage]);
 
+  const filterByQuickTagShortcut = useCallback(
+    (tagSlug: string) => {
+      const normalized = normalizeTagInput(tagSlug);
+      if (!normalized) return;
+
+      const currentTagFilter = controller.filters.tag;
+      const alreadyFocused =
+        (typeof currentTagFilter === 'string' && currentTagFilter === normalized) ||
+        (Array.isArray(currentTagFilter) &&
+          currentTagFilter.length === 1 &&
+          currentTagFilter[0] === normalized);
+
+      setFilters({
+        tag: alreadyFocused ? undefined : normalized,
+        tag__mode: undefined,
+      });
+      goToPage(1, true);
+    },
+    [controller.filters.tag, setFilters, goToPage],
+  );
+
   const goToGroupPage = useCallback(
     (page: number, replace = false) => {
       if (page < 1) return;
@@ -1121,36 +1150,37 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     return controller.assets.filter((a) => controller.selectedAssetIds.has(String(a.id)));
   }, [controller.assets, controller.selectedAssetIds]);
 
-  const addAssetToActiveManualSet = useCallback(
+  const addAssetToActiveTargets = useCallback(
     (assetId: number) => {
-      if (!activeManualSet) return;
-      void addAssetsToSet(activeManualSet.id, [assetId]);
+      for (const set of activeSets) void addAssetsToSet(set.id, [assetId]);
     },
-    [activeManualSet, addAssetsToSet],
+    [activeSets, addAssetsToSet],
   );
 
-  const addSelectedToActiveManualSet = useCallback(() => {
-    if (!activeManualSet || selectedAssets.length === 0) return;
+  const addSelectedToActiveTargets = useCallback(() => {
+    if (activeSets.length === 0 || selectedAssets.length === 0) return;
     const ids = selectedAssets.map((asset) => asset.id);
-    const members = new Set(activeManualSet.assetIds);
-    const alreadyIn = ids.reduce((n, id) => (members.has(id) ? n + 1 : n), 0);
-    const added = ids.length - alreadyIn;
-    void addAssetsToSet(activeManualSet.id, ids);
-    if (added <= 0) {
-      useToastStore.getState().addToast({
-        type: 'info',
-        message: `All ${ids.length} already in "${activeManualSet.name}".`,
-        duration: 4000,
-      });
-    } else {
-      const base = `Added ${added} asset${added === 1 ? '' : 's'} to "${activeManualSet.name}".`;
-      useToastStore.getState().addToast({
-        type: 'success',
-        message: alreadyIn > 0 ? `${base} (${alreadyIn} already there)` : base,
-        duration: 4000,
-      });
+    for (const set of activeSets) {
+      const members = new Set(set.assetIds);
+      const alreadyIn = ids.reduce((n, id) => (members.has(id) ? n + 1 : n), 0);
+      const added = ids.length - alreadyIn;
+      void addAssetsToSet(set.id, ids);
+      if (added <= 0) {
+        useToastStore.getState().addToast({
+          type: 'info',
+          message: `All ${ids.length} already in "${set.name}".`,
+          duration: 4000,
+        });
+      } else {
+        const base = `Added ${added} asset${added === 1 ? '' : 's'} to "${set.name}".`;
+        useToastStore.getState().addToast({
+          type: 'success',
+          message: alreadyIn > 0 ? `${base} (${alreadyIn} already there)` : base,
+          duration: 4000,
+        });
+      }
     }
-  }, [activeManualSet, addAssetsToSet, selectedAssets]);
+  }, [activeSets, addAssetsToSet, selectedAssets]);
 
   const handleCreateSet = useCallback(async () => {
     const created = await createSet({ name: 'New Set', kind: 'manual', assetIds: [] });
@@ -1194,7 +1224,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   // Render cards
   const cardItems = visibleAssets.map((a) => {
     const isSelected = controller.selectedAssetIds.has(String(a.id));
-    const isInActiveManualSet = activeManualSetAssetIds.has(a.id);
 
     if (controller.isSelectionMode) {
       return (
@@ -1203,10 +1232,11 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
             <MediaCard
               asset={a}
               onOpen={undefined}
+              onFilterByTagShortcut={filterByQuickTagShortcut}
               onToggleFavorite={() => toggleFavoriteTag(a)}
               actions={{
                 ...controller.getAssetActions(a),
-                onAddToActiveSet: activeManualSet ? addAssetToActiveManualSet : undefined,
+                onAddToActiveSet: activeSets.length > 0 ? addAssetToActiveTargets : undefined,
               }}
               contextMenuSelection={selectedAssets}
               overlayConfig={overlayConfig}
@@ -1244,11 +1274,12 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
         <MediaCard
           asset={a}
           onOpen={() => openGalleryAsset(a, controller.assets)}
+          onFilterByTagShortcut={filterByQuickTagShortcut}
           onToggleFavorite={() => toggleFavoriteTag(a)}
           actions={buildRemoteAssetActions(a, {
             baseActions: {
               ...controller.getAssetActions(a),
-              onAddToActiveSet: activeManualSet ? addAssetToActiveManualSet : undefined,
+              onAddToActiveSet: activeSets.length > 0 ? addAssetToActiveTargets : undefined,
             },
             providers,
             filterProviderId,
@@ -1257,17 +1288,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           })}
           contextMenuSelection={selectedAssets}
           customWidgets={(() => {
-            const widgets = [];
-            if (isInActiveManualSet) {
-              widgets.push(buildSetIndicatorWidget({
-                tooltip: `In active set: ${activeManualSet?.name ?? 'Active Set'}`,
-              }));
-            } else if (activeManualSet) {
-              widgets.push(buildAddToSetWidget(
-                () => addAssetToActiveManualSet(a.id),
-                { tooltip: `Add to active set: ${activeManualSet.name}` },
-              ));
-            }
+            const widgets = buildActiveTargetWidgets(a.id, activeSets);
             return widgets.length > 0 ? widgets : undefined;
           })()}
           overlayConfig={overlayConfig}
@@ -1289,7 +1310,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       const a = assetById.get(assetId);
       if (!a) return null;
       const isSelected = controller.selectedAssetIds.has(String(a.id));
-      const isInActiveManualSet = activeManualSetAssetIds.has(a.id);
       return (
         <div
           key={a.id}
@@ -1307,11 +1327,12 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           <MediaCard
             asset={a}
             onOpen={() => openGalleryAsset(a, controller.assets)}
+            onFilterByTagShortcut={filterByQuickTagShortcut}
             onToggleFavorite={() => toggleFavoriteTag(a)}
             actions={buildRemoteAssetActions(a, {
               baseActions: {
                 ...controller.getAssetActions(a),
-                onAddToActiveSet: activeManualSet ? addAssetToActiveManualSet : undefined,
+                onAddToActiveSet: activeSets.length > 0 ? addAssetToActiveTargets : undefined,
               },
               providers,
               filterProviderId,
@@ -1320,17 +1341,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
             })}
             contextMenuSelection={selectedAssets}
             customWidgets={(() => {
-              const widgets = [];
-              if (isInActiveManualSet) {
-                widgets.push(buildSetIndicatorWidget({
-                  tooltip: `In active set: ${activeManualSet?.name ?? 'Active Set'}`,
-                }));
-              } else if (activeManualSet) {
-                widgets.push(buildAddToSetWidget(
-                  () => addAssetToActiveManualSet(a.id),
-                  { tooltip: `Add to active set: ${activeManualSet.name}` },
-                ));
-              }
+              const widgets = buildActiveTargetWidgets(a.id, activeSets);
               return widgets.length > 0 ? widgets : undefined;
             })()}
             overlayConfig={overlayConfig}
@@ -1345,15 +1356,15 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       controller.getAssetActions,
       controller.assets,
       controller.reuploadAsset,
-      activeManualSetAssetIds,
-      activeManualSet,
-      addAssetToActiveManualSet,
+      activeSets,
+      addAssetToActiveTargets,
       openGalleryAsset,
       toggleAssetSelection,
       selectedAssets,
       providers,
       filterProviderId,
       resetAssets,
+      filterByQuickTagShortcut,
       overlayConfig,
       overlayPresetId,
     ],
@@ -1467,13 +1478,13 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
                   chipKey="asset-sets"
                   chipState={setChipState}
                   manualSets={manualSets}
-                  activeManualSet={activeManualSet}
+                  activeSetIds={activeManualSetIds}
                   filterSetIds={filterSetIds}
                   onToggleFilter={toggleFilterSet}
-                  onSetTarget={setActiveManualSetId}
+                  onToggleTarget={toggleActiveTarget}
                   onBrowseSet={browseSetInMiniGallery}
                   selectedCount={controller.selectedAssetIds.size}
-                  onAddSelected={addSelectedToActiveManualSet}
+                  onAddSelected={addSelectedToActiveTargets}
                   onCreateSet={handleCreateSet}
                   onRenameSet={renameSet}
                   onDeleteSet={deleteSet}

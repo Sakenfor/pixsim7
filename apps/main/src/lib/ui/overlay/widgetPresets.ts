@@ -109,75 +109,53 @@ export function buildCountBadgeWidget(
 }
 
 // ---------------------------------------------------------------------------
-// Set indicator widget ("in active set")
+// Target-toggle widget (per-set add/remove glyph on hover)
 // ---------------------------------------------------------------------------
 
-export interface SetIndicatorWidgetOptions {
-  /** Widget id. Default `'set-indicator'`. */
+export interface TargetToggleWidgetOptions {
+  /** Widget id. Default `'target-toggle'`. Use `target-toggle-${setId}` per set. */
   id?: string;
-  /** Tooltip text. Default `'In active set'`. */
-  tooltip?: string;
-  /** Override className. */
-  className?: string;
-}
-
-/**
- * Build a badge indicating an asset belongs to the active set.
- * Stacks in the top-right badge column under status/favorite/tag controls.
- */
-export function buildSetIndicatorWidget(
-  options?: SetIndicatorWidgetOptions,
-): OverlayWidget {
-  return createBadgeWidget({
-    id: options?.id ?? 'set-indicator',
-    ...BADGE_SLOT.topRight,
-    visibility: { trigger: 'always' },
-    variant: 'icon',
-    icon: 'check',
-    color: 'green',
-    shape: 'circle',
-    tooltip: options?.tooltip ?? 'In active set',
-    className:
-      options?.className ??
-      '!bg-emerald-600/90 !text-white backdrop-blur-sm',
-    priority: BADGE_PRIORITY.status + 1,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Add-to-set widget (hover pill button)
-// ---------------------------------------------------------------------------
-
-export interface AddToSetWidgetOptions {
-  /** Widget id. Default `'add-to-set'`. */
-  id?: string;
+  /** Whether the asset is currently a member of this target set. */
+  isMember: boolean;
+  /** @lib/icons name for the set. Falls back to check/plus when absent. */
+  icon?: string;
   /** Tooltip text. */
   tooltip?: string;
-  /** Override className. */
+  /** Override className (rarely needed; tint is derived from `isMember`). */
   className?: string;
 }
 
 /**
- * Build an "Add" icon button that appears on hover for adding an asset to the
- * active set. Positioned in the top-right badge stack, hover-only visibility.
+ * Build a single toggle glyph for one active add-target set, shown in the
+ * top-right badge stack. Clicking adds the asset to the set (or removes it,
+ * silently — reversible by clicking again).
+ *
+ * Tint carries state: green when the asset is already a member, grey when it's
+ * merely addable. Member glyphs stay visible at rest (membership reads at a
+ * glance); addable glyphs appear only on hover so resting cards stay clean.
+ *
+ * Multiple active targets render multiple glyphs — give each a unique id
+ * (`target-toggle-${setId}`) so the shared top-right stackGroup lays them out.
  */
-export function buildAddToSetWidget(
-  onAdd: () => void,
-  options?: AddToSetWidgetOptions,
+export function buildTargetToggleWidget(
+  onToggle: () => void,
+  options: TargetToggleWidgetOptions,
 ): OverlayWidget {
+  const { isMember } = options;
   return createBadgeWidget({
-    id: options?.id ?? 'add-to-set',
+    id: options.id ?? 'target-toggle',
     ...BADGE_SLOT.topRight,
-    visibility: { trigger: 'hover-container' },
+    visibility: { trigger: isMember ? 'always' : 'hover-container' },
     variant: 'icon',
-    icon: 'plus',
-    color: 'gray',
+    icon: options.icon || (isMember ? 'check' : 'plus'),
     shape: 'circle',
-    tooltip: options?.tooltip,
-    onClick: () => onAdd(),
+    tooltip: options.tooltip,
+    onClick: () => onToggle(),
     className:
-      options?.className ??
-      '!bg-white/95 dark:!bg-neutral-900/95 !text-neutral-700 dark:!text-neutral-200 hover:!bg-accent/10 shadow-sm',
+      options.className ??
+      (isMember
+        ? '!bg-emerald-600/90 !text-white backdrop-blur-sm shadow-sm'
+        : '!bg-white/95 dark:!bg-neutral-900/95 !text-neutral-700 dark:!text-neutral-200 hover:!bg-accent/10 shadow-sm'),
     // Keep status/favorite/tag controls at the top-right leader positions.
     priority: BADGE_PRIORITY.status + 1,
   });

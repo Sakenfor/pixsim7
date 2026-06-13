@@ -934,8 +934,16 @@ function buildMoreFromVariants(asset: AssetModel): { id: string; label: string; 
   if (asset.sourceGenerationId) {
     variants.push({ id: 'generation', label: 'Same generation', icon: 'sparkles', filters: { source_generation_id: asset.sourceGenerationId } });
   }
-  if (typeof asset.genSeed === 'number' && Number.isFinite(asset.genSeed)) {
-    variants.push({ id: 'gen-seed', label: `Same seed: ${asset.genSeed}`, icon: 'hash', filters: { gen_seed: asset.genSeed } });
+  // "Same seed" is only meaningful alongside the same input set (a bare seed
+  // number repeats across unrelated prompts), so this variant requires both and
+  // filters on the pair — matching the same-seed sibling badge/count.
+  if (typeof asset.genSeed === 'number' && Number.isFinite(asset.genSeed) && asset.inputAssetsKey) {
+    variants.push({
+      id: 'gen-seed',
+      label: `Same inputs + seed: ${asset.genSeed}`,
+      icon: 'hash',
+      filters: { gen_seed: asset.genSeed, input_assets_key: asset.inputAssetsKey },
+    });
   }
   if (asset.inputAssetsKey) {
     variants.push({ id: 'input-assets', label: 'Same input assets', icon: 'link', filters: { input_assets_key: asset.inputAssetsKey } });
@@ -1003,6 +1011,53 @@ export function openRelatedGallery(asset: AssetModel, variantId: string) {
         suppressHoverActions: true,
         variants,
         activeVariantId: variantId,
+        panelId: 'mini-gallery',
+      },
+    });
+  });
+}
+
+/**
+ * Open the mini-gallery for a dynamic similarity-facet combination
+ * (inputs / prompt / seed) — used by the faceted similarity badge, whose lit
+ * facets are chosen at runtime so they can't be a fixed buildMoreFromVariants
+ * entry. Builds the AND-ed filter from whichever facets are lit AND present on
+ * the asset; no-ops if that leaves nothing to filter on.
+ */
+export function openSimilarityGallery(
+  asset: AssetModel,
+  facets: { inputs: boolean; prompt: boolean; seed: boolean },
+) {
+  const filters: Record<string, unknown> = {};
+  const parts: string[] = [];
+
+  if (facets.inputs && asset.inputAssetsKey) {
+    filters.input_assets_key = asset.inputAssetsKey;
+    parts.push('inputs');
+  }
+  if (facets.prompt) {
+    if (asset.promptFamilyId) {
+      filters.prompt_family_id = asset.promptFamilyId;
+      parts.push('prompt');
+    } else if (asset.promptVersionId) {
+      filters.prompt_version_id = asset.promptVersionId;
+      parts.push('prompt');
+    }
+  }
+  if (facets.seed && typeof asset.genSeed === 'number' && Number.isFinite(asset.genSeed)) {
+    filters.gen_seed = asset.genSeed;
+    parts.push(`seed ${asset.genSeed}`);
+  }
+
+  if (parts.length === 0) return;
+
+  void import('@features/workspace/stores/workspaceStore').then(({ useWorkspaceStore }) => {
+    useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+      context: {
+        initialFilters: filters,
+        syncInitialFilters: true,
+        sourceLabel: `Same ${parts.join(' + ')}`,
+        suppressHoverActions: true,
         panelId: 'mini-gallery',
       },
     });
@@ -1122,10 +1177,13 @@ function getManualAssetSets(): ManualAssetSet[] {
   return useAssetSetStore.getState().sets.filter((set): set is ManualAssetSet => set.kind === 'manual');
 }
 
-function getActiveManualSet(): ManualAssetSet | undefined {
-  const activeId = useGalleryApplyTargetStore.getState().activeManualSetId;
-  if (!activeId) return undefined;
-  return getManualAssetSets().find((set) => set.id === activeId);
+function getActiveManualSets(): ManualAssetSet[] {
+  const activeIds = useGalleryApplyTargetStore.getState().activeManualSetIds;
+  if (activeIds.length === 0) return [];
+  const sets = getManualAssetSets();
+  return activeIds
+    .map((id) => sets.find((set) => set.id === id))
+    .filter((set): set is ManualAssetSet => set !== undefined);
 }
 
 /** How many of the given asset ids are already members of the set. */
@@ -1155,50 +1213,54 @@ function notifyAddResult(setName: string, total: number, alreadyIn: number): voi
 
 const addToActiveSetAction: MenuAction = {
   id: 'asset:sets:add-to-active',
-  label: 'Add to Active Set',
+  label: 'Add to Active Sets',
   icon: 'plus',
   requiredCapabilities: [CAP_ASSET],
   visible: (ctx) => resolveAssets(ctx).length > 0,
-  disabled: () => (getActiveManualSet() ? false : 'No active manual set selected'),
+  disabled: () => (getActiveManualSets().length > 0 ? false : 'No active target sets selected'),
   dynamicLabel: (ctx) => {
     const count = resolveAssets(ctx).length;
-    const active = getActiveManualSet();
+    const active = getActiveManualSets();
     const suffix = count > 1 ? ` (${count})` : '';
-    return active ? `Add to Active Set: ${active.name}${suffix}` : `Add to Active Set${suffix}`;
+    if (active.length === 0) return `Add to Active Sets${suffix}`;
+    const target = active.length === 1 ? active[0].name : `${active.length} sets`;
+    return `Add to Active Sets: ${target}${suffix}`;
   },
   execute: (ctx) => {
-    const active = getActiveManualSet();
-    if (!active) return;
+    const active = getActiveManualSets();
+    if (active.length === 0) return;
     const assets = resolveAssets(ctx);
     if (!assets.length) return;
     const ids = assets.map((asset) => asset.id);
-    const alreadyIn = countAlreadyInSet(active, ids);
-    void useAssetSetStore.getState().addAssetsToSet(active.id, ids);
-    notifyAddResult(active.name, ids.length, alreadyIn);
+    for (const set of active) {
+      const alreadyIn = countAlreadyInSet(set, ids);
+      void useAssetSetStore.getState().addAssetsToSet(set.id, ids);
+      notifyAddResult(set.name, ids.length, alreadyIn);
+    }
   },
 };
 
 const setActiveManualSetSubmenuAction: MenuAction = {
   id: 'asset:sets:set-active',
-  label: 'Set Active',
+  label: 'Active Targets',
   icon: 'target',
   requiredCapabilities: [CAP_ASSET],
   hideWhenEmpty: true,
   visible: () => true,
   children: () => {
     const manualSets = getManualAssetSets();
-    const activeId = useGalleryApplyTargetStore.getState().activeManualSetId;
+    const activeIds = useGalleryApplyTargetStore.getState().activeManualSetIds;
     const items: MenuAction[] = [
       {
         id: 'asset:sets:set-active:clear',
-        label: activeId ? 'Clear Active Set' : 'No Active Set',
-        icon: activeId ? 'x' : 'circle',
-        disabled: () => (activeId ? false : true),
+        label: activeIds.length > 0 ? 'Clear Active Targets' : 'No Active Targets',
+        icon: activeIds.length > 0 ? 'x' : 'circle',
+        disabled: () => (activeIds.length > 0 ? false : true),
         divider: manualSets.length > 0,
         execute: () => {
-          if (!activeId) return;
-          useGalleryApplyTargetStore.getState().clearActiveManualSetId();
-          notify('info', 'Cleared active manual set.');
+          if (activeIds.length === 0) return;
+          useGalleryApplyTargetStore.getState().clearActiveTargets();
+          notify('info', 'Cleared active target sets.');
         },
       },
     ];
@@ -1214,14 +1276,14 @@ const setActiveManualSetSubmenuAction: MenuAction = {
     }
 
     manualSets.forEach((set) => {
-      const isActive = set.id === activeId;
+      const isActive = activeIds.includes(set.id);
       items.push({
         id: `asset:sets:set-active:${set.id}`,
-        label: isActive ? `${set.name} (active)` : set.name,
+        label: isActive ? `${set.name} (target)` : set.name,
         icon: isActive ? 'check' : 'folder',
         execute: () => {
-          useGalleryApplyTargetStore.getState().setActiveManualSetId(set.id);
-          notify('success', `Active set: ${set.name}`);
+          useGalleryApplyTargetStore.getState().toggleActiveTarget(set.id);
+          notify('success', isActive ? `Removed target: ${set.name}` : `Active target: ${set.name}`);
         },
       });
     });

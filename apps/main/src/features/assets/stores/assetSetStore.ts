@@ -16,7 +16,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 
-import type { AssetSetCreateRequest, AssetSetResponse } from '@lib/api/assetSets';
+import type { AssetSetCreateRequest, AssetSetResponse, AssetSetUpdateRequest } from '@lib/api/assetSets';
 import {
   addAssetSetMembers,
   createAssetSet,
@@ -39,6 +39,8 @@ interface BaseAssetSet {
   name: string;
   description?: string;
   color?: string;
+  /** Optional @lib/icons name shown on set badges / hover add-target toggles. */
+  icon?: string;
   /** Owner's read-widening flag — when true the set is visible to everyone. */
   isShared: boolean;
   /** True when the caller is not the owner (set is visible only via isShared). */
@@ -67,6 +69,7 @@ export type CreateAssetSetInput =
       assetIds?: number[];
       description?: string;
       color?: string;
+      icon?: string;
       isShared?: boolean;
     }
   | {
@@ -76,6 +79,7 @@ export type CreateAssetSetInput =
       maxResults?: number;
       description?: string;
       color?: string;
+      icon?: string;
       isShared?: boolean;
     };
 
@@ -89,6 +93,7 @@ function fromResponse(r: AssetSetResponse): AssetSet {
     name: r.name,
     description: r.description ?? undefined,
     color: r.color ?? undefined,
+    icon: r.icon ?? undefined,
     isShared: r.isShared,
     shared: r.shared ?? false,
     createdAt: r.createdAt,
@@ -218,7 +223,7 @@ interface AssetSetState {
 
   // Mutations (async — call the backend, then reconcile local cache)
   createSet: (input: CreateAssetSetInput) => Promise<AssetSet>;
-  updateSet: (id: number, patch: Partial<Pick<AssetSet, 'name' | 'description' | 'color'>>) => Promise<void>;
+  updateSet: (id: number, patch: Partial<Pick<AssetSet, 'name' | 'description' | 'color' | 'icon'>>) => Promise<void>;
   deleteSet: (id: number) => Promise<void>;
   renameSet: (id: number, name: string) => Promise<void>;
 
@@ -278,6 +283,7 @@ export const useAssetSetStore = create<AssetSetState>()((set, get) => ({
         kind: input.kind,
         description: input.description ?? null,
         color: input.color ?? null,
+        icon: input.icon ?? null,
         is_shared: input.isShared ?? false,
         ...(input.kind === 'smart'
           ? { filters: input.filters ?? {}, max_results: input.maxResults ?? null }
@@ -289,13 +295,15 @@ export const useAssetSetStore = create<AssetSetState>()((set, get) => ({
   },
 
   updateSet: async (id, patch) => {
-    const updated = fromResponse(
-      await updateAssetSet(id, {
-        name: patch.name,
-        description: patch.description,
-        color: patch.color,
-      }),
-    );
+    // Only send keys actually present in the patch; map present-but-undefined to
+    // null so a cleared color/icon is persisted (the backend uses
+    // exclude_unset, so an omitted key is a no-op, while null clears).
+    const body: AssetSetUpdateRequest = {};
+    if ('name' in patch) body.name = patch.name;
+    if ('description' in patch) body.description = patch.description ?? null;
+    if ('color' in patch) body.color = patch.color ?? null;
+    if ('icon' in patch) body.icon = patch.icon ?? null;
+    const updated = fromResponse(await updateAssetSet(id, body));
     set((s) => ({ sets: replaceInList(s.sets, updated) }));
   },
 

@@ -168,6 +168,44 @@ _COMPONENTS: list[UIComponent] = [
 
     # ── Layout ─────────────────────────────────────────────────────────
     UIComponent(
+        id="cq-scale",
+        name="cq-scale",
+        category="layout",
+        source_file="apps/main/src/index.css",
+        when_to_use=(
+            "Wrap any card-shaped surface whose descendants use cq-btn-*, "
+            "cq-badge, cq-badge-xs, or cq-inset-* utility classes. The class "
+            "sets `container-type: inline-size` AND defines the --cq-btn-*, "
+            "--cq-icon-*, --cq-font-*, --cq-pad-*, and --cq-inset-* custom "
+            "properties as clamp(min, Ncqi, max). Badges and icons inside "
+            "scale with the container's inline-size and clamp at sensible "
+            "min/max so cards stay legible at any size."
+        ),
+        use_instead_of=(
+            "Fixed pixel sizes on badge/icon overlays inside cards, or "
+            "per-card manual responsive sizing."
+        ),
+        anti_patterns=[
+            "Using cq-btn-md or cq-badge without a .cq-scale ancestor — the "
+            "utility rules now ship with literal fallback values (= clamp max) "
+            "so they don't collapse to icon-intrinsic sizes, but the surface "
+            "loses container-responsive scaling. New surfaces should still "
+            "wrap with .cq-scale.",
+            "Mixing .cq-scale ancestors at very different sizes for adjacent "
+            "surfaces (e.g. asset viewer vs. gallery thumbnail) — badge sizes "
+            "diverge because cqi units resolve relative to each container.",
+            "Setting .cq-scale on a non-card-shaped element (e.g. a full "
+            "panel) — huge container makes every clamp hit its max; OK as a "
+            "consistency baseline but intentional sizing won't engage.",
+        ],
+        examples=[
+            '<div className="cq-scale relative rounded-md ...">{/* MediaCard wrapper */}</div>',
+            '<OverlayContainer className="cq-scale flex-1 min-h-0 ..." />  // asset viewer',
+        ],
+        exports=[],
+        tags=["css", "container-query", "density", "scaling", "card", "primitive"],
+    ),
+    UIComponent(
         id="sidebar-content-layout",
         name="SidebarContentLayout",
         category="layout",
@@ -253,7 +291,7 @@ _COMPONENTS: list[UIComponent] = [
         name="widgetPresets",
         category="overlay",
         source_file="apps/main/src/lib/ui/overlay/widgetPresets.ts",
-        when_to_use="Pre-built widget builders for common badge types (remove, pin, count, set-indicator).",
+        when_to_use="Pre-built widget builders for common badge types (remove, pin, count, target-toggle).",
         use_instead_of="Building remove/pin/count badges from scratch with createBadgeWidget.",
         examples=[
             'buildRemoveWidget(onRemove, { id: "remove-asset", tooltip: "Remove", '
@@ -265,8 +303,7 @@ _COMPONENTS: list[UIComponent] = [
             UIComponentExport("buildRemoveWidget", "utility", "(onRemove, options?) => OverlayWidget"),
             UIComponentExport("buildPinToggleWidget", "utility", "(isPinned, onToggle) => OverlayWidget"),
             UIComponentExport("buildCountBadgeWidget", "utility", "(count, options?) => OverlayWidget | null"),
-            UIComponentExport("buildSetIndicatorWidget", "utility", "(options?) => OverlayWidget"),
-            UIComponentExport("buildAddToSetWidget", "utility", "(onAdd, options?) => OverlayWidget"),
+            UIComponentExport("buildTargetToggleWidget", "utility", "(onToggle, options) => OverlayWidget"),
         ],
         tags=["widget", "preset", "remove", "pin", "badge"],
     ),
@@ -433,6 +470,7 @@ _GUIDANCE = UIGuidance(
         "Tooltip? → Tooltip (not title attribute or custom hover div)",
         "Card badge/indicator? → createBadgeWidget + BADGE_SLOT (not inline JSX)",
         "Remove button on card? → buildRemoveWidget (not custom X button)",
+        "Card-shaped surface with cq-btn-*/cq-badge descendants? → wrap with .cq-scale (defines the --cq-btn-*/--cq-icon-* custom properties — fallbacks exist but new surfaces should still opt in).",
     ],
 )
 

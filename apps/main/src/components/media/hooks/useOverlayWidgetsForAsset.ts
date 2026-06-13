@@ -6,19 +6,24 @@
  * compact/gallery paths are assembled inline in MediaCard.tsx.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
+import { getAsset } from '@lib/api/assets';
 import { useContentInset } from '@lib/layout/edgeInsets';
 import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
-import { buildAddToSetWidget, buildSetIndicatorWidget, isOverlayPosition } from '@lib/ui/overlay';
+import { getMediaCardPreset, isOverlayPosition } from '@lib/ui/overlay';
 import { useOverlayWidgetSettingsStore } from '@lib/widgets';
 
 import type { AssetModel } from '@features/assets';
 import { mediaCardPropsFromAsset } from '@features/assets/components/shared/mediaCardPropsFromAsset';
+import { buildActiveTargetWidgets, selectActiveTargetSets } from '@features/assets/lib/activeTargetWidgets';
+import { assetEvents } from '@features/assets/lib/assetEvents';
+import { isBackendAssetId } from '@features/assets/lib/backendAssetId';
 import { isFavoriteAsset } from '@features/assets/lib/favoriteTag';
-import { useAssetSets, useAssetSetStore, type ManualAssetSet } from '@features/assets/stores/assetSetStore';
+import { useAssetSets } from '@features/assets/stores/assetSetStore';
 import { useGalleryApplyTargetStore } from '@features/assets/stores/galleryApplyTargetStore';
 
+import { buildMediaCardOverlayData } from '../mediaCardRuntimeWidgetBuilder';
 import type { MediaCardOverlayData } from '../mediaCardWidgets';
 import { createDefaultMediaCardWidgets } from '../mediaCardWidgets';
 import { applyMediaOverlayPolicyChain } from '../overlayWidgetPolicy';
@@ -87,26 +92,66 @@ function shiftLeftAnchoredWidgets<TData>(
   });
 }
 
+/** Does the gallery's default preset render the sibling/similarity badge? */
+const SIBLING_BADGES_ENABLED = !!getMediaCardPreset('media-card-default')?.capabilities
+  ?.showsSiblingBadges;
+
+/**
+ * Backfill cohort counts for the *focused* asset only.
+ *
+ * The viewer's neighbor-walk sequence skips the ~2.5s/page cohort scan
+ * (`useAssetSequence` → include_cohort_counts:false), so assets reached by
+ * prev/next arrive with empty `cohortCounts` and the similarity badge would
+ * render as dim, count-less handles. Displaying one asset is cheap, though —
+ * `GET /assets/{id}` recomputes its counts — so when the focused asset lacks
+ * them we fetch just that one and emit it. `assetViewerStore` reconciles the
+ * update back into `_assetModel`, which re-feeds this hook with live counts.
+ * Deduped per id so a legitimately empty cohort (or a fast back-and-forth)
+ * doesn't loop.
+ */
+function useFocusedAssetCohortCounts(asset: AssetModel | null): void {
+  const fetchedIdsRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!SIBLING_BADGES_ENABLED || !asset) return;
+    const id = asset.id;
+    if (!isBackendAssetId(id)) return;
+    if (asset.cohortCounts && Object.keys(asset.cohortCounts).length > 0) return;
+    if (fetchedIdsRef.current.has(id)) return;
+    fetchedIdsRef.current.add(id);
+
+    let cancelled = false;
+    getAsset(id)
+      .then((response) => {
+        if (!cancelled) assetEvents.emitAssetUpdated(response);
+      })
+      .catch(() => {
+        // Best-effort — a failed backfill just leaves the count-less handle.
+        fetchedIdsRef.current.delete(id);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [asset]);
+}
+
 export function useOverlayWidgetsForAsset({
   asset,
 }: UseOverlayWidgetsForAssetOptions): UseOverlayWidgetsForAssetResult {
+  useFocusedAssetCohortCounts(asset);
+
   const getVisibility = useOverlayWidgetSettingsStore((s) => s.getContextVisibility);
 
-  // Mirror the gallery's active-manual-set affordance. RemoteGallerySource
-  // injects buildAddToSetWidget / buildSetIndicatorWidget per card via
-  // customWidgets; the viewer reads the same stores directly so the "+ to
-  // active set" button (or the green check when the asset is already in the
-  // set) shows up wherever an asset is rendered.
-  const activeManualSetId = useGalleryApplyTargetStore((s) => s.activeManualSetId);
+  // Mirror the gallery's active-target affordance. RemoteGallerySource and the
+  // viewer both build per-set toggle glyphs from the same shared helper
+  // (buildActiveTargetWidgets) so the "add/remove to target set" toggles show
+  // up identically wherever an asset card is rendered.
+  const activeManualSetIds = useGalleryApplyTargetStore((s) => s.activeManualSetIds);
   const { sets } = useAssetSets();
-  const addAssetsToSet = useAssetSetStore((s) => s.addAssetsToSet);
-  const activeManualSet = useMemo<ManualAssetSet | undefined>(
-    () => {
-      if (!activeManualSetId) return undefined;
-      const found = sets.find((s) => s.id === activeManualSetId);
-      return found?.kind === 'manual' ? found : undefined;
-    },
-    [activeManualSetId, sets],
+  const activeSets = useMemo(
+    () => selectActiveTargetSets(sets, activeManualSetIds),
+    [activeManualSetIds, sets],
   );
 
   // Push semantics: left inset = sum of currently-active tool sidebars in
@@ -126,9 +171,13 @@ export function useOverlayWidgetsForAsset({
     // Route through resolveMediaCardOverlayProps so the viewer inherits the
     // canonical badge defaults (showStatusIcon, showTagsInOverlay, …) instead
     // of hand-rolling its own subset and silently drifting from the gallery.
+    // Source capabilities from the gallery's default preset (single source of
+    // truth) instead of a hand-picked subset — that subset is exactly how the
+    // viewer silently lost the similarity / sibling badge (showsSiblingBadges)
+    // the gallery has. Any capability the default preset gains flows here too.
     const resolvedProps = resolveMediaCardOverlayProps(asset, {
       isFavorite,
-      presetCapabilities: {
+      presetCapabilities: getMediaCardPreset('media-card-default')?.capabilities ?? {
         showsGenerationMenu: true,
         showsQuickGenerate: true,
       },
@@ -144,22 +193,8 @@ export function useOverlayWidgetsForAsset({
         widget !== null && widget.id !== 'video-scrubber',
     );
 
-    if (activeManualSet) {
-      const isInSet = activeManualSet.assetIds.includes(asset.id);
-      if (isInSet) {
-        candidates.push(
-          buildSetIndicatorWidget({
-            tooltip: `In active set: ${activeManualSet.name}`,
-          }) as OverlayWidget<MediaCardOverlayData>,
-        );
-      } else {
-        candidates.push(
-          buildAddToSetWidget(
-            () => void addAssetsToSet(activeManualSet.id, [asset.id]),
-            { tooltip: `Add to active set: ${activeManualSet.name}` },
-          ) as OverlayWidget<MediaCardOverlayData>,
-        );
-      }
+    for (const widget of buildActiveTargetWidgets(asset.id, activeSets)) {
+      candidates.push(widget as OverlayWidget<MediaCardOverlayData>);
     }
 
     const widgets = applyMediaOverlayPolicyChain(
@@ -177,38 +212,14 @@ export function useOverlayWidgetsForAsset({
       spacing: 'compact',
     };
 
-    const tagSlugs = asset.tags?.map((t) => t.slug) ?? [];
-    const tagSummaries =
-      asset.tags?.map((t) => ({ slug: t.slug, displayName: t.displayName, source: t.source })) ?? [];
-    const overlayData: MediaCardOverlayData = {
-      id: asset.id,
-      mediaType: baseProps.mediaType,
-      providerId: asset.providerId,
-      status: baseProps.providerStatus,
-      tags: tagSlugs,
-      tagSummaries,
-      description: asset.description ?? undefined,
-      createdAt: asset.createdAt,
-      uploadState: 'idle',
-      uploadProgress: 0,
-      remoteUrl: baseProps.remoteUrl ?? '',
-      videoSrc: baseProps.mediaType === 'video' ? baseProps.remoteUrl ?? undefined : undefined,
-      durationSec: baseProps.durationSec,
-      isFavorite,
-      onToggleFavorite: resolvedProps.onToggleFavorite,
-      sourceGenerationId: asset.sourceGenerationId ?? undefined,
-      hasGenerationContext: asset.hasGenerationContext ?? false,
-      prompt: asset.prompt ?? undefined,
-      operationType: asset.operationType ?? undefined,
-      artificialExtend: asset.artificialExtend ?? undefined,
-      model: asset.model ?? undefined,
-      width: asset.width ?? undefined,
-      height: asset.height ?? undefined,
-      providerUploads: asset.providerUploads,
-      lastUploadStatusByProvider: asset.lastUploadStatusByProvider,
-      versionNumber: asset.versionNumber,
-    };
+    // One source of truth for the data object — the same builder the gallery
+    // card feeds (cohortCounts, tagSummaries, warnings, versions, uploads, …)
+    // so the two surfaces can't drift field-by-field again.
+    const overlayData = buildMediaCardOverlayData(resolvedProps, {
+      videoSrc:
+        baseProps.mediaType === 'video' ? baseProps.remoteUrl ?? undefined : undefined,
+    });
 
     return { overlayConfig, overlayData };
-  }, [asset, getVisibility, activeManualSet, addAssetsToSet, leftInset]);
+  }, [asset, getVisibility, activeSets, leftInset]);
 }

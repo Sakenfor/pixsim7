@@ -1,11 +1,10 @@
 import clsx from 'clsx';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 
-import { Icon } from '@lib/icons';
+import { Icon, type IconName } from '@lib/icons';
 import { buildRemoveWidget } from '@lib/ui/overlay';
 
 import { useAssets, type AssetFilters, type AssetModel } from '@features/assets';
-import { MediaCard } from '@/components/media/MediaCard';
 import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
 import {
   useAssetSetStore,
@@ -13,7 +12,10 @@ import {
 } from '@features/assets/stores/assetSetStore';
 import { MiniGallery } from '@features/gallery';
 
+import { MediaCard } from '@/components/media/MediaCard';
+
 import { ruleInputClasses } from './filterRules';
+import { IconPicker } from './IconPicker';
 import { SmartFilterEditor } from './SmartFilterEditor';
 
 // ── Inline search for adding assets to manual sets ─────────────────────
@@ -83,10 +85,11 @@ export function SetEditView({
   set: AssetSet;
   onBack: () => void;
 }) {
-  const { renameSet, deleteSet, addAssetsToSet, removeAssetsFromSet, updateSmartFilters } =
+  const { renameSet, deleteSet, addAssetsToSet, removeAssetsFromSet, updateSmartFilters, updateSet } =
     useAssetSetStore();
   const [name, setName] = useState(set.name);
   const [showSearch, setShowSearch] = useState(false);
+  const [showIconPicker, setShowIconPicker] = useState(false);
   const [manualAssets, setManualAssets] = useState<AssetModel[]>([]);
   const [manualAssetsLoading, setManualAssetsLoading] = useState(false);
 
@@ -177,6 +180,48 @@ export function SetEditView({
         )}>
           {set.kind}
         </span>
+      </div>
+
+      {/* Appearance: icon + color (shown on hover add-target toggles + set list) */}
+      <div className="relative flex items-center gap-2 px-1">
+        <span className="text-[10px] text-neutral-500 font-medium">Appearance</span>
+        <button
+          type="button"
+          onClick={() => setShowIconPicker((v) => !v)}
+          title="Set icon"
+          className="flex items-center justify-center w-7 h-7 rounded-md border border-neutral-300 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          style={set.color ? { backgroundColor: set.color, color: '#fff', borderColor: 'transparent' } : undefined}
+        >
+          <Icon name={(set.icon as IconName) || (set.kind === 'manual' ? 'layers' : 'search')} size={14} />
+        </button>
+        <input
+          type="color"
+          value={set.color || '#3b82f6'}
+          onChange={(e) => void updateSet(set.id, { color: e.target.value })}
+          title="Set color"
+          className="w-7 h-7 rounded cursor-pointer bg-transparent border border-neutral-300 dark:border-neutral-600 p-0.5"
+        />
+        {set.color && (
+          <button
+            type="button"
+            onClick={() => void updateSet(set.id, { color: undefined })}
+            title="Clear color"
+            className="text-[10px] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+          >
+            clear
+          </button>
+        )}
+        {showIconPicker && (
+          <div className="absolute z-20 top-9 left-0 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg">
+            <IconPicker
+              value={set.icon}
+              onSelect={(icon) => {
+                void updateSet(set.id, { icon });
+                setShowIconPicker(false);
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Manual set: MiniGallery + add/remove */}
