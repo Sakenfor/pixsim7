@@ -53,8 +53,15 @@ export function useCmFacetInput(
       const text = update.state.sliceDoc(windowStart, cursor);
       const hit = matchFacetTrigger(text);
       if (hit) {
-        setTrigger({ className: hit.className, partial: hit.partial });
-        setTriggerPos(windowStart + hit.partialStart);
+        // Only OPEN the autocomplete on actual typing. A bare caret move (a
+        // click into, or arrowing through, an already-complete `ENTITY_FACET`
+        // token) must not pop the picker — otherwise clicking a facet shows the
+        // search alongside the variable popover. A caret move may still keep an
+        // already-open session in sync as you reposition within the partial.
+        if (update.docChanged || activeRef.current) {
+          setTrigger({ className: hit.className, partial: hit.partial });
+          setTriggerPos(windowStart + hit.partialStart);
+        }
         return;
       }
       setTrigger(null);
