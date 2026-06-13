@@ -269,5 +269,5 @@ export { getDisplaySpacesFromWorldMeta, resolveDisplayTargetFromWorldMeta } from
 // ============================================================================
 // Form Components - Reusable form inputs
 // ============================================================================
-export { ArrayFieldInput } from './forms';
-export type { ArrayFieldInputProps } from './forms';
+export { ArrayFieldInput, IconPicker } from './forms';
+export type { ArrayFieldInputProps, IconPickerProps } from './forms';

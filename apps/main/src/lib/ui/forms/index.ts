@@ -5,3 +5,4 @@
  */
 
 export { ArrayFieldInput, type ArrayFieldInputProps } from './ArrayFieldInput';
+export { IconPicker, type IconPickerProps } from './IconPicker';

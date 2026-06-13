@@ -4,20 +4,24 @@ import { Icon, Icons, type IconName } from '@lib/icons';
 
 const ALL_ICON_NAMES = Object.keys(Icons) as IconName[];
 
-/**
- * Searchable grid for picking an @lib/icons name. Used to give an asset set a
- * glyph (rendered on the media-card hover add-target toggle). The first cell
- * clears the selection.
- */
-export function IconPicker({
-  value,
-  onSelect,
-}: {
+export interface IconPickerProps {
   /** Currently-selected icon name, if any. */
   value?: string;
   /** Called with the chosen name, or `undefined` to clear. */
   onSelect: (name: string | undefined) => void;
-}) {
+  /** Placeholder for the search box. */
+  searchPlaceholder?: string;
+  /** Extra classes on the root container. */
+  className?: string;
+}
+
+/**
+ * Searchable grid for picking an `@lib/icons` name. The canonical icon picker —
+ * the first cell clears the selection. Stateless beyond its own search query;
+ * the caller owns the selected value and decides how to surface the picker
+ * (inline, popover, dialog).
+ */
+export function IconPicker({ value, onSelect, searchPlaceholder = 'Search icons…', className }: IconPickerProps) {
   const [query, setQuery] = useState('');
   const names = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -25,12 +29,12 @@ export function IconPicker({
   }, [query]);
 
   return (
-    <div className="flex flex-col gap-1 p-1 w-56">
+    <div className={`flex flex-col gap-1 p-1 w-56 ${className ?? ''}`}>
       <input
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search icons…"
+        placeholder={searchPlaceholder}
         className="px-2 py-1 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 outline-none focus:border-accent"
       />
       <div className="grid grid-cols-6 gap-0.5 max-h-48 overflow-y-auto thin-scrollbar">

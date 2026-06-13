@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 
 import { Icon, type IconName } from '@lib/icons';
+import { IconPicker } from '@lib/ui/forms';
 import { buildRemoveWidget } from '@lib/ui/overlay';
 
 import { useAssets, type AssetFilters, type AssetModel } from '@features/assets';
@@ -15,7 +16,6 @@ import { MiniGallery } from '@features/gallery';
 import { MediaCard } from '@/components/media/MediaCard';
 
 import { ruleInputClasses } from './filterRules';
-import { IconPicker } from './IconPicker';
 import { SmartFilterEditor } from './SmartFilterEditor';
 
 // ── Inline search for adding assets to manual sets ─────────────────────
