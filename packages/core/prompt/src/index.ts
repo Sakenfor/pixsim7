@@ -52,3 +52,11 @@ export type {
 
 export { resolveRecipe, BUILT_IN_RECIPES } from './recipes';
 export type { Recipe, RecipeContext } from './recipes';
+
+export { tokenize } from './tokenizer';
+export type {
+  TokenizeResult,
+  PromptTokenLine,
+  PromptTokenChainElement,
+  PromptTokenChainOperator,
+} from './tokenizer';
