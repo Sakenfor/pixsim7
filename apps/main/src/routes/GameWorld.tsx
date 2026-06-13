@@ -8,8 +8,9 @@ import {
   SidebarPaneShell,
   useSidebarNav,
 } from '@pixsim7/shared.ui';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { resolveGameLocations } from '@lib/resolvers';
 
 import { InteractionPresetUsagePanel } from '@/components/game/panels/InteractionPresetUsagePanel';
@@ -27,39 +28,66 @@ import { getGameLocation, saveGameLocationHotspots, getGameWorld } from '../lib/
 type GameWorldTab = 'hotspots' | '2d-layout' | 'room-nav' | 'presets' | 'usage' | 'validation';
 type GameWorldSection = 'location-tools' | 'world-tools';
 
-const TAB_SECTIONS: Array<{
+type GameWorldNavSection = {
   id: GameWorldSection;
   label: string;
   children: { id: GameWorldTab; label: string }[];
-}> = [
-  {
-    id: 'location-tools',
-    label: 'Location Tools',
-    children: [
-      { id: 'hotspots', label: 'Hotspots' },
-      { id: '2d-layout', label: '2D Layout' },
-      { id: 'room-nav', label: 'Room Nav (Beta)' },
-    ],
-  },
-  {
-    id: 'world-tools',
-    label: 'World Tools',
-    children: [
-      { id: 'presets', label: 'Interaction Presets' },
-      { id: 'usage', label: 'Usage Stats' },
-      { id: 'validation', label: 'Validation' },
-    ],
-  },
-];
-
-const TAB_DESCRIPTIONS: Record<GameWorldTab, string> = {
-  hotspots: 'Configure mesh hotspots and linked actions for this location.',
-  '2d-layout': 'Manage 2D slot layout and world-linked actor placement.',
-  'room-nav': 'Define local room movement links and routing behavior.',
-  presets: 'Manage reusable interaction presets at world scope.',
-  usage: 'Inspect development usage metrics for interaction presets.',
-  validation: 'Check world health: behavior config validation and link integrity.',
 };
+
+/**
+ * Scope (panel `contextLabel`) → sidebar section presentation. The tabs
+ * themselves are registered as panel definitions under
+ * `features/panels/domain/definitions/game-world-*`; GameWorld derives its nav
+ * by querying that registry and grouping on this scope (see
+ * `useGameWorldTabSections`). Adding a tab is "register a definition", not
+ * editing a hardcoded array here.
+ */
+const SECTION_META: Record<'location' | 'world', { id: GameWorldSection; label: string }> = {
+  location: { id: 'location-tools', label: 'Location Tools' },
+  world: { id: 'world-tools', label: 'World Tools' },
+};
+
+const GAME_WORLD_EDITOR_SCOPE = 'game-world-editor';
+
+/**
+ * Derive GameWorld's sidebar sections + per-tab descriptions from the panel
+ * registry (scope `game-world-editor`), grouped by `contextLabel`. Subscribes
+ * so late-registering definitions populate the nav (registration is async at
+ * app boot).
+ */
+function useGameWorldTabSections(): {
+  sections: GameWorldNavSection[];
+  descriptions: Record<GameWorldTab, string>;
+} {
+  const [tabDefs, setTabDefs] = useState(() => panelSelectors.getForScope(GAME_WORLD_EDITOR_SCOPE));
+  useEffect(() => {
+    const update = () => setTabDefs(panelSelectors.getForScope(GAME_WORLD_EDITOR_SCOPE));
+    update();
+    return panelSelectors.subscribe(update);
+  }, []);
+
+  return useMemo(() => {
+    const byScope = new Map<'location' | 'world', { id: GameWorldTab; label: string }[]>();
+    const descriptions = {} as Record<GameWorldTab, string>;
+    for (const def of tabDefs) {
+      const scope = def.contextLabel;
+      if (scope !== 'location' && scope !== 'world') continue;
+      const tabId = def.id.replace('game-world-', '') as GameWorldTab;
+      const children = byScope.get(scope) ?? [];
+      children.push({ id: tabId, label: def.title });
+      byScope.set(scope, children);
+      descriptions[tabId] = def.description ?? '';
+    }
+    const sections = (['location', 'world'] as const)
+      .filter((scope) => byScope.has(scope))
+      .map((scope) => ({
+        id: SECTION_META[scope].id,
+        label: SECTION_META[scope].label,
+        children: byScope.get(scope)!,
+      }));
+    return { sections, descriptions };
+  }, [tabDefs]);
+}
 
 export function GameWorld() {
   const {
@@ -79,8 +107,10 @@ export function GameWorld() {
   const [error, setError] = useState<string | null>(null);
   const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
 
+  const { sections, descriptions } = useGameWorldTabSections();
+
   const nav = useSidebarNav<GameWorldSection, GameWorldTab>({
-    sections: TAB_SECTIONS,
+    sections,
     initial: 'hotspots',
     storageKey: 'game-world-editor:nav',
   });
@@ -290,7 +320,7 @@ export function GameWorld() {
             </Panel>
 
             <HierarchicalSidebarNav
-              items={TAB_SECTIONS}
+              items={sections}
               expandedItemIds={nav.expandedSectionIds}
               onToggleExpand={nav.toggleExpand}
               onSelectItem={nav.selectSection}
@@ -310,7 +340,7 @@ export function GameWorld() {
         <div className="shrink-0 border-b border-neutral-200 dark:border-neutral-800 px-6 py-4">
           <h1 className="text-2xl font-semibold">Game World Editor</h1>
           <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
-            {TAB_DESCRIPTIONS[activeTab]}
+            {descriptions[activeTab]}
           </p>
           <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
             World: {selectedWorldName} | Location: {selectedLocationName}

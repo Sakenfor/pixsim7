@@ -114,6 +114,10 @@ function resolveContextLabel(
         case "world":
           baseLabel = ctx.world.id ? `World #${ctx.world.id}` : undefined;
           break;
+        case "location":
+          baseLabel = ctx.world.locationName
+            ?? (ctx.world.locationId ? `Location #${ctx.world.locationId}` : undefined);
+          break;
         case "session":
           baseLabel = ctx.runtime.sessionId
             ? `Session #${ctx.runtime.sessionId}`

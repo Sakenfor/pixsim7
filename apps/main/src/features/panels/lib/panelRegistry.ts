@@ -31,13 +31,19 @@ export {
  * Context label strategy for panel headers.
  * - 'scene': Shows "Scene: {title}" when available
  * - 'world': Shows "World #{id}" when available
+ * - 'location': Shows the location name (or "Location #{id}") when available
  * - 'session': Shows "Session #{id}" or falls back to world
  * - 'preset': Shows "Preset: {id}" when available
  * - function: Custom derivation from EditorContext
+ *
+ * Beyond panel-header display, this also tags a panel with the editing scope it
+ * belongs to ('location' vs 'world' vs 'session'), which registry-driven
+ * containers (e.g. GameWorld) group on to build their nav sections.
  */
 export type ContextLabelStrategy =
   | "scene"
   | "world"
+  | "location"
   | "session"
   | "preset"
   | ((ctx: EditorContext) => string | undefined);
