@@ -160,18 +160,20 @@ function markFor(range: VariableRange): Decoration {
   return mark;
 }
 
-// Facet sub-mark — nested inside the var mark over the facet portion. Known
-// (typed) facets get a faint violet wash echoing the access-operator/popover
-// hue; unrecognised-within-class facets get an amber dashed underline to flag
-// "this isn't a facet of that class". Two cached marks (known/unknown).
+// Facet sub-mark — nested inside the var mark over the facet portion. Underline
+// only (no background wash): the base var mark already underlines the whole
+// token, so the facet sub-mark just recolours that segment's underline to type
+// it — violet solid for a known (typed) facet, amber dashed for one that isn't
+// recognised within the class. Avoids the highlight+underline doubling over the
+// facet. Two cached marks (known/unknown).
 const _facetMarkCache = new Map<boolean, Decoration>();
 
 function facetMarkFor(known: boolean): Decoration {
   let mark = _facetMarkCache.get(known);
   if (!mark) {
     const style = known
-      ? 'background-color:rgba(168,85,247,0.12);border-radius:2px'
-      : 'background-color:rgba(245,158,11,0.13);border-bottom:1px dashed rgba(217,119,6,0.85)';
+      ? 'border-bottom:1px solid rgba(168,85,247,0.9)'
+      : 'border-bottom:1px dashed rgba(217,119,6,0.9)';
     mark = Decoration.mark({
       attributes: {
         class: known ? 'cm-prompt-facet cm-prompt-facet-known' : 'cm-prompt-facet cm-prompt-facet-unknown',
