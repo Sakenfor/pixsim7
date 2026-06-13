@@ -1123,6 +1123,10 @@ interface StorageRootConfigItem {
   region: string | null;
   presigned_ttl_seconds: number | null;
   has_secret: boolean;
+  // 'store' (read/write tier) | 'source' (read-only ingest bucket). See plan
+  // s3-source-root-ingest.
+  role?: string;
+  prefix?: string | null;
 }
 
 interface StorageRootsConfig {
@@ -2244,6 +2248,8 @@ interface RootForm {
   secret_key: string;
   region: string;
   presigned_ttl_seconds: number;
+  role: 'store' | 'source';
+  prefix: string;
 }
 
 const EMPTY_ROOT_FORM: RootForm = {
@@ -2254,6 +2260,8 @@ const EMPTY_ROOT_FORM: RootForm = {
   secret_key: '',
   region: 'us-east-1',
   presigned_ttl_seconds: 3600,
+  role: 'store',
+  prefix: '',
 };
 
 /** Add / edit / remove an S3-MinIO archive root, with a connection test. */
@@ -2264,6 +2272,7 @@ function StorageRootEditor({ onChanged }: { onChanged: () => void }) {
   const [editingExisting, setEditingExisting] = useState(false);
   const [testResult, setTestResult] = useState<StorageRootTestResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
   const [result, setResult] = useState<ActionResult | null>(null);
 
   const loadConfig = useCallback(async () => {
@@ -2295,6 +2304,8 @@ function StorageRootEditor({ onChanged }: { onChanged: () => void }) {
       secret_key: '', // never returned; blank = keep stored secret
       region: r.region ?? 'us-east-1',
       presigned_ttl_seconds: r.presigned_ttl_seconds ?? 3600,
+      role: r.role === 'source' ? 'source' : 'store',
+      prefix: r.prefix ?? '',
     });
     setEditingExisting(true);
     setTestResult(null);
@@ -2343,6 +2354,8 @@ function StorageRootEditor({ onChanged }: { onChanged: () => void }) {
           secret_key: form.secret_key || undefined,
           region: form.region,
           presigned_ttl_seconds: form.presigned_ttl_seconds,
+          role: form.role,
+          prefix: form.role === 'source' ? (form.prefix || undefined) : undefined,
         },
         SURFACE,
       );
@@ -2381,6 +2394,36 @@ function StorageRootEditor({ onChanged }: { onChanged: () => void }) {
     [onChanged],
   );
 
+  const syncSource = useCallback(
+    async (id: string) => {
+      setSyncingId(id);
+      setResult(null);
+      try {
+        const stats = await maintPost<{
+          root_id: string;
+          scanned: number;
+          created: number;
+          deduped: number;
+          skipped: number;
+          errors: number;
+        }>(`/assets/storage-roots/${encodeURIComponent(id)}/ingest`, SURFACE, {});
+        setResult({
+          message:
+            `Synced '${id}': ${stats.created} new, ${stats.deduped} dup, ` +
+            `${stats.skipped} skipped, ${stats.errors} errors (of ${stats.scanned} scanned). ` +
+            `Re-run to continue if the bucket has more.`,
+          isError: stats.errors > 0,
+        });
+        onChanged();
+      } catch (err) {
+        setResult({ message: extractErrorMessage(err) || 'Sync failed', isError: true });
+      } finally {
+        setSyncingId(null);
+      }
+    },
+    [onChanged],
+  );
+
   const extras = config?.roots ?? [];
   const envSourced = config?.source === 'env';
 
@@ -2400,10 +2443,31 @@ function StorageRootEditor({ onChanged }: { onChanged: () => void }) {
       {!open && extras.map((r) => (
         <div key={r.id} className="flex items-center gap-2 text-[11px] pl-5">
           <span className="font-medium">{r.id}</span>
-          <span className="text-muted-foreground/70 truncate flex-1" title={`${r.endpoint_url ?? ''}/${r.bucket ?? ''}`}>
+          <span
+            className="text-[9px] uppercase tracking-wide text-muted-foreground/60 shrink-0"
+            title={r.role === 'source' ? 'read-only ingest source' : 'read/write storage tier'}
+          >
+            {r.role === 'source' ? 'source' : 'store'}
+          </span>
+          <span
+            className="text-muted-foreground/70 truncate flex-1"
+            title={`${r.endpoint_url ?? ''}/${r.bucket ?? ''}${r.prefix ? `/${r.prefix}` : ''}`}
+          >
             {(r.endpoint_url ?? '').replace(/^https?:\/\//, '')}/{r.bucket ?? ''}
+            {r.prefix ? `/${r.prefix}` : ''}
           </span>
           {envSourced && <span className="text-[9px] text-amber-600 dark:text-amber-400">from .env</span>}
+          {r.role === 'source' && (
+            <button
+              type="button"
+              onClick={() => syncSource(r.id)}
+              disabled={busy || syncingId === r.id}
+              className="text-[10px] text-primary hover:underline disabled:opacity-50"
+              title="Enumerate this bucket and ingest new objects as assets"
+            >
+              {syncingId === r.id ? 'Syncing…' : 'Sync now'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => startEdit(r)}
@@ -2441,6 +2505,16 @@ function StorageRootEditor({ onChanged }: { onChanged: () => void }) {
               disabled={editingExisting || busy}
               className="h-7 bg-transparent border border-border rounded px-2 disabled:opacity-50"
             />
+            <label className="text-muted-foreground">Role</label>
+            <select
+              value={form.role}
+              onChange={(e) => patch({ role: e.target.value === 'source' ? 'source' : 'store' })}
+              disabled={busy}
+              className="h-7 bg-transparent border border-border rounded px-2"
+            >
+              <option value="store">store (read/write tier)</option>
+              <option value="source">source (read-only ingest)</option>
+            </select>
             <label className="text-muted-foreground">Endpoint</label>
             <input
               placeholder="http://10.243.1.2:9000"
@@ -2489,6 +2563,18 @@ function StorageRootEditor({ onChanged }: { onChanged: () => void }) {
               disabled={busy}
               className="h-7 bg-transparent border border-border rounded px-2"
             />
+            {form.role === 'source' && (
+              <>
+                <label className="text-muted-foreground">Prefix</label>
+                <input
+                  placeholder="Susana Spears/ (optional)"
+                  value={form.prefix}
+                  onChange={(e) => patch({ prefix: e.target.value })}
+                  disabled={busy}
+                  className="h-7 bg-transparent border border-border rounded px-2"
+                />
+              </>
+            )}
           </div>
 
           {testResult && (
