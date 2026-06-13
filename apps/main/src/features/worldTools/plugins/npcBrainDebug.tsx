@@ -86,6 +86,7 @@ export const npcBrainDebugTool: WorldToolPlugin = {
   description: 'Deep dive into NPC brain state (data-driven)',
   icon: '🧠',
   category: 'debug',
+  devTool: true,
 
   // Show when we have a session
   whenVisible: (context) => context.session !== null,

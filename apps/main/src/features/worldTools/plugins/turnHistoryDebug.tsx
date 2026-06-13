@@ -16,6 +16,7 @@ export const turnHistoryDebugTool: WorldToolPlugin = {
   description: 'View turn-based game progression history',
   icon: '📜',
   category: 'debug',
+  devTool: true,
 
   // Show when we have a session in turn-based mode
   whenVisible: (context) => {

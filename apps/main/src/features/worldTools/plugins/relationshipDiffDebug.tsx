@@ -21,6 +21,7 @@ export const relationshipDiffDebugTool: WorldToolPlugin = {
   description: 'Track relationship changes and current values',
   icon: '📊',
   category: 'debug',
+  devTool: true,
 
   // Show when we have a session
   whenVisible: (context) => context.session !== null,

@@ -1,12 +1,14 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Session Flags Inspector World Tool Plugin
  *
  * Displays and allows inspection of all session flags in a structured view.
  */
 
-import { useState } from 'react';
-import type { WorldToolPlugin } from '../lib/types';
 import { Badge } from '@pixsim7/shared.ui';
+import { useState } from 'react';
+
+import type { WorldToolPlugin } from '../lib/types';
 
 export const sessionFlagsDebugTool: WorldToolPlugin = {
   id: 'session-flags-debug',
@@ -14,6 +16,7 @@ export const sessionFlagsDebugTool: WorldToolPlugin = {
   description: 'Inspect session flags and state',
   icon: '🏴',
   category: 'debug',
+  devTool: true,
 
   // Show when we have a session
   whenVisible: (context) => context.session !== null,

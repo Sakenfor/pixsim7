@@ -4,9 +4,11 @@
  * Displays world manifest configuration including enabled plugins, arc graphs, etc.
  */
 
-import type { WorldToolPlugin } from '../lib/types';
-import type { WorldManifest } from '@lib/registries';
 import { Badge } from '@pixsim7/shared.ui';
+
+import type { WorldManifest } from '@lib/registries';
+
+import type { WorldToolPlugin } from '../lib/types';
 
 export const worldManifestDebugTool: WorldToolPlugin = {
   id: 'world-manifest-debug',
@@ -14,6 +16,7 @@ export const worldManifestDebugTool: WorldToolPlugin = {
   description: 'View world configuration and enabled features',
   icon: '📋',
   category: 'debug',
+  devTool: true,
 
   // Show when we have a world
   whenVisible: (context) => context.worldDetail !== null,

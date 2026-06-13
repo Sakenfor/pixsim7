@@ -11,7 +11,6 @@ import {
   type EditorContextSnapshot,
   useCapability,
 } from "@features/contextHub";
-
 import { ProjectContextBadge } from "@features/panels/components/shared/ProjectContextBadge";
 
 
@@ -101,7 +100,7 @@ export function GameToolsPanel() {
 
   const panels = useMemo(() => panelSelectors.getPublicPanels(), []);
   const widgets = useMemo(() => widgetRegistry.getAll(), []);
-  const worldTools = useMemo(() => worldToolSelectors.getAll(), []);
+  const worldTools = useMemo(() => worldToolSelectors.getAuthoring(), []);
   const interactions = useMemo(() => interactionRegistry.getAll(), []);
   const plugins = useMemo(() => pluginCatalog.getAll(), []);
 

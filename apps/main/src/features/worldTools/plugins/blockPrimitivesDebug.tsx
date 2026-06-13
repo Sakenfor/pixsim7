@@ -14,6 +14,7 @@ export const blockPrimitivesDebugTool: WorldToolPlugin = {
   description: 'Build and run behavior-driven block primitive selection requests',
   icon: 'target',
   category: 'debug',
+  devTool: true,
 
   whenVisible: (context) => context.selectedWorldId !== null,
 

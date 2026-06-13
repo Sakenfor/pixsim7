@@ -19,6 +19,7 @@ export const moodDebugTool: WorldToolPlugin = {
   description: 'View NPC mood and time-of-day information',
   icon: '🧠',
   category: 'debug',
+  devTool: true,
 
   // Show when we have both a session and world
   whenVisible: (context) => context.session !== null && context.selectedWorldId !== null,

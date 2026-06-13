@@ -191,6 +191,14 @@ export const worldToolSelectors = {
     () => worldToolBase.getAll(),
     'whenVisible',
   ),
+
+  /**
+   * Authoring tools only — excludes `devTool` inspectors so authoring browsers
+   * (e.g. GameToolsPanel) aren't half-filled with debug surfaces.
+   */
+  getAuthoring(): WorldToolPlugin[] {
+    return worldToolBase.getAll().filter((tool) => !tool.devTool);
+  },
 };
 
 // ============================================================================

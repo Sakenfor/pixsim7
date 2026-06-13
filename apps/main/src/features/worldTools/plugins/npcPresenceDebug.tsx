@@ -17,6 +17,7 @@ export const npcPresenceDebugTool: WorldToolPlugin = {
   description: 'View NPC locations and slot assignments',
   icon: '📍',
   category: 'debug',
+  devTool: true,
 
   // Show when we have a world
   whenVisible: (context) => context.selectedWorldId !== null,

@@ -58,6 +58,16 @@ export interface ToolPlugin<TContext = unknown> extends Identifiable, PluginMeta
   category?: string;
 
   /**
+   * Marks this tool as a developer/inspector tool rather than an authoring tool.
+   * Authoring surfaces (tool browsers, world/location editors) should exclude
+   * `devTool` items so those lists aren't half-filled with debug inspectors.
+   * Distinct from `category: 'debug'`, which is purely a grouping axis — a tool
+   * can be grouped under any category yet still be a dev inspector, and vice
+   * versa (e.g. an authoring tool grouped under 'debug').
+   */
+  devTool?: boolean;
+
+  /**
    * Predicate to determine when this tool should be visible.
    * @returns true if the tool should be shown
    */
