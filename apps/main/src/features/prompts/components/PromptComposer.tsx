@@ -22,6 +22,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { getBlockSchema } from '@lib/api/blockTemplates';
+import { promoteFamilyCandidate } from '@lib/api/prompts';
 import { contextMenuAttrs, useRegisterContextData } from '@lib/dockview/contextMenu';
 import { Icon } from '@lib/icons';
 import {
@@ -50,6 +51,7 @@ import { openWorkspacePanel, useWorkspaceStore } from '@features/workspace';
 import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
+import { useClientTokens } from '../hooks/useClientTokens';
 import { useCmFacetInput } from '../hooks/useCmFacetInput';
 import { useCmReferenceInput } from '../hooks/useCmReferenceInput';
 import { resolveOperatorContract, useOperatorVocabulary } from '../hooks/useOperatorVocabulary';
@@ -58,11 +60,11 @@ import { usePromptVariables } from '../hooks/usePromptVariables';
 import { matchOperator, matchRecipe, useRelationRecipes } from '../hooks/useRelationRecipes';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
+import { useSimilarPromptsSearch } from '../hooks/useSimilarPromptsSearch';
 import { useVocabularies } from '../hooks/useVocabularies';
 import { resolveFacet, suggestFacets } from '../lib/facetRecognition';
 import { ghostDiffExtension, type GhostDiffConfig } from '../lib/ghostDiffExtension';
 import { operatorEditExtension, type OperatorRange } from '../lib/operatorEditExtension';
-import { allFacetVocabCategories } from '../lib/promptVariableName';
 import type { PrimitiveProjectionHypothesis } from '../lib/parsePrimitiveMatch';
 import {
   getCachedAnalysis,
@@ -70,6 +72,7 @@ import {
   type AnalysisResult,
   type SequenceContext,
 } from '../lib/promptAnalysisCache';
+import { allFacetVocabCategories } from '../lib/promptVariableName';
 import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
 import { shiftCandidates } from '../lib/shiftAnalysisPositions';
 import {
@@ -410,6 +413,11 @@ export function PromptComposer({
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
   const [showSimilar, setShowSimilar] = useState(false);
   const similarTriggerRef = useRef<HTMLButtonElement>(null);
+  // Owned here (not inside the popover) so the trigger can show search status
+  // and results persist across open/close. See useSimilarPromptsSearch.
+  const similarSearch = useSimilarPromptsSearch({ promptText: value, open: showSimilar });
+  const similarBusy = similarSearch.loading;
+  const similarCount = !similarSearch.stale && !similarSearch.error ? similarSearch.results.length : 0;
 
   // --- Shadow analysis click popover (CM path) ---
   const [cmShadowPopover, setCmShadowPopover] = useState<{
@@ -686,6 +694,9 @@ export function PromptComposer({
   // --- Side-by-side per-column source selection — stable across opens ---
   const [leftCompareSourceId, setLeftCompareSourceId] = useState<string>('viewer');
   const [rightCompareSourceId, setRightCompareSourceId] = useState<string>('current');
+  // Ad-hoc compare source injected when comparing a similar-prompt result
+  // against the current text (from SimilarPromptsPopover's compare action).
+  const [compareExtraSource, setCompareExtraSource] = useState<CompareSource | null>(null);
   const operatorVocabulary = useOperatorVocabulary();
   const relationRecipes = useRelationRecipes();
 
@@ -1241,6 +1252,9 @@ export function PromptComposer({
       const text = tl.entries[tl.currentIndex - i] ?? '';
       list.push({ id: `history-${i}`, label: `History −${i}`, text });
     }
+    if (compareExtraSource) {
+      list.push(compareExtraSource);
+    }
     return list;
   }, [
     compareSideBySideAnchor,
@@ -1250,6 +1264,7 @@ export function PromptComposer({
     hoverAssetPrompt,
     peekingHover,
     history,
+    compareExtraSource,
   ]);
 
   // When the popover opens (or the available sources change underneath us),
@@ -1362,6 +1377,14 @@ export function PromptComposer({
     analyzerId: defaultAnalyzer,
   });
 
+  // STRUCTURE layer source: client-side tokens over the live doc. Drives the
+  // operator + variable (+ facet) extensions independent of the analyze call,
+  // so the mini-language structure is available even in plain (non-shadow)
+  // mode and never lags typing. Offsets are in the original-text frame (the CM
+  // doc == value), matching what those extensions already expect. The heavier
+  // ANALYSIS layer (role candidates + side panel) still rides cmShadowTokenLines.
+  const clientTokenLines = useClientTokens(value);
+
   // --- CM extensions for CodeMirror mode ---
   // Diff precision is a user-controlled setting (toolbar dropdown) so both
   // history-sticky and media-compare diffs stay stable as the cursor moves.
@@ -1442,7 +1465,7 @@ export function PromptComposer({
       // positions. Markers are added by handleAcceptOpOutput; consumers
       // snapshot via getSpanProvenance(view.state) at save time.
       spanProvenanceField,
-      operatorEditExtension(cmShadowTokenLines, {
+      operatorEditExtension(clientTokenLines, {
         onOperatorClick: (operator, anchor) => {
           // The intra-token `_` is an access operator, not a relation operator
           // — route it to the facet popover instead of the type-swap popover.
@@ -1454,7 +1477,7 @@ export function PromptComposer({
         },
       }),
       variableTokenExtension(
-        { tokenLines: cmShadowTokenLines, savedNames: savedVariableNames, facetVocab },
+        { tokenLines: clientTokenLines, savedNames: savedVariableNames, facetVocab },
         {
           onVariableClick: (variable, anchor) => {
             setCmVariablePopover({ variable, anchor });
@@ -1467,7 +1490,7 @@ export function PromptComposer({
       cmGhostConfig?.comparisonText,
       cmGhostConfig?.stepDistance,
       cmGhostConfig?.precision,
-      cmShadowTokenLines,
+      clientTokenLines,
       cmRefInput.extension,
       cmFacetInput.extension,
       savedVariableNames,
@@ -2161,15 +2184,33 @@ export function PromptComposer({
           type="button"
           disabled={disabled}
           onClick={() => setShowSimilar((prev) => !prev)}
-          title="Find similar prompts (semantic)"
+          title={
+            similarBusy
+              ? 'Searching for similar prompts…'
+              : similarCount > 0
+                ? `Find similar prompts (semantic) — ${similarCount} match${similarCount === 1 ? '' : 'es'}`
+                : 'Find similar prompts (semantic)'
+          }
           className={clsx(
-            'p-1 rounded transition-colors',
+            'relative p-1 rounded transition-colors',
             showSimilar
               ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200'
               : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
           )}
         >
           <Icon name="analysis" size={14} />
+          {similarBusy ? (
+            <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center">
+              <Icon name="refresh" size={9} className="animate-spin text-accent" />
+            </span>
+          ) : (
+            similarCount > 0 &&
+            !showSimilar && (
+              <span className="absolute -top-1 -right-1 min-w-[13px] h-[13px] px-0.5 flex items-center justify-center rounded-full bg-accent text-[8px] leading-none font-semibold tabular-nums text-white">
+                {similarCount > 9 ? '9+' : similarCount}
+              </span>
+            )
+          )}
         </button>
 
         {mode === 'blocks' && (
@@ -2748,8 +2789,28 @@ export function PromptComposer({
         onClose={() => setShowSimilar(false)}
         anchor={similarTriggerRef.current}
         triggerRef={similarTriggerRef}
-        promptText={value}
+        search={similarSearch}
         onUse={(text) => onChange(text)}
+        onCompare={(otherText, label) => {
+          setCompareExtraSource({ id: 'similar', label: label ?? 'Similar prompt', text: otherText });
+          setLeftCompareSourceId('current');
+          setRightCompareSourceId('similar');
+          setCompareSideBySideAnchor(similarTriggerRef.current);
+          setShowSimilar(false);
+        }}
+        onPromote={(versionIds, title) =>
+          promoteFamilyCandidate({ version_ids: versionIds, title })
+        }
+        onOpenFamilies={() => {
+          // Land on the Families tab of the Prompt Library inspector.
+          try {
+            window.localStorage.setItem('prompt-library-inspector:tab', 'families');
+          } catch {
+            // ignore storage failures — panel just opens on its last tab
+          }
+          useWorkspaceStore.getState().openFloatingPanel('prompt-library-inspector');
+          setShowSimilar(false);
+        }}
       />
 
       <Popover
@@ -2869,7 +2930,10 @@ export function PromptComposer({
         align="end"
         offset={6}
         open={!!compareSideBySideAnchor}
-        onClose={() => setCompareSideBySideAnchor(null)}
+        onClose={() => {
+          setCompareSideBySideAnchor(null);
+          setCompareExtraSource(null);
+        }}
       >
         {compareSideBySideAnchor && (
           <PromptCompareSideBySide
