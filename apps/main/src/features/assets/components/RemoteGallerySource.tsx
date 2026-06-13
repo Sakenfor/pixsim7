@@ -7,7 +7,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { listAssetGroups } from '@lib/api/assets';
 import type { AssetGroupListResponse, AssetGroupRequest } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
-import { Icon } from '@lib/icons';
+import { Icon, type IconName } from '@lib/icons';
+import { IconPicker } from '@lib/ui/forms';
 import { getMediaCardPreset } from '@lib/ui/overlay';
 
 import { FilterChip, useFilterChipState } from '@features/gallery';
@@ -93,6 +94,7 @@ function AssetSetChip({
   onToggleFilter,
   onToggleTarget,
   onBrowseSet,
+  onSetIcon,
   selectedCount,
   onAddSelected,
   onCreateSet,
@@ -107,6 +109,7 @@ function AssetSetChip({
   onToggleFilter: (setId: number) => void;
   onToggleTarget: (setId: number) => void;
   onBrowseSet: (set: ManualAssetSet) => void;
+  onSetIcon: (setId: number, icon: string | undefined) => void;
   selectedCount: number;
   onAddSelected: () => void;
   onCreateSet: () => Promise<number | void> | number | void;
@@ -114,6 +117,7 @@ function AssetSetChip({
   onDeleteSet: (id: number) => void;
 }) {
   const [rowMenu, setRowMenu] = useState<{ set: ManualAssetSet; x: number; y: number } | null>(null);
+  const [iconPickerId, setIconPickerId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draftName, setDraftName] = useState('');
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -229,6 +233,32 @@ function AssetSetChip({
                     : 'bg-neutral-300 dark:bg-neutral-600 hover:bg-emerald-400/60'
                 }`} />
               </button>
+              {/* Icon swatch — shows the set's glyph/color; click to change icon */}
+              <div className="relative flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIconPickerId((cur) => (cur === s.id ? null : s.id));
+                  }}
+                  title="Change icon"
+                  className="w-5 h-5 rounded flex items-center justify-center hover:ring-2 ring-accent/40"
+                  style={{ backgroundColor: s.color || '#3B82F6' }}
+                >
+                  <Icon name={(s.icon as IconName) || 'layers'} size={11} color="#fff" />
+                </button>
+                {iconPickerId === s.id && (
+                  <div className="absolute z-30 top-6 left-0 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg">
+                    <IconPicker
+                      value={s.icon}
+                      onSelect={(icon) => {
+                        onSetIcon(s.id, icon);
+                        setIconPickerId(null);
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
               {/* Set name — inline editable */}
               {isEditing ? (
                 <input
@@ -412,6 +442,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   const createSet = useAssetSetStore((s) => s.createSet);
   const renameSet = useAssetSetStore((s) => s.renameSet);
   const deleteSet = useAssetSetStore((s) => s.deleteSet);
+  const updateSet = useAssetSetStore((s) => s.updateSet);
   const activeManualSetIds = useGalleryApplyTargetStore((s) => s.activeManualSetIds);
   const toggleActiveTarget = useGalleryApplyTargetStore((s) => s.toggleActiveTarget);
   const setActiveTargets = useGalleryApplyTargetStore((s) => s.setActiveTargets);
@@ -1483,6 +1514,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
                   onToggleFilter={toggleFilterSet}
                   onToggleTarget={toggleActiveTarget}
                   onBrowseSet={browseSetInMiniGallery}
+                  onSetIcon={(id, icon) => void updateSet(id, { icon })}
                   selectedCount={controller.selectedAssetIds.size}
                   onAddSelected={addSelectedToActiveTargets}
                   onCreateSet={handleCreateSet}
