@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -18,6 +19,11 @@ export interface FacetEditPopoverProps {
   /** When provided, the facet chips become clickable swap actions — selecting
    *  one replaces the facet token in the document. Omit for a read-only popover. */
   onReplace?: (value: string) => void;
+  /** When provided (with `onReplace`), a search field filters across the whole
+   *  class's facets — empty query shows `suggestions` (the related siblings),
+   *  typing broadens to any matching axis/value. Reuses the same prefix match as
+   *  the typing autocomplete. */
+  searchFacets?: (query: string) => FacetSuggestion[];
   onClose: () => void;
 }
 
@@ -34,15 +40,21 @@ export function FacetEditPopover({
   resolved,
   suggestions,
   onReplace,
+  searchFacets,
   onClose,
 }: FacetEditPopoverProps) {
   const visual = getVariableClassVisual(varName);
   const isValue = resolved.known && resolved.valueId !== undefined;
   const isAxis = resolved.known && !isValue;
 
-  // De-dupe suggestion chips by token; cap so an unrecognised facet on a
-  // vocab-heavy class doesn't render hundreds of values.
-  const chips = suggestions.slice(0, 12);
+  const canSearch = !!onReplace && !!searchFacets;
+  const [query, setQuery] = useState('');
+  const trimmedQuery = query.trim();
+  // Empty query → the related siblings (`suggestions`); typing broadens to any
+  // matching class facet. Cap so a vocab-heavy class doesn't render hundreds.
+  const results =
+    canSearch && trimmedQuery ? searchFacets!(trimmedQuery) : suggestions;
+  const chips = results.slice(0, trimmedQuery ? 40 : 12);
 
   return (
     <div
@@ -124,13 +136,32 @@ export function FacetEditPopover({
         )}
       </div>
 
-      {/* Hints — facets this class offers (chips) */}
-      {chips.length > 0 && (
-        <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 max-h-[140px] overflow-y-auto">
+      {/* Hints / swap targets — facets this class offers (chips) */}
+      {(canSearch || chips.length > 0) && (
+        <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700">
           <div className="text-[10px] uppercase tracking-wider text-neutral-400 mb-1.5">
             {onReplace ? `Replace with · ${className}` : `${className} facets`}
           </div>
-          <div className="flex flex-wrap gap-1">
+          {canSearch && (
+            <input
+              type="text"
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Search ${className} facets…`}
+              className={clsx(
+                'w-full mb-1.5 px-2 py-1 rounded text-xs',
+                'bg-neutral-100 dark:bg-neutral-800',
+                'text-neutral-800 dark:text-neutral-200',
+                'border border-neutral-200 dark:border-neutral-700',
+                'focus:outline-none focus:ring-1 focus:ring-violet-400',
+              )}
+            />
+          )}
+          <div className="flex flex-wrap gap-1 max-h-[140px] overflow-y-auto">
+            {chips.length === 0 && (
+              <span className="text-[11px] text-neutral-400 italic">No matching facets.</span>
+            )}
             {chips.map((s) => {
               const isCurrent = s.value === resolved.facet;
               const chipClass = clsx(

@@ -2521,6 +2521,7 @@ export function PromptComposer({
                           className={fp.className}
                           resolved={resolved}
                           suggestions={suggestions}
+                          searchFacets={(q) => suggestFacets(fp.className, q, facetVocab)}
                           onReplace={(value) => {
                             const view = promptEditorRef.current;
                             if (view) {
