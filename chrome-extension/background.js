@@ -947,11 +947,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
         }
 
+        const parsedLimit = Number(limit);
+        const safeLimit = Number.isFinite(parsedLimit)
+          ? Math.max(1, Math.min(100, Math.floor(parsedLimit)))
+          : undefined;
+        const parsedOffset = Number(offset);
+        const safeOffset = Number.isFinite(parsedOffset)
+          ? Math.max(0, Math.floor(parsedOffset))
+          : undefined;
+        const safeCursor = (typeof cursor === 'string' && cursor.trim())
+          ? cursor.trim()
+          : undefined;
+        const safeQuery = (typeof q === 'string' && q.trim())
+          ? q.trim()
+          : undefined;
+
         const payload = {
-          limit: limit || undefined,
-          cursor: cursor || undefined,
-          offset: cursor ? undefined : (offset != null ? offset : undefined),
-          q: q && q.trim() ? q.trim() : undefined,
+          limit: safeLimit,
+          cursor: safeCursor,
+          offset: safeCursor ? undefined : safeOffset,
+          q: safeQuery,
           filters: Object.keys(registryFilters).length > 0 ? registryFilters : undefined,
         };
 
@@ -1093,6 +1108,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
 
         sendResponse({ success: true, dataUrl });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  // Fetch an auth-gated media URL (e.g. Gmail/Google attachment images) WITH the
+  // user's cookies and return it as a data URL. The backend's upload-from-url
+  // fetch runs server-side with no session, so Google serves an HTML login page
+  // ("Unsupported content type: text/html"). Doing the fetch here, in the
+  // extension SW with credentials + host_permissions, gets the real bytes.
+  // Deliberately uncached (auth content) and never falls back to a tainted canvas.
+  if (message.action === 'fetchAuthedMediaAsDataUrl') {
+    (async () => {
+      try {
+        const { url } = message;
+        if (!url) throw new Error('url is required');
+
+        const response = await fetch(url, { credentials: 'include' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const contentType = (response.headers.get('content-type') || '').split(';')[0].trim();
+        if (!contentType.startsWith('image/') && !contentType.startsWith('video/')) {
+          // Still text/html etc. — the cookies didn't satisfy the resource.
+          throw new Error(`Unexpected content type: ${contentType || 'unknown'}`);
+        }
+
+        const blob = await response.blob();
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('Failed to read blob'));
+          reader.readAsDataURL(blob);
+        });
+
+        sendResponse({ success: true, dataUrl, contentType });
       } catch (error) {
         sendResponse({ success: false, error: error.message });
       }

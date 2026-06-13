@@ -317,8 +317,43 @@
       }
     }
 
+    // Gmail / Google attachment images are auth-gated: only the browser (with the
+    // user's Google cookies) can fetch the bytes. If we pass the raw URL to the
+    // backend, its server-side fetch has no session and Google returns an HTML
+    // login page -> "Unsupported content type: text/html". So fetch it here, in
+    // the extension SW with credentials, and hand the backend a data URL instead.
+    if (!isVideo && url.startsWith('http') && isAuthGatedMediaHost(url)) {
+      try {
+        console.log('[pxs7 badge] Auth-gated host, fetching media with credentials via background...');
+        const resp = await chrome.runtime.sendMessage({ action: 'fetchAuthedMediaAsDataUrl', url });
+        if (resp && resp.success && resp.dataUrl) {
+          return resp.dataUrl;
+        }
+        console.warn('[pxs7 badge] Credentialed fetch failed, falling back to raw URL:', resp && resp.error);
+      } catch (e) {
+        console.warn('[pxs7 badge] Credentialed fetch threw, falling back to raw URL:', e);
+      }
+    }
+
     // HTTP/HTTPS and data URLs can be passed through
     return url;
+  }
+
+  /**
+   * Hosts whose media requires the user's session cookies to fetch, which the
+   * backend's server-side upload-from-url fetch cannot supply.
+   */
+  function isAuthGatedMediaHost(url) {
+    try {
+      const host = new URL(url).hostname;
+      return (
+        host === 'mail.google.com' ||
+        host.endsWith('.googleusercontent.com') ||  // mail-attachment.googleusercontent.com, lh*.googleusercontent.com
+        host.endsWith('.googleapis.com')
+      );
+    } catch {
+      return false;
+    }
   }
 
   /**
