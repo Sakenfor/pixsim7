@@ -15,10 +15,11 @@ from pixsim7.backend.main.services.storage.roots import RootSpec
 # --------------------------------------------------------------------------- #
 
 def test_source_provider_asset_id_stable_and_bounded():
-    a = si._source_provider_asset_id("packs", "Susana/x.jpg")
-    assert a == si._source_provider_asset_id("packs", "Susana/x.jpg")  # deterministic
-    assert a != si._source_provider_asset_id("packs", "Susana/y.jpg")  # per key
-    assert a != si._source_provider_asset_id("other", "Susana/x.jpg")  # per root
+    a = si._source_provider_asset_id("packs", "Susana/x.jpg", "etag1")
+    assert a == si._source_provider_asset_id("packs", "Susana/x.jpg", "etag1")  # deterministic
+    assert a != si._source_provider_asset_id("packs", "Susana/y.jpg", "etag1")  # per key
+    assert a != si._source_provider_asset_id("other", "Susana/x.jpg", "etag1")  # per root
+    assert a != si._source_provider_asset_id("packs", "Susana/x.jpg", "etag2")  # per etag (replaced)
     assert a.startswith("src_") and len(a) <= 128
 
 
@@ -126,7 +127,7 @@ async def test_ingest_source_root_aggregates_stats(monkeypatch):
         "P/d.txt": "unsupported",
     }
 
-    async def _fake_obj(db, *, user_id, source_root_id, object_key, prefix=""):
+    async def _fake_obj(db, *, user_id, source_root_id, object_key, prefix="", etag=None):
         if object_key == "P/boom.jpg":
             raise RuntimeError("transient S3 error")
         return {"status": canned[object_key], "asset_id": 1, "key": object_key}
@@ -144,7 +145,7 @@ async def test_ingest_source_root_limit_caps_scan(monkeypatch):
     monkeypatch.setattr(si, "get_source_roots", _source_roots_stub)
     monkeypatch.setattr(si, "get_storage_service", lambda: _ListStorage(["P/1.jpg", "P/2.jpg", "P/3.jpg"]))
 
-    async def _ok(db, *, user_id, source_root_id, object_key, prefix=""):
+    async def _ok(db, *, user_id, source_root_id, object_key, prefix="", etag=None):
         return {"status": "created", "asset_id": 1, "key": object_key}
 
     monkeypatch.setattr(si, "ingest_source_object", _ok)
@@ -157,6 +158,28 @@ async def test_ingest_source_root_unknown_root_raises(monkeypatch):
     monkeypatch.setattr(si, "get_source_roots", _source_roots_stub)
     with pytest.raises(ValueError):
         await si.ingest_source_root(_DB(), user_id=1, source_root_id="not-a-source")
+
+
+@pytest.mark.asyncio
+async def test_ingest_source_root_passes_etag_through(monkeypatch):
+    monkeypatch.setattr(si, "get_source_roots", _source_roots_stub)
+
+    class _S:
+        async def list_objects(self, prefix, root_id=None, page_size=1000):
+            yield {"key": "P/a.jpg", "etag": "E1"}
+            yield {"key": "P/b.jpg", "etag": "E2"}
+
+    monkeypatch.setattr(si, "get_storage_service", lambda: _S())
+
+    seen: dict[str, str] = {}
+
+    async def _rec(db, *, user_id, source_root_id, object_key, prefix="", etag=None):
+        seen[object_key] = etag
+        return {"status": "created", "asset_id": 1, "key": object_key}
+
+    monkeypatch.setattr(si, "ingest_source_object", _rec)
+    await si.ingest_source_root(_DB(), user_id=1, source_root_id="packs")
+    assert seen == {"P/a.jpg": "E1", "P/b.jpg": "E2"}
 
 
 # --------------------------------------------------------------------------- #
@@ -198,3 +221,28 @@ async def test_ingest_endpoint_unknown_root_404(monkeypatch):
     with pytest.raises(HTTPException) as ei:
         await so.ingest_storage_source_root("nope", SimpleNamespace(id=1), object(), limit=500)
     assert ei.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_ingest_endpoint_offline_returns_503(monkeypatch):
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from pixsim7.backend.main.api.v1 import assets_storage_overview as so
+
+    async def _raise(db, *, user_id, source_root_id, limit=None):
+        raise ConnectionError("unreachable")  # enumeration failed (root down)
+
+    monkeypatch.setattr(si, "ingest_source_root", _raise)
+
+    class _Storage:
+        async def probe_root(self, root_id):
+            return {"online": False, "error": "unreachable"}
+
+    monkeypatch.setattr(so, "get_storage_service", lambda: _Storage())
+
+    with pytest.raises(HTTPException) as ei:
+        await so.ingest_storage_source_root("packs", SimpleNamespace(id=1), object(), limit=500)
+    assert ei.value.status_code == 503
+    assert ei.value.headers.get("X-Media-State") == "source-offline"

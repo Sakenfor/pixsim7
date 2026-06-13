@@ -51,10 +51,14 @@ logger = get_logger()
 _SOURCE_PROVIDER_ID = "local"
 
 
-def _source_provider_asset_id(source_root_id: str, object_key: str) -> str:
-    """Stable provider_asset_id per ``(source_root, object_key)`` — enables the
-    incremental skip via provider-tuple dedup. ≤128 chars."""
-    digest = hashlib.sha256(f"{source_root_id}/{object_key}".encode("utf-8")).hexdigest()
+def _source_provider_asset_id(source_root_id: str, object_key: str, etag: Optional[str] = None) -> str:
+    """Stable provider_asset_id per ``(source_root, object_key, etag)`` — enables
+    the incremental skip via provider-tuple dedup. Folding the ETag in means an
+    *unchanged* object skips (same id), while a *replaced* object (new ETag) gets
+    a new id and is re-ingested as a new asset (the prior one is kept). ≤128 chars."""
+    digest = hashlib.sha256(
+        f"{source_root_id}/{object_key}/{etag or ''}".encode("utf-8")
+    ).hexdigest()
     return f"src_{digest[:40]}"
 
 
@@ -70,7 +74,9 @@ def _media_type_for_key(object_key: str) -> tuple[Optional[MediaType], Optional[
     return None, mime
 
 
-def _build_source_context(source_root_id: str, object_key: str, prefix: str) -> dict[str, Any]:
+def _build_source_context(
+    source_root_id: str, object_key: str, prefix: str, etag: Optional[str] = None
+) -> dict[str, Any]:
     """Local-folder-style attribution so source-bucket assets behave like local
     folders in cohorts/siblings (the 'Source' cohort groups by source folder)."""
     rel = object_key[len(prefix):] if prefix and object_key.startswith(prefix) else object_key
@@ -84,6 +90,8 @@ def _build_source_context(source_root_id: str, object_key: str, prefix: str) -> 
         "source_relative_path": rel,
         "source_object_key": object_key,
     }
+    if etag:
+        ctx["source_etag"] = etag
     if len(parts) > 1:
         ctx["source_subfolder"] = parts[0]
     return ctx
@@ -96,14 +104,17 @@ async def ingest_source_object(
     source_root_id: str,
     object_key: str,
     prefix: str = "",
+    etag: Optional[str] = None,
 ) -> dict[str, Any]:
     """Ingest one object from a source root. Idempotent.
 
-    Returns ``{"status", "asset_id", "sha256"?, "key", "reason"?}`` where status
-    is ``created`` | ``deduped`` | ``skipped`` | ``unsupported``.
+    ``etag`` (from the listing) is folded into the dedup identity: an unchanged
+    object skips without download; a replaced object (new ETag) is re-ingested
+    as a new asset. Returns ``{"status", "asset_id", "sha256"?, "key", "reason"?}``
+    where status is ``created`` | ``deduped`` | ``skipped`` | ``unsupported``.
     """
     storage = get_storage_service()
-    pid = _source_provider_asset_id(source_root_id, object_key)
+    pid = _source_provider_asset_id(source_root_id, object_key, etag)
 
     # 1. Incremental skip — already ingested this (root, key)? No download.
     already = (
@@ -173,7 +184,7 @@ async def ingest_source_object(
             image_hash=image_hash,
             phash64=phash64,
             upload_method="local",
-            upload_context=_build_source_context(source_root_id, object_key, prefix),
+            upload_context=_build_source_context(source_root_id, object_key, prefix, etag),
             commit=False,
         )
         # The bytes live on the archive root — record it so serving resolves there
@@ -211,6 +222,11 @@ async def ingest_source_root(
 
     Returns aggregate stats: ``{scanned, created, deduped, skipped, errors}``.
     ``limit`` caps how many objects are scanned (logged when hit — no silent cap).
+
+    Delete policy: objects removed from the source bucket are NOT reconciled —
+    their assets are kept (the bytes live independently in the archive CAS).
+    A failure enumerating the bucket (source root unreachable) propagates so the
+    caller can classify it (the endpoint maps it to a 503).
     """
     spec = get_source_roots().get(source_root_id)
     if spec is None:
@@ -229,6 +245,7 @@ async def ingest_source_root(
                 source_root_id=source_root_id,
                 object_key=entry["key"],
                 prefix=prefix,
+                etag=entry.get("etag"),
             )
             status = res.get("status")
             if status == "created":

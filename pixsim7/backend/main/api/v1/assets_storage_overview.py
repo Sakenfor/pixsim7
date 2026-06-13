@@ -1696,4 +1696,15 @@ async def ingest_storage_source_root(
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:  # noqa: BLE001 — classify unreachable source vs real error
+        probe = await get_storage_service().probe_root(root_id)
+        if probe.get("online") is False:
+            logger.warning("source_ingest_root_offline", root_id=root_id, error=probe.get("error"))
+            raise HTTPException(
+                status_code=503,
+                detail="Source root offline — the ingest store is unreachable",
+                headers={"X-Media-State": "source-offline", "Retry-After": "30"},
+            )
+        logger.error("source_ingest_failed", root_id=root_id, error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ingest failed: {e}")
     return SourceIngestResponse(root_id=root_id, **stats)
