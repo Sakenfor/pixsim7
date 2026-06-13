@@ -157,3 +157,44 @@ async def test_ingest_source_root_unknown_root_raises(monkeypatch):
     monkeypatch.setattr(si, "get_source_roots", _source_roots_stub)
     with pytest.raises(ValueError):
         await si.ingest_source_root(_DB(), user_id=1, source_root_id="not-a-source")
+
+
+# --------------------------------------------------------------------------- #
+# trigger endpoint (cp-d)
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_ingest_endpoint_returns_stats(monkeypatch):
+    from types import SimpleNamespace
+
+    from pixsim7.backend.main.api.v1 import assets_storage_overview as so
+
+    async def _fake(db, *, user_id, source_root_id, limit=None):
+        assert source_root_id == "packs" and user_id == 7 and limit == 500
+        return {"scanned": 3, "created": 2, "deduped": 1, "skipped": 0, "errors": 0}
+
+    monkeypatch.setattr(si, "ingest_source_root", _fake)
+
+    resp = await so.ingest_storage_source_root(
+        "packs", SimpleNamespace(id=7), object(), limit=500
+    )
+    assert resp.root_id == "packs"
+    assert (resp.scanned, resp.created, resp.deduped) == (3, 2, 1)
+
+
+@pytest.mark.asyncio
+async def test_ingest_endpoint_unknown_root_404(monkeypatch):
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from pixsim7.backend.main.api.v1 import assets_storage_overview as so
+
+    async def _raise(db, *, user_id, source_root_id, limit=None):
+        raise ValueError("'nope' is not a configured source root")
+
+    monkeypatch.setattr(si, "ingest_source_root", _raise)
+
+    with pytest.raises(HTTPException) as ei:
+        await so.ingest_storage_source_root("nope", SimpleNamespace(id=1), object(), limit=500)
+    assert ei.value.status_code == 404

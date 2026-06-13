@@ -1409,6 +1409,10 @@ class StorageRootConfigItem(BaseModel):
     region: Optional[str] = None
     presigned_ttl_seconds: Optional[int] = None
     has_secret: bool = False
+    # 'store' (read/write tier) | 'source' (read-only ingest bucket). See plan
+    # s3-source-root-ingest. 'prefix' scopes a source root to a sub-path.
+    role: str = "store"
+    prefix: Optional[str] = None
 
 
 class StorageRootsConfigResponse(BaseModel):
@@ -1428,6 +1432,10 @@ class StorageRootUpsert(BaseModel):
     secret_key: Optional[str] = None
     region: str = "us-east-1"
     presigned_ttl_seconds: int = 3600
+    # 'store' (read/write tier) | 'source' (read-only ingest bucket).
+    role: str = "store"
+    # Optional sub-path a source root is scoped to (ingest enumerates under it).
+    prefix: Optional[str] = None
 
 
 class StorageRootTestRequest(BaseModel):
@@ -1477,6 +1485,8 @@ def _mask_root(entry: dict) -> StorageRootConfigItem:
         region=entry.get("region"),
         presigned_ttl_seconds=entry.get("presigned_ttl_seconds"),
         has_secret=bool(entry.get("secret_key")),
+        role=str(entry.get("role", "store")),
+        prefix=entry.get("prefix"),
     )
 
 
@@ -1585,6 +1595,8 @@ async def upsert_storage_root(
         raise HTTPException(status_code=400, detail="Only 's3' extra roots can be added from the UI")
     if not body.id or body.id == _LOCAL:
         raise HTTPException(status_code=400, detail="Invalid root id ('local' is reserved)")
+    if body.role not in ("store", "source"):
+        raise HTTPException(status_code=400, detail="role must be 'store' or 'source'")
 
     by_id = {r.get("id"): dict(r) for r in await _persisted_roots(db)}
     secret = body.secret_key or (by_id.get(body.id) or {}).get("secret_key")
@@ -1594,7 +1606,7 @@ async def upsert_storage_root(
             detail="secret_key is required for a new root (or to migrate one from .env)",
         )
 
-    by_id[body.id] = {
+    entry = {
         "id": body.id,
         "kind": "s3",
         "endpoint_url": body.endpoint_url,
@@ -1603,7 +1615,12 @@ async def upsert_storage_root(
         "secret_key": secret,
         "region": body.region,
         "presigned_ttl_seconds": body.presigned_ttl_seconds,
+        "role": body.role,
     }
+    # Only persist a prefix for source roots, and only when non-empty.
+    if body.role == "source" and body.prefix:
+        entry["prefix"] = body.prefix
+    by_id[body.id] = entry
     data = {"roots": list(by_id.values())}
     await set_config(db, _STORAGE_ROOTS_NS, data, admin.id)
     apply_storage_roots(data)  # live: override env + rebuild tiered storage
@@ -1641,3 +1658,42 @@ async def delete_storage_root(
     return StorageRootsConfigResponse(
         roots=[_mask_root(r) for r in remaining], source="db"
     )
+
+
+class SourceIngestResponse(BaseModel):
+    """Aggregate result of a source-root ingest run (plan s3-source-root-ingest)."""
+    root_id: str
+    scanned: int
+    created: int
+    deduped: int
+    skipped: int
+    errors: int
+
+
+@router.post("/storage-roots/{root_id}/ingest", response_model=SourceIngestResponse)
+async def ingest_storage_source_root(
+    root_id: str,
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    limit: int = Query(
+        500, ge=1, le=100000,
+        description="Max objects to scan this run (bounds a synchronous run; re-run to continue).",
+    ),
+):
+    """Enumerate a ``role='source'`` S3 root and ingest its objects into the
+    archive CAS as assets (plan s3-source-root-ingest, cp-d).
+
+    Synchronous MVP: already-ingested objects are skipped without download, so
+    re-running is cheap and incremental. Use ``limit`` to bound a single run on a
+    large bucket (a background job is a follow-up). 404 if ``root_id`` is not a
+    configured source root.
+    """
+    from pixsim7.backend.main.services.asset.source_ingest import ingest_source_root
+
+    try:
+        stats = await ingest_source_root(
+            db, user_id=admin.id, source_root_id=root_id, limit=limit
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return SourceIngestResponse(root_id=root_id, **stats)
