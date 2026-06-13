@@ -11,6 +11,7 @@ on:
       - 'tools/codegen/**'
       - 'tools/cue/**'
       - 'scripts/tests/**'
+      - 'scripts/gen_tokenizer_parity_fixtures.py'
       - 'docs/plans/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -25,6 +26,7 @@ on:
       - 'tools/codegen/**'
       - 'tools/cue/**'
       - 'scripts/tests/**'
+      - 'scripts/gen_tokenizer_parity_fixtures.py'
       - 'docs/plans/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -74,6 +76,9 @@ jobs:
 
       - name: Branded types freshness check
         run: pnpm branded:check
+
+      - name: Tokenizer parity drift check (Python <-> TS)
+        run: pnpm tokenizer-parity:check
 
       - name: Start backend for OpenAPI check
         run: |

@@ -2,9 +2,16 @@
 /**
  * Generates grammar_rules.json from tools/cue/grammar/ CUE sources.
  *
- * Writes the same file to two consumers:
- *   - packages/core/prompt/src/grammar_rules.json   (TypeScript)
- *   - pixsim7/backend/main/services/prompt/parser/grammar_rules.json  (Python)
+ * grammar_rules.json is the SINGLE declarative grammar source shared by both
+ * tokenizer implementations. It is written byte-identically to two consumers:
+ *   - packages/core/prompt/src/grammar_rules.json   (TS  — tokenizer.ts)
+ *   - pixsim7/backend/main/services/prompt/parser/grammar_rules.json  (Python — tokenizer.py)
+ *
+ * Both tokenizers read these rules (header_patterns, chain op_chars/excludes,
+ * run_chars) so the prompt mini-language has one grammar. The two ports are kept
+ * byte-for-byte in sync by the parity guard `pnpm tokenizer-parity:check`
+ * (scripts/gen_tokenizer_parity_fixtures.py + tools/codegen/check-tokenizer-parity.ts);
+ * a change to this grammar or either tokenizer that desyncs them fails CI.
  *
  * Usage:
  *   pnpm cue:grammar:gen    — generate and write
