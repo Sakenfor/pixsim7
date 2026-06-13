@@ -234,6 +234,11 @@ function variableClickHandler(callbacks: VariableTokenCallbacks) {
     click: (e, view) => {
       if (!callbacks.onVariableClick) return false;
       if (!(e.target instanceof HTMLElement)) return false;
+      // Defer to the operator/facet handler when the click lands on an operator
+      // mark. The intra-token access `_` is a `.cm-prompt-op` nested inside the
+      // variable span, so without this guard a click on `_` would open both the
+      // facet popover (operator handler) and the variable popover at once.
+      if (e.target.closest('.cm-prompt-op')) return false;
       const varEl = e.target.closest<HTMLElement>('.cm-prompt-var');
       if (!varEl) return false;
 
