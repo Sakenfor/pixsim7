@@ -101,6 +101,29 @@ export interface FacetSuggestion {
 }
 
 /**
+ * Facets "related" to an already-resolved one — i.e. swap candidates. When the
+ * facet resolved to a known axis, returns that axis's siblings (the axis token
+ * itself + the concrete vocab values of that axis), so clicking `SCENE_TWIST`
+ * offers other values of TWIST's axis to replace it with. Falls back to the full
+ * class facet set when the facet is unrecognised (no axis to scope siblings to).
+ */
+export function relatedFacets(
+  className: string,
+  resolved: ResolvedFacet,
+  vocab: FacetVocab,
+): FacetSuggestion[] {
+  const all = suggestFacets(className, '', vocab);
+  const axisName = resolved.known ? resolved.axis?.name : undefined;
+  if (!axisName) return all;
+  const siblings = all.filter(
+    (s) =>
+      (s.kind === 'value' && s.detail === axisName) ||
+      (s.kind === 'axis' && s.value === axisName.toUpperCase()),
+  );
+  return siblings.length > 0 ? siblings : all;
+}
+
+/**
  * Suggest facets for a class given the partial token already typed after the
  * entity underscore. Axis names rank first, then concrete vocab values from the
  * class's vocab-backed axes. Prefix-matched (case/underscore-insensitive) against

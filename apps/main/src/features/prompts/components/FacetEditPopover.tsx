@@ -12,9 +12,12 @@ export interface FacetEditPopoverProps {
   className: string;
   /** Recognition result for the clicked facet token. */
   resolved: ResolvedFacet;
-  /** Available facets for this class (axes + concrete vocab values) — shown as
-   *  hints when the typed facet is unrecognised. */
+  /** Available facets for this class (axes + concrete vocab values). Shown as
+   *  hints, or as swap targets when `onReplace` is provided. */
   suggestions: FacetSuggestion[];
+  /** When provided, the facet chips become clickable swap actions — selecting
+   *  one replaces the facet token in the document. Omit for a read-only popover. */
+  onReplace?: (value: string) => void;
   onClose: () => void;
 }
 
@@ -30,6 +33,7 @@ export function FacetEditPopover({
   className,
   resolved,
   suggestions,
+  onReplace,
   onClose,
 }: FacetEditPopoverProps) {
   const visual = getVariableClassVisual(varName);
@@ -124,25 +128,41 @@ export function FacetEditPopover({
       {chips.length > 0 && (
         <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 max-h-[140px] overflow-y-auto">
           <div className="text-[10px] uppercase tracking-wider text-neutral-400 mb-1.5">
-            {className} facets
+            {onReplace ? `Replace with · ${className}` : `${className} facets`}
           </div>
           <div className="flex flex-wrap gap-1">
-            {chips.map((s) => (
-              <span
-                key={`${s.kind}:${s.value}`}
-                title={`${s.label} · ${s.detail}`}
-                className={clsx(
-                  'px-1.5 py-0.5 rounded text-[11px] font-mono',
-                  s.value === resolved.facet
-                    ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 ring-1 ring-violet-400'
-                    : s.kind === 'axis'
-                      ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400'
-                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300',
-                )}
-              >
-                {s.value}
-              </span>
-            ))}
+            {chips.map((s) => {
+              const isCurrent = s.value === resolved.facet;
+              const chipClass = clsx(
+                'px-1.5 py-0.5 rounded text-[11px] font-mono',
+                isCurrent
+                  ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 ring-1 ring-violet-400'
+                  : s.kind === 'axis'
+                    ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400'
+                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300',
+                onReplace && !isCurrent && 'cursor-pointer hover:ring-1 hover:ring-violet-400',
+              );
+              // Read-only popover (no onReplace) or the current facet → static chip.
+              if (!onReplace || isCurrent) {
+                return (
+                  <span key={`${s.kind}:${s.value}`} title={`${s.label} · ${s.detail}`} className={chipClass}>
+                    {s.value}
+                  </span>
+                );
+              }
+              return (
+                <button
+                  key={`${s.kind}:${s.value}`}
+                  type="button"
+                  title={`Replace with ${s.label} · ${s.detail}`}
+                  className={chipClass}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => onReplace(s.value)}
+                >
+                  {s.value}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

@@ -62,7 +62,7 @@ import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 import { useSimilarPromptsSearch } from '../hooks/useSimilarPromptsSearch';
 import { useVocabularies } from '../hooks/useVocabularies';
-import { resolveFacet, suggestFacets } from '../lib/facetRecognition';
+import { relatedFacets, resolveFacet, suggestFacets } from '../lib/facetRecognition';
 import { ghostDiffExtension, type GhostDiffConfig } from '../lib/ghostDiffExtension';
 import { operatorEditExtension, type OperatorRange } from '../lib/operatorEditExtension';
 import type { PrimitiveProjectionHypothesis } from '../lib/parsePrimitiveMatch';
@@ -678,10 +678,16 @@ export function PromptComposer({
     variable: VariableRange;
   } | null>(null);
 
-  // --- Facet popover (CM path) — the intra-token `_` access operator ---
+  // --- Facet popover (CM path) — opened from the intra-token `_` access
+  // operator OR a click on the facet text; offers related facets to swap in.
+  // `from`/`to` is the doc span of the facet token a swap replaces.
   const [cmFacetPopover, setCmFacetPopover] = useState<{
     anchor: HTMLElement;
-    access: NonNullable<OperatorRange['access']>;
+    varName: string;
+    className: string;
+    facet: string;
+    from: number;
+    to: number;
   } | null>(null);
   // Vocab members backing facet recognition + the suggestion hints. One fetch
   // for every category any default class references (parts/poses/locations/…);
@@ -1477,7 +1483,15 @@ export function PromptComposer({
           // The intra-token `_` is an access operator, not a relation operator
           // — route it to the facet popover instead of the type-swap popover.
           if (operator.context === 'access' && operator.access) {
-            setCmFacetPopover({ access: operator.access, anchor });
+            const a = operator.access;
+            setCmFacetPopover({
+              anchor,
+              varName: a.varName,
+              className: a.className,
+              facet: a.facet,
+              from: a.facetFrom,
+              to: a.facetTo,
+            });
             return;
           }
           setCmOperatorPopover({ operator, anchor });
@@ -1488,6 +1502,16 @@ export function PromptComposer({
         {
           onVariableClick: (variable, anchor) => {
             setCmVariablePopover({ variable, anchor });
+          },
+          onFacetClick: (facet, anchor) => {
+            setCmFacetPopover({
+              anchor,
+              varName: facet.varName,
+              className: facet.className,
+              facet: facet.facet,
+              from: facet.from,
+              to: facet.to,
+            });
           },
         },
       ),
@@ -2486,15 +2510,28 @@ export function PromptComposer({
                     onClose={() => setCmFacetPopover(null)}
                   >
                     {cmFacetPopover && (() => {
-                      const { access } = cmFacetPopover;
-                      const resolved = resolveFacet(access.className, access.facet, facetVocab);
-                      const suggestions = suggestFacets(access.className, '', facetVocab);
+                      const fp = cmFacetPopover;
+                      const resolved = resolveFacet(fp.className, fp.facet, facetVocab);
+                      // Related = swap candidates (siblings of the facet's axis);
+                      // falls back to all class facets for an unrecognised facet.
+                      const suggestions = relatedFacets(fp.className, resolved, facetVocab);
                       return (
                         <FacetEditPopover
-                          varName={access.varName}
-                          className={access.className}
+                          varName={fp.varName}
+                          className={fp.className}
                           resolved={resolved}
                           suggestions={suggestions}
+                          onReplace={(value) => {
+                            const view = promptEditorRef.current;
+                            if (view) {
+                              const docLen = view.state.doc.length;
+                              if (fp.from >= 0 && fp.to <= docLen && fp.from < fp.to) {
+                                view.dispatch({ changes: { from: fp.from, to: fp.to, insert: value } });
+                                view.focus();
+                              }
+                            }
+                            setCmFacetPopover(null);
+                          }}
                           onClose={() => setCmFacetPopover(null)}
                         />
                       );

@@ -48,6 +48,14 @@ export interface VariableRange {
 
 export interface VariableTokenCallbacks {
   onVariableClick?: (variable: VariableRange, anchor: HTMLElement) => void;
+  /** Fired when the click lands on the facet sub-region of a var token (the
+   *  part after the first `_`, e.g. `TWIST` in `SCENE_TWIST`). Carries the doc
+   *  span of the facet text so the host can offer related facets to swap in
+   *  (replace), distinct from the variable-level save/unsave popover. */
+  onFacetClick?: (
+    facet: { from: number; to: number; varName: string; className: string; facet: string },
+    anchor: HTMLElement,
+  ) => void;
 }
 
 export interface VariableTokensConfig {
@@ -232,7 +240,7 @@ const variablePlugin = ViewPlugin.define(
 function variableClickHandler(callbacks: VariableTokenCallbacks) {
   return EditorView.domEventHandlers({
     click: (e, view) => {
-      if (!callbacks.onVariableClick) return false;
+      if (!callbacks.onVariableClick && !callbacks.onFacetClick) return false;
       if (!(e.target instanceof HTMLElement)) return false;
       // Defer to the operator/facet handler when the click lands on an operator
       // mark. The intra-token access `_` is a `.cm-prompt-op` nested inside the
@@ -250,6 +258,33 @@ function variableClickHandler(callbacks: VariableTokenCallbacks) {
       const hit = ranges.find((r) => pos >= r.from && pos < r.to);
       if (!hit) return false;
 
+      // Facet sub-region click → facet swap popover (replace), not the
+      // variable-level save/unsave popover. The facet span is after the first
+      // `_`; only route there when the class actually declares this facet
+      // (hit.facet is set by collectVariableRanges under the same gating).
+      if (
+        hit.facet &&
+        callbacks.onFacetClick &&
+        pos >= hit.facet.from &&
+        pos < hit.facet.to
+      ) {
+        const parsed = parseVariableName(hit.name);
+        const facetEl = e.target.closest<HTMLElement>('.cm-prompt-facet') ?? varEl;
+        callbacks.onFacetClick(
+          {
+            from: hit.facet.from,
+            to: hit.facet.to,
+            varName: hit.name,
+            className: parsed.className,
+            facet: parsed.facets[0] ?? '',
+          },
+          facetEl,
+        );
+        e.preventDefault();
+        return true;
+      }
+
+      if (!callbacks.onVariableClick) return false;
       callbacks.onVariableClick(hit, varEl);
       e.preventDefault();
       return true;

@@ -88,7 +88,16 @@ export interface OperatorRange {
    * re-parsing. `facet` is the leading facet token (e.g. `HIP` from
    * `ACTOR1_HIP`); `className` is the entity's class (e.g. `ACTOR`).
    */
-  access?: { varName: string; className: string; facet: string };
+  access?: {
+    varName: string;
+    className: string;
+    facet: string;
+    /** Doc span of the facet text (after the first `_`) — the range a facet
+     *  swap replaces. Lets the access `_` and the facet-text click share one
+     *  replace-capable popover. */
+    facetFrom: number;
+    facetTo: number;
+  };
 }
 
 export interface OperatorEditCallbacks {
@@ -184,12 +193,22 @@ export function collectOperatorRanges(
         const from = el.start + leading + us;
         const to = from + 1;
         if (from < 0 || to > docLength || from >= to) continue;
+        // Facet text span = after the first `_` to the end of the token; the
+        // range a swap replaces.
+        const facetFrom = from + 1;
+        const facetTo = el.start + leading + name.length;
         out.push({
           from, to,
           raw: '_',
           run: 1,
           context: 'access',
-          access: { varName: name, className: parsed.className, facet: parsed.facets[0] },
+          access: {
+            varName: name,
+            className: parsed.className,
+            facet: parsed.facets[0],
+            facetFrom,
+            facetTo,
+          },
         });
       }
     }
