@@ -454,6 +454,14 @@ async def claim_plan_checkpoint(
     if not bundle:
         raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
 
+    # Scoped-agent authorization: a profile-restricted agent may only claim
+    # plans within its assigned scope. Plan ``scoped-agent-authorization`` (cp2).
+    from pixsim7.backend.main.services.ownership.scope_authz import (
+        ResourceScope,
+        assert_scope_access,
+    )
+    await assert_scope_access(db, _user, ResourceScope("plan", plan_id))
+
     session_id = await _resolve_claim_session_id(db, _user)
     own, conflicts = await _h.claim_checkpoint(
         db,

@@ -488,6 +488,15 @@ async def create_plan(
             },
         )
 
+    # Scoped-agent authorization: a profile-restricted agent may only create
+    # plans within its assigned scope (NULL assigned_plans = unrestricted).
+    # Plan ``scoped-agent-authorization`` (cp2).
+    from pixsim7.backend.main.services.ownership.scope_authz import (
+        ResourceScope,
+        assert_scope_access,
+    )
+    await assert_scope_access(db, principal, ResourceScope("plan", payload.id))
+
     # Check for duplicate
     existing = await db.get(PlanRegistry, payload.id)
     if existing:
@@ -836,6 +845,14 @@ async def update_plan_endpoint(
                 "contract": PLAN_AUTHORING_CONTRACT_ENDPOINT,
             },
         )
+
+    # Scoped-agent authorization: gate the write on the target plan's id.
+    # Plan ``scoped-agent-authorization`` (cp2).
+    from pixsim7.backend.main.services.ownership.scope_authz import (
+        ResourceScope,
+        assert_scope_access,
+    )
+    await assert_scope_access(db, principal, ResourceScope("plan", plan_id))
 
     try:
         result = await update_plan(
@@ -1464,6 +1481,14 @@ async def log_plan_progress(
     bundle = await get_plan_bundle(db, plan_id)
     if not bundle:
         raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+    # Scoped-agent authorization: gate progress on the target plan's id.
+    # Plan ``scoped-agent-authorization`` (cp2).
+    from pixsim7.backend.main.services.ownership.scope_authz import (
+        ResourceScope,
+        assert_scope_access,
+    )
+    await assert_scope_access(db, principal, ResourceScope("plan", plan_id))
 
     checkpoints = bundle.plan.checkpoints or []
     if not isinstance(checkpoints, list) or not checkpoints:
