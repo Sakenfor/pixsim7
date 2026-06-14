@@ -921,6 +921,17 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             gen_logger.info("generation_started")
             debug.worker("generation_started", generation_id=generation_id)
 
+            # Close the transaction before the dispatch stagger + provider submit
+            # below. mark_started() committed, but its trailing refresh left an
+            # open read-transaction; holding it across the stagger sleep and the
+            # (often multi-second) provider HTTP submit can exceed Postgres'
+            # idle_in_transaction_session_timeout (30s), which terminates the
+            # connection mid-submit. commit() (not rollback()) is used because
+            # the session is expire_on_commit=False, so `generation`/`account`
+            # stay populated for execute_generation; rollback would expire them
+            # and trigger lazy-load IO outside the async greenlet.
+            await db.commit()
+
             # Stagger concurrent dispatches to avoid thundering-herd on provider API
             concurrent = getattr(account, "current_processing_jobs", 0) or 0
             if concurrent > 1:
