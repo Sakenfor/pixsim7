@@ -12,7 +12,7 @@
  *  5. Folder Context      — local asset folder metadata backfill
  *  6. Preview Derivatives — preview regen at current preview_size cap
  *  7. Format Conversion   — image format conversion (webp/jpeg)
- *  8. Signal Scan         — broken-video heuristic scan
+ *  8. Video Health        — broken-video heuristic scan (cohort render-time + audio/visual)
  *  9. Thumbnails          — action-only (regenerate missing)
  */
 
@@ -460,7 +460,7 @@ interface SignalScanStats {
   percentage: number;
 }
 
-// ── Signal scan breakdown — stacked health bar + triage CTA ──
+// ── Video Health breakdown — stacked health bar + triage CTA ──
 // Replaces the default bullet list with a single horizontal bar that shows
 // broken/borderline/clean/unscanned proportions at a glance, plus a direct
 // path into the triage UI when there's a flagged set worth validating.
@@ -582,7 +582,7 @@ const signalScanConfig: RowConfig<SignalScanStats> = {
     pct: s.percentage,
     complete: s.unscanned === 0 && s.total_videos > 0,
     actionable: s.unscanned,
-    label: 'Signal Scan',
+    label: 'Video Health',
     statsText: `${fmt(s.scanned)} / ${fmt(s.total_videos)} videos scanned`,
     actionVerb: 'Scan',
   }),
@@ -3179,7 +3179,7 @@ const STATS_TASK_NAV: readonly TaskNavEntry[] = [
   { id: 'folder',        label: 'Folder Context',   icon: 'folderTree' },
   { id: 'previews',      label: 'Preview Derivatives', icon: 'zoomIn' },
   { id: 'format',        label: 'Format Conversion', icon: 'image' },
-  { id: 'signal',        label: 'Signal Scan',      icon: 'alertTriangle' },
+  { id: 'signal',        label: 'Video Health',     icon: 'alertTriangle' },
 ];
 
 /** Sidebar progress badge — shows % (or a ✓ when complete) next to the task name. */

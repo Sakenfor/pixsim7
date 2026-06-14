@@ -1,8 +1,28 @@
 """Signal-based broken-video heuristic.
 
-Probes a video file's audio and visual characteristics with ffmpeg, then
-scores how likely it is to be a degenerate generation (e.g. a pixverse
-safety-filtered output that returned a near-silent / wobble-and-return clip).
+Probes a video file's audio and visual characteristics with ffmpeg and
+combines them with the generation's *cohort-relative render time* to score
+how likely a clip is a degenerate generation (e.g. a fast-failed output where
+the model bailed early / returned a canned rejection clip).
+
+Scoring model (v2 — render-primary, conservative). See plan
+``signal-scan-recalibration`` for the live-data validation behind it:
+
+  * PRIMARY — render ratio vs cohort median (``render_ratio``, supplied by
+    the caller from cohort_baselines): < 0.5 strong (+4), < 0.7 moderate
+    (+2), < 0.85 weak (+1). This is the strongest single discriminator;
+    genuine fast-fails render ~0.8x cohort median and below.
+  * CORROBORATING ONLY — audio-quiet (rms OR peak below threshold) and
+    visual-static (first-to-last OR mean-div below threshold), each +1. The
+    two sub-signals per axis are collapsed with OR because they are highly
+    correlated (double-counting them was the v1 bug). Modern "failed"
+    generations often still animate, so a single axis alone is never enough
+    to flag "broken" — without a render signal the score caps at borderline.
+
+``suspicious`` (broken) requires score >= SUSPICIOUS_THRESHOLD (3), reachable
+only via a render signal: render-strong alone, or render-moderate + >=1
+corroborating axis. Audio/visual without a trusted cohort baseline top out at
+2 → borderline, never broken.
 
 Stamps results into `Asset.media_metadata.signal_metrics`:
 
@@ -15,15 +35,16 @@ Stamps results into `Asset.media_metadata.signal_metrics`:
       "audio_channels": int,
       "phash_first_to_last": int,
       "phash_mean_div_from_first": float,
+      "render_ratio": float | null,      # render sec / cohort p50 (null = no baseline)
+      "cohort_n": int | null,            # sample size of the cohort baseline used
+      "cohort_p50_sec": float | null,    # cohort median render seconds
       "scanned_at": ISO timestamp,
       "scanner_version": str,
       "user_override": "clean" | "broken" | <unset>  # set by override endpoint, never written here
     }
 
-Calibration: thresholds tuned on a 4-clip sample (see
-docs / pixverse-broken-video-detection.md). Re-tune after sampling the real
-distribution; bump SCANNER_VERSION when scoring changes so callers can
-detect stale entries.
+Bump SCANNER_VERSION when scoring changes so callers can detect stale entries
+and re-scan.
 """
 from __future__ import annotations
 
@@ -44,14 +65,22 @@ from pixsim_logging import get_logger
 logger = get_logger()
 
 # Bump when scoring changes so re-scans can be detected via prev_scanner_version.
-SCANNER_VERSION = "v1"
+SCANNER_VERSION = "v2"
 
-# Calibration thresholds (see calibration sample in module docstring).
-RMS_DB_THRESHOLD = -28.0           # below this → +2 score
-PEAK_DB_THRESHOLD = -10.0          # below this → +1 score
-PHASH_FIRST_TO_LAST_THRESHOLD = 20  # below this → +2 score
-PHASH_MEAN_DIV_THRESHOLD = 22.0    # below this → +1 score
-SUSPICIOUS_THRESHOLD = 3            # score >= this is flagged
+# Corroborating-axis thresholds. Each axis ORs its two sub-signals (they are
+# highly correlated; summing them was the v1 double-counting bug) and
+# contributes at most +1.
+RMS_DB_THRESHOLD = -28.0            # audio-quiet axis: rms below this
+PEAK_DB_THRESHOLD = -10.0          # audio-quiet axis: peak below this
+PHASH_FIRST_TO_LAST_THRESHOLD = 20  # visual-static axis: first→last below this
+PHASH_MEAN_DIV_THRESHOLD = 22.0    # visual-static axis: mean-div below this
+
+# Primary signal — render seconds / cohort-median (p50). Lower = faster-failed.
+RENDER_RATIO_STRONG = 0.5          # below this → +4 (strong fast-fail)
+RENDER_RATIO_MODERATE = 0.7        # below this → +2
+RENDER_RATIO_WEAK = 0.85           # below this → +1
+
+SUSPICIOUS_THRESHOLD = 3           # score >= this is flagged broken
 
 # Probe budget: ffmpeg should be sub-second per clip. Generous timeout to
 # absorb cold-cache or contention; if exceeded, treat as probe failure.
@@ -153,17 +182,49 @@ def probe_phash(path: Path, fps: int = 4) -> dict[str, Optional[float]]:
 
 # ---------- scoring ----------
 
-def score_metrics(metrics: dict[str, Any]) -> tuple[int, bool]:
-    """Compute (score, suspicious) from a probed metrics dict."""
-    score = 0
+def _render_points(render_ratio: Optional[float]) -> int:
+    """Graded points for the primary cohort-relative render-time signal."""
+    if render_ratio is None:
+        return 0
+    if render_ratio < RENDER_RATIO_STRONG:
+        return 4
+    if render_ratio < RENDER_RATIO_MODERATE:
+        return 2
+    if render_ratio < RENDER_RATIO_WEAK:
+        return 1
+    return 0
+
+
+def score_metrics(
+    metrics: dict[str, Any],
+    render_ratio: Optional[float] = None,
+) -> tuple[int, bool]:
+    """Compute (score, suspicious) from probed metrics + optional render ratio.
+
+    Render time is the primary signal (graded 0/+1/+2/+4). Audio-quiet and
+    visual-static are corroborating axes worth at most +1 each — each axis ORs
+    its two correlated sub-signals rather than summing them. ``suspicious`` is
+    only reachable with a render signal (axes alone cap at 2 → borderline).
+    """
     rms  = metrics.get("audio_rms_db")
     peak = metrics.get("audio_peak_db")
     f2l  = metrics.get("phash_first_to_last")
     mdf  = metrics.get("phash_mean_div_from_first")
-    if rms  is not None and rms  < RMS_DB_THRESHOLD:           score += 2
-    if peak is not None and peak < PEAK_DB_THRESHOLD:          score += 1
-    if f2l  is not None and f2l  < PHASH_FIRST_TO_LAST_THRESHOLD: score += 2
-    if mdf  is not None and mdf  < PHASH_MEAN_DIV_THRESHOLD:   score += 1
+
+    audio_quiet = (
+        (rms  is not None and rms  < RMS_DB_THRESHOLD) or
+        (peak is not None and peak < PEAK_DB_THRESHOLD)
+    )
+    visual_static = (
+        (f2l  is not None and f2l  < PHASH_FIRST_TO_LAST_THRESHOLD) or
+        (mdf  is not None and mdf  < PHASH_MEAN_DIV_THRESHOLD)
+    )
+
+    score = _render_points(render_ratio)
+    if audio_quiet:
+        score += 1
+    if visual_static:
+        score += 1
     return score, score >= SUSPICIOUS_THRESHOLD
 
 
@@ -191,13 +252,21 @@ def probe_path(path: Path) -> dict[str, Any]:
     return out
 
 
-def build_signal_metrics_payload(metrics: dict[str, Any]) -> dict[str, Any]:
+def build_signal_metrics_payload(
+    metrics: dict[str, Any],
+    render_context: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     """Wrap a probed metrics dict into the canonical `signal_metrics` shape.
 
-    Excludes `user_override` — that field is only written by the override
-    endpoint and must never be clobbered by a re-scan.
+    ``render_context`` (from ``cohort_baselines.render_context_for_asset``)
+    supplies the primary render-time signal; when absent the score is
+    corroboration-only (borderline at most). Excludes `user_override` — that
+    field is only written by the override endpoint and must never be clobbered
+    by a re-scan.
     """
-    score, suspicious = score_metrics(metrics)
+    rc = render_context or {}
+    render_ratio = rc.get("render_ratio")
+    score, suspicious = score_metrics(metrics, render_ratio=render_ratio)
     return {
         "score":                     score,
         "suspicious":                suspicious,
@@ -207,6 +276,9 @@ def build_signal_metrics_payload(metrics: dict[str, Any]) -> dict[str, Any]:
         "audio_channels":            metrics.get("audio_channels"),
         "phash_first_to_last":       metrics.get("phash_first_to_last"),
         "phash_mean_div_from_first": metrics.get("phash_mean_div_from_first"),
+        "render_ratio":              render_ratio,
+        "cohort_n":                  rc.get("cohort_n"),
+        "cohort_p50_sec":            rc.get("cohort_p50_sec"),
         "scanned_at":                datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "scanner_version":           SCANNER_VERSION,
     }
@@ -233,6 +305,7 @@ class SignalAnalysisService:
         *,
         force: bool = False,
         commit: bool = True,
+        cohort_baselines: Optional[dict[str, Any]] = None,
     ) -> Optional[dict[str, Any]]:
         """Probe `asset` and stamp signal_metrics on it.
 
@@ -241,6 +314,10 @@ class SignalAnalysisService:
             force: re-scan even if scanner_version matches the current version.
             commit: commit the session after stamping. Set False when the caller
                 runs inside a larger transaction.
+            cohort_baselines: cached ``{cohort_key: {p10, p50, n}}`` map (from
+                ``cohort_baselines.load_cohort_baselines``). When provided, the
+                asset's cohort-relative render time becomes the primary signal.
+                Omit it (or pass an empty map) for corroboration-only scoring.
 
         Returns:
             The new signal_metrics dict on success, or None if the asset was
@@ -267,7 +344,19 @@ class SignalAnalysisService:
             logger.warning("signal_analysis_probe_unexpected", asset_id=asset.id, error=str(e), exc_info=True)
             return None
 
-        payload = build_signal_metrics_payload(raw)
+        render_context = None
+        if cohort_baselines:
+            try:
+                from pixsim7.backend.main.services.asset.cohort_baselines import (
+                    render_context_for_asset,
+                )
+                render_context = await render_context_for_asset(
+                    self.db, asset, cohort_baselines
+                )
+            except Exception as e:  # noqa: BLE001 — render signal is best-effort
+                logger.warning("signal_analysis_render_ctx_failed", asset_id=asset.id, error=str(e))
+
+        payload = build_signal_metrics_payload(raw, render_context)
 
         # Merge into media_metadata, preserving an existing user_override.
         meta = dict(asset.media_metadata or {})

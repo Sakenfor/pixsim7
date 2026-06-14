@@ -506,6 +506,40 @@ async def delete_asset(
         raise HTTPException(status_code=500, detail=f"Failed to delete asset: {str(e)}")
 
 
+@router.post("/{asset_id}/provider-delete", status_code=204)
+async def delete_asset_from_provider(
+    asset_id: int,
+    user: CurrentUser,
+    asset_service: AssetSvc,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Delete an asset's remote copy on the provider only.
+
+    Removes the asset from the provider account (e.g. Pixverse) while KEEPING
+    the local record and downloaded file. Useful for freeing provider-side
+    space without losing the asset from the local library.
+
+    Users can only act on their own assets.
+    """
+    try:
+        result = await asset_service.delete_asset_from_provider_only(asset_id, user)
+        # Run the provider deletion in the background so the response returns
+        # immediately after the DB commit.
+        if cleanup := result.get("post_commit_cleanup"):
+            background_tasks.add_task(cleanup)
+        return None
+
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete asset from provider: {str(e)}")
+
+
 # ===== ARCHIVE ASSET =====
 
 class ArchiveAssetRequest(BaseModel):
@@ -593,9 +627,13 @@ async def scan_signal_metrics(
     payload (or null if the asset isn't eligible — non-video or no local file).
     """
     from pixsim7.backend.main.services.asset.signal_analysis import SignalAnalysisService
+    from pixsim7.backend.main.services.asset.cohort_baselines import load_cohort_baselines
     try:
         asset = await asset_service.get_asset_for_user(asset_id, user)
-        payload = await SignalAnalysisService(db).probe_and_stamp(asset, force=force)
+        baselines = await load_cohort_baselines(db)
+        payload = await SignalAnalysisService(db).probe_and_stamp(
+            asset, force=force, cohort_baselines=baselines
+        )
         return SignalScanResponse(id=asset.id, signal_metrics=payload)
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Asset not found")

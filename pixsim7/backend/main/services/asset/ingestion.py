@@ -554,7 +554,16 @@ class AssetIngestionService:
             from pixsim7.backend.main.services.asset.signal_analysis import SignalAnalysisService
             if not SignalAnalysisService.is_eligible(asset):
                 return
-            await SignalAnalysisService(self.db).probe_and_stamp(asset, commit=False)
+            # Feed cached cohort baselines so the render-relative primary signal
+            # is available for freshly-generated clips (cohort usually already
+            # has a baseline). Cold cohorts fall back to corroboration-only.
+            from pixsim7.backend.main.services.asset.cohort_baselines import (
+                load_cohort_baselines,
+            )
+            baselines = await load_cohort_baselines(self.db)
+            await SignalAnalysisService(self.db).probe_and_stamp(
+                asset, commit=False, cohort_baselines=baselines
+            )
         except Exception as e:  # noqa: BLE001 — never let a probe block ingest
             logger.warning("signal_analysis_ingest_failed", asset_id=asset.id, error=str(e))
 

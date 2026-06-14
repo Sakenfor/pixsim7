@@ -18,8 +18,8 @@ export default definePanel({
   component: AssetMaintenancePanel,
   category: 'dev',
   icon: 'wrench',
-  description: 'Hash coverage, storage sync, signal scan, duplicates, and other asset maintenance tools.',
-  tags: ['maintenance', 'assets', 'admin', 'backfill', 'signal-scan', 'duplicates'],
+  description: 'Hash coverage, storage sync, video health (broken-video scan), duplicates, and other asset maintenance tools.',
+  tags: ['maintenance', 'assets', 'admin', 'backfill', 'video-health', 'signal-scan', 'duplicates'],
   devTool: { category: 'debug' },
   navigation: {
     openPreference: 'float-preferred',
