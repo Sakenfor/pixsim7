@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@lib/icons';
 import { getAuthBlobRequestPoolStats } from '@lib/media/authBlobRequestPool';
 import { getCapturedFrameStoreStats } from '@lib/media/capturedFrameStore';
+import { getMediaInstrumentationStats } from '@lib/media/mediaInstrumentation';
 import { getVideoActivationPoolStats } from '@lib/media/videoActivationPool';
 import { hmrSingleton } from '@lib/utils';
 
@@ -745,6 +746,31 @@ export function PerformancePanel() {
       capturedFrames.bytes;
     lines.push(`  Tracked total:    ${formatBytes(cachesBytes)}`);
     lines.push('');
+
+    // Lifetime allocation counters (since boot) — these catch accumulators the
+    // point-in-time DOM/cache scans above miss: unrevoked blob URLs, leaked
+    // AudioContexts, and <video> elements that never unmount. NOTE: decoded
+    // video frames live in the GPU process and are invisible to JS — if these
+    // all look healthy at high memory, the leak is orphaned native decoders;
+    // confirm via chrome://media-internals (player count).
+    const instr = getMediaInstrumentationStats();
+    lines.push('Allocations (lifetime, since boot):');
+    lines.push(
+      `  Object URLs:      ${instr.objectUrls.liveCount} live / ${formatBytes(instr.objectUrls.liveBytes)}` +
+        `  (created ${instr.objectUrls.created}, revoked ${instr.objectUrls.revoked})`,
+    );
+    for (const t of instr.objectUrls.byType.slice(0, 6)) {
+      if (t.bytes === 0 && t.type !== 'mediasource') continue;
+      lines.push(`    ${t.type.padEnd(16)} ${formatBytes(t.bytes).padStart(10)}  (${t.count})`);
+    }
+    lines.push(
+      `  AudioContexts:    ${instr.audio.live} live  (created ${instr.audio.created}, closed ${instr.audio.closed})`,
+    );
+    lines.push(
+      `  <video> churn:    live peak ${instr.videoChurn.liveMax}  (added ${instr.videoChurn.added}, removed ${instr.videoChurn.removed})`,
+    );
+    lines.push('');
+
     const stores = getExposedStores();
     lines.push(`Zustand stores (top 15 by size):`);
     for (const s of stores.slice(0, 15)) {

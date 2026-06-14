@@ -28,6 +28,11 @@ import '@features/ticker/sources.registrations'
 // (active sidebar tab persistence). See `stores-registry-canon`.
 import '@lib/stores/sidebarNav.registrations'
 
+// Side-effect import: arms media instrumentation (object-URL / AudioContext /
+// <video>-churn counters) from boot so the PerformancePanel memory report can
+// attribute native-memory growth. See plan `frontend-memory`.
+import '@lib/media/mediaInstrumentation'
+
 // Side-effect import: attaches the asset-engagement view/play tracking
 // subscriptions to the assetEvents bus at boot, so "played" signals are
 // captured even before the Recent strip first mounts.
