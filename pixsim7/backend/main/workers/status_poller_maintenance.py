@@ -17,7 +17,7 @@ from pixsim7.backend.main.domain.enums import (
     GenerationStatus,
 )
 from pixsim7.backend.main.domain.assets.analysis import AssetAnalysis, AnalysisStatus
-from pixsim7.backend.main.infrastructure.database.session import get_db
+from pixsim7.backend.main.infrastructure.database.session import get_db, get_async_session
 from pixsim7.backend.main.infrastructure.queue import (
     clear_generation_wait_metadata,
     enqueue_generation_fresh_job,
@@ -449,11 +449,26 @@ async def refresh_stale_account_credits(ctx: dict) -> dict:
     failed = 0
     errors = 0
 
-    async for db in get_db():
-        try:
-            account_service = AccountService(db)
+    now = datetime.now(timezone.utc)
+    stale_threshold = now - timedelta(seconds=_CREDIT_STALE_THRESHOLD_SECONDS)
+    provider = registry.get("pixverse")
+    if not hasattr(provider, "get_credits"):
+        logger.warning("credit_sweep_no_get_credits", provider_id="pixverse")
+        return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 0}
 
-            # Load all Pixverse accounts that are ACTIVE or EXHAUSTED.
+    # Phase 1: select the due accounts in a short read-only session and capture
+    # their (id, email) as plain values. The per-account work in phase 2 then
+    # runs each account in its OWN session, so one account's rollback can't
+    # expire the others' ORM state. The old single-session loop rolled back the
+    # shared session on any error (e.g. a blocked account's 10001) which expired
+    # every loaded account; the very next attribute access then attempted sync
+    # IO outside the async greenlet ("greenlet_spawn has not been called"),
+    # which bubbled up to credit_sweep_fatal and aborted the entire sweep —
+    # leaving all later accounts unsynced.
+    due: list[tuple[int, str]] = []
+    total_accounts = 0
+    try:
+        async with get_async_session() as db:
             result = await db.execute(
                 select(ProviderAccount).where(
                     ProviderAccount.provider_id == "pixverse",
@@ -464,24 +479,17 @@ async def refresh_stale_account_credits(ctx: dict) -> dict:
                 )
             )
             accounts = list(result.scalars().all())
+            total_accounts = len(accounts)
 
             if not accounts:
                 logger.debug("credit_sweep_idle", msg="No eligible Pixverse accounts")
                 return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 0}
 
-            now = datetime.now(timezone.utc)
-            stale_threshold = now - timedelta(seconds=_CREDIT_STALE_THRESHOLD_SECONDS)
-            provider = registry.get("pixverse")
-
-            if not hasattr(provider, "get_credits"):
-                logger.warning("credit_sweep_no_get_credits", provider_id="pixverse")
-                return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 0}
-
-            processed = 0
+            examined = 0
             for account in accounts:
-                if processed >= _MAX_CREDIT_REFRESH_PER_RUN:
-                    skipped += len(accounts) - processed
+                if len(due) >= _MAX_CREDIT_REFRESH_PER_RUN:
                     break
+                examined += 1
 
                 # Check if recently synced
                 metadata = account.provider_metadata or {}
@@ -493,77 +501,86 @@ async def refresh_stale_account_credits(ctx: dict) -> dict:
                         )
                         if synced_at > stale_threshold:
                             skipped += 1
-                            processed += 1
                             continue
                     except (ValueError, AttributeError):
                         pass  # Invalid timestamp — treat as stale
 
-                processed += 1
-                try:
-                    credits_data = await provider.get_credits(
-                        account, retry_on_session_error=True, force_refresh=True,
+                due.append((account.id, account.email))
+
+            # Accounts past the per-run cap were never examined — count as skipped.
+            skipped += total_accounts - examined
+    except Exception as e:
+        logger.error("credit_sweep_fatal", error=str(e), exc_info=True)
+        return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 1}
+
+    # Phase 2: refresh each due account in an isolated session.
+    for acct_id, acct_email in due:
+        try:
+            async with get_async_session() as db:
+                account_service = AccountService(db)
+                account = await db.get(ProviderAccount, acct_id)
+                if account is None:
+                    continue
+
+                credits_data = await provider.get_credits(
+                    account, retry_on_session_error=True, force_refresh=True,
+                )
+
+                if credits_data:
+                    updated_credits = await apply_provider_credit_snapshot(
+                        account_service=account_service,
+                        account=account,
+                        provider=provider,
+                        credits_data=credits_data,
+                        fallback_credit_types={"web", "openapi"},
+                        stamp_synced_at=True,
+                        synced_at=now,
                     )
 
-                    if credits_data:
-                        updated_credits = await apply_provider_credit_snapshot(
-                            account_service=account_service,
-                            account=account,
-                            provider=provider,
-                            credits_data=credits_data,
-                            fallback_credit_types={"web", "openapi"},
-                            stamp_synced_at=True,
-                            synced_at=now,
-                        )
+                    # Preserve historical behavior: a successful provider
+                    # snapshot still advances sync timestamp even if every
+                    # field was filtered out.
+                    if not updated_credits:
+                        metadata = account.provider_metadata or {}
+                        metadata["credits_synced_at"] = now.isoformat()
+                        account.provider_metadata = {**metadata}
+                    await db.commit()
 
-                        # Preserve historical behavior: a successful provider
-                        # snapshot still advances sync timestamp even if every
-                        # field was filtered out.
-                        if not updated_credits:
-                            metadata = account.provider_metadata or {}
-                            metadata["credits_synced_at"] = now.isoformat()
-                            account.provider_metadata = {**metadata}
-                        await db.commit()
-
-                        refreshed += 1
-                        logger.info(
-                            "credit_sweep_refreshed",
-                            account_id=account.id,
-                            email=account.email,
-                            credits=updated_credits,
-                        )
-                    else:
-                        # get_credits returned empty (timeout, etc.) — don't stamp
-                        failed += 1
-                        logger.debug(
-                            "credit_sweep_empty",
-                            account_id=account.id,
-                            email=account.email,
-                        )
-
-                except Exception as exc:
-                    await db.rollback()
+                    refreshed += 1
+                    logger.info(
+                        "credit_sweep_refreshed",
+                        account_id=acct_id,
+                        email=acct_email,
+                        credits=updated_credits,
+                    )
+                else:
+                    # get_credits returned empty (timeout, etc.) — don't stamp
                     failed += 1
-                    errors += 1
-                    logger.warning(
-                        "credit_sweep_error",
-                        account_id=account.id,
-                        email=account.email,
-                        error=str(exc),
-                        error_type=type(exc).__name__,
+                    logger.debug(
+                        "credit_sweep_empty",
+                        account_id=acct_id,
+                        email=acct_email,
                     )
+        except Exception as exc:
+            # The session's context manager rolls back + closes on the way out;
+            # we log from captured locals (never from the now-detached ORM row),
+            # so this can't raise greenlet IO and the sweep continues to the
+            # next account.
+            failed += 1
+            errors += 1
+            logger.warning(
+                "credit_sweep_error",
+                account_id=acct_id,
+                email=acct_email,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
 
-            stats = {
-                "refreshed": refreshed,
-                "skipped": skipped,
-                "failed": failed,
-                "errors": errors,
-            }
-            logger.info("credit_sweep_complete", total=len(accounts), **stats)
-            return stats
-
-        except Exception as e:
-            logger.error("credit_sweep_fatal", error=str(e), exc_info=True)
-            return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 1}
-
-        finally:
-            await db.close()
+    stats = {
+        "refreshed": refreshed,
+        "skipped": skipped,
+        "failed": failed,
+        "errors": errors,
+    }
+    logger.info("credit_sweep_complete", total=total_accounts, **stats)
+    return stats
