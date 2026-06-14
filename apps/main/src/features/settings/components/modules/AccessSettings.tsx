@@ -17,17 +17,30 @@ import {
   adminUpdateUser,
   extractErrorMessage,
   listAdminAgentProfiles,
+  listAdminUserProjects,
+  listAdminUserWorlds,
   listBridgeMachines,
   listAdminUsers,
+  listScopeContractOptions,
+  listScopePlanOptions,
   updateAdminUserPermissions,
   type AdminAgentProfile,
   type AdminUserPermissions,
   type BridgeMachine,
+  type ScopeOption,
 } from '@lib/api';
 import { CODEGEN_PERMISSION, DIAGNOSTICS_PERMISSION, isAdminUser } from '@lib/auth/userRoles';
 import { formatActorLabel } from '@lib/identity/actorDisplay';
 
 import { useAuthStore } from '@/stores/authStore';
+
+import {
+  draftEquals,
+  draftFor,
+  EMPTY_DRAFT,
+  listOrNull,
+  type ScopeDraft,
+} from './agentScopeDraft';
 
 function normalizePermissions(permissions: string[]): string[] {
   const seen = new Set<string>();
@@ -116,28 +129,118 @@ function UserListItem({
   );
 }
 
-// --- Agent profile scopes (scoped-agent-authorization cp5) ---
+// --- Agent profile scopes (scoped-agent-authorization cp5 / agent-scope-admin-ux cp2) ---
 
-function parseScopeList(raw: string): string[] | null {
-  const items = raw
-    .split(/[\s,]+/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-  return items.length > 0 ? items : null; // blank → null = unrestricted
-}
+// Searchable chip multi-select over resolved options. Selected values render as
+// removable chips (unknown values fall back to their raw id); a filter box lists
+// the remaining options. Buttons inside use type="button" + preventDefault so the
+// portaled-popover focus rule (overlay-button-focus-scroll) is honoured here too.
+function ScopeChipPicker({
+  options,
+  selected,
+  onChange,
+  disabled,
+}: {
+  options: ScopeOption[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  disabled?: boolean;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
 
-function formatScopeList(value: string[] | null): string {
-  return (value ?? []).join(', ');
-}
+  const labelFor = useMemo(() => {
+    const m = new Map(options.map((o) => [o.value, o.label]));
+    return (v: string) => m.get(v) ?? v;
+  }, [options]);
 
-type ScopeDraft = { plans: string; scopes: string; contracts: string };
+  const available = useMemo(() => {
+    const sel = new Set(selected);
+    const q = query.trim().toLowerCase();
+    return options
+      .filter((o) => !sel.has(o.value))
+      .filter(
+        (o) => !q || o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q),
+      )
+      .slice(0, 50);
+  }, [options, selected, query]);
 
-function draftFor(p: AdminAgentProfile): ScopeDraft {
-  return {
-    plans: formatScopeList(p.assigned_plans),
-    scopes: formatScopeList(p.default_scopes),
-    contracts: formatScopeList(p.allowed_contracts),
-  };
+  const add = useCallback(
+    (v: string) => {
+      if (!selected.includes(v)) onChange([...selected, v]);
+      setQuery('');
+    },
+    [selected, onChange],
+  );
+  const remove = useCallback(
+    (v: string) => onChange(selected.filter((x) => x !== v)),
+    [selected, onChange],
+  );
+
+  return (
+    <div className="space-y-1">
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {selected.map((v) => (
+            <span
+              key={v}
+              className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+              title={v}
+            >
+              <span className="max-w-[14rem] truncate">{labelFor(v)}</span>
+              {!disabled && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => remove(v)}
+                  className="text-blue-400 hover:text-blue-600 dark:hover:text-blue-200"
+                  aria-label={`Remove ${labelFor(v)}`}
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative">
+        <Input
+          size="sm"
+          value={query}
+          disabled={disabled}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && available.length > 0) {
+              e.preventDefault();
+              add(available[0].value);
+            }
+          }}
+          placeholder={selected.length > 0 ? 'Add more…' : 'unrestricted'}
+        />
+        {open && available.length > 0 && (
+          <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+            {available.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => add(o.value)}
+                className="flex w-full items-center justify-between gap-2 px-2 py-1 text-left text-[11px] hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                <span className="truncate text-neutral-800 dark:text-neutral-100">{o.label}</span>
+                <code className="shrink-0 text-[9px] text-neutral-400">{o.value}</code>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function AgentProfileScopes({ userId }: { userId: number }) {
@@ -146,6 +249,11 @@ function AgentProfileScopes({ userId }: { userId: number }) {
   const [error, setError] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, ScopeDraft>>({});
+
+  const [planOptions, setPlanOptions] = useState<ScopeOption[]>([]);
+  const [worldOptions, setWorldOptions] = useState<ScopeOption[]>([]);
+  const [projectOptions, setProjectOptions] = useState<ScopeOption[]>([]);
+  const [contractOptions, setContractOptions] = useState<ScopeOption[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -165,10 +273,38 @@ function AgentProfileScopes({ userId }: { userId: number }) {
     void load();
   }, [load]);
 
-  const setDraft = useCallback((id: string, key: keyof ScopeDraft, val: string) => {
+  // Option sources for the pickers. Tolerant of per-source failures: a picker
+  // with no options still works (chips fall back to raw ids), so one 403/500
+  // shouldn't blank the whole panel.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [plans, worlds, projects, contracts] = await Promise.all([
+        listScopePlanOptions().catch(() => [] as ScopeOption[]),
+        listAdminUserWorlds(userId).catch(() => ({ worlds: [] })),
+        listAdminUserProjects(userId).catch(() => []),
+        listScopeContractOptions().catch(() => [] as ScopeOption[]),
+      ]);
+      if (cancelled) return;
+      setPlanOptions(plans);
+      setWorldOptions([
+        { value: 'world:*', label: 'All worlds (world:*)' },
+        ...worlds.worlds.map((w) => ({ value: `world:${w.id}`, label: `${w.name} (#${w.id})` })),
+      ]);
+      setProjectOptions(
+        projects.map((pr) => ({ value: `project:${pr.id}`, label: `${pr.name} (#${pr.id})` })),
+      );
+      setContractOptions(contracts);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  const setDraftField = useCallback((id: string, key: keyof ScopeDraft, val: string[]) => {
     setDrafts((prev) => ({
       ...prev,
-      [id]: { ...(prev[id] ?? { plans: '', scopes: '', contracts: '' }), [key]: val },
+      [id]: { ...(prev[id] ?? EMPTY_DRAFT), [key]: val },
     }));
   }, []);
 
@@ -186,9 +322,9 @@ function AgentProfileScopes({ userId }: { userId: number }) {
       try {
         applyUpdated(
           await adminUpdateAgentProfileScope(p.id, {
-            assigned_plans: parseScopeList(d.plans),
-            default_scopes: parseScopeList(d.scopes),
-            allowed_contracts: parseScopeList(d.contracts),
+            assigned_plans: listOrNull(d.plans),
+            default_scopes: listOrNull([...d.worlds, ...d.projects]),
+            allowed_contracts: listOrNull(d.contracts),
           }),
         );
       } catch (err) {
@@ -220,9 +356,9 @@ function AgentProfileScopes({ userId }: { userId: number }) {
     <>
       <SectionHeader className="mt-2">Agent profile scopes</SectionHeader>
       <p className="text-[10px] leading-snug text-neutral-500">
-        Restrict what this user&apos;s agents (their Claude) may touch. Blank = unrestricted (full
-        access). Comma-separated: plans by id; worlds as <code>world:&lt;id&gt;</code> or{' '}
-        <code>world:*</code>; contracts by id.
+        Restrict what this user&apos;s agents (their Claude) may touch. Pick from resolved
+        plans, worlds, projects, and contracts. Leaving a field empty means unrestricted (full
+        access).
       </p>
 
       {loading ? (
@@ -234,8 +370,9 @@ function AgentProfileScopes({ userId }: { userId: number }) {
       ) : (
         <div className="space-y-2">
           {profiles.map((p) => {
-            const d = drafts[p.id] ?? { plans: '', scopes: '', contracts: '' };
+            const d = drafts[p.id] ?? EMPTY_DRAFT;
             const busy = savingId === p.id;
+            const dirty = !draftEquals(d, draftFor(p));
             return (
               <div
                 key={p.id}
@@ -261,31 +398,45 @@ function AgentProfileScopes({ userId }: { userId: number }) {
                   </code>
                 </div>
                 <FormField label="Plans">
-                  <Input
-                    size="sm"
-                    value={d.plans}
-                    onChange={(e) => setDraft(p.id, 'plans', e.target.value)}
-                    placeholder="unrestricted"
+                  <ScopeChipPicker
+                    options={planOptions}
+                    selected={d.plans}
+                    onChange={(next) => setDraftField(p.id, 'plans', next)}
+                    disabled={busy}
                   />
                 </FormField>
-                <FormField label="World scopes">
-                  <Input
-                    size="sm"
-                    value={d.scopes}
-                    onChange={(e) => setDraft(p.id, 'scopes', e.target.value)}
-                    placeholder="unrestricted"
+                <FormField label="Worlds">
+                  <ScopeChipPicker
+                    options={worldOptions}
+                    selected={d.worlds}
+                    onChange={(next) => setDraftField(p.id, 'worlds', next)}
+                    disabled={busy}
+                  />
+                </FormField>
+                <FormField label="Projects">
+                  <ScopeChipPicker
+                    options={projectOptions}
+                    selected={d.projects}
+                    onChange={(next) => setDraftField(p.id, 'projects', next)}
+                    disabled={busy}
                   />
                 </FormField>
                 <FormField label="Contracts">
-                  <Input
-                    size="sm"
-                    value={d.contracts}
-                    onChange={(e) => setDraft(p.id, 'contracts', e.target.value)}
-                    placeholder="unrestricted"
+                  <ScopeChipPicker
+                    options={contractOptions}
+                    selected={d.contracts}
+                    onChange={(next) => setDraftField(p.id, 'contracts', next)}
+                    disabled={busy}
                   />
                 </FormField>
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant="primary" loading={busy} onClick={() => void saveScopes(p)}>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    loading={busy}
+                    disabled={!dirty}
+                    onClick={() => void saveScopes(p)}
+                  >
                     Save scopes
                   </Button>
                   <Button

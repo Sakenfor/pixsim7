@@ -164,3 +164,27 @@ export async function listAdminUserProjects(userId: number): Promise<AdminProjec
     params: { user_id: userId },
   });
 }
+
+/** A selectable scope option: the raw grant value plus a human-resolved label. */
+export interface ScopeOption {
+  value: string;
+  label: string;
+}
+
+/** Plan options (id + title) for the plan-scope picker. Not admin-gated. */
+export async function listScopePlanOptions(): Promise<ScopeOption[]> {
+  const resp = await pixsimClient.get<{ plans?: Array<{ id: string; title?: string }> }>(
+    '/dev/plans',
+    { params: { limit: 500, include_hidden: false } },
+  );
+  return (resp.plans ?? []).map((p) => ({ value: p.id, label: p.title || p.id }));
+}
+
+/** Contract options (id + name) for the contract-scope picker. Filtered by the caller's
+ *  own grant server-side (cp4) — an admin is unrestricted, so sees all contracts. */
+export async function listScopeContractOptions(): Promise<ScopeOption[]> {
+  const resp = await pixsimClient.get<{ contracts?: Array<{ id: string; name?: string }> }>(
+    '/meta/contracts',
+  );
+  return (resp.contracts ?? []).map((c) => ({ value: c.id, label: c.name || c.id }));
+}
