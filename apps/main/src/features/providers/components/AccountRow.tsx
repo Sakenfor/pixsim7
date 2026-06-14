@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react';
 import { Icon } from '@lib/icons';
 
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
-import { dryRunPixverseSync, createApiKey, getAccountStats } from '../lib/api/accounts';
+import { dryRunPixverseSync, createApiKey, getAccountStats, recheckAccountBlock } from '../lib/api/accounts';
 import { isPromotionActive } from '../lib/promotionCatalog';
 
 import { AccountInfoModal } from './AccountInfoModal';
@@ -52,6 +52,11 @@ export function AccountRow({
 }: AccountRowProps) {
   const normalizedStatus = account.status.toLowerCase();
   const isActive = normalizedStatus === 'active';
+  // Provider-block re-check: a DISABLED Pixverse account may have been banned
+  // provider-side. The badge becomes a button that live-probes the provider and
+  // re-enables the account if the ban was lifted. The backend no-ops cleanly for
+  // accounts that were disabled for other (non-provider-block) reasons.
+  const canRecheckBlock = normalizedStatus === 'disabled' && account.provider_id === 'pixverse';
   const isAtCapacity = account.current_processing_jobs >= account.max_concurrent_jobs;
   const statusColor = STATUS_COLORS[normalizedStatus] || STATUS_COLORS.disabled;
   const promotions = (account.promotions && typeof account.promotions === 'object')
@@ -109,9 +114,13 @@ export function AccountRow({
 
       {/* Status */}
       <td className="px-3 py-2">
-        <span className={`px-2 py-0.5 text-xs font-medium rounded ${statusColor}`}>
-          {account.status}
-        </span>
+        {canRecheckBlock ? (
+          <RecheckBlockBadge account={account} statusColor={statusColor} onRefresh={onRefresh} />
+        ) : (
+          <span className={`px-2 py-0.5 text-xs font-medium rounded ${statusColor}`}>
+            {account.status}
+          </span>
+        )}
       </td>
 
       {/* Credits */}
@@ -297,6 +306,59 @@ export function AccountRow({
       </td>
     </tr>
     </>
+  );
+}
+
+/**
+ * Clickable DISABLED status badge that live-probes whether a provider-blocked
+ * account has been un-banned, and re-enables it if the provider accepts it.
+ */
+function RecheckBlockBadge({
+  account,
+  statusColor,
+  onRefresh,
+}: {
+  account: ProviderAccount;
+  statusColor: string;
+  onRefresh?: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const toast = useToast();
+
+  const handleClick = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const res = await recheckAccountBlock(account.id);
+      if (res.reactivated) {
+        toast.success(`${account.nickname || account.email} re-enabled — provider accepted it`);
+        onRefresh?.();
+      } else if (res.still_blocked) {
+        toast.info('Still blocked by the provider');
+      } else {
+        toast.info(res.message || 'Nothing to re-check');
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Failed to re-check account';
+      toast.error(message);
+      console.error('Re-check block error', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={loading}
+      className={`px-2 py-0.5 text-xs font-medium rounded inline-flex items-center gap-1 transition-colors hover:ring-1 hover:ring-current disabled:opacity-70 ${statusColor}`}
+      title="Re-check: ask the provider whether this account is un-banned, and re-enable it if so"
+      aria-label="Re-check account block status"
+    >
+      <Icon name={loading ? 'loading' : 'refresh'} size={11} className={loading ? 'animate-spin' : undefined} />
+      {loading ? 'CHECKING…' : account.status}
+    </button>
   );
 }
 

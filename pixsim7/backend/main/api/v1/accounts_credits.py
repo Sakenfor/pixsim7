@@ -11,14 +11,26 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, AccountSvc, DatabaseSession
+from pixsim7.backend.main.domain import AccountStatus
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 from pixsim7.backend.main.services.provider import registry, RateLimitError
 from pixsim7.backend.main.services.provider.adapters.pixverse_promotions import (
     apply_promotions_to_metadata,
 )
+from pixsim7.backend.main.services.provider.blocked_detection import detect_account_blocked
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Provider-block reasons recognized by the re-check probe. Both strings mean the
+# same thing — the provider returned a 10001 "account is blocked" — but they were
+# stamped by different code paths over time:
+#   - "provider_account_blocked"        : current AccountService.mark_blocked
+#   - "pixverse_10001_account_blocked"  : legacy credit-sweep path (pre-unification)
+PROVIDER_BLOCKED_REASONS = frozenset({
+    "provider_account_blocked",
+    "pixverse_10001_account_blocked",
+})
 
 # TTL for credit sync (skip if synced within this time)
 CREDIT_SYNC_TTL_SECONDS = 5 * 60  # 5 minutes
@@ -83,6 +95,16 @@ class SyncCreditsResponse(BaseModel):
     """Response from credit sync"""
     success: bool
     credits: Dict[str, int]
+    message: str
+
+
+class RecheckBlockResponse(BaseModel):
+    """Result of a manual provider-block re-check probe."""
+    success: bool
+    reactivated: bool
+    still_blocked: bool
+    status: str
+    credits: Dict[str, int] = Field(default_factory=dict)
     message: str
 
 
@@ -600,6 +622,157 @@ async def sync_account_credits(
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to sync credits: {str(e)}", "code": "sync_error"}
+        )
+
+
+@router.post("/accounts/{account_id}/recheck-block", response_model=RecheckBlockResponse)
+async def recheck_account_block(
+    account_id: int,
+    user: CurrentUser,
+    account_service: AccountSvc,
+    db: DatabaseSession,
+):
+    """Live-probe a provider-blocked account to see if the ban has been lifted.
+
+    A DISABLED account is excluded from the periodic credit sweep, so an account
+    disabled with ``disabled_reason == "provider_account_blocked"`` is otherwise
+    never re-checked. This runs a one-off live credit fetch against the provider
+    (the same call the sweep uses) and:
+
+    - provider still reports blocked (e.g. Pixverse 10001) -> stay DISABLED,
+      stamp ``last_block_check_at`` so the UI can show when it was last checked.
+    - provider returns valid credits -> reactivate (DISABLED -> ACTIVE) and
+      persist the freshly-fetched credits.
+
+    Only operates on provider-blocked accounts; manually-disabled accounts are
+    left untouched (so we never silently re-enable something disabled on purpose).
+    """
+    logger.info(
+        f"recheck_block_requested account_id={account_id} user_id={user.id}"
+    )
+    try:
+        account = await account_service.get_account(account_id)
+        if account.user_id is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot re-check system accounts")
+        if account.user_id != user.id and not user.is_admin():
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to re-check this account")
+
+        metadata = dict(account.provider_metadata or {})
+        is_provider_blocked = (
+            account.status == AccountStatus.DISABLED
+            and metadata.get("disabled_reason") in PROVIDER_BLOCKED_REASONS
+        )
+        if not is_provider_blocked:
+            # Not eligible — return a friendly no-op rather than an error so the
+            # UI can show an info toast (e.g. for a manually-disabled account).
+            return RecheckBlockResponse(
+                success=True,
+                reactivated=False,
+                still_blocked=False,
+                status=account.status.value,
+                message="Account was not blocked by the provider — nothing to re-check",
+            )
+
+        provider = registry.get(account.provider_id)
+        if not hasattr(provider, "get_credits"):
+            raise HTTPException(
+                status.HTTP_501_NOT_IMPLEMENTED,
+                "Provider does not support credit probing",
+            )
+
+        # Live probe: same auto-reauth + force-refresh call the sweep uses.
+        try:
+            credits_data = await provider.get_credits(
+                account, retry_on_session_error=True, force_refresh=True
+            )
+        except Exception as probe_err:
+            # Provider call may have left the session mid-rollback.
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
+            is_blocked, err_code, err_msg = detect_account_blocked(probe_err)
+            if is_blocked:
+                # Still banned — record the check time, stay disabled.
+                metadata["last_block_check_at"] = datetime.now(timezone.utc).isoformat()
+                account.provider_metadata = metadata
+                await db.commit()
+                logger.info(
+                    f"recheck_block_still_blocked account_id={account.id} err_code={err_code}"
+                )
+                return RecheckBlockResponse(
+                    success=True,
+                    reactivated=False,
+                    still_blocked=True,
+                    status=AccountStatus.DISABLED.value,
+                    message="Still blocked by the provider",
+                )
+
+            # A different failure (session/network) — can't confirm either way,
+            # so leave the account disabled and surface the error.
+            logger.warning(
+                f"recheck_block_probe_error account_id={account.id} error={str(probe_err)} error_type={probe_err.__class__.__name__}"
+            )
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                detail=f"Could not verify account status: {str(probe_err)}",
+            )
+
+        # No block raised — the provider accepted the account. Reactivate it.
+        account = await account_service.reactivate_blocked_account(account.id)
+
+        # Persist the freshly-fetched credits so the row reflects reality.
+        updated_credits: Dict[str, int] = {}
+        if isinstance(credits_data, dict):
+            def _as_int(value) -> int:
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return 0
+
+            if account.provider_id == "pixverse":
+                if credits_data.get("web") is not None:
+                    updated_credits["web"] = _as_int(credits_data.get("web"))
+                    await account_service.set_credit(account.id, "web", updated_credits["web"])
+                if credits_data.get("openapi") is not None:
+                    updated_credits["openapi"] = _as_int(credits_data.get("openapi"))
+                    await account_service.set_credit(account.id, "openapi", updated_credits["openapi"])
+                apply_promotions_to_metadata(account, credits_data)
+            else:
+                for credit_type, amount in credits_data.items():
+                    clean_type = (
+                        credit_type.replace("credit_", "")
+                        if credit_type.startswith("credit_")
+                        else credit_type
+                    )
+                    if clean_type in ("total_credits", "total"):
+                        continue
+                    updated_credits[clean_type] = _as_int(amount)
+                    await account_service.set_credit(account.id, clean_type, updated_credits[clean_type])
+
+            update_sync_timestamp(account)
+            await db.commit()
+
+        logger.info(
+            f"recheck_block_reactivated account_id={account.id} credits={updated_credits}"
+        )
+        return RecheckBlockResponse(
+            success=True,
+            reactivated=True,
+            still_blocked=False,
+            status=AccountStatus.ACTIVE.value,
+            credits=updated_credits,
+            message="Provider accepted the account — re-enabled",
+        )
+    except HTTPException:
+        raise
+    except ResourceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+    except Exception as e:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to re-check account: {str(e)}", "code": "recheck_error"}
         )
 
 

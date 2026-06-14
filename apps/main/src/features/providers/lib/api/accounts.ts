@@ -16,6 +16,7 @@ export {
   createApiKey,
   getAccountStats,
   getInvitedAccounts,
+  recheckAccountBlock,
 } from '@lib/api/accounts';
 
 export type {
@@ -25,4 +26,5 @@ export type {
   CreateApiKeyResponse,
   AccountStatsResponse,
   InvitedAccountsResponse,
+  RecheckBlockResult,
 } from '@lib/api/accounts';

@@ -120,6 +120,36 @@ export async function createApiKey(
 }
 
 /**
+ * Result of a manual provider-block re-check probe.
+ */
+export interface RecheckBlockResult {
+  success: boolean;
+  /** True if the provider accepted the account and it was re-enabled. */
+  reactivated: boolean;
+  /** True if the provider still reports the account as blocked. */
+  still_blocked: boolean;
+  /** Resulting account status (e.g. 'active' | 'disabled'). */
+  status: string;
+  credits: Record<string, number>;
+  message: string;
+}
+
+/**
+ * Live-probe a provider-blocked account to see if the ban has been lifted.
+ *
+ * Disabled accounts are excluded from the periodic credit sweep, so a blocked
+ * account is otherwise never re-checked. This asks the provider directly and
+ * re-enables the account if it's accepted again.
+ *
+ * @param accountId - The account ID to re-check
+ */
+export async function recheckAccountBlock(
+  accountId: number
+): Promise<RecheckBlockResult> {
+  return pixsimClient.post<RecheckBlockResult>(`/accounts/${accountId}/recheck-block`);
+}
+
+/**
  * Get account statistics (invited count, user info)
  *
  * Returns cached stats if available (TTL: 1 hour), otherwise fetches fresh data.

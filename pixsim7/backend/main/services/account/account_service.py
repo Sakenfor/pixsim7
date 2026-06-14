@@ -1539,6 +1539,39 @@ class AccountService:
             apply=_stamp_block_reason,
         )
 
+    async def reactivate_blocked_account(self, account_id: int) -> ProviderAccount:
+        """Re-enable an account previously disabled as provider-blocked.
+
+        Flips status DISABLED -> ACTIVE and strips the ``disabled_*`` markers
+        stamped by :meth:`mark_blocked` (and any ``last_block_check_at`` probe
+        timestamp). Used by the manual "re-check" probe once the provider has
+        accepted the account again — callers must confirm the provider really
+        accepts it (a live credit fetch that did not raise a block) before
+        calling, since this does not re-verify on its own.
+        """
+        def _clear_block_reason(account: ProviderAccount) -> dict:
+            metadata = dict(account.provider_metadata or {})
+            for key in (
+                "disabled_reason",
+                "disabled_at",
+                "disabled_by",          # legacy "manual_ban_cleanup" disable path
+                "disabled_err_code",
+                "disabled_err_msg",
+                "last_block_check_at",
+            ):
+                metadata.pop(key, None)
+            metadata["reactivated_at"] = datetime.now(timezone.utc).isoformat()
+            account.provider_metadata = metadata
+            return {}
+
+        return await self._locked_status_transition(
+            account_id,
+            AccountStatus.ACTIVE,
+            log_event="account_reactivated",
+            record_event="reactivated",
+            apply=_clear_block_reason,
+        )
+
     # ===== CREDIT MANAGEMENT =====
 
     async def set_credit(
