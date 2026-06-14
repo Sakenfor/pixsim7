@@ -42,6 +42,11 @@
     { "id": "multiline-mixed", "text": "SCENE:\nACTOR1 = hi\n>END<" },
     { "id": "crlf", "text": "line one\r\nline two" },
     { "id": "trailing-newline", "text": "SCENE:\n" },
-    { "id": "blank-lines-between", "text": "A\n\nB" }
+    { "id": "blank-lines-between", "text": "A\n\nB" },
+    { "id": "var-call-chain", "text": "ACTOR2_PERSONALITY(very shy) ==> SCENE" },
+    { "id": "var-call-assign", "text": "MOOD(calm) = body" },
+    { "id": "var-call-standalone-stays-prose", "text": "ACTOR2_PERSONALITY(very shy)" },
+    { "id": "var-call-space-before-paren-prose", "text": "FOO (bar) = x" },
+    { "id": "var-call-trailing-text-prose", "text": "FOO(bar) baz = x" }
   ]
 }

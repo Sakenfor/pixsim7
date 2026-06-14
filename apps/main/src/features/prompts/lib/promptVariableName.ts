@@ -141,6 +141,26 @@ export function parseVariableName(name: string): ParsedVariableName {
   };
 }
 
+/**
+ * Split a chain `var` element's text into its bare variable name and an optional
+ * parenthesised value, e.g. `ACTOR2_PERSONALITY(very shy)` →
+ * `{ name: 'ACTOR2_PERSONALITY', value: 'very shy', nameLen: 18 }`. The value is
+ * a free-text argument bound to the variable (phase-2 value binding); the bare
+ * name remains the variable's identity (save/swap/facets operate on it). Returns
+ * `value: null` and `nameLen = text.length` when there is no `(...)` suffix.
+ *
+ * The tokenizer only classifies `UPPER_IDENT(...)` as a `var` element, so callers
+ * receive text that ends with `)` in the call form; this helper is the single
+ * place that peels the value back off.
+ */
+export function splitVarCall(text: string): { name: string; value: string | null; nameLen: number } {
+  const open = text.indexOf('(');
+  if (open <= 0 || !text.endsWith(')')) {
+    return { name: text, value: null, nameLen: text.length };
+  }
+  return { name: text.slice(0, open), value: text.slice(open + 1, -1), nameLen: open };
+}
+
 /** Whether a name belongs to a hard-coded default class. */
 export function isDefaultVariableClass(name: string): boolean {
   return isDefaultVariableClassName(parseVariableName(name).className);

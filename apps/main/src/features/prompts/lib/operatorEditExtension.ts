@@ -9,7 +9,7 @@ import {
 
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 
-import { parseVariableName } from './promptVariableName';
+import { parseVariableName, splitVarCall } from './promptVariableName';
 
 /** Class family of a var element (`ACTOR` from `ACTOR1` or `ACTOR1_HIP`), or
  *  undefined when empty. Unlike the legacy `varSemanticKind` (trailing-index
@@ -184,7 +184,10 @@ export function collectOperatorRanges(
         }
         const raw = doc.sliceString(el.start, el.end);
         const leading = raw.length - raw.trimStart().length;
-        const name = raw.trim().toUpperCase();
+        // For a valued var `NAME(value)`, the access `_` and facet live in the
+        // bare NAME, not the (value).
+        const { name: bareName, nameLen } = splitVarCall(raw.trim());
+        const name = bareName.toUpperCase();
         const us = name.indexOf('_');
         // Need a non-empty entity before the `_` and a facet after it.
         if (us <= 0 || us >= name.length - 1) continue;
@@ -193,10 +196,10 @@ export function collectOperatorRanges(
         const from = el.start + leading + us;
         const to = from + 1;
         if (from < 0 || to > docLength || from >= to) continue;
-        // Facet text span = after the first `_` to the end of the token; the
+        // Facet text span = after the first `_` to the end of the bare name; the
         // range a swap replaces.
         const facetFrom = from + 1;
-        const facetTo = el.start + leading + name.length;
+        const facetTo = el.start + leading + nameLen;
         out.push({
           from, to,
           raw: '_',

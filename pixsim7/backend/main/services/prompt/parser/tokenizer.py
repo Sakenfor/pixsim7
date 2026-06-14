@@ -298,6 +298,20 @@ def _is_all_upper(label: str) -> bool:
     return not any("a" <= c <= "z" for c in label)
 
 
+def _is_var_call(tokens: List[Token], f: int, t: int) -> bool:
+    """True if tokens[f:t] is a parameterised variable `UPPER_IDENT ( ... )`.
+
+    The name (an UPPER_IDENT) must be immediately followed by `(` and the span
+    must end with the matching `)`. Whitespace between the name and `(` breaks it
+    (stays prose). The inner value is free-text and not validated here.
+    """
+    if t - f < 3:
+        return False
+    if tokens[f].kind != "IDENT" or not _is_upper_ident(tokens[f].text):
+        return False
+    return tokens[f + 1].kind == "LPAREN" and tokens[t - 1].kind == "RPAREN"
+
+
 def _try_assemble_mixed_label(
     tokens: List[Token], from_idx: int, to_idx: int
 ) -> Optional[str]:
@@ -408,6 +422,11 @@ def _try_chain(
         elem_end = tokens[t - 1].end
         if t - f == 1 and tokens[f].kind == "IDENT" and _is_upper_ident(tokens[f].text):
             kind: Literal["var", "prose"] = "var"
+        elif _is_var_call(tokens, f, t):
+            # Parameterised/valued variable: UPPER_IDENT immediately followed by a
+            # parenthesised value, e.g. ACTOR2_PERSONALITY(very shy). The bare name
+            # stays the variable identity; the (value) is a free-text argument.
+            kind = "var"
         else:
             kind = "prose"
         elements.append(ChainElement(kind=kind, text=elem_text, start=elem_start, end=elem_end))

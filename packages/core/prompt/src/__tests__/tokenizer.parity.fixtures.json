@@ -1088,6 +1088,160 @@
           }
         ]
       }
+    },
+    {
+      "id": "var-call-chain",
+      "text": "ACTOR2_PERSONALITY(very shy) ==> SCENE",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR2_PERSONALITY(very shy)",
+                "start": 0,
+                "end": 28
+              },
+              {
+                "kind": "var",
+                "text": "SCENE",
+                "start": 33,
+                "end": 38
+              }
+            ],
+            "operators": [
+              {
+                "op": "==>",
+                "run": 3,
+                "op_start": 29,
+                "op_end": 32
+              }
+            ],
+            "start": 0,
+            "end": 38
+          }
+        ]
+      }
+    },
+    {
+      "id": "var-call-assign",
+      "text": "MOOD(calm) = body",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "MOOD(calm)",
+                "start": 0,
+                "end": 10
+              },
+              {
+                "kind": "prose",
+                "text": "body",
+                "start": 13,
+                "end": 17
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 11,
+                "op_end": 12
+              }
+            ],
+            "start": 0,
+            "end": 17
+          }
+        ]
+      }
+    },
+    {
+      "id": "var-call-standalone-stays-prose",
+      "text": "ACTOR2_PERSONALITY(very shy)",
+      "output": {
+        "lines": [
+          {
+            "kind": "prose",
+            "text": "ACTOR2_PERSONALITY(very shy)",
+            "start": 0,
+            "end": 28
+          }
+        ]
+      }
+    },
+    {
+      "id": "var-call-space-before-paren-prose",
+      "text": "FOO (bar) = x",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "FOO (bar)",
+                "start": 0,
+                "end": 9
+              },
+              {
+                "kind": "prose",
+                "text": "x",
+                "start": 12,
+                "end": 13
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 10,
+                "op_end": 11
+              }
+            ],
+            "start": 0,
+            "end": 13
+          }
+        ]
+      }
+    },
+    {
+      "id": "var-call-trailing-text-prose",
+      "text": "FOO(bar) baz = x",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "FOO(bar) baz",
+                "start": 0,
+                "end": 12
+              },
+              {
+                "kind": "prose",
+                "text": "x",
+                "start": 15,
+                "end": 16
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 13,
+                "op_end": 14
+              }
+            ],
+            "start": 0,
+            "end": 16
+          }
+        ]
+      }
     }
   ]
 }

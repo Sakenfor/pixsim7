@@ -10,7 +10,7 @@ import {
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 
 import { resolveFacet, type FacetVocab } from './facetRecognition';
-import { facetAxesForClass, isDefaultVariableClass, parseVariableName } from './promptVariableName';
+import { facetAxesForClass, isDefaultVariableClass, parseVariableName, splitVarCall } from './promptVariableName';
 import { getVariableClassVisual } from './variableClassVisuals';
 
 /**
@@ -98,13 +98,16 @@ export function collectVariableRanges(config: VariableTokensConfig, doc: Text): 
         continue;
       }
       // The element slot may include surrounding whitespace; tighten the range
-      // to the token itself so we don't decorate adjacent spaces.
+      // to the token itself so we don't decorate adjacent spaces. For a valued
+      // var `NAME(value)` decorate only NAME — the bare name is the identity
+      // (save/swap/facets), the (value) stays plain text.
       const raw = doc.sliceString(el.start, el.end);
       const leading = raw.length - raw.trimStart().length;
-      const name = raw.trim().toUpperCase();
+      const { name: bareName, nameLen } = splitVarCall(raw.trim());
+      const name = bareName.toUpperCase();
       if (!name) continue;
       const from = el.start + leading;
-      const to = from + raw.trim().length;
+      const to = from + nameLen;
       if (from >= to || to > docLength) continue;
       // Facet sub-range: the portion after the first `_`, coloured by whether
       // it resolves against the class's facet axes. Only for facet-declaring

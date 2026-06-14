@@ -116,6 +116,19 @@ function isAllUpper(label: string): boolean {
   return true;
 }
 
+/**
+ * True if tokens[from..to) is a parameterised variable `UPPER_IDENT ( ... )` —
+ * an upper IDENT immediately followed by `(` and ending with the matching `)`.
+ * Whitespace between the name and `(` breaks it (stays prose); the inner value
+ * is free text, not validated here.
+ */
+function isVarCall(tokens: Token[], from: number, to: number): boolean {
+  if (to - from < 3) return false;
+  const first = tokens[from];
+  if (first.kind !== 'IDENT' || !isUpperIdent(first.text)) return false;
+  return tokens[from + 1].kind === 'LPAREN' && tokens[to - 1].kind === 'RPAREN';
+}
+
 // ── line splitting ─────────────────────────────────────────────────────────
 
 interface LineSlice {
@@ -244,8 +257,12 @@ function tryChain(line: LineSlice, tokens: Token[], i: number, end: number): Pro
     for (let x = f; x < t; x++) elemText += tokens[x].text;
     const elemStart = tokens[f].start;
     const elemEnd = tokens[t - 1].end;
+    // `var` = a single UPPER_IDENT, OR a parameterised UPPER_IDENT(value) — the
+    // bare name is the identity; the (value) is a free-text argument.
     const kind: 'var' | 'prose' =
-      t - f === 1 && tokens[f].kind === 'IDENT' && isUpperIdent(tokens[f].text) ? 'var' : 'prose';
+      (t - f === 1 && tokens[f].kind === 'IDENT' && isUpperIdent(tokens[f].text)) || isVarCall(tokens, f, t)
+        ? 'var'
+        : 'prose';
     elements.push({ kind, text: elemText, start: elemStart, end: elemEnd });
   }
 
