@@ -54,7 +54,31 @@ from pixsim7.client.token_manager import (
 # any cache against.
 
 
-def _reconnect_backoff_delay(consecutive_failures: int) -> float:
+def _is_backend_booting_error(e: BaseException) -> bool:
+    """True when a reconnect failed because the backend port isn't open yet.
+
+    A full backend restart isn't ready in 0.5s — it refuses connections
+    (``ConnectionRefusedError``; WinError 1225 maps here) for the ~5–20s it
+    takes to boot its DB pool / workers / WS endpoint. That's distinct from a
+    healthy-but-overloaded peer: it means "keep probing tightly until the port
+    opens", not "back off to avoid a stampede". We walk the cause/context chain
+    because the refusal is often wrapped (e.g. inside an ``OSError`` or a
+    websockets handshake error). Plan: launcher-health-probe-stability /
+    ws-drop-root-cause.
+    """
+    seen: set[int] = set()
+    cur: BaseException | None = e
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if isinstance(cur, ConnectionRefusedError):
+            return True
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
+def _reconnect_backoff_delay(
+    consecutive_failures: int, *, booting: bool = False
+) -> float:
     """Delay (seconds) before the next WS reconnect attempt.
 
     Backend restarts are the common cause of a dropped bridge WS, so the FIRST
@@ -63,8 +87,21 @@ def _reconnect_backoff_delay(consecutive_failures: int) -> float:
     bridge back and the user saw a spurious "Task not found" for any in-flight
     task. Later attempts back off linearly to a 30s cap. Jitter spreads many
     bridges so they don't stampede a still-booting backend in lockstep.
-    Plan: launcher-health-probe-stability / ws-drop-root-cause.
+
+    ``booting=True`` (the last attempt was refused — backend port not open yet)
+    overrides the escalation: a restart only *looks* like repeated failures
+    while it boots, and the old linear curve would balloon to a 15–30s sleep
+    right as the backend finished coming up, stranding in-flight tasks long
+    after the WS endpoint was reachable again. Instead we probe at a tight
+    ~1s cadence (a small ceiling after many tries guards a truly-dead backend)
+    so we reconnect within ~1s of the port reopening. Plan:
+    launcher-health-probe-stability / ws-drop-root-cause.
     """
+    if booting:
+        # Port-not-open-yet: probe tightly until it reopens. Stay near-constant
+        # rather than escalating — the failures are one boot, not contention.
+        base = 1.0 if consecutive_failures <= 10 else 3.0
+        return base + random.uniform(0.0, 0.5)
     if consecutive_failures <= 1:
         # Near-immediate first retry — assume a quick backend restart.
         return 0.5 + random.uniform(0.0, 0.5)
@@ -504,7 +541,14 @@ class Bridge:
                         get_logger().info("shutdown_requested", reason="reconnect_suppressed")
                         break
                     consecutive_failures += 1
-                    delay = _reconnect_backoff_delay(consecutive_failures)
+                    # A refused connect means the backend port isn't open yet
+                    # (still booting after a restart) — keep probing tightly
+                    # instead of escalating into a long sleep that strands any
+                    # in-flight task past the moment the endpoint comes back.
+                    booting = _is_backend_booting_error(e)
+                    delay = _reconnect_backoff_delay(
+                        consecutive_failures, booting=booting
+                    )
                     # Plan: launcher-health-probe-stability / ws-drop-root-cause —
                     # str(e) on websockets exceptions is just "no close frame
                     # received or sent" without the originating cause. Surface
@@ -542,7 +586,7 @@ class Bridge:
                             traceback.format_exception(type(e), e, e.__traceback__)
                         ),
                     )
-                    get_logger().info("reconnecting", delay_s=delay, attempt=consecutive_failures)
+                    get_logger().info("reconnecting", delay_s=delay, attempt=consecutive_failures, booting=booting)
                     await asyncio.sleep(delay)
         finally:
             await self._hook_server.stop()
