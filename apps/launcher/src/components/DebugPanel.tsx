@@ -45,16 +45,40 @@ export function DebugPanel() {
   const [propagation, setPropagation] = useState<Map<string, ServiceLoggingResult>>(new Map())
   const propagationVersion = useRef(0)
 
-  // Load domain catalog + global config once
+  // Fetch the logging config. Returns the config (or null if even the
+  // launcher-api endpoint is unreachable). The launcher API itself falls back
+  // to launcher-local state when the backend is down, so a null here means the
+  // launcher process — not just the backend — couldn't be reached.
+  const loadConfig = useCallback(async () => {
+    try {
+      const c = await getLoggingConfig()
+      if (c) {
+        setConfig(c)
+        setConfigError(null)
+      } else {
+        setConfigError('Could not reach the launcher logging endpoint')
+      }
+      return c
+    } catch {
+      setConfigError('Failed to fetch logging config')
+      return null
+    }
+  }, [])
+
+  // Load domain catalog + global config once on mount.
   useEffect(() => {
     getDomainCatalog().then(setCatalog)
-    getLoggingConfig()
-      .then((c) => {
-        if (c) setConfig(c)
-        else setConfigError('Could not reach backend admin endpoint — is the backend running and identity set up?')
-      })
-      .catch(() => setConfigError('Failed to fetch logging config'))
-  }, [])
+    loadConfig()
+  }, [loadConfig])
+
+  // While running on the launcher-local fallback (backend offline), re-check
+  // periodically so the panel upgrades back to the canonical persisted config
+  // the moment the backend comes up — no manual refresh / restart needed.
+  useEffect(() => {
+    if (config?.source !== 'launcher-local') return
+    const id = setInterval(() => { loadConfig() }, 5000)
+    return () => clearInterval(id)
+  }, [config?.source, loadConfig])
 
   // Refetch propagation whenever the running-services set changes, and
   // post-PATCH (scheduled by applyPatch). Uses a version ref to drop stale
@@ -176,15 +200,25 @@ function GlobalConfigSection({
     return drifted
   }, [selectedServiceKey, propagation, config])
 
+  const local = config.source === 'launcher-local'
+
   return (
     <div className="space-y-2">
       <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 px-1">
         Global Config <span className="font-normal lowercase text-gray-600">(applies to all services)</span>
       </div>
 
+      {local && (
+        <div className="rounded border border-amber-700/40 bg-amber-900/15 px-2 py-1.5 text-[10px] text-amber-300">
+          Backend offline — showing the launcher-api process's own logging state.
+          Edits apply to the launcher only and are <span className="font-semibold">not persisted</span>;
+          DB level &amp; retention are backend-owned and unavailable here.
+        </div>
+      )}
+
       {/* Levels */}
       <div className="bg-surface-secondary rounded border border-border p-3 space-y-2">
-        <Row label="Global Log Level" hint="Minimum severity for all domains">
+        <Row label="Global Log Level" hint={local ? 'Launcher process only (not persisted)' : 'Minimum severity for all domains'}>
           <Select
             value={config.log_level}
             disabled={saving}
@@ -195,21 +229,22 @@ function GlobalConfigSection({
           </Select>
         </Row>
 
-        <Row label="DB Ingestion Level" hint="Minimum severity written to log database">
+        <Row label="DB Ingestion Level" hint={local ? 'Unavailable while backend is offline' : 'Minimum severity written to log database'}>
           <Select
             value={config.log_db_min_level}
-            disabled={saving}
+            disabled={saving || local}
             onChange={(e) => onPatch({ log_db_min_level: e.target.value })}
             size="xs" width="auto" className="text-gray-200"
           >
+            {local && <option value="">—</option>}
             {LOG_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
           </Select>
         </Row>
 
-        <Row label="Retention" hint="Days to keep log entries (1–365)">
+        <Row label="Retention" hint={local ? 'Unavailable while backend is offline' : 'Days to keep log entries (1–365)'}>
           <RetentionInput
             value={config.log_retention_days}
-            saving={saving}
+            saving={saving || local}
             onCommit={(days) => onPatch({ log_retention_days: days })}
           />
         </Row>

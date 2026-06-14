@@ -16,6 +16,7 @@ import { DbLogViewer } from './DbLogViewer'
 import { ToolsPage } from './ToolsPage'
 import { TracePanel } from './TracePanel'
 import { DebugPanel } from './DebugPanel'
+import { WorkersPanel } from './WorkersPanel'
 import { StatusBar } from './StatusBar'
 import { ServiceSettingsPanel } from './ServiceSettingsPanel'
 import { AccountPanel } from './AccountPanel'
@@ -40,6 +41,7 @@ function IcoCog() { return <svg {...ti}><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0
 function IcoBot() { return <svg {...ti}><rect x="3" y="11" width="18" height="10" rx="2" /><circle cx="12" cy="5" r="2" /><path d="M12 7v4" /><circle cx="8" cy="16" r="1" fill="currentColor" stroke="none" /><circle cx="16" cy="16" r="1" fill="currentColor" stroke="none" /></svg> }
 function IcoSparkles() { return <svg {...ti}><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z" /><path d="M18 14l.7 2.3L21 17l-2.3.7L18 20l-.7-2.3L15 17l2.3-.7L18 14z" /></svg> }
 function IcoGamepad() { return <svg {...ti}><path d="M6 11h4" /><path d="M8 9v4" /><circle cx="15" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="18" cy="10" r="1" fill="currentColor" stroke="none" /><rect x="2" y="6" width="20" height="12" rx="4" /></svg> }
+function IcoCpu() { return <svg {...ti}><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 2v2" /><path d="M15 2v2" /><path d="M9 20v2" /><path d="M15 20v2" /><path d="M2 9h2" /><path d="M2 15h2" /><path d="M20 9h2" /><path d="M20 15h2" /></svg> }
 
 /** Static tab icon by component ID. */
 const TAB_ICONS: Record<string, () => React.ReactNode> = {
@@ -48,6 +50,7 @@ const TAB_ICONS: Record<string, () => React.ReactNode> = {
   'db-logs': IcoDatabase,
   'service-detail': IcoInfo,
   'tools': IcoWrench,
+  'workers': IcoCpu,
   'debug': IcoBug,
   'trace': IcoActivity,
   'account': IcoUser,
@@ -499,6 +502,7 @@ const DEFAULT_LAYOUT: IJsonModel = {
         weight: 25,
         children: [
           { type: 'tab', name: 'Tools', component: 'tools' },
+          { type: 'tab', name: 'Workers', component: 'workers' },
           { type: 'tab', name: 'Debug', component: 'debug' },
           { type: 'tab', name: 'Trace', component: 'trace' },
           { type: 'tab', name: 'Account', component: 'account', id: 'account-tab' },
@@ -633,6 +637,8 @@ export function DockLayout({ onShowSetup, onIdentityCreated }: { onShowSetup?: (
         return <ServiceInfoPanel />
       case 'tools':
         return <ToolsPage />
+      case 'workers':
+        return <WorkersPanel />
       case 'debug':
         return <DebugPanel />
       case 'trace':
