@@ -83,3 +83,48 @@ export async function adminUpdateUser(
 export async function adminDeactivateUser(userId: number): Promise<AdminUserPermissions> {
   return pixsimClient.delete<AdminUserPermissions>(`/admin/users/${userId}`);
 }
+
+// --- Agent-profile scope grants (scoped-agent-authorization cp5) ---------
+
+export interface AdminAgentProfile {
+  id: string;
+  user_id: number;
+  label: string;
+  agent_type: string;
+  status: string;
+  is_global: boolean;
+  /** Plan ids this profile may work on. null = unrestricted. */
+  assigned_plans: string[] | null;
+  /** Scope strings (e.g. "world:42", "world:*"). null = unrestricted. */
+  default_scopes: string[] | null;
+  /** Contract ids this profile may use. null = unrestricted (all for audience). */
+  allowed_contracts: string[] | null;
+}
+
+export interface AdminAgentProfilesResponse {
+  profiles: AdminAgentProfile[];
+  total: number;
+}
+
+/** List a user's (and global) agent profiles for scope management. Admin-only. */
+export async function listAdminAgentProfiles(userId?: number): Promise<AdminAgentProfilesResponse> {
+  return pixsimClient.get<AdminAgentProfilesResponse>('/dev/agent-profiles/admin/all', {
+    params: userId != null ? { user_id: userId } : undefined,
+  });
+}
+
+export interface AdminProfileScopeParams {
+  /** Omit a field to leave unchanged; pass null to clear (unrestricted); pass a list to restrict. */
+  assigned_plans?: string[] | null;
+  default_scopes?: string[] | null;
+  allowed_contracts?: string[] | null;
+  status?: string;
+}
+
+/** Grant/revoke a profile's scopes or pause it, across any owner. Admin-only. */
+export async function adminUpdateAgentProfileScope(
+  profileId: string,
+  params: AdminProfileScopeParams,
+): Promise<AdminAgentProfile> {
+  return pixsimClient.patch<AdminAgentProfile>(`/dev/agent-profiles/admin/${profileId}`, params);
+}

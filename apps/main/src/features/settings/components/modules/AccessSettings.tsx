@@ -13,11 +13,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   adminDeactivateUser,
+  adminUpdateAgentProfileScope,
   adminUpdateUser,
   extractErrorMessage,
+  listAdminAgentProfiles,
   listBridgeMachines,
   listAdminUsers,
   updateAdminUserPermissions,
+  type AdminAgentProfile,
   type AdminUserPermissions,
   type BridgeMachine,
 } from '@lib/api';
@@ -110,6 +113,202 @@ function UserListItem({
         {user.role}
       </Badge>
     </button>
+  );
+}
+
+// --- Agent profile scopes (scoped-agent-authorization cp5) ---
+
+function parseScopeList(raw: string): string[] | null {
+  const items = raw
+    .split(/[\s,]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : null; // blank → null = unrestricted
+}
+
+function formatScopeList(value: string[] | null): string {
+  return (value ?? []).join(', ');
+}
+
+type ScopeDraft = { plans: string; scopes: string; contracts: string };
+
+function draftFor(p: AdminAgentProfile): ScopeDraft {
+  return {
+    plans: formatScopeList(p.assigned_plans),
+    scopes: formatScopeList(p.default_scopes),
+    contracts: formatScopeList(p.allowed_contracts),
+  };
+}
+
+function AgentProfileScopes({ userId }: { userId: number }) {
+  const [profiles, setProfiles] = useState<AdminAgentProfile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, ScopeDraft>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const resp = await listAdminAgentProfiles(userId);
+      setProfiles(resp.profiles);
+      setDrafts(Object.fromEntries(resp.profiles.map((p) => [p.id, draftFor(p)])));
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to load agent profiles'));
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const setDraft = useCallback((id: string, key: keyof ScopeDraft, val: string) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] ?? { plans: '', scopes: '', contracts: '' }), [key]: val },
+    }));
+  }, []);
+
+  const applyUpdated = useCallback((updated: AdminAgentProfile) => {
+    setProfiles((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+    setDrafts((prev) => ({ ...prev, [updated.id]: draftFor(updated) }));
+  }, []);
+
+  const saveScopes = useCallback(
+    async (p: AdminAgentProfile) => {
+      const d = drafts[p.id];
+      if (!d) return;
+      setSavingId(p.id);
+      setError('');
+      try {
+        applyUpdated(
+          await adminUpdateAgentProfileScope(p.id, {
+            assigned_plans: parseScopeList(d.plans),
+            default_scopes: parseScopeList(d.scopes),
+            allowed_contracts: parseScopeList(d.contracts),
+          }),
+        );
+      } catch (err) {
+        setError(extractErrorMessage(err, 'Failed to update profile scopes'));
+      } finally {
+        setSavingId(null);
+      }
+    },
+    [drafts, applyUpdated],
+  );
+
+  const toggleStatus = useCallback(
+    async (p: AdminAgentProfile) => {
+      const next = p.status === 'paused' ? 'active' : 'paused';
+      setSavingId(p.id);
+      setError('');
+      try {
+        applyUpdated(await adminUpdateAgentProfileScope(p.id, { status: next }));
+      } catch (err) {
+        setError(extractErrorMessage(err, 'Failed to update status'));
+      } finally {
+        setSavingId(null);
+      }
+    },
+    [applyUpdated],
+  );
+
+  return (
+    <>
+      <SectionHeader className="mt-2">Agent profile scopes</SectionHeader>
+      <p className="text-[10px] leading-snug text-neutral-500">
+        Restrict what this user&apos;s agents (their Claude) may touch. Blank = unrestricted (full
+        access). Comma-separated: plans by id; worlds as <code>world:&lt;id&gt;</code> or{' '}
+        <code>world:*</code>; contracts by id.
+      </p>
+
+      {loading ? (
+        <div className="text-[11px] text-neutral-500">Loading agent profiles...</div>
+      ) : profiles.length === 0 ? (
+        <div className="rounded border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-[11px] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/30">
+          No agent profiles for this user yet.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {profiles.map((p) => {
+            const d = drafts[p.id] ?? { plans: '', scopes: '', contracts: '' };
+            const busy = savingId === p.id;
+            return (
+              <div
+                key={p.id}
+                className="space-y-1.5 rounded border border-neutral-200 bg-white px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-900/40"
+              >
+                <div className="flex items-center gap-2">
+                  <Badge
+                    color={p.status === 'active' ? 'green' : 'gray'}
+                    className="!text-[9px] !px-1.5 !py-0"
+                  >
+                    {p.status}
+                  </Badge>
+                  <span className="truncate text-[11px] font-medium text-neutral-800 dark:text-neutral-100">
+                    {p.label}
+                  </span>
+                  {p.is_global && (
+                    <Badge color="blue" className="!text-[9px] !px-1.5 !py-0">
+                      global
+                    </Badge>
+                  )}
+                  <code className="ml-auto text-[9px] text-neutral-400" title={p.id}>
+                    {p.agent_type}
+                  </code>
+                </div>
+                <FormField label="Plans">
+                  <Input
+                    size="sm"
+                    value={d.plans}
+                    onChange={(e) => setDraft(p.id, 'plans', e.target.value)}
+                    placeholder="unrestricted"
+                  />
+                </FormField>
+                <FormField label="World scopes">
+                  <Input
+                    size="sm"
+                    value={d.scopes}
+                    onChange={(e) => setDraft(p.id, 'scopes', e.target.value)}
+                    placeholder="unrestricted"
+                  />
+                </FormField>
+                <FormField label="Contracts">
+                  <Input
+                    size="sm"
+                    value={d.contracts}
+                    onChange={(e) => setDraft(p.id, 'contracts', e.target.value)}
+                    placeholder="unrestricted"
+                  />
+                </FormField>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="primary" loading={busy} onClick={() => void saveScopes(p)}>
+                    Save scopes
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void toggleStatus(p)}
+                  >
+                    {p.status === 'paused' ? 'Resume' : 'Pause'}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+          {error}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -405,6 +604,9 @@ function UserDetailPanel({
             Add
           </Button>
         </div>
+
+        {/* -- Agent profile scopes section -- */}
+        <AgentProfileScopes userId={user.id} />
 
         {/* -- Bridge machines section -- */}
         <SectionHeader className="mt-2">Bridge machines</SectionHeader>
