@@ -27,6 +27,8 @@ export type {
   BlockCatalogRow,
   BlockMatrixQuery,
   BlockMatrixResponse,
+  BlockMatrixCell,
+  BlockMatrixCellSample,
   BlockTagDictionaryKey,
   BlockTagDictionaryQuery,
   BlockTagDictionaryResponse,
@@ -53,6 +55,12 @@ export type {
   BlockOpParamSchema,
   BlockOpParamType,
   BlockOpRefSchema,
+} from '@pixsim7/shared.api.client/domains';
+
+export {
+  PACK_CATEGORY_ORDER,
+  packCategoryLabel,
+  type PackCategory,
 } from '@pixsim7/shared.api.client/domains';
 
 const blockTemplatesApi = createBlockTemplatesApi(pixsimClient);

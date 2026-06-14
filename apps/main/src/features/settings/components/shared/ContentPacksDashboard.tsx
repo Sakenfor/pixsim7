@@ -6,35 +6,23 @@
  * no longer on disk).
  */
 
+import type { ContentPackInfo, ContentPackInventory } from '@pixsim7/shared.api.client/domains';
 import { Button, StatusPill, type StatusTone } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BACKEND_BASE } from '@lib/api/client';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { authService } from '@lib/auth';
+import { groupPackInventoryEntries } from '@lib/content/packCategoryGrouping';
+
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface ContentPackInfo {
-  status: 'active' | 'orphaned' | 'disk_only';
-  blocks: number;
-  templates: number;
-  characters: number;
-}
-
-interface ContentPackInventory {
-  disk_packs: string[];
-  packs: Record<string, ContentPackInfo>;
-  summary: {
-    total_packs: number;
-    active_packs: number;
-    orphaned_packs: number;
-    disk_only_packs: number;
-    total_orphaned_entities: number;
-  };
-}
+// ContentPackInfo / ContentPackInventory are the canonical shapes from
+// @pixsim7/shared.api.client/domains (imported above) — don't redeclare them
+// here; a local copy silently drifts (e.g. missing the `category` field).
 
 interface PurgeResult {
   packs_purged: number;
@@ -159,6 +147,17 @@ export function ContentPacksDashboard() {
     }
   }, [fetchInventory]);
 
+  // Hooks must run unconditionally — derive memoized views before any early
+  // return. Empty input falls through to the "no packs" branch in render.
+  const packEntries = useMemo(
+    () => Object.entries(inventory?.packs ?? {}).filter(([, info]) => info.status !== 'disk_only'),
+    [inventory],
+  );
+  const groupedPackEntries = useMemo(
+    () => groupPackInventoryEntries(packEntries),
+    [packEntries],
+  );
+
   if (!inventory && loading) {
     return (
       <div className="flex items-center gap-2 py-4 px-3">
@@ -176,8 +175,7 @@ export function ContentPacksDashboard() {
     );
   }
 
-  const { packs, summary } = inventory;
-  const packEntries = Object.entries(packs).filter(([, info]) => info.status !== 'disk_only');
+  const { summary } = inventory;
   const hasOrphans = summary.orphaned_packs > 0;
 
   return (
@@ -211,65 +209,81 @@ export function ContentPacksDashboard() {
 
       <div className="h-px bg-border mx-3" />
 
-      {/* Pack rows */}
+      {/* Pack rows, grouped by manifest `category` (canonical order via PACK_CATEGORY_ORDER) */}
       {packEntries.length === 0 ? (
         <div className="py-3 px-3 text-xs text-muted-foreground">No content packs in database</div>
       ) : (
-        packEntries.map(([name, info]) => {
-          const isOrphaned = info.status === 'orphaned';
-          const entityCount = info.blocks + info.templates + info.characters;
-          const isPurging = purging === name;
-          const isConfirming = confirmPack === name;
-
-          return (
-            <div key={name}>
-              <div className={`flex items-center gap-3 py-1.5 px-3 ${isOrphaned ? 'bg-red-50/30 dark:bg-red-950/10' : ''}`}>
-                <span className={`text-xs font-medium w-[140px] shrink-0 truncate ${isOrphaned ? 'text-red-600 dark:text-red-400' : ''}`} title={name}>
-                  {name}
-                </span>
-                <span className="w-[70px] shrink-0">
-                  <StatusBadge status={info.status} />
-                </span>
-                <span className="w-[50px] shrink-0 text-right text-xs tabular-nums text-muted-foreground">{info.blocks}</span>
-                <span className="w-[65px] shrink-0 text-right text-xs tabular-nums text-muted-foreground">{info.templates}</span>
-                <span className="w-[70px] shrink-0 text-right text-xs tabular-nums text-muted-foreground">{info.characters}</span>
-                <div className="flex-1 min-w-[70px] flex justify-end">
-                  {isOrphaned && !isConfirming && (
-                    <Button
-                      onClick={() => setConfirmPack(name)}
-                      disabled={!!purging}
-                      variant="outline"
-                      size="sm"
-                    >
-                      Purge {entityCount}
-                    </Button>
-                  )}
-                  {isOrphaned && isConfirming && (
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        onClick={() => handlePurge(name)}
-                        disabled={!!purging}
-                        variant="destructive"
-                        size="sm"
-                      >
-                        {isPurging ? <Spinner className="w-3 h-3" /> : 'Confirm'}
-                      </Button>
-                      <Button
-                        onClick={() => setConfirmPack(null)}
-                        disabled={!!purging}
-                        variant="outline"
-                        size="sm"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="h-px bg-border/50 mx-3" />
+        groupedPackEntries.map((group) => (
+          <div key={group.category} data-testid={`pack-category-group-${group.category}`}>
+            <div
+              className={`flex items-center gap-2 px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold select-none ${
+                group.isUncategorized
+                  ? 'text-muted-foreground/50 italic'
+                  : 'text-muted-foreground/75'
+              }`}
+            >
+              <span>{group.label}</span>
+              <span className="text-muted-foreground/40 normal-case tracking-normal tabular-nums">
+                {group.entries.length}
+              </span>
             </div>
-          );
-        })
+            {group.entries.map(([name, info]) => {
+              const isOrphaned = info.status === 'orphaned';
+              const entityCount = info.blocks + info.templates + info.characters;
+              const isPurging = purging === name;
+              const isConfirming = confirmPack === name;
+
+              return (
+                <div key={name}>
+                  <div className={`flex items-center gap-3 py-1.5 px-3 ${isOrphaned ? 'bg-red-50/30 dark:bg-red-950/10' : ''}`}>
+                    <span className={`text-xs font-medium w-[140px] shrink-0 truncate ${isOrphaned ? 'text-red-600 dark:text-red-400' : ''}`} title={name}>
+                      {name}
+                    </span>
+                    <span className="w-[70px] shrink-0">
+                      <StatusBadge status={info.status} />
+                    </span>
+                    <span className="w-[50px] shrink-0 text-right text-xs tabular-nums text-muted-foreground">{info.blocks}</span>
+                    <span className="w-[65px] shrink-0 text-right text-xs tabular-nums text-muted-foreground">{info.templates}</span>
+                    <span className="w-[70px] shrink-0 text-right text-xs tabular-nums text-muted-foreground">{info.characters}</span>
+                    <div className="flex-1 min-w-[70px] flex justify-end">
+                      {isOrphaned && !isConfirming && (
+                        <Button
+                          onClick={() => setConfirmPack(name)}
+                          disabled={!!purging}
+                          variant="outline"
+                          size="sm"
+                        >
+                          Purge {entityCount}
+                        </Button>
+                      )}
+                      {isOrphaned && isConfirming && (
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            onClick={() => handlePurge(name)}
+                            disabled={!!purging}
+                            variant="danger"
+                            size="sm"
+                          >
+                            {isPurging ? <Spinner className="w-3 h-3" /> : 'Confirm'}
+                          </Button>
+                          <Button
+                            onClick={() => setConfirmPack(null)}
+                            disabled={!!purging}
+                            variant="outline"
+                            size="sm"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="h-px bg-border/50 mx-3" />
+                </div>
+              );
+            })}
+          </div>
+        ))
       )}
 
       {/* Footer */}
@@ -284,7 +298,7 @@ export function ContentPacksDashboard() {
               }
             }}
             disabled={!!purging}
-            variant={confirmPack === '__all__' ? 'destructive' : 'outline'}
+            variant={confirmPack === '__all__' ? 'danger' : 'outline'}
             size="sm"
           >
             {purging === '__all__' ? (
