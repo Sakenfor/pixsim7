@@ -1554,6 +1554,19 @@ async def _poll_single_generation(
                         missing_provider_job=missing_provider_job,
                     )
 
+                # Release the read transaction opened by the SELECTs above
+                # (submission load, account fetch) BEFORE the provider HTTP
+                # check_status below. Otherwise this connection sits "idle in
+                # transaction" for the duration of the (often multi-second,
+                # occasionally 30s+) provider poll, and Postgres'
+                # idle_in_transaction_session_timeout (30s) terminates it
+                # mid-call — the long-standing poll_generation_once / per-tick
+                # 31s "underlying connection is closed" failures. commit (not
+                # rollback) keeps submission_model/account/generation usable
+                # (session is expire_on_commit=False); there are no pending
+                # writes at this point, so it only closes the read txn.
+                await db.commit()
+
                 status_result = await provider_service.check_status(
                     submission=submission_model,
                     account=account,
