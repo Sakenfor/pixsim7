@@ -15,11 +15,73 @@ import type { OverlayConfiguration, WidgetContext, WidgetPosition } from './type
 import { handleCollisions } from './utils/collision';
 import { applyDefaults } from './utils/merge';
 import { positionToStyle } from './utils/position';
-import { partitionByStackGroup } from './utils/stacking';
+import { partitionByStackGroup, type StackGroupInfo } from './utils/stacking';
 import { validateAndLog } from './utils/validation';
 
 
 const isDev = import.meta.env?.DEV ?? false;
+
+/**
+ * A single auto-stacked badge group (e.g. the top-right column). Capped to the
+ * card via maxHeight/maxWidth so an over-long stack scrolls within the card
+ * edge instead of spilling past it. Pointer events are only captured while the
+ * stack actually overflows — otherwise the gaps between badges stay
+ * click-through to the card, as before. Overflow is measured (ResizeObserver +
+ * child-count) so the scroll affordance appears exactly when needed.
+ */
+function StackGroupContainer({
+  group,
+  baseStyle,
+  children,
+}: {
+  group: StackGroupInfo;
+  baseStyle: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  const isColumn = group.flexDirection === 'column';
+  const childCount = group.widgets.length;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const over = isColumn
+        ? el.scrollHeight > el.clientHeight + 1
+        : el.scrollWidth > el.clientWidth + 1;
+      setOverflowing((prev) => (prev === over ? prev : over));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isColumn, childCount]);
+
+  return (
+    <div
+      ref={ref}
+      data-overlay-stack-group={group.stackGroup}
+      data-overlay-stack-anchor={group.anchor}
+      className={overflowing ? 'thin-scrollbar' : undefined}
+      style={{
+        ...baseStyle,
+        display: 'flex',
+        flexDirection: group.flexDirection,
+        alignItems: group.alignItems,
+        zIndex: group.maxPriority,
+        ...(isColumn
+          ? { maxHeight: '100%', overflowY: 'auto', overflowX: 'visible' }
+          : { maxWidth: '100%', overflowX: 'auto', overflowY: 'visible' }),
+        // Only capture pointer events (needed for scrolling) when the stack
+        // overflows; otherwise keep the gaps click-through to the card.
+        pointerEvents: overflowing ? 'auto' : 'none',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export interface OverlayContainerProps {
   /** Overlay configuration */
@@ -54,6 +116,13 @@ export interface OverlayContainerProps {
   /** Custom state for conditional widget rendering */
   customState?: Record<string, any>;
 
+  /**
+   * Force the container into its hovered state regardless of pointer hover.
+   * Used by touch surfaces to reveal hover-gated widgets on tap, where no
+   * real `mouseenter` ever fires.
+   */
+  forceHovered?: boolean;
+
   /** Callback when a widget is clicked */
   onWidgetClick?: (widgetId: string, data: any) => void;
 
@@ -80,6 +149,7 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
   data: dataProp,
   bindings,
   customState,
+  forceHovered = false,
   onWidgetClick,
   children,
   className = '',
@@ -195,11 +265,11 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
   const context: WidgetContext = useMemo(
     () => ({
       containerRef,
-      isHovered,
+      isHovered: isHovered || forceHovered,
       isFocused,
       customState,
     }),
-    [isHovered, isFocused, customState],
+    [isHovered, forceHovered, isFocused, customState],
   );
 
   // Hover handlers
@@ -287,19 +357,7 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
         });
 
         return (
-          <div
-            key={group.key}
-            data-overlay-stack-group={group.stackGroup}
-            data-overlay-stack-anchor={group.anchor}
-            style={{
-              ...containerStyle,
-              display: 'flex',
-              flexDirection: group.flexDirection,
-              alignItems: group.alignItems,
-              zIndex: group.maxPriority,
-              pointerEvents: 'none',
-            }}
-          >
+          <StackGroupContainer key={group.key} group={group} baseStyle={containerStyle}>
             {group.widgets.map((widget) => (
               <OverlayWidget
                 key={widget.id}
@@ -312,7 +370,7 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
                 onRef={getWidgetRefCallback(widget.id)}
               />
             ))}
-          </div>
+          </StackGroupContainer>
         );
       })}
     </div>

@@ -1,8 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-/** Max simultaneously-active add-target sets (keeps the hover corner uncluttered). */
-export const MAX_ACTIVE_TARGETS = 3;
+/**
+ * Max simultaneously-active add-target sets. The media-card badge stack scrolls
+ * when it overflows a small card, so this can be generous without crowding.
+ */
+export const MAX_ACTIVE_TARGETS = 6;
 
 interface GalleryApplyTargetState {
   /**
