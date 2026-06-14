@@ -1413,3 +1413,33 @@ def test_effective_cancel_grace_never_shrinks_base():
         )
         == big
     )
+
+
+def test_asyncpg_closed_connection_classified_transient():
+    """A connection dropped mid-operation (Postgres / proxy idle-timeout closes
+    a checked-out conn while the poll cycle is busy on the provider HTTP call)
+    must be treated as transient so the poller backs off and retries next tick
+    instead of logging ERROR + traceback. Mirrors the SQLAlchemy -> asyncpg
+    InterfaceError chain seen in poll_generation_error."""
+    from pixsim7.backend.main.workers._poller_backoff import _is_transient_network_error
+
+    # asyncpg raises this when fetching against a closed prepared statement;
+    # SQLAlchemy re-wraps it in its own InterfaceError, chained via __cause__.
+    asyncpg_err = Exception(
+        "cannot call PreparedStatement.fetch(): the underlying connection is closed"
+    )
+    wrapped = Exception(
+        "(sqlalchemy.dialects.postgresql.asyncpg.InterfaceError) "
+        "cannot call PreparedStatement.fetch(): the underlying connection is closed"
+    )
+    wrapped.__cause__ = asyncpg_err
+
+    assert _is_transient_network_error(wrapped) is True
+    # The other common asyncpg phrasing for the same failure mode.
+    assert _is_transient_network_error(
+        Exception("connection was closed in the middle of operation")
+    ) is True
+    # A genuine programming error must NOT be masked as transient.
+    assert _is_transient_network_error(
+        ValueError("the number of query arguments cannot exceed 32767")
+    ) is False

@@ -2106,6 +2106,17 @@ async def _poll_generations_phase(
     processing_generations = await _load_processing_generation_snapshots(db)
     logger.info("poll_loaded", count=len(processing_generations))
 
+    # Release the read transaction the SELECT above opened on the shared
+    # connection BEFORE the concurrent HTTP fan-out below. The fan-out polls
+    # each generation in its own session (``_poll_single_generation``) and can
+    # run for many seconds; if we kept this transaction open the shared
+    # connection would sit "idle in transaction" for that whole window and
+    # Postgres' ``idle_in_transaction_session_timeout`` (30s) would terminate
+    # it — poisoning the session so the later moderation/analysis phases and
+    # the final commit fail with InterfaceError, taking the whole poll cron
+    # down. Snapshots are plain dataclasses, so dropping the txn is safe.
+    await db.rollback()
+
     if not processing_generations:
         return stats
 
@@ -2310,7 +2321,15 @@ async def _run_moderation_rechecks_phase(
                             attempt=next_attempt,
                             delay_sec=delay,
                         )
+
+            # Bound the shared connection's transaction to a single recheck so
+            # it isn't left "idle in transaction" across every item's provider
+            # HTTP call (Postgres' 30s idle-in-transaction timeout would
+            # otherwise terminate it mid-cron). No-op when the branch above
+            # already committed.
+            await db.commit()
         except Exception as e:
+            await db.rollback()
             logger.warning(
                 "moderation_recheck_error",
                 asset_id=asset_id,
@@ -2454,7 +2473,15 @@ async def _poll_analyses_phase(
                 _apoll_log("provider_analysis_check_error", analysis_id=_analysis_id, error=str(e))
                 stats.still_processing += 1
 
+            # Commit per analysis so the shared connection isn't left "idle in
+            # transaction" accumulating across every item's HTTP call — that
+            # would trip Postgres' 30s idle-in-transaction timeout on a busy
+            # batch and kill the whole poll cron. Also isolates each analysis:
+            # one failure no longer rolls back the others.
+            await db.commit()
+
         except Exception as e:
+            await db.rollback()
             logger.error("poll_analysis_error", analysis_id=_analysis_id, error=str(e), exc_info=True)
             worker_debug.worker(
                 "poll_analysis_error",

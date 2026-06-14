@@ -98,6 +98,14 @@ def _is_transient_network_error(error: Exception) -> bool:
         "remote host closed",
         "forcibly closed by the remote host",
         "server disconnected",
+        # asyncpg loses its socket mid-operation when Postgres (or a proxy /
+        # idle-timeout) drops a checked-out connection while the poll cycle is
+        # busy on the provider HTTP call. Surfaces as InterfaceError:
+        #   "cannot call PreparedStatement.fetch(): the underlying connection is closed"
+        #   "connection was closed in the middle of operation"
+        # The generation is unaffected provider-side — retry next tick.
+        "connection is closed",
+        "connection was closed",
         "tls handshake",
         "winerror 10048",
         "winerror 10049",
