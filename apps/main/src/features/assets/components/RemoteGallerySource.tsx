@@ -433,7 +433,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     return { upload_method: normalizedGroupScope };
   }, [hasGrouping, normalizedGroupScope]);
   const { providers } = useProviders();
-  const { sets: allSets } = useAssetSets();
+  const { sets: allSets, status: setsStatus } = useAssetSets();
   const manualSets = useMemo(
     () => allSets.filter((set): set is ManualAssetSet => set.kind === 'manual'),
     [allSets],
@@ -556,14 +556,18 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   }, [controller.selectedAssetIds.size]);
 
   useEffect(() => {
-    // Drop any active-target ids that no longer resolve to a manual set.
+    // Drop any active-target ids that no longer resolve to a manual set — but
+    // only once sets have actually loaded. Sets hydrate async, so pruning before
+    // then would wipe the localStorage-restored targets against an empty list
+    // (active targets vanishing on every page refresh).
+    if (setsStatus !== 'ready') return;
     const valid = activeManualSetIds.filter((id) =>
       manualSets.some((set) => set.id === id),
     );
     if (valid.length !== activeManualSetIds.length) {
       setActiveTargets(valid);
     }
-  }, [manualSets, activeManualSetIds, setActiveTargets]);
+  }, [setsStatus, manualSets, activeManualSetIds, setActiveTargets]);
 
   // Subscribe to open-tools-panel events (from context menu)
   useEffect(() => {
