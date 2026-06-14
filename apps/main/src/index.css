@@ -509,6 +509,11 @@ input {
   background: rgba(255,255,255,.2);
 }
 
+/* Scrollable but with no visible scrollbar — used by overlay badge stacks that
+   scroll via wheel and show bracket indicators instead (matches ButtonGroup). */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
 /*
  * Touch hit-area expansion (coarse pointers only).
  *

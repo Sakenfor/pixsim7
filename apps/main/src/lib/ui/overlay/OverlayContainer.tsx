@@ -29,14 +29,47 @@ const isDev = import.meta.env?.DEV ?? false;
  */
 const STACK_MAX_EXTENT = 'min(100%, 132px)';
 
+/** Curved "more items" bracket, matching the ButtonGroup overflow affordance. */
+function StackOverflowBracket({
+  edge,
+  bob,
+}: {
+  edge: 'start' | 'end';
+  /** True while scrolling toward this edge — nudges the bracket outward briefly. */
+  bob: boolean;
+}) {
+  // Column stacks bracket top/bottom; only the column case is used today, but
+  // keep the markup identical in spirit to ButtonGroup's vertical brackets.
+  const isStart = edge === 'start';
+  return (
+    <svg
+      className={`absolute pointer-events-none z-10 text-accent-hover overflow-visible transition-transform duration-200 ease-out inset-x-0 w-full h-1.5 ${
+        isStart ? '-top-1.5' : '-bottom-1.5'
+      }`}
+      style={{ transform: `translateY(${bob ? (isStart ? -2 : 2) : 0}px)` }}
+      viewBox="0 0 24 6"
+      preserveAspectRatio="none"
+      fill="none"
+    >
+      <path
+        d={isStart ? 'M0,6 C0,0 24,0 24,6' : 'M0,0 C0,6 24,6 24,0'}
+        stroke="currentColor"
+        strokeWidth="1.5"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
+
 /**
  * A single auto-stacked badge group (e.g. the top-right column). Capped via
- * {@link STACK_MAX_EXTENT} so an over-long stack scrolls within a short region
- * at the anchor edge instead of spilling down/across the whole card. Pointer
- * events are only captured while the stack actually overflows — otherwise the
- * gaps between badges stay click-through to the card, as before. Overflow is
- * measured (ResizeObserver + child-count) so the scroll affordance appears
- * exactly when needed.
+ * {@link STACK_MAX_EXTENT}; when the stack overflows it scrolls on the mouse
+ * wheel with **no scrollbar**, showing curved bracket indicators at the
+ * over-scrollable edges — the same overflow affordance the generation
+ * ButtonGroup uses, for visual consistency. (Unlike ButtonGroup it scrolls
+ * rather than cyclically windows, so always-visible badges like the "in set"
+ * glyphs never rotate out of view.) Pointer events are only captured while the
+ * stack actually overflows, so otherwise the gaps stay click-through to the card.
  */
 function StackGroupContainer({
   group,
@@ -49,45 +82,78 @@ function StackGroupContainer({
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [overflowing, setOverflowing] = useState(false);
+  const [atStart, setAtStart] = useState(true);
+  const [atEnd, setAtEnd] = useState(false);
+  const [scrollDir, setScrollDir] = useState<-1 | 0 | 1>(0);
+  const dirTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const lastPos = useRef(0);
   const isColumn = group.flexDirection === 'column';
   const childCount = group.widgets.length;
 
-  useEffect(() => {
+  const measure = useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    const measure = () => {
-      const over = isColumn
-        ? el.scrollHeight > el.clientHeight + 1
-        : el.scrollWidth > el.clientWidth + 1;
-      setOverflowing((prev) => (prev === over ? prev : over));
-    };
+    const size = isColumn ? el.clientHeight : el.clientWidth;
+    const scrollSize = isColumn ? el.scrollHeight : el.scrollWidth;
+    const pos = isColumn ? el.scrollTop : el.scrollLeft;
+    setOverflowing(scrollSize > size + 1);
+    setAtStart(pos <= 1);
+    setAtEnd(pos >= scrollSize - size - 1);
+  }, [isColumn]);
+
+  useEffect(() => {
     measure();
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [isColumn, childCount]);
+  }, [measure, childCount]);
+
+  const handleScroll = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const pos = isColumn ? el.scrollTop : el.scrollLeft;
+    const dir = pos > lastPos.current ? 1 : pos < lastPos.current ? -1 : 0;
+    lastPos.current = pos;
+    if (dir !== 0) {
+      setScrollDir(dir);
+      clearTimeout(dirTimer.current);
+      dirTimer.current = setTimeout(() => setScrollDir(0), 200);
+    }
+    measure();
+  }, [isColumn, measure]);
 
   return (
     <div
-      ref={ref}
-      data-overlay-stack-group={group.stackGroup}
-      data-overlay-stack-anchor={group.anchor}
-      className={overflowing ? 'thin-scrollbar' : undefined}
-      style={{
-        ...baseStyle,
-        display: 'flex',
-        flexDirection: group.flexDirection,
-        alignItems: group.alignItems,
-        zIndex: group.maxPriority,
-        ...(isColumn
-          ? { maxHeight: STACK_MAX_EXTENT, overflowY: 'auto', overflowX: 'visible' }
-          : { maxWidth: STACK_MAX_EXTENT, overflowX: 'auto', overflowY: 'visible' }),
-        // Only capture pointer events (needed for scrolling) when the stack
-        // overflows; otherwise keep the gaps click-through to the card.
-        pointerEvents: overflowing ? 'auto' : 'none',
-      }}
+      style={{ ...baseStyle, zIndex: group.maxPriority, pointerEvents: 'none' }}
     >
-      {children}
+      {overflowing && !atStart && <StackOverflowBracket edge="start" bob={scrollDir === -1} />}
+      {overflowing && !atEnd && <StackOverflowBracket edge="end" bob={scrollDir === 1} />}
+      <div
+        ref={ref}
+        onScroll={handleScroll}
+        data-overlay-stack-group={group.stackGroup}
+        data-overlay-stack-anchor={group.anchor}
+        className="no-scrollbar"
+        style={{
+          display: 'flex',
+          flexDirection: group.flexDirection,
+          alignItems: group.alignItems,
+          ...(isColumn
+            ? { maxHeight: STACK_MAX_EXTENT, overflowY: 'auto', overflowX: 'visible' }
+            : { maxWidth: STACK_MAX_EXTENT, overflowX: 'auto', overflowY: 'visible' }),
+          // Don't chain the wheel to the gallery when the stack hits its edge.
+          overscrollBehavior: 'contain',
+          // Capture pointer events (for wheel scroll) only while overflowing;
+          // otherwise keep the gaps click-through to the card. A directional
+          // resize cursor hints that the stack is wheel-scrollable.
+          pointerEvents: overflowing ? 'auto' : 'none',
+          cursor: overflowing ? (isColumn ? 'ns-resize' : 'ew-resize') : undefined,
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
