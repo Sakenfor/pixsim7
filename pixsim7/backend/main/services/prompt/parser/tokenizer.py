@@ -301,15 +301,21 @@ def _is_all_upper(label: str) -> bool:
 def _is_var_call(tokens: List[Token], f: int, t: int) -> bool:
     """True if tokens[f:t] is a parameterised variable `UPPER_IDENT ( ... )`.
 
-    The name (an UPPER_IDENT) must be immediately followed by `(` and the span
-    must end with the matching `)`. Whitespace between the name and `(` breaks it
-    (stays prose). The inner value is free-text and not validated here.
+    The name (an UPPER_IDENT) is followed by `(` (optionally with whitespace
+    between) and the span must end with the matching `)`. The inner value is
+    free-text and not validated here.
     """
     if t - f < 3:
         return False
     if tokens[f].kind != "IDENT" or not _is_upper_ident(tokens[f].text):
         return False
-    return tokens[f + 1].kind == "LPAREN" and tokens[t - 1].kind == "RPAREN"
+    # Whitespace between the name and `(` is tolerated (NAME (value) == NAME(value)).
+    k = f + 1
+    while k < t and tokens[k].kind == "WS":
+        k += 1
+    if k >= t or tokens[k].kind != "LPAREN":
+        return False
+    return tokens[t - 1].kind == "RPAREN"
 
 
 def _try_assemble_mixed_label(

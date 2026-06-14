@@ -158,7 +158,10 @@ export function splitVarCall(text: string): { name: string; value: string | null
   if (open <= 0 || !text.endsWith(')')) {
     return { name: text, value: null, nameLen: text.length };
   }
-  return { name: text.slice(0, open), value: text.slice(open + 1, -1), nameLen: open };
+  // Whitespace between the name and `(` is tolerated; trim it off the name so
+  // decoration covers the name only (nameLen), not the gap or parens.
+  const name = text.slice(0, open).trimEnd();
+  return { name, value: text.slice(open + 1, -1), nameLen: name.length };
 }
 
 /** Whether a name belongs to a hard-coded default class. */

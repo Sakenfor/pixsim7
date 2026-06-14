@@ -1174,7 +1174,7 @@
       }
     },
     {
-      "id": "var-call-space-before-paren-prose",
+      "id": "var-call-space-before-paren-tolerated",
       "text": "FOO (bar) = x",
       "output": {
         "lines": [
@@ -1182,7 +1182,7 @@
             "kind": "chain",
             "elements": [
               {
-                "kind": "prose",
+                "kind": "var",
                 "text": "FOO (bar)",
                 "start": 0,
                 "end": 9
@@ -1204,6 +1204,41 @@
             ],
             "start": 0,
             "end": 13
+          }
+        ]
+      }
+    },
+    {
+      "id": "var-call-space-in-chain",
+      "text": "ACTOR2_HIP < MODUS_OPERANDI (TEASE)",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR2_HIP",
+                "start": 0,
+                "end": 10
+              },
+              {
+                "kind": "var",
+                "text": "MODUS_OPERANDI (TEASE)",
+                "start": 13,
+                "end": 35
+              }
+            ],
+            "operators": [
+              {
+                "op": "<",
+                "run": 1,
+                "op_start": 11,
+                "op_end": 12
+              }
+            ],
+            "start": 0,
+            "end": 35
           }
         ]
       }

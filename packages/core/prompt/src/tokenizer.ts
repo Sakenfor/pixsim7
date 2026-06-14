@@ -118,15 +118,18 @@ function isAllUpper(label: string): boolean {
 
 /**
  * True if tokens[from..to) is a parameterised variable `UPPER_IDENT ( ... )` —
- * an upper IDENT immediately followed by `(` and ending with the matching `)`.
- * Whitespace between the name and `(` breaks it (stays prose); the inner value
- * is free text, not validated here.
+ * an upper IDENT followed by `(` (optionally with whitespace between) and ending
+ * with the matching `)`. The inner value is free text, not validated here.
  */
 function isVarCall(tokens: Token[], from: number, to: number): boolean {
   if (to - from < 3) return false;
   const first = tokens[from];
   if (first.kind !== 'IDENT' || !isUpperIdent(first.text)) return false;
-  return tokens[from + 1].kind === 'LPAREN' && tokens[to - 1].kind === 'RPAREN';
+  // Whitespace between the name and `(` is tolerated (NAME (value) == NAME(value)).
+  let k = from + 1;
+  while (k < to && tokens[k].kind === 'WS') k++;
+  if (k >= to || tokens[k].kind !== 'LPAREN') return false;
+  return tokens[to - 1].kind === 'RPAREN';
 }
 
 // ── line splitting ─────────────────────────────────────────────────────────

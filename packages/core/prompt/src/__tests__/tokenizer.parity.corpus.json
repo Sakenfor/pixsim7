@@ -46,7 +46,8 @@
     { "id": "var-call-chain", "text": "ACTOR2_PERSONALITY(very shy) ==> SCENE" },
     { "id": "var-call-assign", "text": "MOOD(calm) = body" },
     { "id": "var-call-standalone-stays-prose", "text": "ACTOR2_PERSONALITY(very shy)" },
-    { "id": "var-call-space-before-paren-prose", "text": "FOO (bar) = x" },
+    { "id": "var-call-space-before-paren-tolerated", "text": "FOO (bar) = x" },
+    { "id": "var-call-space-in-chain", "text": "ACTOR2_HIP < MODUS_OPERANDI (TEASE)" },
     { "id": "var-call-trailing-text-prose", "text": "FOO(bar) baz = x" }
   ]
 }
