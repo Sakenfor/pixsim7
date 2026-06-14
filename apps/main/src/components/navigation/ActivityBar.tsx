@@ -7,6 +7,7 @@ import { useHasManualRefreshUpdate } from '@lib/dev/manualRefreshStatus';
 import { getBaseIcon } from '@lib/icons';
 import { useEdgeInset } from '@lib/layout/edgeInsets';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
+import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 import { suppressBeforeUnloadPrompt } from '@lib/utils/beforeUnloadGuard';
 
 
@@ -271,6 +272,41 @@ const DEV_REFRESH_CATEGORY = 'development';
 export function ActivityBar() {
   const collapsed = useActivityBarStore((s) => s.collapsed);
   const toggle = useActivityBarStore((s) => s.toggle);
+  // On touch devices there is no hover, so the hover-gated edge handle never
+  // reveals itself — a collapsed bar becomes effectively impossible to reopen.
+  // Show a persistent, finger-sized expand affordance instead.
+  const coarsePointer = useIsCoarsePointer();
+
+  // Drag-handle-to-collapse on touch. A dedicated grip on the right edge is the
+  // reliable target — swiping anywhere on the 48px-wide bar competed with
+  // button taps and had no room. The handle follows the finger left (live) and
+  // collapses on a clear leftward drag (or a deliberate tap on the grip).
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const handleGripDown = useCallback((e: React.PointerEvent) => {
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    setDragging(true);
+  }, []);
+  const handleGripMove = useCallback((e: React.PointerEvent) => {
+    const start = dragStartRef.current;
+    if (!start) return;
+    // Only follow leftward; clamp so the bar can't be dragged off its rail.
+    setDragX(Math.max(-48, Math.min(0, e.clientX - start.x)));
+  }, []);
+  const handleGripUp = useCallback((e: React.PointerEvent) => {
+    const start = dragStartRef.current;
+    dragStartRef.current = null;
+    setDragging(false);
+    setDragX(0);
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    const isTap = Math.abs(dx) < 6 && Math.abs(dy) < 6;
+    // Dragged the grip clearly left, or tapped it directly → collapse.
+    if (dx < -16 || isTap) toggle();
+  }, [toggle]);
   const location = useLocation();
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
   const lastFloatingPanelStates = useWorkspaceStore((s) => s.lastFloatingPanelStates);
@@ -350,10 +386,15 @@ export function ActivityBar() {
       {/* Main bar — slides in/out */}
       <nav
         className="fixed left-0 top-0 h-screen h-dvh w-12 z-30 flex flex-col items-center py-2 bg-neutral-900/90 border-r border-neutral-800/60 backdrop-blur-sm transition-transform duration-200 ease-in-out"
-        style={{ transform: collapsed ? 'translateX(-100%)' : 'translateX(0)' }}
+        style={{
+          transform: collapsed ? 'translateX(-100%)' : `translateX(${dragX}px)`,
+          // Disable the slide transition while a finger is actively dragging so
+          // the bar tracks the grip 1:1 (transition would lag the follow).
+          transition: dragging ? 'none' : undefined,
+        }}
       >
-        {/* Scrollable middle — collapses to scroll on short screens, scrollbar hidden until hover */}
-        <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain thin-scrollbar flex flex-col items-center">
+        {/* Always-visible top section */}
+        <div className="w-full flex flex-col items-center shrink-0">
           {/* Home button */}
           <div ref={homeRef} className="relative flex items-center justify-center" {...homeHandlers}>
             {isHomeActive && (
@@ -377,6 +418,10 @@ export function ActivityBar() {
           <MorePanelsFlyout />
 
           <Separator />
+        </div>
+
+        {/* Scrollable middle — shortcuts + categories only */}
+        <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain thin-scrollbar flex flex-col items-center">
 
           {/* Pinned panel shortcuts + auto "recent" section */}
           <PanelShortcuts />
@@ -411,6 +456,24 @@ export function ActivityBar() {
           </div>
         )}
 
+        {/* Drag grip — touch only. Sits on the right edge; drag left (or tap)
+            to collapse. `no-tap-expand` keeps its hit-area from bleeding over
+            the adjacent nav buttons. `touch-action: none` lets it own the
+            horizontal drag instead of the browser treating it as a scroll. */}
+        {coarsePointer && !collapsed && (
+          <button
+            onPointerDown={handleGripDown}
+            onPointerMove={handleGripMove}
+            onPointerUp={handleGripUp}
+            onPointerCancel={handleGripUp}
+            className="no-tap-expand absolute left-full -ml-1.5 top-1/2 -translate-y-1/2 h-20 w-5 flex items-center justify-center active:bg-neutral-700/40 rounded-r"
+            style={{ touchAction: 'none' }}
+            aria-label="Drag left to collapse activity bar"
+          >
+            <div className="w-1 h-12 rounded-full bg-neutral-600" />
+          </button>
+        )}
+
         {/* Collapse toggle */}
         <div ref={toggleRef} className="relative flex items-center justify-center mb-1" {...toggleHandlers}>
           <button
@@ -424,17 +487,23 @@ export function ActivityBar() {
         </div>
       </nav>
 
-      {/* Expand affordance — visible only when collapsed */}
+      {/* Expand affordance — visible only when collapsed. On touch devices it's
+          wider and its handle is always visible (no hover to reveal it). */}
       <div
-        className="fixed left-0 top-0 h-screen h-dvh w-2 z-30 group/expand transition-opacity duration-200"
+        className={`fixed left-0 top-0 h-screen h-dvh z-30 group/expand transition-opacity duration-200 ${coarsePointer ? 'w-6' : 'w-2'}`}
         style={{ opacity: collapsed ? 1 : 0, pointerEvents: collapsed ? 'auto' : 'none' }}
       >
         <button
           onClick={toggle}
-          className={`w-full h-full flex items-center justify-center opacity-0 group-hover/expand:opacity-100 transition-opacity`}
+          // `no-tap-expand` is essential: the global coarse-pointer ::after
+          // hit-area sets `pointer-events: auto`, which would override the
+          // wrapper's `pointer-events: none` and leave this full-height edge
+          // strip stealing taps from the activity bar's own buttons while the
+          // bar is expanded.
+          className={`no-tap-expand w-full h-full flex items-center justify-center transition-opacity ${coarsePointer ? 'opacity-100' : 'opacity-0 group-hover/expand:opacity-100'}`}
           aria-label="Expand activity bar"
         >
-          <div className="w-1 h-8 rounded-full bg-neutral-600 hover:bg-neutral-400 transition-colors" />
+          <div className={`rounded-full bg-neutral-600 hover:bg-neutral-400 transition-colors ${coarsePointer ? 'w-1.5 h-12' : 'w-1 h-8'}`} />
         </button>
       </div>
     </>
