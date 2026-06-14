@@ -46,7 +46,6 @@ import { useOverlayWidgetSettingsStore } from '@lib/widgets';
 
 import { type AssetModel } from '@features/assets';
 import { mediaCardPropsFromAsset } from '@features/assets/components/shared/mediaCardPropsFromAsset';
-import { getAssetWarnings } from '@features/assets/lib/assetWarnings';
 import { CAP_ASSET, useContextHubSettingsStore, useProvideCapability } from '@features/contextHub';
 import { useMediaCompareTargetStore } from '@features/prompts/stores/mediaCompareTargetStore';
 
@@ -56,6 +55,7 @@ import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 
 import { buildMediaCardPickerWidgets } from './mediaCardPickerWidgets';
 import { MediaCardQueueNav } from './MediaCardQueueNav';
+import { buildMediaCardOverlayData } from './mediaCardRuntimeWidgetBuilder';
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
 import { applyMediaOverlayPolicyChain } from './overlayWidgetPolicy';
 import { ThumbnailImage } from './ThumbnailImage';
@@ -340,16 +340,11 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   const {
     id,
     mediaType,
-    providerId,
     thumbUrl,
     previewUrl,
     remoteUrl,
-    tags = [],
-    description,
-    createdAt,
     onOpen,
     onFilterByTagShortcut,
-    providerStatus,
     overlayConfig: customOverlayConfig,
     customWidgets = [],
     overlayPresetId,
@@ -675,9 +670,6 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       }
     };
   }, [mediaType, thumbSrc, resolvedVideoSrc, videoLoadFailed, videoRetrying, id, handleVideoLoadError]);
-
-  // Extract tag slugs for overlay data (quick tag matching, technical tag filtering)
-  const tagSlugs = useMemo(() => tags?.map(t => t.slug) || [], [tags]);
 
   const effectivePresetId =
     overlayPresetId ||
@@ -1092,60 +1084,34 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     [!!resolved.onUploadToProvider, id],
   );
 
-  const warnings = useMemo(
-    () => getAssetWarnings(resolved.contextMenuAsset),
-    [resolved.contextMenuAsset],
+  const overlayData: MediaCardOverlayData = useMemo(
+    () =>
+      buildMediaCardOverlayData(resolved, {
+        videoSrc: overlayVideoSrc,
+        onUploadToProvider: stableOnUploadToProvider,
+        onFilterByTagShortcut,
+        lockedTimestamp: picker?.lockedTimestamp,
+        onLockTimestamp: picker?.onLockTimestamp,
+        onHoldUploadFrame: picker?.onHoldUploadFrame,
+      }),
+    // The builder reads resolved.* fields; depend on the granular values it
+    // consumes (not the freshly-rebuilt `resolved` object, which would defeat
+    // memoization and rebuild the overlay every render). contextMenuAsset
+    // covers tagSummaries / cohortCounts / model / warnings / version / uploads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      resolved.id, resolved.mediaType, resolved.providerId, resolved.providerStatus,
+      resolved.tags, resolved.description, resolved.createdAt,
+      resolved.uploadState, resolved.uploadProgress, resolved.remoteUrl,
+      overlayVideoSrc, resolved.durationSec, resolved.actions,
+      resolved.generationStatus, resolved.generationId, resolved.generationError,
+      resolved.sourceGenerationId, resolved.hasGenerationContext,
+      resolved.isFavorite, resolved.onToggleFavorite,
+      resolved.prompt, resolved.operationType, resolved.contextMenuAsset,
+      resolved.width, resolved.height, stableOnUploadToProvider, onFilterByTagShortcut,
+      picker?.lockedTimestamp, picker?.onLockTimestamp, picker?.onHoldUploadFrame,
+    ],
   );
-
-  const overlayData: MediaCardOverlayData = useMemo(() => ({
-    id,
-    mediaType,
-    providerId,
-    status: providerStatus,
-    tags: tagSlugs,
-    description,
-    createdAt,
-    uploadState: resolved.uploadState || 'idle',
-    uploadProgress: resolved.uploadProgress || 0,
-    remoteUrl: resolved.remoteUrl || '',
-    videoSrc: overlayVideoSrc,
-    durationSec: resolved.durationSec,
-    actions: resolved.actions,
-    generationStatus: resolved.generationStatus,
-    generationId: resolved.generationId,
-    generationError: resolved.generationError,
-    sourceGenerationId: resolved.sourceGenerationId,
-    hasGenerationContext: resolved.hasGenerationContext,
-    isFavorite: resolved.isFavorite,
-    onToggleFavorite: resolved.onToggleFavorite,
-    prompt: resolved.prompt,
-    operationType: resolved.operationType,
-    artificialExtend: resolved.contextMenuAsset?.artificialExtend ?? undefined,
-    model: resolved.contextMenuAsset?.model,
-    width: resolved.width,
-    height: resolved.height,
-    onUploadToProvider: stableOnUploadToProvider,
-    providerUploads: resolved.contextMenuAsset?.providerUploads,
-    lastUploadStatusByProvider: resolved.contextMenuAsset?.lastUploadStatusByProvider,
-    versionNumber: resolved.contextMenuAsset?.versionNumber,
-    cohortCounts: resolved.contextMenuAsset?.cohortCounts,
-    onFilterByTagShortcut,
-    lockedTimestamp: picker?.lockedTimestamp,
-    onLockTimestamp: picker?.onLockTimestamp,
-    onHoldUploadFrame: picker?.onHoldUploadFrame,
-    warnings,
-  }), [
-    id, mediaType, providerId, providerStatus, tagSlugs, description, createdAt,
-    resolved.uploadState, resolved.uploadProgress, resolved.remoteUrl,
-    overlayVideoSrc, resolved.durationSec, resolved.actions,
-    resolved.generationStatus, resolved.generationId, resolved.generationError,
-    resolved.sourceGenerationId, resolved.hasGenerationContext,
-    resolved.isFavorite, resolved.onToggleFavorite,
-    resolved.prompt, resolved.operationType, resolved.contextMenuAsset,
-    resolved.width, resolved.height, stableOnUploadToProvider, onFilterByTagShortcut,
-    picker?.lockedTimestamp, picker?.onLockTimestamp, picker?.onHoldUploadFrame,
-    warnings,
-  ]);
 
   // Wrapper styling: gallery default keeps existing border; compact picker
   // mimics CompactAssetCard's status-coloured border + group/card hover hook.

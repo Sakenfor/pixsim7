@@ -32,6 +32,8 @@ const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number; overflow
   provider_id: { icon: 'globe', order: 2, label: 'Provider' },
   effective_provider_id: { icon: 'globe', order: 2, label: 'Provider' },
   operation_type: { icon: 'wand', order: 2 },
+  model: { icon: 'cpu', order: 2, label: 'Model' },
+  prompt_success_rate: { icon: 'gauge', order: 2, label: 'Prompt success' },
   tag: { icon: 'tag', order: 3 },
   content_elements: { icon: 'layers', order: 4 },
   style_tags: { icon: 'sparkles', order: 5 },
@@ -63,10 +65,21 @@ const GROUPED_FILTER_CONFIG: Record<string, {
   rootLabel?: string;
 }> = {
   tag:              { separator: ':', ungroupedKey: 'other' },
+  model:            { separator: ':', ungroupedKey: 'other' },
   content_elements: { separator: ':', ungroupedKey: 'other' },
   style_tags:       { separator: ':', ungroupedKey: 'other' },
   source_path:     { separator: '/', rootLabel: '(root)' },
   source_filename: { separator: '/', rootLabel: '(root)', ungroupedKey: 'other' },
+};
+
+/** Slider config for `range`-type filters (single min-threshold thumb). */
+const RANGE_FILTER_CONFIG: Record<string, {
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+}> = {
+  prompt_success_rate: { min: 0, max: 100, step: 5, unit: '%' },
 };
 
 const NULLISH_OPTION_TOKENS = new Set(['null', '(null)', 'undefined', '(undefined)']);
@@ -927,19 +940,42 @@ function OverflowMenu({ filters, metadata, values, onChange, hasSelection }: Ove
 
                 if (filter.type === 'boolean') {
                   return (
-                    <label
-                      key={filter.key}
-                      className="flex items-center gap-2 px-1 py-0.5 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!!val}
-                        onChange={(e) => onChange(filter.key, e.target.checked ? true : undefined)}
-                        className="accent-accent"
-                      />
-                      {uiConfig.icon && <Icon name={uiConfig.icon} size={14} className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />}
-                      <span>{displayLabel}</span>
-                    </label>
+                    <div key={filter.key} className="group/ofrow flex items-center gap-1">
+                      <label
+                        className="flex items-center gap-2 px-1 py-0.5 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer flex-1 min-w-0"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!val}
+                          onChange={(e) => onChange(filter.key, e.target.checked ? true : undefined)}
+                          className="accent-accent flex-shrink-0"
+                        />
+                        {uiConfig.icon && <Icon name={uiConfig.icon} size={14} className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400 flex-shrink-0" />}
+                        <span className="truncate">{displayLabel}</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+                            context: {
+                              initialFilters: { [filter.key]: true } as AssetFilters,
+                              sourceLabel: displayLabel,
+                              suppressHoverActions: true,
+                            },
+                            x: rect.right + 8,
+                            y: rect.top,
+                          });
+                        }}
+                        title={`Open "${displayLabel}" in Mini Gallery`}
+                        aria-label={`Open "${displayLabel}" in Mini Gallery`}
+                        className="flex-shrink-0 inline-flex items-center justify-center h-5 w-5 rounded text-accent bg-accent/10 hover:bg-accent/25 hover:scale-110 opacity-0 group-hover/ofrow:opacity-100 transition-[opacity,transform,background-color] duration-150"
+                      >
+                        <Icon name="externalLink" size={12} className="w-3 h-3" />
+                      </button>
+                    </div>
                   );
                 }
 
@@ -957,24 +993,48 @@ function OverflowMenu({ filters, metadata, values, onChange, hasSelection }: Ove
                       {options.map((opt) => {
                         const optValue = String(opt.value);
                         const isSelected = selectedValues.includes(optValue);
+                        const optLabel = getOptionDisplayLabel(opt);
                         return (
-                          <label
-                            key={opt.value}
-                            className="flex items-center gap-2 px-1 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => {
-                                const next = new Set(selectedValues);
-                                if (next.has(optValue)) next.delete(optValue);
-                                else next.add(optValue);
-                                onChange(filter.key, Array.from(next));
+                          <div key={opt.value} className="group/ofopt flex items-center gap-1">
+                            <label
+                              className="flex items-center gap-2 px-1 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer flex-1 min-w-0"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  const next = new Set(selectedValues);
+                                  if (next.has(optValue)) next.delete(optValue);
+                                  else next.add(optValue);
+                                  onChange(filter.key, Array.from(next));
+                                }}
+                                className="accent-accent flex-shrink-0"
+                              />
+                              <span className="truncate">{optLabel}</span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+                                  context: {
+                                    initialFilters: { [filter.key]: [optValue] } as AssetFilters,
+                                    sourceLabel: optLabel,
+                                    suppressHoverActions: true,
+                                  },
+                                  x: rect.right + 8,
+                                  y: rect.top,
+                                });
                               }}
-                              className="accent-accent"
-                            />
-                            <span>{getOptionDisplayLabel(opt)}</span>
-                          </label>
+                              title={`Open "${optLabel}" in Mini Gallery`}
+                              aria-label={`Open "${optLabel}" in Mini Gallery`}
+                              className="flex-shrink-0 inline-flex items-center justify-center h-5 w-5 rounded text-accent bg-accent/10 hover:bg-accent/25 hover:scale-110 opacity-0 group-hover/ofopt:opacity-100 transition-[opacity,transform,background-color] duration-150"
+                            >
+                              <Icon name="externalLink" size={12} className="w-3 h-3" />
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -1271,6 +1331,30 @@ function FilterControl({
         </label>
       );
 
+    case 'range': {
+      const cfg = RANGE_FILTER_CONFIG[key] ?? { min: 0, max: 100, step: 1 };
+      const raw =
+        typeof value === 'number'
+          ? value
+          : value != null && value !== '' && value !== false
+            ? Number(value)
+            : cfg.min;
+      const current = Number.isFinite(raw) ? (raw as number) : cfg.min;
+      return (
+        <RangeFilterControl
+          min={cfg.min}
+          max={cfg.max}
+          step={cfg.step}
+          unit={cfg.unit}
+          value={current}
+          displayLabel={displayLabel}
+          // At/below the floor the filter is a no-op → clear it so the chip
+          // reads inactive and the key drops out of the search request.
+          onChange={(n) => onChange(n <= cfg.min ? undefined : n)}
+        />
+      );
+    }
+
     case 'autocomplete':
       // For now, render as a simple text input
       // Full autocomplete would need async search + dropdown
@@ -1292,6 +1376,60 @@ function FilterControl({
     default:
       return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// RangeFilterControl — single min-threshold slider (e.g. "Prompt success ≥ N%")
+// ---------------------------------------------------------------------------
+
+function RangeFilterControl({
+  min,
+  max,
+  step,
+  unit,
+  value,
+  displayLabel,
+  onChange,
+}: {
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+  value: number;
+  displayLabel: string;
+  onChange: (value: number) => void;
+}) {
+  const isActive = value > min;
+  return (
+    <div className="flex flex-col gap-1.5 px-3 py-2 min-w-[200px]">
+      <div className="flex items-center justify-between text-sm text-neutral-700 dark:text-neutral-200">
+        <span>{displayLabel}</span>
+        <span className="tabular-nums font-medium">
+          {isActive ? `≥ ${value}${unit ?? ''}` : 'Any'}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="accent-accent w-full cursor-pointer"
+        aria-label={displayLabel}
+      />
+      {isActive && (
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onChange(min)}
+          className="self-start text-[11px] text-neutral-500 dark:text-neutral-400 hover:text-accent transition-colors"
+        >
+          Clear
+        </button>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------

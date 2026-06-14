@@ -9,7 +9,6 @@
 import { useHoverExpand, PortalFloat } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
-import { openRelatedGallery } from '@lib/dockview/contextMenu/actions/assetActions';
 import { createBindingFromValue } from '@lib/editing-core';
 import type { ModelFamilyInfo } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
@@ -48,6 +47,7 @@ import {
   createGenerationActionModeBadge,
 } from './mediaCardGeneration';
 import { buildMediaCardRuntimeWidgets } from './mediaCardRuntimeWidgetBuilder';
+import { createSimilarityBadge } from './similarityBadge';
 import { useVideoMarksStore } from './videoMarksStore';
 
 
@@ -100,6 +100,9 @@ export interface MediaCardOverlayData {
   // Favorite state
   isFavorite?: boolean;
   onToggleFavorite?: () => void;
+  /** True when the asset is archived — drives the top-left archive badge so
+   *  archived cards are tellable at a glance when "show archived" is on. */
+  isArchived?: boolean;
   // Info popover fields
   prompt?: string | null;
   operationType?: string | null;
@@ -127,15 +130,10 @@ export interface MediaCardOverlayData {
   // Versioning
   /** Version number within a version family (null = standalone) */
   versionNumber?: number | null;
-  /** User-scoped, include-self count of assets sharing the same roll seed.
-   *  0 when no seed is recorded for this asset. */
-  sameSeedCount?: number;
-  /** User-scoped, include-self count of assets sharing the same input-asset set.
-   *  0 when the asset had no input assets. Badge hidden below 2. */
-  sameInputsCount?: number;
-  /** User-scoped, include-self count of assets sharing the same prompt family.
-   *  0 when the asset has no prompt linkage. Badge hidden below 2. */
-  samePromptCount?: number;
+  /** Cohort counts for the similarity badge, keyed by lit-facet letters in
+   *  canonical i<p<s order (i, p, s, ip, is, ps, ips). The faceted badge reads
+   *  the entry for the user's chosen facet lens. */
+  cohortCounts?: Record<string, number>;
   onFilterByTagShortcut?: (tagSlug: string) => void;
   // Picker (CompactAssetCard merger) — read by createVideoScrubber per render.
   lockedTimestamp?: number;
@@ -301,7 +299,12 @@ export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayW
     tooltip = srcId
       ? `${mediaType} — artificial extend (i2v from ${frameLabel} of #${srcId})`
       : `${mediaType} — artificial extend (i2v from ${frameLabel})`;
-  } else if (badgeConfig?.showStatusIcon && effectiveHasStatus) {
+  } else if (badgeConfig?.showStatusIcon && effectiveHasStatus && providerStatus !== 'flagged') {
+    // 'flagged' is intentionally dropped from the ring — the bottom-left
+    // warnings cluster (getAssetWarnings) is the single carrier for the
+    // filtered/moderated signal, so we don't stack a second red marker on the
+    // same card. Mirrors the same carve-out on the top-right status badge
+    // (ProviderStatusContent). ok/local_only/duplicate rings still draw.
     hasRing = true;
     ringColor = effectiveRingColor;
   } else if (hashStatus === 'duplicate') {
@@ -723,108 +726,35 @@ export function createVersionBadge(): OverlayWidget<MediaCardOverlayData> {
   });
 }
 
-/** Dark, compact styling shared by the top-left sibling-count badges. */
-const SIBLING_BADGE_CLASS =
-  '!bg-black/65 !text-white text-[10px] font-medium backdrop-blur-sm';
-
 /**
- * Sibling-count badge factory (top-left, below the primary media-type icon).
- *
- * Built on the canonical {@link createBadgeWidget} primitive — the single
- * entry point for media-card badges (styling, stacking, hover wiggle, and the
- * `visibleWhen` hide rule all live there). Gated to information-dense presets
- * via the `showsSiblingBadges` capability (Default + Detailed); each badge
- * self-hides below 2 via `visibleWhen` (a lone asset reading "1" is noise).
- * Counts are user-scoped and include-self ("3" = this asset + two siblings).
- *
- * Anchor `top-left` + `stackGroup: 'badges-tl'` makes it auto-stack under the
- * primary icon via the overlay flex layout — no hard-coded offsets. Plan:
- * media-card-sibling-badges.
+ * Create archive badge (top-left) — a muted slate "archive" chip shown only
+ * when the asset is archived. Archived assets surface in the gallery only when
+ * "show archived" is enabled, so this badge is self-gating: it appears exactly
+ * on the cards a user needs to distinguish at a glance. Built on the canonical
+ * {@link createBadgeWidget} primitive (icon variant + `visibleWhen`); stacks in
+ * the top-left column alongside the media-type icon.
  */
-function createSiblingCountBadge(opts: {
-  id: string;
-  icon: string;
-  priority: number;
-  visibility?: OverlayWidget<MediaCardOverlayData>['visibility'];
-  /**
-   * Resolve which `buildMoreFromVariants` id to open in the mini-gallery, given
-   * the card's asset. Must match the grouping the count represents — return
-   * null to no-op (the badge shouldn't have been visible in that case).
-   */
-  resolveVariantId?: (asset: MediaCardResolvedProps['contextMenuAsset']) => string | null;
-  getCount: (data: MediaCardOverlayData) => number;
-  tooltip: string;
-}): (props: MediaCardResolvedProps) => OverlayWidget<MediaCardOverlayData> | null {
-  return (props: MediaCardResolvedProps) => {
-    if (!props.presetCapabilities?.showsSiblingBadges) return null;
-    const onClick = opts.resolveVariantId
-      ? () => {
-          const variantId = opts.resolveVariantId?.(props.contextMenuAsset);
-          if (variantId) openRelatedGallery(props.contextMenuAsset, variantId);
-        }
-      : undefined;
-    return createBadgeWidget({
-      id: opts.id,
-      ...BADGE_SLOT.topLeft,
-      visibility: opts.visibility,
-      variant: 'icon-text',
-      icon: opts.icon,
-      color: 'gray',
-      className: SIBLING_BADGE_CLASS,
-      priority: opts.priority,
-      labelBinding: createBindingFromValue('label', (data) => String(opts.getCount(data) ?? 0)),
-      visibleWhen: (data) => (opts.getCount(data) ?? 0) >= 2,
-      tooltip: opts.tooltip,
-      onClick,
-    });
-  };
+export function createArchivedBadge(): OverlayWidget<MediaCardOverlayData> {
+  return createBadgeWidget({
+    id: 'archived',
+    ...BADGE_SLOT.topLeft,
+    stackGroup: 'badges-tl',
+    variant: 'icon',
+    icon: 'archive',
+    shape: 'rounded',
+    color: 'gray',
+    className: '!bg-slate-700/80 !text-slate-200 backdrop-blur-sm',
+    priority: BADGE_PRIORITY.status,
+    tooltip: 'Archived',
+    hoverPop: true,
+    visibleWhen: (data) => Boolean(data.isArchived),
+  });
 }
 
-/** Resolve prompt grouping variant ID in one place for all similarity badges. */
-function resolvePromptVariantId(asset: MediaCardResolvedProps['contextMenuAsset']): string | null {
-  return asset?.promptFamilyId ? 'prompt-family' : asset?.promptVersionId ? 'prompt-version' : null;
-}
-
-/** "Same input assets" badge — link icon + count of assets sharing the input set. */
-export const createSameInputsBadge = createSiblingCountBadge({
-  id: 'same-inputs',
-  icon: 'link',
-  priority: BADGE_PRIORITY.background,
-  visibility: { trigger: 'hover-container', touchFallback: 'always' },
-  resolveVariantId: () => 'input-assets',
-  getCount: (data) => data.sameInputsCount ?? 0,
-  tooltip: 'Assets that share these input assets',
-});
-
-/** "Same seed" badge — hash icon + count of assets sharing the generation seed. */
-export const createSameSeedBadge = createSiblingCountBadge({
-  id: 'same-seed',
-  icon: 'hash',
-  // Two below same-inputs so it stacks underneath same-prompt within badges-tl.
-  priority: BADGE_PRIORITY.background - 2,
-  visibility: { trigger: 'hover-container', touchFallback: 'always' },
-  resolveVariantId: (asset) =>
-    typeof asset?.genSeed === 'number' && Number.isFinite(asset.genSeed) ? 'gen-seed' : null,
-  getCount: (data) => data.sameSeedCount ?? 0,
-  tooltip: 'Assets that share this generation seed',
-});
-
-/**
- * "Same prompt" badge — message-bubble icon + count of assets in the prompt
- * family. The count groups by prompt family when available, else falls back to
- * the exact prompt version — so the click must open the matching variant
- * (`prompt-family` vs `prompt-version`), not always `prompt-family`.
- */
-export const createSamePromptBadge = createSiblingCountBadge({
-  id: 'same-prompt',
-  icon: 'messageSquare',
-  // One below same-inputs so it stacks underneath within badges-tl.
-  priority: BADGE_PRIORITY.background - 1,
-  visibility: { trigger: 'hover-container', touchFallback: 'always' },
-  resolveVariantId: (asset) => resolvePromptVariantId(asset),
-  getCount: (data) => data.samePromptCount ?? 0,
-  tooltip: 'Assets that share this prompt',
-});
+// The three fixed sibling-count badges (same-inputs / same-prompt / same-seed)
+// were folded into one faceted badge driven by a global facet lens — see the
+// `createSimilarityBadge` import + ./similarityBadge.tsx (plan
+// media-card-sibling-badges).
 
 /** Ring color per indicator severity. `info` is non-warning provenance (e.g. recovered). */
 function indicatorRingClass(severity: AssetWarning['severity']): string {
@@ -1623,9 +1553,8 @@ export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): Ov
     createQuickTagWidget,
     createQuickAddButton,
     createVersionBadge,
+    createArchivedBadge,
     createWarningsBadge,
-    createSameInputsBadge,
-    createSamePromptBadge,
-    createSameSeedBadge,
+    createSimilarityBadge,
   });
 }
