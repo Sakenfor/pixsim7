@@ -128,3 +128,39 @@ export async function adminUpdateAgentProfileScope(
 ): Promise<AdminAgentProfile> {
   return pixsimClient.patch<AdminAgentProfile>(`/dev/agent-profiles/admin/${profileId}`, params);
 }
+
+// --- Scope-option sources for the world/project pickers (agent-scope-admin-ux cp1) ---
+// Worlds and projects are owner-scoped; granting a collaborator's profile into one
+// crosses owners, so these admin-only listings resolve another user's worlds/projects
+// (id + label) to populate the scope pickers. Mirror of listAdminAgentProfiles.
+
+export interface AdminWorldOption {
+  id: number;
+  name: string;
+}
+
+export interface AdminWorldOptionsResponse {
+  worlds: AdminWorldOption[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+/** List a user's worlds (id + name) for the world-scope picker. Admin-only. */
+export async function listAdminUserWorlds(userId: number): Promise<AdminWorldOptionsResponse> {
+  return pixsimClient.get<AdminWorldOptionsResponse>('/game/worlds/admin/all', {
+    params: { user_id: userId },
+  });
+}
+
+export interface AdminProjectOption {
+  id: number;
+  name: string;
+}
+
+/** List a user's saved project snapshots (id + name) for the project-scope picker. Admin-only. */
+export async function listAdminUserProjects(userId: number): Promise<AdminProjectOption[]> {
+  return pixsimClient.get<AdminProjectOption[]>('/game/worlds/admin/projects', {
+    params: { user_id: userId },
+  });
+}

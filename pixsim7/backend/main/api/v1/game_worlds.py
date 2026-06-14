@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import AliasChoices, BaseModel, Field, ValidationError
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, GameWorldSvc
+from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, GameWorldSvc
 from pixsim7.backend.main.domain.game.schemas import (
     WorldMetaSchemas,
     RelationshipTierSchema,
@@ -371,6 +371,74 @@ async def create_world(
 
     state = await game_world_service.get_world_state(world.id)
     return await _build_world_detail(world, game_world_service, state=state)
+
+
+# ── Admin scope-option listings (agent-scope-admin-ux cp1) ───────────
+# Worlds and projects are owner-scoped everywhere else; granting a
+# collaborator's profile into a world/project is a cross-owner admin act, so
+# these admin-gated routes list ANY owner's worlds/projects (id + label only)
+# to populate the scope pickers in Settings → Admin → Access. They mirror
+# /dev/agent-profiles/admin/all (scoped-agent-authorization cp5a). Multi-segment
+# "/admin/..." paths are never captured by the single-segment "/{world_id}".
+
+
+@router.get("/admin/all", response_model=PaginatedWorldsResponse)
+async def admin_list_worlds(
+    game_world_service: GameWorldSvc,
+    _admin: CurrentAdminUser,
+    user_id: int,
+    offset: int = 0,
+    limit: int = 1000,
+) -> PaginatedWorldsResponse:
+    """Admin: list one owner's worlds (id + name) for granting collaborator scope.
+
+    Read-only option source for the world-scope picker; mirrors ``list_worlds``
+    but lists ``user_id``'s worlds instead of the caller's. agent-scope-admin-ux cp1.
+    """
+    from sqlalchemy import select
+    from pixsim7.backend.main.domain.game import GameWorld
+
+    limit = min(max(1, limit), 1000)
+    offset = max(0, offset)
+
+    result = await game_world_service.db.execute(
+        select(GameWorld)
+        .where(GameWorld.owner_user_id == user_id)
+        .order_by(GameWorld.id)
+    )
+    worlds = _dedupe_world_list_for_catalog(list(result.scalars().all()))
+    total = len(worlds)
+    paged_worlds = worlds[offset : offset + limit]
+    return PaginatedWorldsResponse(
+        worlds=[GameWorldSummary(id=w.id, name=w.name) for w in paged_worlds],
+        total=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+@router.get("/admin/projects", response_model=List[SavedGameProjectSummary])
+async def admin_list_projects(
+    game_world_service: GameWorldSvc,
+    _admin: CurrentAdminUser,
+    user_id: int,
+    offset: int = 0,
+    limit: int = 500,
+    origin_kind: Optional[ProjectOriginKind] = None,
+) -> List[SavedGameProjectSummary]:
+    """Admin: list one owner's saved project snapshots for granting collaborator scope.
+
+    Read-only option source for the project-scope picker; mirrors
+    ``list_saved_projects`` but for ``user_id``. agent-scope-admin-ux cp1.
+    """
+    storage = GameProjectStorageService(game_world_service.db)
+    projects = await storage.list_projects(
+        owner_user_id=user_id,
+        offset=offset,
+        limit=limit,
+        origin_kind=origin_kind,
+    )
+    return [_to_saved_project_summary(project) for project in projects]
 
 
 @router.get("/{world_id}", response_model=GameWorldDetail)
