@@ -1,7 +1,7 @@
 import { BACKEND_BASE } from '@/lib/api/client';
 import { isBackendUrl } from '@/lib/media/backendUrl';
 
-import { useAuthenticatedMedia } from './useAuthenticatedMedia';
+import { useMediaStreamSrc } from './useMediaStreamSrc';
 import { useMediaThumbnailFull } from './useMediaThumbnail';
 
 export interface UseMediaPreviewSourceOptions {
@@ -43,12 +43,13 @@ export function useMediaPreviewSource(
   const isBackendVideoSrc = rawVideoSrc ? isBackendUrl(rawVideoSrc, BACKEND_BASE) : false;
   const resolvedMediaActive =
     mediaActive ?? (mediaType === 'video' && !thumbUrl && !previewUrl);
-  const { src: resolvedVideoSrc } = useAuthenticatedMedia(
-    isBackendVideoSrc ? rawVideoSrc : undefined,
-    {
-      active: resolvedMediaActive,
-      mediaType: 'video',
-    },
+  // Plain preview videos stream directly from the backend (token + HTTP Range)
+  // rather than downloading the whole file into a blob. These <video> elements
+  // never feed canvas frame-capture — that lives in VideoScrubWidget, which keeps
+  // its own authenticated-blob path — so streaming here is safe and avoids
+  // holding a full video file in memory per visible/autoplaying card.
+  const resolvedVideoSrc = useMediaStreamSrc(
+    isBackendVideoSrc && resolvedMediaActive ? rawVideoSrc : undefined,
   );
   // Gate both backend and external video src on mediaActive so <video>
   // elements unmount when the card scrolls out of viewport range.
