@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getEngineBrand } from '@lib/agent/engineBrands';
 import { pixsimClient } from '@lib/api/client';
-import { Icon, type IconName } from '@lib/icons';
+import { Icon, getIcon, type IconName } from '@lib/icons';
 
 import { refreshChatUnread } from '@features/notifications/lib/chatUnreadPoll';
 
@@ -22,6 +22,21 @@ import type { ChatSessionEntry, UnifiedProfile } from './assistantTypes';
 import { AGENT_COMMANDS } from './assistantTypes';
 import { listOrphanSessions } from './chatTabsApi';
 import { EngineProfileIcon, iconForEngine } from './EngineProfileIcon';
+
+/**
+ * Resume callback shared by both resume pickers. `icon`/`subtitle` carry the
+ * agent-set tab identity (persisted on the session, survives tab close) so the
+ * resumed tab renders the same glyph/secondary line it had when live.
+ */
+export type ResumeHandler = (
+  sessionId: string,
+  engine: string,
+  label: string,
+  profileId: string | null,
+  lastPlanId?: string | null,
+  icon?: string | null,
+  subtitle?: string | null,
+) => void;
 
 // =============================================================================
 // Profile Editor
@@ -167,7 +182,7 @@ const RESUME_SESSION_PAGE_SIZE = 100;
 const RESUME_SESSION_MAX_LIMIT = 100;
 
 export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
-  onResume: (sessionId: string, engine: string, label: string, profileId: string | null, lastPlanId?: string | null) => void;
+  onResume: ResumeHandler;
   profileId?: string | null;
   profileLabels?: ReadonlyMap<string, string>;
 }) {
@@ -408,6 +423,12 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
             const sessionProfileLabel = s.profile_id && profileLabels?.get(s.profile_id)
               ? profileLabels.get(s.profile_id)!
               : null;
+            // Agent-set identity (mirrors SessionItem): a valid @lib/icons name
+            // wins as the leading glyph; subtitle replaces the profile label on
+            // the secondary line. Garbage/unset falls back to engine + profile.
+            const agentIcon = s.icon?.trim();
+            const validAgentIcon = agentIcon && getIcon(agentIcon) ? (agentIcon as IconName) : null;
+            const sessionSubtitle = s.subtitle?.trim() || null;
             const engineColor = getEngineBrand(s.engine).textColor;
             const scopeKeyChip = s.scope_key
               && !(s.last_plan_id && s.scope_key === `plan:${s.last_plan_id}`)
@@ -422,14 +443,14 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                 <button
                   onClick={() => {
                     if (showArchived) pixsimClient.post(`/meta/agents/chat-sessions/${s.id}/restore`).catch(() => {});
-                    onResume(s.id, s.engine, s.label, s.profile_id ?? null, s.last_plan_id);
+                    onResume(s.id, s.engine, s.label, s.profile_id ?? null, s.last_plan_id, s.icon ?? null, s.subtitle ?? null);
                     setOpen(false);
                   }}
                   className="flex-1 min-w-0 flex items-center gap-2 px-2 py-2 text-left"
                 >
                   <EngineProfileIcon
                     engine={s.engine}
-                    icon={AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? iconForEngine(s.engine)}
+                    icon={validAgentIcon ?? AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? iconForEngine(s.engine)}
                     size={11}
                   />
                   <div className="flex-1 min-w-0">
@@ -445,7 +466,7 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                       <span className="truncate">{s.label}</span>
                     </div>
                     <div className="text-[9px] text-th-muted">
-                      {sessionProfileLabel ? `${sessionProfileLabel} · ` : ''}
+                      {(sessionSubtitle ?? sessionProfileLabel) ? `${sessionSubtitle ?? sessionProfileLabel} · ` : ''}
                       {s.message_count} msgs · {new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                     {(s.last_contract_id || s.last_plan_id || scopeKeyChip) && (
@@ -521,7 +542,7 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
 export function InlineResumePicker({ profileId, profileLabels, onResume }: {
   profileId: string | null;
   profileLabels?: ReadonlyMap<string, string>;
-  onResume: (sessionId: string, engine: string, label: string, profileId: string | null, lastPlanId?: string | null) => void;
+  onResume: ResumeHandler;
 }) {
   const [sessions, setSessions] = useState<ChatSessionEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -560,22 +581,27 @@ export function InlineResumePicker({ profileId, profileLabels, onResume }: {
           <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-72 max-h-[200px] overflow-y-auto rounded-lg border border-th bg-surface shadow-lg z-20">
             {sessions.map((s) => {
               const profileName = s.profile_id && profileLabels?.get(s.profile_id);
+              const agentIcon = s.icon?.trim();
+              const validAgentIcon = agentIcon && getIcon(agentIcon) ? (agentIcon as IconName) : null;
+              const sessionSubtitle = s.subtitle?.trim() || null;
               const engineColor = getEngineBrand(s.engine).textColor;
               return (
                 <button
                   key={s.id}
-                  onClick={() => { onResume(s.id, s.engine, s.label, s.profile_id ?? null, s.last_plan_id); setOpen(false); }}
+                  onClick={() => { onResume(s.id, s.engine, s.label, s.profile_id ?? null, s.last_plan_id, s.icon ?? null, s.subtitle ?? null); setOpen(false); }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-secondary transition-colors"
                 >
                   <EngineProfileIcon
                     engine={s.engine}
-                    icon={s.engine === 'codex' ? 'terminal' : s.engine === 'api' ? 'zap' : 'messageSquare'}
+                    icon={validAgentIcon ?? (s.engine === 'codex' ? 'terminal' : s.engine === 'api' ? 'zap' : 'messageSquare')}
                     size={11}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="text-[11px] font-medium text-th truncate">{s.label}</div>
                     <div className="flex items-center gap-1 text-[9px] text-th-muted">
-                      {profileName && <span className={engineColor}>{profileName}</span>}
+                      {sessionSubtitle
+                        ? <span className="truncate">{sessionSubtitle}</span>
+                        : profileName && <span className={engineColor}>{profileName}</span>}
                       {s.engine !== 'claude' && <span>{s.engine}</span>}
                       <span>{s.message_count} msgs</span>
                       {s.last_plan_id && <span className="text-signal-success">plan:{s.last_plan_id}</span>}
@@ -1435,6 +1461,50 @@ export function ModelSelector({ value, onChange, disabled, engine }: {
             <option key={m.id} value={m.id} className={MODEL_OPTION_CLASS}>{m.hidden ? '\u00B7 ' : ''}{m.label || m.id}{m.is_default ? ' \u2605' : ''}</option>
           ))}
         </optgroup>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * Reasoning-effort options per engine. `claude` adds `max`, `codex` adds
+ * `xhigh` — mirrors the profile editor's effort dropdown (kept in sync).
+ */
+function effortOptionsForEngine(engine: AgentEngine): ReadonlyArray<{ value: string; label: string }> {
+  const base = [
+    { value: 'low', label: 'Low' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'high', label: 'High' },
+  ];
+  if (engine === 'claude') return [...base, { value: 'max', label: 'Max' }];
+  if (engine === 'codex') return [...base, { value: 'xhigh', label: 'Extra High' }];
+  return base;
+}
+
+/**
+ * Compact per-tab reasoning-effort selector for the chat input bar. Sister to
+ * `ModelSelector`: null = profile default, sent per-turn as `reasoning_effort`.
+ * The `api` engine has no effort knob, so it renders nothing.
+ */
+export function EffortSelector({ value, onChange, disabled, engine }: {
+  value: string | null;
+  onChange: (v: string | null) => void;
+  disabled: boolean;
+  engine: AgentEngine;
+}) {
+  if (engine !== 'claude' && engine !== 'codex') return null;
+  const options = effortOptionsForEngine(engine);
+  return (
+    <select
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value || null)}
+      disabled={disabled}
+      className="shrink-0 h-8 px-1 text-[9px] text-th bg-surface-secondary rounded-lg border-0 focus:outline-none focus:ring-0 cursor-pointer disabled:opacity-40"
+      title={value ? `Reasoning effort: ${value}` : 'Reasoning effort (profile default)'}
+    >
+      <option value="" className={MODEL_OPTION_CLASS}>effort</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value} className={MODEL_OPTION_CLASS}>{o.label}</option>
       ))}
     </select>
   );

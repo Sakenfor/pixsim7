@@ -23,6 +23,7 @@ import { useReferences, useReferenceInput, ReferencePicker, type ReferencePicker
 
 import { usePanelSkin } from '@features/appearance';
 import { useChatUnread } from '@features/notifications/hooks/useChatUnread';
+import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 import { navigateToPlan } from '@features/workspace/lib/openPanel';
 
 import { chatBridge } from './assistantChatBridge';
@@ -47,6 +48,7 @@ import {
   ActionPicker,
   WorkSummaryBadge,
   ModelSelector,
+  EffortSelector,
   SystemPromptPreview,
   BridgeSettingsPopover,
   NotificationMutePopover,
@@ -404,6 +406,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   useEffect(() => () => flushDraft(), [flushDraft]);
 
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
+  const isMobile = useIsMobileViewport();
   const profileLabelMap = useMemo(() => new Map(profiles.map((p) => [p.id, p.label] as const)), [profiles]);
 
   // Sync thinking entries from bridge to store (persists across HMR + full reload).
@@ -594,6 +597,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     if (tab.sessionId) body.bridge_session_id = tab.sessionId;
     if (resolvedProfileId && !tab.usePersona) body.skip_persona = true;
     if (tab.modelOverride) body.model = tab.modelOverride;
+    if (tab.reasoningEffortOverride) body.reasoning_effort = tab.reasoningEffortOverride;
     if (tab.customInstructions.trim()) body.custom_instructions = tab.customInstructions.trim();
     if (tab.focusAreas.length > 0) body.focus = tab.focusAreas;
     const scope = extractReferenceScope(text);
@@ -647,7 +651,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
     // Fire-and-forget — the bridge singleton manages the SSE fetch.
     void chatBridge.send(tab.id, body);
-  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.modelOverride, tab.customInstructions, tab.focusAreas, tab.injectToken, profiles, onUpdateTab]);
+  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.modelOverride, tab.reasoningEffortOverride, tab.customInstructions, tab.focusAreas, tab.injectToken, profiles, onUpdateTab]);
 
   const retryLast = useCallback(() => {
     const msgs = useAssistantChatStore.getState().getMessages(tab.id);
@@ -732,19 +736,22 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
               onChangeFocus={(areas) => onUpdateTab({ focusAreas: areas })}
             />
             <EmptyState message="Ask anything or pick an action" size="sm" />
-            <div className="flex flex-wrap gap-1.5 justify-center">
+            <div className={`flex flex-wrap justify-center ${isMobile ? 'gap-1' : 'gap-1.5'}`}>
               {QUICK_SHORTCUTS.map((s) => (
                 <button key={s.label} onClick={() => void sendMessage(s.prompt)} disabled={sending}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-full border border-th text-th-secondary hover:bg-surface-secondary transition-colors disabled:opacity-50">
-                  <Icon name={s.icon} size={12} />{s.label}
+                  className={`flex items-center rounded-full border border-th text-th-secondary hover:bg-surface-secondary transition-colors disabled:opacity-50 ${
+                    isMobile ? 'gap-1 px-2 py-1 text-[11px]' : 'gap-1.5 px-2.5 py-1.5 text-xs'
+                  }`}
+                  title={s.label}>
+                  <Icon name={s.icon} size={isMobile ? 11 : 12} />{isMobile ? s.shortLabel : s.label}
                 </button>
               ))}
             </div>
             <InlineResumePicker
               profileId={tab.profileId}
               profileLabels={profileLabelMap}
-              onResume={(sessionId, engine, label, resumeProfileId, lastPlanId) => {
-                const resumed = buildResumedTab({ id: sessionId, engine, label, profile_id: resumeProfileId, last_plan_id: lastPlanId });
+              onResume={(sessionId, engine, label, resumeProfileId, lastPlanId, icon, subtitle) => {
+                const resumed = buildResumedTab({ id: sessionId, engine, label, profile_id: resumeProfileId, last_plan_id: lastPlanId, icon, subtitle });
                 onUpdateTab({
                   sessionId: resumed.sessionId,
                   engine: resumed.engine,
@@ -752,6 +759,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                   profileId: resumed.profileId,
                   injectToken: resumed.injectToken,
                   planId: resumed.planId,
+                  icon: resumed.icon,
+                  subtitle: resumed.subtitle,
                 });
                 // Fetch server-side message history for this session
                 fetchServerMessages(sessionId).then((serverMsgs) => {
@@ -915,32 +924,27 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         {/* Live list of subagents / background tasks the agent launched this turn */}
         <SessionManagedProcesses processes={bridgeReq?.managedProcesses} active={sending} />
 
-        {/* Textarea — above the toolbar for more space */}
+        {/* Textarea — full width; send button lives in the toolbar row below */}
         <div className="group/input mb-1.5">
-          <div className="flex gap-1.5 items-end">
-            <div className="flex-1 relative">
-              <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                onBlur={flushDraft}
-                placeholder={connected > 0 ? 'Ask something... (@ to reference)' : 'No agent connected'}
-                disabled={connected === 0 || sending} rows={3}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-th bg-surface-elevated text-th resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                style={{ minHeight: '68px', maxHeight: '160px' }}
-                onInput={handleTextareaInput}
+          <div className="relative">
+            <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+              onBlur={flushDraft}
+              placeholder={connected > 0 ? 'Ask something... (@ to reference)' : 'No agent connected'}
+              disabled={connected === 0 || sending} rows={3}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-th bg-surface-elevated text-th resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+              style={{ minHeight: '68px', maxHeight: '160px' }}
+              onInput={handleTextareaInput}
+            />
+            {/* Draft autosave indicator — tiny dot in the bottom-right corner.
+                Amber while dirty (debounce in flight), invisible once the
+                server has confirmed. Plan `chat-tab-server-persistence`
+                checkpoint C. */}
+            {draftDirty && input.length > 0 && (
+              <span
+                className="absolute bottom-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-signal-warning"
+                title="Saving draft…"
               />
-              {/* Draft autosave indicator — tiny dot in the bottom-right corner.
-                  Amber while dirty (debounce in flight), invisible once the
-                  server has confirmed. Plan `chat-tab-server-persistence`
-                  checkpoint C. */}
-              {draftDirty && input.length > 0 && (
-                <span
-                  className="absolute bottom-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-signal-warning"
-                  title="Saving draft…"
-                />
-              )}
-            </div>
-            <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">
-              <Icon name="send" size={14} />
-            </Button>
+            )}
           </div>
         </div>
 
@@ -1117,6 +1121,19 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             engine={tab.engine}
           />
 
+          {/* Per-tab reasoning-effort override (null = profile default) */}
+          <EffortSelector
+            value={tab.reasoningEffortOverride}
+            onChange={(v) => onUpdateTab({ reasoningEffortOverride: v })}
+            disabled={sending}
+            engine={tab.engine}
+          />
+
+          {/* Send — inline right after the model selector */}
+          <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">
+            <Icon name="send" size={14} />
+          </Button>
+
           {/* Inject token toggle */}
           <button
             onClick={() => onUpdateTab({ injectToken: !tab.injectToken })}
@@ -1217,6 +1234,7 @@ export function AIAssistantPanel() {
       profileId: resolvedProfileId,
       engine: (profile ? engineFromProfile(profile) : 'claude') as AgentEngine,
       modelOverride: null,
+      reasoningEffortOverride: null,
       usePersona: true,
       customInstructions: '',
       focusAreas: [],
@@ -1342,6 +1360,7 @@ export function AIAssistantPanel() {
         profileId: defaultProfile?.id ?? null,
         engine: (defaultProfile ? engineFromProfile(defaultProfile) : 'claude') as AgentEngine,
         modelOverride: null,
+        reasoningEffortOverride: null,
         usePersona: true,
         customInstructions: '',
         focusAreas: [],
@@ -1538,10 +1557,10 @@ export function AIAssistantPanel() {
             <button onClick={() => createTab()} className="tap-target text-th-muted hover:text-th" title="New chat">
               <Icon name="plus" size={13} />
             </button>
-            <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label, resumeProfileId, lastPlanId) => {
+            <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label, resumeProfileId, lastPlanId, icon, subtitle) => {
               const existing = tabs.find((t) => t.sessionId === sessionId);
               if (existing) { setActiveTab(existing.id); return; }
-              const newTab = buildResumedTab({ id: sessionId, engine, label, profile_id: resumeProfileId, last_plan_id: lastPlanId });
+              const newTab = buildResumedTab({ id: sessionId, engine, label, profile_id: resumeProfileId, last_plan_id: lastPlanId, icon, subtitle });
               const s = useAssistantChatStore.getState();
               s.addTab(newTab);
               s.setActiveTab(newTab.id);
