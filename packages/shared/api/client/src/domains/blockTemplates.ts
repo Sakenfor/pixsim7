@@ -342,8 +342,37 @@ export interface ReloadContentPacksResponse {
   results: Record<string, ReloadContentPackStats>;
 }
 
+export const PACK_CATEGORY_ORDER = [
+  'camera',
+  'lighting',
+  'composition',
+  'color',
+  'subject',
+  'expression',
+  'anatomy',
+  'hands',
+  'manner',
+  'continuity',
+  'latin',
+  'mood',
+  'scene',
+  'style',
+  'demo',
+] as const;
+
+export type PackCategory = (typeof PACK_CATEGORY_ORDER)[number];
+
+export function packCategoryLabel(category: string): string {
+  return category
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 export interface ContentPackInfo {
   status: 'active' | 'orphaned' | 'disk_only';
+  category: string | null;
   blocks: number;
   templates: number;
   characters: number;
@@ -360,6 +389,7 @@ export interface ContentPackMatrixManifest {
   id?: string | null;
   title?: string | null;
   description?: string | null;
+  category?: string | null;
   matrix_presets: ContentPackMatrixPreset[];
 }
 
