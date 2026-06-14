@@ -22,12 +22,16 @@ import { validateAndLog } from './utils/validation';
 const isDev = import.meta.env?.DEV ?? false;
 
 /**
- * Max length of a badge stack before it scrolls (~5 compact badges). A plain
- * px value (not a `%`) so it clamps regardless of ancestor sizing — the bracket
- * wrapper has auto height, so a `min(100%, …)` cap would fail to resolve and the
- * stack would sprawl the full card height instead of folding.
+ * Ceiling on a scrollable stack region's length (~5 compact badges). The actual
+ * cap is the smaller of this and the measured distance down to the card's edge
+ * (see {@link STACK_EDGE_MARGIN}), so on a short card it folds well above the
+ * bottom instead of nearly reaching it.
  */
 const STACK_MAX_EXTENT = 132;
+/** Never shrink the scroll region below this — keep it usable on tiny cards. */
+const STACK_MIN_EXTENT = 44;
+/** Gap kept between the scroll region's far edge and the card edge. */
+const STACK_EDGE_MARGIN = 8;
 
 /** Curved "more items" bracket, matching the ButtonGroup overflow affordance. */
 function StackOverflowBracket({
@@ -85,6 +89,7 @@ function StackGroupContainer({
   const [atStart, setAtStart] = useState(true);
   const [atEnd, setAtEnd] = useState(false);
   const [scrollDir, setScrollDir] = useState<-1 | 0 | 1>(0);
+  const [maxExtent, setMaxExtent] = useState(STACK_MAX_EXTENT);
   const dirTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastPos = useRef(0);
   const isColumn = group.flexDirection === 'column';
@@ -99,6 +104,20 @@ function StackGroupContainer({
   const measure = useCallback(() => {
     const el = ref.current;
     if (!el) return;
+
+    // Clamp the cap to the room left down to the card edge. The region's start
+    // (top/left) is fixed by the pinned badges above it and the card edge is
+    // fixed, so this doesn't depend on the region's own size — no feedback loop.
+    const card = el.closest('[data-overlay-container]') as HTMLElement | null;
+    if (card) {
+      const cardRect = card.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const room = isColumn
+        ? cardRect.bottom - elRect.top - STACK_EDGE_MARGIN
+        : cardRect.right - elRect.left - STACK_EDGE_MARGIN;
+      setMaxExtent(Math.max(STACK_MIN_EXTENT, Math.min(STACK_MAX_EXTENT, room)));
+    }
+
     const size = isColumn ? el.clientHeight : el.clientWidth;
     const scrollSize = isColumn ? el.scrollHeight : el.scrollWidth;
     const pos = isColumn ? el.scrollTop : el.scrollLeft;
@@ -113,6 +132,9 @@ function StackGroupContainer({
     if (!el || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(measure);
     ro.observe(el);
+    // Also react to the card itself resizing (smaller card => tighter cap).
+    const card = el.closest('[data-overlay-container]');
+    if (card) ro.observe(card);
     return () => ro.disconnect();
   }, [measure, scrollCount]);
 
@@ -154,8 +176,8 @@ function StackGroupContainer({
             style={{
               ...flexStyle,
               ...(isColumn
-                ? { maxHeight: STACK_MAX_EXTENT, overflowY: 'auto', overflowX: 'visible' }
-                : { maxWidth: STACK_MAX_EXTENT, overflowX: 'auto', overflowY: 'visible' }),
+                ? { maxHeight: maxExtent, overflowY: 'auto', overflowX: 'visible' }
+                : { maxWidth: maxExtent, overflowX: 'auto', overflowY: 'visible' }),
               // Don't chain the wheel to the gallery when the stack hits its edge.
               overscrollBehavior: 'contain',
               // Capture pointer events (for wheel scroll) only while overflowing;
