@@ -142,7 +142,11 @@ export function buildTargetToggleWidget(
   options: TargetToggleWidgetOptions,
 ): OverlayWidget {
   const { isMember } = options;
-  return createBadgeWidget({
+  return {
+    // Fold target toggles into the stack's scroll region so they overflow
+    // below the pinned status/favorite/tag badges instead of pushing them out.
+    scrollable: true,
+    ...createBadgeWidget({
     id: options.id ?? 'target-toggle',
     ...BADGE_SLOT.topRight,
     visibility: { trigger: isMember ? 'always' : 'hover-container' },
@@ -158,6 +162,7 @@ export function buildTargetToggleWidget(
         : '!bg-white/95 dark:!bg-neutral-900/95 !text-neutral-700 dark:!text-neutral-200 hover:!bg-accent/10 shadow-sm'),
     // Keep status/favorite/tag controls at the top-right leader positions.
     priority: BADGE_PRIORITY.status + 1,
-  });
+    }),
+  };
 }
 

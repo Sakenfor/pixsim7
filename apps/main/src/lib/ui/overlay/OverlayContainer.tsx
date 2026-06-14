@@ -74,11 +74,11 @@ function StackOverflowBracket({
 function StackGroupContainer({
   group,
   baseStyle,
-  children,
+  renderWidget,
 }: {
   group: StackGroupInfo;
   baseStyle: React.CSSProperties;
-  children: React.ReactNode;
+  renderWidget: (widget: StackGroupInfo['widgets'][number]) => React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [overflowing, setOverflowing] = useState(false);
@@ -88,7 +88,13 @@ function StackGroupContainer({
   const dirTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastPos = useRef(0);
   const isColumn = group.flexDirection === 'column';
-  const childCount = group.widgets.length;
+
+  // Pinned badges (status/favorite/tag …) stay put at the anchor; only widgets
+  // opting into `scrollable` (e.g. set target-toggles) fold into the scroll
+  // region, so the pinned ones are never pushed out of view.
+  const pinned = group.widgets.filter((w) => !w.scrollable);
+  const scrollWidgets = group.widgets.filter((w) => w.scrollable);
+  const scrollCount = scrollWidgets.length;
 
   const measure = useCallback(() => {
     const el = ref.current;
@@ -108,7 +114,7 @@ function StackGroupContainer({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [measure, childCount]);
+  }, [measure, scrollCount]);
 
   const handleScroll = useCallback(() => {
     const el = ref.current;
@@ -124,36 +130,45 @@ function StackGroupContainer({
     measure();
   }, [isColumn, measure]);
 
+  const flexStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: group.flexDirection,
+    alignItems: group.alignItems,
+  };
+
   return (
     <div
-      style={{ ...baseStyle, zIndex: group.maxPriority, pointerEvents: 'none' }}
+      data-overlay-stack-group={group.stackGroup}
+      data-overlay-stack-anchor={group.anchor}
+      style={{ ...baseStyle, ...flexStyle, zIndex: group.maxPriority, pointerEvents: 'none' }}
     >
-      {overflowing && !atStart && <StackOverflowBracket edge="start" bob={scrollDir === -1} />}
-      {overflowing && !atEnd && <StackOverflowBracket edge="end" bob={scrollDir === 1} />}
-      <div
-        ref={ref}
-        onScroll={handleScroll}
-        data-overlay-stack-group={group.stackGroup}
-        data-overlay-stack-anchor={group.anchor}
-        className="no-scrollbar"
-        style={{
-          display: 'flex',
-          flexDirection: group.flexDirection,
-          alignItems: group.alignItems,
-          ...(isColumn
-            ? { maxHeight: STACK_MAX_EXTENT, overflowY: 'auto', overflowX: 'visible' }
-            : { maxWidth: STACK_MAX_EXTENT, overflowX: 'auto', overflowY: 'visible' }),
-          // Don't chain the wheel to the gallery when the stack hits its edge.
-          overscrollBehavior: 'contain',
-          // Capture pointer events (for wheel scroll) only while overflowing;
-          // otherwise keep the gaps click-through to the card. A directional
-          // resize cursor hints that the stack is wheel-scrollable.
-          pointerEvents: overflowing ? 'auto' : 'none',
-          cursor: overflowing ? (isColumn ? 'ns-resize' : 'ew-resize') : undefined,
-        }}
-      >
-        {children}
-      </div>
+      {pinned.map(renderWidget)}
+      {scrollCount > 0 && (
+        <div className="relative" style={{ ...flexStyle, pointerEvents: 'none' }}>
+          {overflowing && !atStart && <StackOverflowBracket edge="start" bob={scrollDir === -1} />}
+          {overflowing && !atEnd && <StackOverflowBracket edge="end" bob={scrollDir === 1} />}
+          <div
+            ref={ref}
+            onScroll={handleScroll}
+            className="no-scrollbar"
+            style={{
+              ...flexStyle,
+              ...(isColumn
+                ? { maxHeight: STACK_MAX_EXTENT, overflowY: 'auto', overflowX: 'visible' }
+                : { maxWidth: STACK_MAX_EXTENT, overflowX: 'auto', overflowY: 'visible' }),
+              // Don't chain the wheel to the gallery when the stack hits its edge.
+              overscrollBehavior: 'contain',
+              // Capture pointer events (for wheel scroll) only while overflowing;
+              // otherwise keep the gaps click-through to the card. A directional
+              // resize cursor hints the region is wheel-scrollable.
+              pointerEvents: overflowing ? 'auto' : 'none',
+              cursor: overflowing ? (isColumn ? 'ns-resize' : 'ew-resize') : undefined,
+            }}
+          >
+            {scrollWidgets.map(renderWidget)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -432,8 +447,11 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
         });
 
         return (
-          <StackGroupContainer key={group.key} group={group} baseStyle={containerStyle}>
-            {group.widgets.map((widget) => (
+          <StackGroupContainer
+            key={group.key}
+            group={group}
+            baseStyle={containerStyle}
+            renderWidget={(widget) => (
               <OverlayWidget
                 key={widget.id}
                 widget={widget}
@@ -444,8 +462,8 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
                 inStack
                 onRef={getWidgetRefCallback(widget.id)}
               />
-            ))}
-          </StackGroupContainer>
+            )}
+          />
         );
       })}
     </div>

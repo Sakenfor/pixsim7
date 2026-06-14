@@ -259,6 +259,13 @@ export interface OverlayWidget<TData = any> {
    *  flex container. Priority determines order (highest = closest to anchor). */
   stackGroup?: string;
 
+  /** Opt this widget into the stack's scroll region. Within a stack group,
+   *  non-scrollable widgets are pinned (always visible) at the anchor and only
+   *  the scrollable ones fold into a capped, wheel-scrollable area below/after
+   *  them — so e.g. set target-toggles can overflow without pushing the pinned
+   *  status/favorite/tag badges out of view. */
+  scrollable?: boolean;
+
   /** Exclude this widget from collision detection/repositioning.
    *  Useful for full-bleed overlays (e.g. video scrub layer) that are
    *  intentionally designed to overlap other widgets. */
@@ -356,9 +363,10 @@ export interface PresetCapabilities {
   skipTagsTooltip?: boolean;
 
   /**
-   * Show the top-left sibling-count badges (same-input-assets + same-prompt-family).
+   * Show top-left similarity cohort badges.
    * Information-dense surfaces only — enabled on Default and Detailed presets.
-   * Each badge self-hides at render time when its count is below 2.
+   * Renders an always-on collapsed chip with hover granularity rows
+   * (same seed / same input assets / same prompt) and hides empty cohorts.
    */
   showsSiblingBadges?: boolean;
 
