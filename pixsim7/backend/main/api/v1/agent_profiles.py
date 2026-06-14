@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
+from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, get_database
 from pixsim7.backend.main.domain import UserSession
 from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile, AgentRun
 from pixsim7.backend.main.shared.actor import resolve_effective_user_id
@@ -624,6 +624,95 @@ async def update_agent_profile(
         raise HTTPException(status_code=400, detail="No fields to update")
 
     # Snapshot old values for diff, then apply
+    old_snapshot = {field: getattr(profile, field, None) for field in updates}
+    for field, value in updates.items():
+        setattr(profile, field, value)
+    profile.updated_at = utcnow()
+
+    from pixsim7.backend.main.services.audit import AuditService
+    await AuditService(db).record_diff(
+        domain="agent", entity_type="agent_profile",
+        entity_id=profile_id, entity_label=profile.label,
+        old_obj=old_snapshot, new_obj=profile,
+        fields=list(updates.keys()),
+    )
+
+    await db.commit()
+    await db.refresh(profile)
+    return _to_response(profile)
+
+
+# ── Admin scope management (scoped-agent-authorization cp5) ───────
+# Owner-scoped CRUD above lets a user manage their OWN profiles. Granting a
+# *collaborator's* profile into scopes is an admin act that crosses owners, so
+# these admin-gated routes view/edit any profile's grant fields. Multi-segment
+# "/admin/..." paths are never captured by the single-segment "/{profile_id}".
+
+
+class AdminProfileScopeRequest(BaseModel):
+    """Admin grant/revoke of a profile's scoped authorization.
+
+    Per field: *omitted* = leave unchanged; *null* = clear (unrestricted);
+    *list* = restrict to those ids. ``status`` can pause/resume the profile.
+    """
+
+    assigned_plans: Optional[List[str]] = None
+    default_scopes: Optional[List[str]] = None
+    allowed_contracts: Optional[List[str]] = None
+    status: Optional[str] = None
+
+
+@router.get("/admin/all", response_model=AgentProfileListResponse)
+async def admin_list_agent_profiles(
+    _admin: CurrentAdminUser,
+    user_id: Optional[int] = Query(None, description="Filter to one owner's profiles."),
+    include_global: bool = Query(True, description="Include global/system (user_id=0) profiles."),
+    db: AsyncSession = Depends(get_database),
+):
+    """Admin: list any owner's agent profiles, for granting collaborator scope."""
+    conditions = [AgentProfile.status != "archived"]
+    if user_id is not None:
+        if include_global:
+            conditions.append(or_(AgentProfile.user_id == user_id, AgentProfile.user_id == 0))
+        else:
+            conditions.append(AgentProfile.user_id == user_id)
+    stmt = (
+        select(AgentProfile)
+        .where(*conditions)
+        .order_by(AgentProfile.user_id, AgentProfile.label)
+    )
+    profiles = (await db.execute(stmt)).scalars().all()
+    return {"profiles": [_to_response(p) for p in profiles], "total": len(profiles)}
+
+
+@router.patch("/admin/{profile_id}", response_model=AgentProfileResponse)
+async def admin_update_agent_profile_scope(
+    profile_id: str,
+    payload: AdminProfileScopeRequest,
+    _admin: CurrentAdminUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Admin: grant/revoke a profile's scopes or pause it, across any owner.
+
+    Sets ``assigned_plans`` / ``default_scopes`` / ``allowed_contracts`` (the
+    fields the scope resolver reads) and/or ``status``. Field omitted =
+    unchanged; null = unrestricted; list = restricted. The agreed write
+    surface behind Settings → Admin → Access. Plan
+    ``scoped-agent-authorization`` (cp5).
+    """
+    profile = await db.get(AgentProfile, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail=f"Agent profile not found: {profile_id}")
+    if payload.status is not None and payload.status not in VALID_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status '{payload.status}'. Valid: {', '.join(sorted(VALID_STATUSES))}",
+        )
+
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
     old_snapshot = {field: getattr(profile, field, None) for field in updates}
     for field, value in updates.items():
         setattr(profile, field, value)
