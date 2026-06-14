@@ -48,6 +48,7 @@ async def test_reports_inflight_task_in_active_tasks():
     bridge = _make_bridge()
     bridge._inflight_tasks["task-live"] = {
         "bridge_session_id": "sess-1",
+        "tab_id": "tab-abc123",
         "started_at": "2026-06-06T00:00:00Z",
         "action": "tool_use",
         "detail": "Reading code",
@@ -60,6 +61,9 @@ async def test_reports_inflight_task_in_active_tasks():
     assert len(active) == 1
     assert active[0]["task_id"] == "task-live"
     assert active[0]["bridge_session_id"] == "sess-1"
+    # tab_id rides the handshake so a restarted backend can re-attach the
+    # surviving turn to its tab (and logs can name which tab dropped).
+    assert active[0]["tab_id"] == "tab-abc123"
     assert active[0]["started_at"] == "2026-06-06T00:00:00Z"
     assert active[0]["action"] == "tool_use"
     assert active[0]["detail"] == "Reading code"
@@ -98,5 +102,6 @@ async def test_inflight_task_missing_fields_defaults_gracefully():
     (entry,) = payload["active_tasks"]
     assert entry["task_id"] == "task-bare"
     assert entry["bridge_session_id"] is None
+    assert entry["tab_id"] is None
     assert entry["action"] == ""
     assert entry["detail"] == ""

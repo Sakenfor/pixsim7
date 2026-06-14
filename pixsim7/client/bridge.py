@@ -823,6 +823,7 @@ class Bridge:
                 {
                     "task_id": tid,
                     "bridge_session_id": info.get("bridge_session_id"),
+                    "tab_id": info.get("tab_id"),
                     "started_at": info.get("started_at"),
                     "action": info.get("action", ""),
                     "detail": info.get("detail", ""),
@@ -1581,12 +1582,18 @@ class Bridge:
         prompt = msg.get("instruction") or msg.get("prompt", "")
 
         meta = self._extract_task_meta(msg)
-        get_logger().info("task_received", task=task_id[:8], type=task_type, engine=meta["engine"], model=meta["model"])
+        # Short tab anchor for log correlation. A bridge reconnect is
+        # process-global (one WS, all tabs), so it can't carry a tab id — but a
+        # task can, and it's what lets us trace which tab's turn survived (or
+        # was stranded by) a backend restart. Plan: ws-drop-root-cause.
+        tab_short = (meta.get("tab_id") or "")[:12]
+        get_logger().info("task_received", task=task_id[:8], tab=tab_short, type=task_type, engine=meta["engine"], model=meta["model"])
 
         # Register inflight so pool_status reports it on (re)connect.
         import time as _time_inflight
         self._inflight_tasks[task_id] = {
             "bridge_session_id": meta.get("bridge_session_id"),
+            "tab_id": meta.get("tab_id"),
             "started_at": _time_inflight.time(),
             "action": "processing_task",
             "detail": "",
@@ -1938,7 +1945,7 @@ class Bridge:
                 if bridge_session_id:
                     set_dispatch_session(bridge_session_id)
 
-                get_logger().info("task_complete", task=task_id[:8], session=session_id, chars=len(response))
+                get_logger().info("task_complete", task=task_id[:8], tab=tab_short, session=session_id, chars=len(response))
 
                 result_msg: dict = {
                     "type": "result",
@@ -1963,7 +1970,7 @@ class Bridge:
                     # mirror to disk so it survives a bridge process restart.
                     self._buffered_results[task_id] = result_msg
                     self._persist_buffered_result(task_id, result_msg)
-                    get_logger().warning("ws_dead_buffered", task=task_id[:8], chars=len(response))
+                    get_logger().warning("ws_dead_buffered", task=task_id[:8], tab=tab_short, chars=len(response))
                     return
 
                 # Report updated pool status (new sessions may have spawned)
@@ -1982,6 +1989,7 @@ class Bridge:
             get_logger().error(
                 "task_error",
                 task=task_id[:8],
+                tab=tab_short,
                 error=error_payload["error"],
                 error_code=error_payload["error_code"],
                 category=details.get("category"),
@@ -2002,7 +2010,7 @@ class Bridge:
                 # to disk so it survives a bridge process restart.
                 self._buffered_results[task_id] = error_msg
                 self._persist_buffered_result(task_id, error_msg)
-                get_logger().warning("ws_dead_buffered_error", task=task_id[:8])
+                get_logger().warning("ws_dead_buffered_error", task=task_id[:8], tab=tab_short)
         finally:
             # Whatever happened — success, buffered, or error — the bridge is
             # no longer actively running this task. Drop it so the next
