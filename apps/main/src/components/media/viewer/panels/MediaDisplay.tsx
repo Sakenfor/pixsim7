@@ -17,8 +17,8 @@ import type { ViewerAsset } from '@features/assets';
 import { registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
 import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
 
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 import { useMediaStreamSrc } from '@/hooks/useMediaStreamSrc';
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import type { ViewerSettings } from '../types';
 
@@ -75,10 +75,10 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
   const videoSrc = useMediaStreamSrc(
     asset.type === 'video' ? videoCandidates[videoCandidateIndex] : undefined,
   );
-  const { mediaSrc: imageSrc } = useResolvedAssetMedia({
-    mediaUrl: asset.type === 'video' ? undefined : (asset.fullUrl || asset.url),
-    mediaType: 'image',
-  });
+  const { src: imageSrc } = useAuthenticatedMedia(
+    asset.type === 'video' ? undefined : (asset.fullUrl || asset.url),
+    { mediaType: 'image' },
+  );
 
   const resolvedMediaUrl = asset.type === 'video' ? videoSrc : imageSrc;
   // Owns the viewer <video>'s decoder lifecycle: restores src after a

@@ -19,7 +19,7 @@ import {
 } from '@features/generation';
 import { useGenerationInputStore } from '@features/generation/stores/generationInputStore';
 
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+import { useMediaThumbnailFull } from '@/hooks/useMediaThumbnail';
 import { OPERATION_METADATA, type OperationType, type MediaType } from '@/types/operations';
 
 import { EMPTY_INPUTS } from './mediaCardGeneration.utils';
@@ -255,11 +255,7 @@ export function SlotPickerGrid({
 
 function SlotThumbnail({ asset, alt }: { asset: AssetModel; alt: string }) {
   const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(asset);
-  const { thumbSrc } = useResolvedAssetMedia({
-    thumbUrl: thumbnailUrl,
-    previewUrl,
-    remoteUrl: mainUrl,
-  });
+  const { src: thumbSrc } = useMediaThumbnailFull(thumbnailUrl, previewUrl, mainUrl);
   const src = thumbSrc;
 
   if (!src) {

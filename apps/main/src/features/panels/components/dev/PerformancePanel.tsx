@@ -19,6 +19,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
+import { getAuthBlobRequestPoolStats } from '@lib/media/authBlobRequestPool';
 import { getCapturedFrameStoreStats } from '@lib/media/capturedFrameStore';
 import { getVideoActivationPoolStats } from '@lib/media/videoActivationPool';
 import { hmrSingleton } from '@lib/utils';
@@ -732,6 +733,8 @@ export function PerformancePanel() {
     lines.push(`  Thumbnail:        ${thumbnailBlobCache.size}/${thumbnailBlobCache.maxEntries} entries, ${formatBytes(thumbnailBlobCache.totalBytes)}`);
     lines.push(`  Auth image:       ${authMediaCaches.image.size}/${authMediaCaches.image.maxEntries} entries, ${formatBytes(authMediaCaches.image.totalBytes)}`);
     lines.push(`  Auth video:       ${authMediaCaches.video.size}/${authMediaCaches.video.maxEntries} entries, ${formatBytes(authMediaCaches.video.totalBytes)}`);
+    const authBlobRequests = getAuthBlobRequestPoolStats();
+    lines.push(`  In-flight auth:   ${authBlobRequests.inFlight} requests / ${authBlobRequests.consumers} consumers`);
     lines.push(`  Local folder:     ${getLocalFolderPreviewCacheStats().entries} entries (bytes unknown)`);
     const capturedFrames = getCapturedFrameStoreStats();
     lines.push(`  Captured frames:  ${capturedFrames.entries} entries, ${formatBytes(capturedFrames.bytes)} (dataURL chars)`);

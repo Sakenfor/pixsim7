@@ -4,7 +4,7 @@ import type { GameLocationDetail } from '@lib/api';
 
 import { fromAssetResponse, getAsset, getAssetDisplayUrls, type AssetModel } from '@features/assets';
 
-import { useResolvedAssetMedia } from './useResolvedAssetMedia';
+import { useAuthenticatedMedia } from './useAuthenticatedMedia';
 
 export interface UseLocationBackgroundOptions {
   /** The currently loaded location detail. */
@@ -81,9 +81,7 @@ export function useLocationBackground(
   );
   const backgroundCandidate =
     overrideUrl || backgroundUrls?.previewUrl || backgroundUrls?.mainUrl;
-  const { mediaSrc: resolvedBackgroundSrc } = useResolvedAssetMedia({
-    mediaUrl: backgroundCandidate,
-  });
+  const { src: resolvedBackgroundSrc } = useAuthenticatedMedia(backgroundCandidate);
   const activeBackgroundSrc = resolvedBackgroundSrc || backgroundCandidate || null;
 
   const isBackgroundVideo = useMemo(() => {

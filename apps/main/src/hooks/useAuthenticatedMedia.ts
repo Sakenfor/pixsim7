@@ -7,9 +7,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { acquireAuthBlobRequest } from '@lib/media/authBlobRequestPool';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
 import { createBlobCache } from '@lib/media/blobCache';
-import { fetchAuthBlob, FetchAuthBlobHttpError } from '@lib/media/fetchAuthBlob';
+import { FetchAuthBlobHttpError } from '@lib/media/fetchAuthBlob';
 
 import { BACKEND_BASE } from '../lib/api/client';
 
@@ -129,11 +130,12 @@ export function useAuthenticatedMedia(
     setLoading(true);
     setError(false);
 
-    // Token attach, no-store, in-flight dedup, and the post-blob race
-    // re-check all live in fetchAuthBlob.  A missing token / non-OK status
-    // rejects — we map both to the error state, deliberately NOT falling
-    // back to a raw backend URL (that produces noisy 401s from <img>/<video>).
-    fetchAuthBlob(fullUrl, { cache })
+    // The request pool owns shared-request lifetime and cancellation; the
+    // fetch primitive owns token attach, no-store, and the post-blob race.
+    // Missing auth and non-OK responses map to error rather than falling back
+    // to a raw backend URL that would produce noisy 401s.
+    const request = acquireAuthBlobRequest(fullUrl, cache);
+    request.promise
       .then(({ blobUrl }) => {
         if (cancelled) return;
         setSrc(blobUrl);
@@ -153,6 +155,7 @@ export function useAuthenticatedMedia(
 
     return () => {
       cancelled = true;
+      request.release();
       // Blob URLs are NOT revoked here — the module-level LRU cache
       // keeps them alive so remounted components render instantly.
     };

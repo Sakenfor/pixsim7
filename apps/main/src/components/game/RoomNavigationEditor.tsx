@@ -49,7 +49,7 @@ import {
 } from '@features/assets';
 
 import { SceneGizmoMiniGame } from '@/components/minigames/SceneGizmoMiniGame';
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 import {
   addRoomCheckpoint,
@@ -883,8 +883,7 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
     [previewAsset],
   );
   const previewCandidate = previewUrls?.previewUrl || previewUrls?.mainUrl;
-  const { mediaSrc: previewSrc } = useResolvedAssetMedia({
-    mediaUrl: previewCandidate,
+  const { src: previewSrc } = useAuthenticatedMedia(previewCandidate, {
     mediaType: previewAsset?.mediaType === 'video' ? 'video' : 'image',
   });
 

@@ -1,7 +1,8 @@
 import { BACKEND_BASE } from '@/lib/api/client';
 import { isBackendUrl } from '@/lib/media/backendUrl';
 
-import { useResolvedAssetMedia } from './useResolvedAssetMedia';
+import { useAuthenticatedMedia } from './useAuthenticatedMedia';
+import { useMediaThumbnailFull } from './useMediaThumbnail';
 
 export interface UseMediaPreviewSourceOptions {
   mediaType: 'video' | 'image' | 'audio' | '3d_model';
@@ -27,21 +28,28 @@ export function useMediaPreviewSource(
 ): UseMediaPreviewSourceResult {
   const { mediaType, thumbUrl, previewUrl, remoteUrl, mediaActive } = options;
 
-  const { thumbSrc, thumbLoading, thumbFailed, thumbRetry } = useResolvedAssetMedia({
+  const {
+    src: thumbSrc,
+    loading: thumbLoading,
+    failed: thumbFailed,
+    retry: thumbRetry,
+  } = useMediaThumbnailFull(
     thumbUrl,
     previewUrl,
-    remoteUrl: mediaType === 'video' ? undefined : remoteUrl,
-  });
+    mediaType === 'video' ? undefined : remoteUrl,
+  );
 
   const rawVideoSrc = mediaType === 'video' ? (remoteUrl || undefined) : undefined;
   const isBackendVideoSrc = rawVideoSrc ? isBackendUrl(rawVideoSrc, BACKEND_BASE) : false;
   const resolvedMediaActive =
     mediaActive ?? (mediaType === 'video' && !thumbUrl && !previewUrl);
-  const { mediaSrc: resolvedVideoSrc } = useResolvedAssetMedia({
-    mediaUrl: isBackendVideoSrc ? rawVideoSrc : undefined,
-    mediaActive: resolvedMediaActive,
-    mediaType: 'video',
-  });
+  const { src: resolvedVideoSrc } = useAuthenticatedMedia(
+    isBackendVideoSrc ? rawVideoSrc : undefined,
+    {
+      active: resolvedMediaActive,
+      mediaType: 'video',
+    },
+  );
   // Gate both backend and external video src on mediaActive so <video>
   // elements unmount when the card scrolls out of viewport range.
   const videoSrc =

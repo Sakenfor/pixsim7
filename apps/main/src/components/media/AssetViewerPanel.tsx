@@ -11,6 +11,8 @@ import type { AssetRef } from '@pixsim7/shared.types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
+import { useMediaSuspended } from '@lib/media/mediaSuspendStore';
+import { useManagedVideoSource } from '@lib/media/videoDecoder';
 
 import {
   useAssetViewerStore,
@@ -26,7 +28,8 @@ import { ensurePanelMetadataRegistered, panelManager, usePanel } from '@features
 import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 import { PANEL_IDS } from '@features/panels/lib/panelIds';
 
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
+import { useMediaStreamSrc } from '@/hooks/useMediaStreamSrc';
 
 import { AssetViewerDockview } from './viewer';
 
@@ -59,30 +62,36 @@ export function AssetViewerPanel() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const isMobile = useIsMobileViewport();
+  const mediaSuspended = useMediaSuspended();
 
-  const assetSelectionValue = useMemo<AssetSelection>(
-    () => {
-      const refs = assetList
+  // The navigation list is stable across strip clicks. Build its refs only
+  // when the list itself changes instead of remapping the whole scope for
+  // every selected asset.
+  const assetListRefs = useMemo(
+    () =>
+      assetList
         .map((asset) => {
           const id = Number(asset?.id);
           return Number.isFinite(id) ? Ref.asset(id) : null;
         })
-        .filter((ref): ref is AssetRef => !!ref);
-      const currentId = currentAsset?.id;
-      const currentRef =
-        currentId != null && Number.isFinite(Number(currentId))
-          ? Ref.asset(Number(currentId))
-          : null;
-
-      return {
-        asset: currentAsset,
-        assets: assetList,
-        source: PANEL_IDS.assetViewer,
-        ref: currentRef ?? refs[0] ?? null,
-        refs,
-      };
-    },
-    [currentAsset, assetList],
+        .filter((ref): ref is AssetRef => !!ref),
+    [assetList],
+  );
+  const currentAssetRef = useMemo(() => {
+    const currentId = currentAsset?.id;
+    return currentId != null && Number.isFinite(Number(currentId))
+      ? Ref.asset(Number(currentId))
+      : null;
+  }, [currentAsset?.id]);
+  const assetSelectionValue = useMemo<AssetSelection>(
+    () => ({
+      asset: currentAsset,
+      assets: assetList,
+      source: PANEL_IDS.assetViewer,
+      ref: currentAssetRef ?? assetListRefs[0] ?? null,
+      refs: assetListRefs,
+    }),
+    [currentAsset, assetList, currentAssetRef, assetListRefs],
   );
 
   const assetSelectionProvider = useMemo(
@@ -150,11 +159,27 @@ export function AssetViewerPanel() {
   // actions in `viewerPanelCapabilityActions.ts` — user-rebindable via
   // settings, input-focus-gated through the shared shortcut hook.
 
-  const mediaTypeHint = currentAsset?.type === 'video' ? 'video' : 'image';
-  const { mediaSrc: mediaUrl } = useResolvedAssetMedia({
-    mediaUrl: currentAsset?.fullUrl || currentAsset?.url,
-    mediaType: mediaTypeHint,
-  });
+  // The docked viewer renders media inside MediaDisplay, which already streams
+  // videos and resolves images. Resolving it again here used to start an unused
+  // full-file authenticated blob fetch on every strip click / follow-latest
+  // update. Those stale response.blob() downloads kept running after selection
+  // changed and could accumulate many GB before the completed-blob LRU applied.
+  const fullscreenMediaUrl =
+    mode === 'fullscreen' ? currentAsset?.fullUrl || currentAsset?.url : undefined;
+  const fullscreenVideoUrl =
+    mode === 'fullscreen' && currentAsset?.type === 'video'
+      ? currentAsset.fullUrl || currentAsset._assetModel?.remoteUrl || currentAsset.url
+      : undefined;
+  const streamedVideoUrl = useMediaStreamSrc(fullscreenVideoUrl);
+  const { src: resolvedImageUrl } = useAuthenticatedMedia(
+    currentAsset?.type === 'image' ? fullscreenMediaUrl : undefined,
+    {
+      mediaType: 'image',
+      active: mode === 'fullscreen',
+    },
+  );
+  const fullscreenVideoSrc = mediaSuspended ? undefined : streamedVideoUrl;
+  const attachFullscreenVideo = useManagedVideoSource(fullscreenVideoSrc, videoRef);
 
   if (!currentAsset || mode === 'closed') {
     return null;
@@ -251,20 +276,25 @@ export function AssetViewerPanel() {
   const renderMedia = () => {
     if (currentAsset.type === 'video') {
       return (
-        <video
-          ref={videoRef}
-          src={mediaUrl}
-          className="max-w-full max-h-full object-contain rounded-lg"
-          controls
-          autoPlay={settings.autoPlayVideos}
-          loop={settings.loopVideos}
-        />
+        !mediaSuspended && (
+          <video
+            key={currentAsset.id}
+            ref={attachFullscreenVideo}
+            src={fullscreenVideoSrc}
+            className="max-w-full max-h-full object-contain rounded-lg"
+            controls
+            autoPlay={settings.autoPlayVideos}
+            loop={settings.loopVideos}
+            preload="metadata"
+            playsInline
+          />
+        )
       );
     }
 
     return (
       <img
-        src={mediaUrl}
+        src={resolvedImageUrl}
         alt={currentAsset.name}
         className="max-w-full max-h-full object-contain rounded-lg"
       />

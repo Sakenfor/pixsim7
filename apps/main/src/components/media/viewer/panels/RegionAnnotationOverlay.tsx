@@ -46,7 +46,7 @@ import {
   initPointWidths,
   CURVE_HIT,
 } from '@/components/interactive-surface/curveEditUtils';
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 import type { ViewerSettings } from '../types';
 
@@ -1172,9 +1172,7 @@ export function RegionAnnotationOverlay({
 
   // Use authenticated fetching for backend URLs
   const rawMediaUrl = asset.fullUrl || asset.url;
-  const { mediaSrc: resolvedMediaSrc, mediaLoading } = useResolvedAssetMedia({
-    mediaUrl: rawMediaUrl,
-  });
+  const { src: resolvedMediaSrc, loading: mediaLoading } = useAuthenticatedMedia(rawMediaUrl);
 
   const media = useMemo(
     () => ({

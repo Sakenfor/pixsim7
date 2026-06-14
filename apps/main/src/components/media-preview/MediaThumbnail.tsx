@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 import { getAssetDisplayUrls, type AssetModel } from '@features/assets';
 
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+import { useMediaThumbnailFull } from '@/hooks/useMediaThumbnail';
 
 import { MediaPreview } from './MediaPreview';
 
@@ -46,11 +46,11 @@ export function MediaThumbnail({
   const thumbCandidate = resolvedFromAsset?.thumbnailUrl ?? thumbnailUrl;
   const previewCandidate = resolvedFromAsset?.previewUrl;
   const mainCandidate = resolvedFromAsset?.mainUrl;
-  const { thumbSrc } = useResolvedAssetMedia({
-    thumbUrl: thumbCandidate,
-    previewUrl: previewCandidate,
-    remoteUrl: mainCandidate,
-  });
+  const { src: thumbSrc } = useMediaThumbnailFull(
+    thumbCandidate,
+    previewCandidate,
+    mainCandidate,
+  );
   const resolvedThumbnail = thumbSrc;
 
   /**

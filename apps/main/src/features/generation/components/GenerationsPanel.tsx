@@ -20,7 +20,7 @@ import { getGenerationSessionStore } from '@features/generation/stores/generatio
 import { useGenerationSettingsStore } from '@features/generation/stores/generationSettingsStore';
 
 import { MediaCard } from '@/components/media/MediaCard';
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+import { useMediaThumbnailFull } from '@/hooks/useMediaThumbnail';
 
 import { useBatchCancelGenerations } from '../hooks/useBatchCancelGenerations';
 import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
@@ -600,10 +600,10 @@ interface GenerationGroupSectionProps {
 function GroupAssetPreview({ assetId, size = 'sm' }: { assetId: number; size?: 'sm' | 'md' }) {
   const { asset, loading } = useAsset(assetId);
   const urls = asset ? getAssetDisplayUrls(asset) : undefined;
-  const { thumbSrc, thumbLoading } = useResolvedAssetMedia({
-    thumbUrl: urls?.thumbnailUrl,
-    previewUrl: urls?.previewUrl,
-  });
+  const { src: thumbSrc, loading: thumbLoading } = useMediaThumbnailFull(
+    urls?.thumbnailUrl,
+    urls?.previewUrl,
+  );
 
   const sizeClass = size === 'md' ? 'w-12 h-12 rounded-md' : 'w-7 h-7 rounded';
 

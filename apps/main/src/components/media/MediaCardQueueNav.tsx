@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
 
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 import type { MediaCardQueueConfig } from './MediaCard';
 
@@ -22,7 +22,7 @@ interface PopupPosition {
 }
 
 function QueueThumbnail({ url, alt }: { url: string; alt: string }) {
-  const { mediaSrc } = useResolvedAssetMedia({ mediaUrl: url });
+  const { src: mediaSrc } = useAuthenticatedMedia(url);
   return <img src={mediaSrc} alt={alt} className="w-full h-full object-cover" />;
 }
 

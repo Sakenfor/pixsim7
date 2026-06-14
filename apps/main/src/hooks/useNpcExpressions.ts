@@ -11,7 +11,7 @@ import type { Scene } from '@lib/registries';
 
 import { fromAssetResponse, getAsset, getAssetDisplayUrls, type AssetModel } from '@features/assets';
 
-import { useResolvedAssetMedia } from './useResolvedAssetMedia';
+import { useAuthenticatedMedia } from './useAuthenticatedMedia';
 
 export interface UseNpcExpressionsOptions {
   /** Scene currently in playback. Drives portrait asset resolution. */
@@ -131,9 +131,7 @@ export function useNpcExpressions(
     [npcPortraitAsset],
   );
   const npcPortraitCandidate = npcPortraitUrls?.previewUrl || npcPortraitUrls?.mainUrl;
-  const { mediaSrc: resolvedNpcPortraitSrc } = useResolvedAssetMedia({
-    mediaUrl: npcPortraitCandidate,
-  });
+  const { src: resolvedNpcPortraitSrc } = useAuthenticatedMedia(npcPortraitCandidate);
 
   return {
     activeNpcId,

@@ -18,7 +18,7 @@ import { Icon } from '@lib/icons';
 import { useAsset, getAssetDisplayUrls } from '@features/assets';
 
 
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+import { useMediaThumbnailFull } from '@/hooks/useMediaThumbnail';
 
 import { useBatchGenerationActions, type BatchActionKind } from '../hooks/useBatchGenerationActions';
 import { groupGenerations, type GenerationGroupBy } from '../lib/generationGrouping';
@@ -54,10 +54,10 @@ function retryableIds(items: GenerationModel[]): number[] {
 function GroupAssetThumb({ assetId }: { assetId: number }) {
   const { asset, loading } = useAsset(assetId);
   const urls = asset ? getAssetDisplayUrls(asset) : undefined;
-  const { thumbSrc, thumbLoading } = useResolvedAssetMedia({
-    thumbUrl: urls?.thumbnailUrl,
-    previewUrl: urls?.previewUrl,
-  });
+  const { src: thumbSrc, loading: thumbLoading } = useMediaThumbnailFull(
+    urls?.thumbnailUrl,
+    urls?.previewUrl,
+  );
 
   if (!loading && !asset) return null;
   if (loading || thumbLoading) {

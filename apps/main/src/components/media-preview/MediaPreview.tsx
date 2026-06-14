@@ -4,7 +4,7 @@ import { getAsset } from '@lib/api/assets';
 
 import { fromAssetResponse, getAssetDisplayUrls } from '@features/assets';
 
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 export interface MediaPreviewProps {
   /** Asset ID for fetching media */
@@ -26,7 +26,7 @@ export function MediaPreview({ assetId, type, url }: MediaPreviewProps) {
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const { mediaSrc, mediaLoading } = useResolvedAssetMedia({ mediaUrl: mediaUrl ?? undefined });
+  const { src: mediaSrc, loading: mediaLoading } = useAuthenticatedMedia(mediaUrl ?? undefined);
   const resolvedSrc = mediaSrc ?? undefined;
 
   // Fetch asset URL from API

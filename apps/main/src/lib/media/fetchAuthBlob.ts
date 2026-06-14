@@ -30,6 +30,11 @@ export interface FetchAuthBlobOptions {
   cache: BlobCache;
   /** Optional abort signal — caller owns timeout/cancellation policy. */
   signal?: AbortSignal;
+  /**
+   * Share an in-flight request through the cache. Defaults to true.
+   * Set false when the caller already owns a reference-counted request pool.
+   */
+  deduplicate?: boolean;
 }
 
 export interface FetchAuthBlobResult {
@@ -63,14 +68,14 @@ export class FetchAuthBlobNoAuthError extends Error {
  * - Backend URLs get a `Bearer` token (throws {@link FetchAuthBlobNoAuthError}
  *   if none is stored); external URLs are fetched with `mode: 'cors'`.
  * - Returns immediately from `cache` on a hit (`fromCache: true`).
- * - Concurrent calls for the same resolved URL share one in-flight request.
+ * - Concurrent calls share one in-flight request unless `deduplicate` is false.
  * - On a non-OK response, rejects with {@link FetchAuthBlobHttpError}.
  *
  * The returned blob URL is owned by `cache`; never revoke it directly.
  */
 export async function fetchAuthBlob(
   url: string,
-  { cache, signal }: FetchAuthBlobOptions,
+  { cache, signal, deduplicate = true }: FetchAuthBlobOptions,
 ): Promise<FetchAuthBlobResult> {
   const { fullUrl, isBackend } = resolveBackendUrl(url, BACKEND_BASE);
 
@@ -81,7 +86,7 @@ export async function fetchAuthBlob(
   const token = isBackend ? authService.getStoredToken() : null;
   if (isBackend && !token) throw new FetchAuthBlobNoAuthError();
 
-  const blobUrl = await cache.deduplicatedFetch(fullUrl, async () => {
+  const doFetch = async () => {
     // Another caller may have populated the cache while this request waited
     // in the dedup queue.
     const cachedAgain = cache.get(fullUrl);
@@ -106,7 +111,10 @@ export async function fetchAuthBlob(
     const objectUrl = URL.createObjectURL(blob);
     cache.set(fullUrl, objectUrl, blob.size);
     return objectUrl;
-  });
+  };
+  const blobUrl = await (deduplicate
+    ? cache.deduplicatedFetch(fullUrl, doFetch)
+    : doFetch());
 
   if (blobUrl === undefined) {
     // deduplicatedFetch's type allows undefined; our doFetch never returns it.

@@ -42,8 +42,8 @@ vi.mock('@features/contextHub', () => ({
 vi.mock('@/hooks/useMediaStreamSrc', () => ({
   useMediaStreamSrc: (url: string | undefined) => mocks.streamSrc(url),
 }));
-vi.mock('@/hooks/useResolvedAssetMedia', () => ({
-  useResolvedAssetMedia: () => ({ mediaSrc: mocks.imageSrc }),
+vi.mock('@/hooks/useAuthenticatedMedia', () => ({
+  useAuthenticatedMedia: () => ({ src: mocks.imageSrc }),
 }));
 
 import { MediaDisplay } from '../MediaDisplay';

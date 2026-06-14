@@ -25,7 +25,7 @@ import { interactionRegistry } from '@lib/registries';
 
 import { getAsset, fromAssetResponse, getAssetDisplayUrls, type AssetModel } from '@features/assets';
 
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 interface NpcSlotEditorProps {
   location: GameLocationDetail;
@@ -69,9 +69,7 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
     [backgroundAsset]
   );
   const backgroundCandidate = backgroundUrls?.previewUrl || backgroundUrls?.mainUrl;
-  const { mediaSrc: resolvedBackgroundSrc } = useResolvedAssetMedia({
-    mediaUrl: backgroundCandidate,
-  });
+  const { src: resolvedBackgroundSrc } = useAuthenticatedMedia(backgroundCandidate);
 
   // Load presets from world and global storage
   const presets = useMemo(() => {
