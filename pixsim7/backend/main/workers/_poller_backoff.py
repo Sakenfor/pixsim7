@@ -20,10 +20,12 @@ poller imports them as aliases; mutations are observed everywhere.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
 
 from pixsim7.backend.main.domain.enums import GenerationErrorCode
-from pixsim7.backend.main.shared.errors import ProviderError
+from pixsim7.backend.main.shared.errors import (
+    ProviderError,
+    iter_exception_chain as _iter_exception_chain,
+)
 
 
 @dataclass(slots=True)
@@ -57,17 +59,6 @@ _BACKOFF_DICT_MAX_SIZE = 2000
 # (terminal generations drop out of the processing snapshot, so their keys
 # are pruned by ``_prune_poll_backoff_dicts``).
 _adaptive_poll_schedule: dict[str, float] = {}
-
-
-def _iter_exception_chain(error: BaseException, *, max_depth: int = 8) -> Iterable[BaseException]:
-    current: BaseException | None = error
-    seen: set[int] = set()
-    depth = 0
-    while current is not None and id(current) not in seen and depth < max_depth:
-        yield current
-        seen.add(id(current))
-        current = current.__cause__ or current.__context__
-        depth += 1
 
 
 def _is_transient_network_error(error: Exception) -> bool:

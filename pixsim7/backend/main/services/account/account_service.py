@@ -4,7 +4,7 @@ AccountService - provider account selection and management
 Clean service for account pool management with normalized credit tracking
 """
 import re
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
@@ -1425,6 +1425,65 @@ class AccountService:
 
         return account
 
+    async def _locked_status_transition(
+        self,
+        account_id: int,
+        new_status: AccountStatus,
+        *,
+        log_event: str,
+        record_event: str,
+        log_level: str = "info",
+        skip_if_already: bool = False,
+        apply: Callable[[ProviderAccount], dict] | None = None,
+    ) -> ProviderAccount:
+        """Lock an account row, transition its status, log + record, commit.
+
+        Shared skeleton for the ``mark_*`` transitions. ``apply(account)`` runs
+        after the new status is set (e.g. to stamp ``provider_metadata``) and
+        may return extra structured fields to merge into the log line. With
+        ``skip_if_already`` the call is a no-op (returns the row) when the
+        account is already in ``new_status``.
+
+        Raises:
+            ResourceNotFoundError: Account not found
+        """
+        result = await self.db.execute(
+            select(ProviderAccount).where(
+                ProviderAccount.id == account_id
+            ).with_for_update()
+        )
+        account = result.scalar_one_or_none()
+
+        if not account:
+            raise ResourceNotFoundError("ProviderAccount", account_id)
+
+        if skip_if_already and account.status == new_status:
+            return account
+
+        previous_status = account.status
+        account.status = new_status
+        extra_log = apply(account) if apply else {}
+
+        getattr(logger, log_level)(
+            log_event,
+            account_id=account_id,
+            email=account.email,
+            provider_id=account.provider_id,
+            previous_status=previous_status.value if previous_status else None,
+            **extra_log,
+        )
+        AccountEventService.record(
+            record_event,
+            account_id,
+            provider_id=account.provider_id,
+            previous_status=previous_status.value if previous_status else None,
+        )
+
+        await self.db.commit()
+        await self.db.refresh(account)
+
+        return account
+
     async def mark_exhausted(self, account_id: int) -> ProviderAccount:
         """
         Mark account as exhausted (no credits remaining).
@@ -1438,37 +1497,12 @@ class AccountService:
         Raises:
             ResourceNotFoundError: Account not found
         """
-        query = select(ProviderAccount).where(
-            ProviderAccount.id == account_id
-        ).with_for_update()
-
-        result = await self.db.execute(query)
-        account = result.scalar_one_or_none()
-
-        if not account:
-            raise ResourceNotFoundError("ProviderAccount", account_id)
-
-        previous_status = account.status
-        account.status = AccountStatus.EXHAUSTED
-
-        logger.info(
-            "account_marked_exhausted",
-            account_id=account_id,
-            email=account.email,
-            provider_id=account.provider_id,
-            previous_status=previous_status.value if previous_status else None,
-        )
-        AccountEventService.record(
-            "marked_exhausted",
+        return await self._locked_status_transition(
             account_id,
-            provider_id=account.provider_id,
-            previous_status=previous_status.value if previous_status else None,
+            AccountStatus.EXHAUSTED,
+            log_event="account_marked_exhausted",
+            record_event="marked_exhausted",
         )
-
-        await self.db.commit()
-        await self.db.refresh(account)
-
-        return account
 
     async def mark_blocked(
         self,
@@ -1484,49 +1518,26 @@ class AccountService:
         provider_metadata for traceability. Idempotent — a no-op (returns the
         row) if the account is already DISABLED.
         """
-        query = select(ProviderAccount).where(
-            ProviderAccount.id == account_id
-        ).with_for_update()
+        def _stamp_block_reason(account: ProviderAccount) -> dict:
+            metadata = dict(account.provider_metadata or {})
+            metadata["disabled_reason"] = "provider_account_blocked"
+            metadata["disabled_at"] = datetime.now(timezone.utc).isoformat()
+            if err_code is not None:
+                metadata["disabled_err_code"] = err_code
+            if err_msg:
+                metadata["disabled_err_msg"] = str(err_msg)[:200]
+            account.provider_metadata = metadata
+            return {"err_code": err_code}
 
-        result = await self.db.execute(query)
-        account = result.scalar_one_or_none()
-
-        if not account:
-            raise ResourceNotFoundError("ProviderAccount", account_id)
-
-        if account.status == AccountStatus.DISABLED:
-            return account
-
-        previous_status = account.status
-        account.status = AccountStatus.DISABLED
-        metadata = dict(account.provider_metadata or {})
-        metadata["disabled_reason"] = "provider_account_blocked"
-        metadata["disabled_at"] = datetime.now(timezone.utc).isoformat()
-        if err_code is not None:
-            metadata["disabled_err_code"] = err_code
-        if err_msg:
-            metadata["disabled_err_msg"] = str(err_msg)[:200]
-        account.provider_metadata = metadata
-
-        logger.warning(
-            "account_marked_blocked",
-            account_id=account_id,
-            email=account.email,
-            provider_id=account.provider_id,
-            previous_status=previous_status.value if previous_status else None,
-            err_code=err_code,
-        )
-        AccountEventService.record(
-            "marked_blocked",
+        return await self._locked_status_transition(
             account_id,
-            provider_id=account.provider_id,
-            previous_status=previous_status.value if previous_status else None,
+            AccountStatus.DISABLED,
+            log_event="account_marked_blocked",
+            record_event="marked_blocked",
+            log_level="warning",
+            skip_if_already=True,
+            apply=_stamp_block_reason,
         )
-
-        await self.db.commit()
-        await self.db.refresh(account)
-
-        return account
 
     # ===== CREDIT MANAGEMENT =====
 

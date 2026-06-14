@@ -10,20 +10,9 @@ exactly this code+message and is rejected at login.
 """
 from __future__ import annotations
 
-from typing import Iterable
+from pixsim7.backend.main.shared.errors import iter_exception_chain
 
 _PIXVERSE_BLOCKED_ERR_CODE = 10001
-
-
-def _exception_chain(error: BaseException, *, max_depth: int = 8) -> Iterable[BaseException]:
-    current: BaseException | None = error
-    seen: set[int] = set()
-    depth = 0
-    while current is not None and id(current) not in seen and depth < max_depth:
-        yield current
-        seen.add(id(current))
-        current = current.__cause__ or current.__context__
-        depth += 1
 
 
 def detect_account_blocked(error: BaseException) -> tuple[bool, int | None, str | None]:
@@ -34,7 +23,7 @@ def detect_account_blocked(error: BaseException) -> tuple[bool, int | None, str 
     to string matching in case the error was re-wrapped without those
     attributes. Returns ``(False, None, None)`` when not a block.
     """
-    for exc in _exception_chain(error):
+    for exc in iter_exception_chain(error):
         err_code = getattr(exc, "err_code", None)
         err_msg = getattr(exc, "err_msg", None)
         if (

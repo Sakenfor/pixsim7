@@ -298,6 +298,28 @@ class JobCancelledError(JobError):
         self.job_id = job_id
 
 
+# ===== UTILITIES =====
+
+from typing import Iterable
+
+
+def iter_exception_chain(error: BaseException, *, max_depth: int = 8) -> Iterable[BaseException]:
+    """Yield ``error`` and its cause/context chain (deduped, depth-bounded).
+
+    Walks ``__cause__`` then ``__context__`` so callers can inspect a wrapped
+    exception (e.g. SQLAlchemy -> asyncpg, or a re-raised ProviderError) for
+    attributes or message markers without caring how deep the wrapping goes.
+    """
+    current: BaseException | None = error
+    seen: set[int] = set()
+    depth = 0
+    while current is not None and id(current) not in seen and depth < max_depth:
+        yield current
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+        depth += 1
+
+
 # ===== ASSET ERRORS =====
 
 class AssetError(PixSimError):
