@@ -104,6 +104,7 @@ from .routes import (
     debug_router,
     identity_router,
     window_router,
+    workers_router,
 )
 from .dependencies import set_container
 
@@ -369,6 +370,7 @@ app.include_router(squash_router)
 app.include_router(debug_router)
 app.include_router(identity_router)
 app.include_router(window_router)
+app.include_router(workers_router)
 
 # Debug control endpoint — runtime log level/domain changes without restart
 try:

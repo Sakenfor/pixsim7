@@ -303,6 +303,34 @@ def _stdlib_service_processor(logger, method_name, event_dict):
     return event_dict
 
 
+# Map stdlib logger-name prefixes to canonical domains. Foreign (non-structlog)
+# loggers such as SQLAlchemy and Alembic cannot call ``.bind(domain=...)``
+# themselves, so we infer their domain from the logger name instead.
+_LOGGER_NAME_DOMAIN_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("sqlalchemy", "sql"),
+    ("alembic", "sql"),
+)
+
+
+def _logger_name_domain_processor(logger, method_name, event_dict):
+    """Infer a ``domain`` from the stdlib logger name when none is bound.
+
+    Native structlog loggers bind their own domain via ``.bind(domain=...)``;
+    foreign stdlib records (SQLAlchemy, Alembic, …) can't, so map their logger
+    name prefix to a canonical domain here. Runs in ``foreign_pre_chain`` after
+    ``_stdlib_service_processor`` has populated ``logger_name`` and before
+    ``_domain_filter_processor`` so domain filtering / discovery sees it.
+    """
+    if event_dict.get("domain"):
+        return event_dict
+    name = event_dict.get("logger_name") or ""
+    for prefix, domain in _LOGGER_NAME_DOMAIN_PREFIXES:
+        if name == prefix or name.startswith(prefix + "."):
+            event_dict["domain"] = domain
+            break
+    return event_dict
+
+
 def _make_stdlib_renderer(renderer):
     """Wrap a renderer to handle dropped events and clean internal keys."""
     def wrapper(logger, method_name, event_dict):
@@ -353,6 +381,7 @@ def configure_stdlib_root_logger() -> None:
     foreign_pre_chain: list = [
         structlog.stdlib.ExtraAdder(),
         _stdlib_service_processor,
+        _logger_name_domain_processor,  # infer domain (e.g. sql) from logger name
         structlog.processors.TimeStamper(fmt="iso", key="timestamp"),
         structlog.processors.add_log_level,
         _drop_safe(_global_level_filter_processor),

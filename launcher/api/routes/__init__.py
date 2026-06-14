@@ -13,6 +13,7 @@ from .squash import router as squash_router
 from .debug import router as debug_router
 from .identity import router as identity_router
 from .window import router as window_router
+from .workers import router as workers_router
 
 __all__ = [
     'services_router',
@@ -28,4 +29,5 @@ __all__ = [
     'debug_router',
     'identity_router',
     'window_router',
+    'workers_router',
 ]

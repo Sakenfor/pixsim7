@@ -49,7 +49,7 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_status import (
     PIXVERSE_BATCH_FAILED_SENTINEL,
 )
 from pixsim7.backend.main.services.provider.cdn_probe import cdn_head_probe
-logger = configure_logging("provider_service").bind(channel="pipeline")
+logger = configure_logging("provider_service").bind(channel="pipeline", domain="provider")
 
 
 def _extract_provider_error_code(error: ProviderError) -> str | None:

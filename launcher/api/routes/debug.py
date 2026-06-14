@@ -101,6 +101,10 @@ class LoggingConfig(BaseModel):
     log_db_min_level: str
     log_retention_days: int
     log_domain_levels: dict[str, str]
+    # "backend" = canonical persisted config; "launcher-local" = degraded
+    # fallback served from the launcher-api process's own in-memory logging
+    # state when the backend (the persisted-config owner) is unreachable.
+    source: str = "backend"
 
 
 class LoggingConfigPatch(BaseModel):
@@ -110,10 +114,46 @@ class LoggingConfigPatch(BaseModel):
     log_domain_levels: Optional[dict[str, str]] = None
 
 
+def _local_logging_config() -> "LoggingConfig":
+    """Build a degraded config from the launcher-api process's own logging state.
+
+    Used when the backend (which owns the canonical persisted config) is
+    unreachable. Only the fields the launcher process actually knows about are
+    populated — ``log_db_min_level`` and ``log_retention_days`` are backend/DB
+    concerns and left empty/zero, which the UI renders as disabled in this mode.
+    """
+    from pixsim_logging.domains import (
+        get_global_level_display,
+        get_domain_config_display,
+    )
+    return LoggingConfig(
+        log_level=get_global_level_display(),
+        log_db_min_level="",
+        log_retention_days=0,
+        log_domain_levels=get_domain_config_display(),
+        source="launcher-local",
+    )
+
+
+# Backend failures that mean "can't reach the canonical config" → fall back to
+# the launcher-local state rather than erroring the whole Debug panel.
+_OFFLINE_FALLBACK_CODES = frozenset({401, 502, 503, 504})
+
+
 @router.get("/logging/config", response_model=LoggingConfig)
 async def get_logging_config(request: Request):
-    """Read the canonical persisted logging config from the backend."""
-    data = await _backend_request("GET", _backend_url(request), "/api/v1/admin/logging/config")
+    """Read the canonical persisted logging config from the backend.
+
+    When the backend is unreachable (or no launcher token exists yet), fall
+    back to the launcher-api's own in-memory logging state so the Debug panel
+    stays usable for the launcher process itself.
+    """
+    try:
+        data = await _backend_request("GET", _backend_url(request), "/api/v1/admin/logging/config")
+    except HTTPException as e:
+        if e.status_code in _OFFLINE_FALLBACK_CODES:
+            return _local_logging_config()
+        raise
     return LoggingConfig(**data)
 
 
@@ -155,12 +195,20 @@ async def patch_logging_config(
     so its propagation badge reflects reality without waiting for a restart.
     """
     payload = body.model_dump(exclude_none=True)
-    data = await _backend_request(
-        "PATCH",
-        _backend_url(request),
-        "/api/v1/admin/logging/config",
-        json_body=payload,
-    )
+    try:
+        data = await _backend_request(
+            "PATCH",
+            _backend_url(request),
+            "/api/v1/admin/logging/config",
+            json_body=payload,
+        )
+    except HTTPException as e:
+        if e.status_code in _OFFLINE_FALLBACK_CODES:
+            # Backend offline — apply the change to the launcher-api process
+            # only (not persisted) so launcher logging can still be tuned.
+            _apply_local_logging_config(payload)
+            return _local_logging_config()
+        raise
     _apply_local_logging_config(data)
     return LoggingConfig(**data)
 

@@ -30,6 +30,13 @@ export interface LoggingConfig {
   log_db_min_level: string
   log_retention_days: number
   log_domain_levels: Record<string, string>
+  /**
+   * 'backend' = canonical persisted config; 'launcher-local' = degraded
+   * fallback served from the launcher-api process when the backend is
+   * unreachable. In launcher-local mode edits apply to the launcher process
+   * only and are NOT persisted; DB level + retention are backend-owned.
+   */
+  source?: 'backend' | 'launcher-local'
 }
 
 export type LoggingConfigPatch = Partial<LoggingConfig>

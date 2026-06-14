@@ -45,6 +45,10 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           transparent
             ? 'bg-transparent'
             : 'bg-white dark:bg-neutral-800',
+          // Native dropdown popup: theme the <option> list so it doesn't fall
+          // back to the OS-default white background (low contrast in dark mode).
+          '[&>option]:bg-white [&>option]:text-neutral-900',
+          'dark:[&>option]:bg-neutral-800 dark:[&>option]:text-neutral-100',
           // Size variants
           size === 'xs' && 'text-[11px] px-2 py-0.5',
           size === 'sm' && 'text-xs px-2 py-1.5',

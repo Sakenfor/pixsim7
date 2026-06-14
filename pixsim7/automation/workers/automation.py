@@ -21,7 +21,7 @@ from pixsim7.automation.locator import (
     get_provider_metadata,
 )
 
-logger = configure_logging("worker").bind(channel="cron")
+logger = configure_logging("worker").bind(channel="cron", domain="cron")
 
 
 def _preset_uses_pixverse_ad_vars(actions: list) -> bool:

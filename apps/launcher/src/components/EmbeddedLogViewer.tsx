@@ -107,13 +107,13 @@ export function EmbeddedLogViewer() {
           </button>
         </div>
 
-        <Select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} size="xs" width="auto" className="text-gray-300">
+        <Select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} size="xs" width="auto" className="text-gray-100">
           {(filters?.level_options ?? ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG']).map((l) => (
             <option key={l} value={l}>{l || 'All levels'}</option>
           ))}
         </Select>
 
-        <div className="w-36"><Input size="xs" className="text-gray-300"
+        <div className="w-36"><Input size="xs" className="text-gray-100"
           type="text" value={searchFilter} onChange={(e) => setSearchFilter(e.target.value)}
           placeholder="Filter…  a | b  for OR" /></div>
 

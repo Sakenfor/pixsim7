@@ -5,10 +5,11 @@ Manages WebSocket connections and broadcasts generation status updates to connec
 """
 from typing import Dict, List, Set
 from fastapi import WebSocket, WebSocketDisconnect
-import logging
 import json
 
-logger = logging.getLogger(__name__)
+from pixsim_logging import configure_logging
+
+logger = configure_logging("websocket_manager").bind(domain="websocket")
 
 
 class ConnectionManager:

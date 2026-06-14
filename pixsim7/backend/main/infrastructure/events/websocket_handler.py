@@ -7,7 +7,7 @@ from pixsim7.backend.main.infrastructure.events.bus import event_bus, Event
 from pixsim7.backend.main.infrastructure.websocket import connection_manager
 from pixsim_logging import configure_logging
 
-logger = configure_logging("websocket_handler")
+logger = configure_logging("websocket_handler").bind(domain="websocket")
 
 
 async def broadcast_generation_event(event: Event):
@@ -34,7 +34,7 @@ async def broadcast_generation_event(event: Event):
     # NOTE: Currently WebSocket auth is not implemented, so user_id is hardcoded.
     # Once proper auth is added, we can use broadcast_to_user() for filtering.
     logger.info(
-        "[WebSocket] Broadcasting event to clients",
+        "Broadcasting event to clients",
         extra={
             "event_type": event.event_type,
             "generation_id": message.get('generation_id'),
@@ -58,7 +58,7 @@ async def broadcast_bridge_event(event: Event):
         "timestamp": event.timestamp.isoformat(),
     }
     logger.info(
-        "[WebSocket] Broadcasting bridge event to clients",
+        "Broadcasting bridge event to clients",
         extra={
             "event_type": event.event_type,
             "connected": event_data.get("connected"),
@@ -91,7 +91,7 @@ async def broadcast_asset_event(event: Event):
 
     # Broadcast to all connected clients
     logger.info(
-        "[WebSocket] Broadcasting asset event to clients",
+        "Broadcasting asset event to clients",
         extra={
             "event_type": event.event_type,
             "asset_id": message.get('asset_id'),
@@ -109,7 +109,7 @@ def register_websocket_handlers():
     Call this during app startup to enable WebSocket broadcasts.
     """
     # Generation/Job events
-    logger.info("[WebSocket] Registering WebSocket event handlers...")
+    logger.info("Registering WebSocket event handlers...")
     event_bus.subscribe("job:created", broadcast_generation_event)
     event_bus.subscribe("job:started", broadcast_generation_event)
     event_bus.subscribe("job:completed", broadcast_generation_event)
@@ -128,7 +128,7 @@ def register_websocket_handlers():
     # bridgeStatusStore so it doesn't have to wait for its 15s poll.
     event_bus.subscribe("bridge:status_changed", broadcast_bridge_event)
 
-    logger.info("[WebSocket] Event handlers registered for: job:*, asset:*, bridge:*")
+    logger.info("Event handlers registered for: job:*, asset:*, bridge:*")
 
     # Log the event bus state
-    logger.info(f"[WebSocket] Event bus has {len(event_bus._handlers)} event types with subscribers")
+    logger.info(f"Event bus has {len(event_bus._handlers)} event types with subscribers")

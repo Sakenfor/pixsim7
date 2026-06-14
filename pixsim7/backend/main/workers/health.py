@@ -282,6 +282,23 @@ async def get_worker_family_health() -> Dict[str, Optional[Dict[str, Any]]]:
     return results
 
 
+async def _queue_depth(redis, key: str) -> int:
+    """Count pending jobs in an arq queue.
+
+    arq stores its queues as sorted sets (score = scheduled run time), so ZCARD
+    is correct; LLEN raises WRONGTYPE on a non-empty queue and silently reads 0
+    only while the queue happens to be empty. Falls back to LLEN for any
+    list-based/legacy queue, and to 0 if the key is absent or unreadable.
+    """
+    try:
+        return await redis.zcard(key)
+    except Exception:
+        try:
+            return await redis.llen(key)
+        except Exception:
+            return 0
+
+
 async def get_queue_stats() -> Dict[str, Any]:
     """
     Get ARQ queue statistics from Redis
@@ -295,11 +312,11 @@ async def get_queue_stats() -> Dict[str, Any]:
         redis = await get_redis()
 
         # Pending jobs can exist in fresh, retry, or legacy default queue names.
-        pending_fresh = await redis.llen(GENERATION_FRESH_QUEUE_NAME)
-        pending_retry = await redis.llen(GENERATION_RETRY_QUEUE_NAME)
-        pending_simulation = await redis.llen(SIMULATION_SCHEDULER_QUEUE_NAME)
-        pending_automation = await redis.llen(AUTOMATION_QUEUE_NAME)
-        pending_legacy = await redis.llen("arq:queue:default")
+        pending_fresh = await _queue_depth(redis, GENERATION_FRESH_QUEUE_NAME)
+        pending_retry = await _queue_depth(redis, GENERATION_RETRY_QUEUE_NAME)
+        pending_simulation = await _queue_depth(redis, SIMULATION_SCHEDULER_QUEUE_NAME)
+        pending_automation = await _queue_depth(redis, AUTOMATION_QUEUE_NAME)
+        pending_legacy = await _queue_depth(redis, "arq:queue:default")
         pending = pending_fresh + pending_retry + pending_simulation + pending_automation + pending_legacy
 
         # ARQ in-progress keying differs by version/configuration.

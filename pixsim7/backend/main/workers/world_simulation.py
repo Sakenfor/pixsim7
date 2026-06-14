@@ -27,7 +27,7 @@ from pixsim7.backend.main.infrastructure.database.session import get_async_sessi
 from pixsim7.backend.simulation import WorldScheduler
 from pixsim7.backend.game import GameWorld, GameWorldState
 
-logger = configure_logging("worker.world_sim").bind(channel="cron")
+logger = configure_logging("worker.world_sim").bind(channel="cron", domain="cron")
 
 # Configuration
 def _coerce_bool(value: Any) -> bool:

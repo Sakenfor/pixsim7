@@ -25,6 +25,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
   // Filters — initialized from meta once loaded
   const [level, setLevel] = useState('')
   const [service, setService] = useState('')
+  const [channel, setChannel] = useState('')
   const [search, setSearch] = useState('')
   const [minutes, setMinutes] = useState(30)
   const [limit, setLimit] = useState(500)
@@ -51,6 +52,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
     const af = preset.api_filters
     setLevel((af.level as string) ?? '')
     setService((af.service as string) ?? '')
+    setChannel((af.channel as string) ?? '')
     setSearch('')
     setMinutes((af.time_range as number) ?? 15)
     setLimit((af.limit as number) ?? 250)
@@ -60,6 +62,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
     setActivePreset('')
     setLevel('')
     setService('')
+    setChannel('')
     setSearch('')
     setMinutes(30)
     setLimit(500)
@@ -73,6 +76,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
       const params: LogQueryParams = { limit }
       if (level) params.level = level
       if (service) params.service = service
+      if (channel) params.channel = channel
       // Only send plain search to backend; operator searches (| !) are applied client-side
       const hasOperators = search.includes('|') || search.includes('!')
       if (search && !hasOperators) params.search = search
@@ -96,7 +100,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
     } finally {
       setLoading(false)
     }
-  }, [level, service, search, minutes, limit, activePreset, filters])
+  }, [level, service, channel, search, minutes, limit, activePreset, filters])
 
   useEffect(() => { fetchLogs() }, [fetchLogs])
 
@@ -142,7 +146,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
           <Select
             value={activePreset}
             onChange={(e) => e.target.value ? applyPreset(e.target.value) : clearPreset()}
-            size="xs" width="auto" className="text-gray-300"
+            size="xs" width="auto" className="text-gray-100"
             title="Filter presets"
           >
             <option value="">Presets...</option>
@@ -152,19 +156,19 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
           </Select>
         )}
 
-        <Select value={level} onChange={(e) => setLevel(e.target.value)} size="xs" width="auto" className="text-gray-300">
+        <Select value={level} onChange={(e) => setLevel(e.target.value)} size="xs" width="auto" className="text-gray-100">
           {(filters?.level_options ?? ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG']).map((l) => (
             <option key={l} value={l}>{l || 'All levels'}</option>
           ))}
         </Select>
 
-        <Select value={service} onChange={(e) => setService(e.target.value)} size="xs" width="auto" className="text-gray-300">
+        <Select value={service} onChange={(e) => setService(e.target.value)} size="xs" width="auto" className="text-gray-100">
           {(filters?.service_options ?? ['', 'api', 'worker']).map((s) => (
             <option key={s} value={s}>{s || 'All services'}</option>
           ))}
         </Select>
 
-        <div className="w-40"><Input size="xs" className="text-gray-300"
+        <div className="w-40"><Input size="xs" className="text-gray-100"
           type="text" value={search} onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter…  a | b  for OR" /></div>
 
@@ -179,13 +183,13 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
           ))}
         </div>
 
-        <Select value={limit} onChange={(e) => setLimit(Number(e.target.value))} size="xs" width="auto" className="text-gray-300">
+        <Select value={limit} onChange={(e) => setLimit(Number(e.target.value))} size="xs" width="auto" className="text-gray-100">
           {(filters?.limit_options ?? [100, 250, 500, 1000]).map((l) => (
             <option key={l} value={l}>{l} rows</option>
           ))}
         </Select>
 
-        <Select value={autoRefresh} onChange={(e) => setAutoRefresh(Number(e.target.value))} size="xs" width="auto" className="text-gray-300">
+        <Select value={autoRefresh} onChange={(e) => setAutoRefresh(Number(e.target.value))} size="xs" width="auto" className="text-gray-100">
           {(filters?.auto_refresh_options ?? [{ value: 0, label: 'Off' }, { value: 5000, label: '5s' }]).map((r) => (
             <option key={r.value} value={r.value}>Refresh: {r.label}</option>
           ))}

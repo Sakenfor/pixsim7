@@ -123,27 +123,27 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
           </button>
         </div>
 
-        <Select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} size="xs" width="auto" className="text-gray-300">
+        <Select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} size="xs" width="auto" className="text-gray-100">
           {(filters?.level_options ?? ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG']).map((l) => (
             <option key={l} value={l}>{l || 'All levels'}</option>
           ))}
         </Select>
 
         {discovered.events.length > 0 && (
-          <Select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)} size="xs" width="auto" className="text-gray-300">
+          <Select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)} size="xs" width="auto" className="text-gray-100">
             <option value="">All events</option>
             {discovered.events.map((ev) => <option key={ev} value={ev}>{ev}</option>)}
           </Select>
         )}
 
         {discovered.domains.length > 0 && (
-          <Select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} size="xs" width="auto" className="text-gray-300">
+          <Select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} size="xs" width="auto" className="text-gray-100">
             <option value="">All domains</option>
             {discovered.domains.map((d) => <option key={d} value={d}>{d}</option>)}
           </Select>
         )}
 
-        <div className="w-36"><Input size="xs" className="text-gray-300"
+        <div className="w-36"><Input size="xs" className="text-gray-100"
           type="text" value={searchFilter} onChange={(e) => setSearchFilter(e.target.value)}
           placeholder="Filter…  a | b  for OR" /></div>
 

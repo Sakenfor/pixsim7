@@ -46,7 +46,7 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver impor
 from pixsim7.backend.main.shared.operation_mapping import get_image_operations
 from pixsim_logging import configure_logging
 
-logger = configure_logging("pixverse_image_recovery").bind(channel="pipeline")
+logger = configure_logging("pixverse_image_recovery").bind(channel="pipeline", domain="provider")
 
 # Re-arm started_at offset: older than the 90s PROCESSING-salvage elapsed
 # gate (so that fallback path is reachable on the first poll tick even if

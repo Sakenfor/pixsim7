@@ -1,6 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  content: [
+    './index.html',
+    './src/**/*.{ts,tsx}',
+    // Shared UI components are consumed as source (@pixsim7/shared.ui → src/index.ts),
+    // so Tailwind must scan them or their classes (dark: variants, [&>option]:…) never emit.
+    '../../packages/shared/ui/src/**/*.{ts,tsx}',
+  ],
   darkMode: 'class',
   theme: {
     extend: {
