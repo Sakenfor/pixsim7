@@ -183,7 +183,7 @@ function AssetSetChip({
       <div className="flex flex-col gap-0.5 p-1">
         {/* Column headers */}
         <div className="flex items-center gap-2 px-1.5 pb-0.5 text-[10px] font-medium text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
-          <span className="w-4 text-center flex-shrink-0" title="Filter: show only assets in this set">F</span>
+          <span className="w-4 flex items-center justify-center flex-shrink-0" title="Filter: show only assets in this set"><Icon name="eye" size={11} /></span>
           <span className="w-4 text-center flex-shrink-0" title="Target: add assets to this set">T</span>
           <span className="flex-1">Set</span>
           <button
@@ -212,14 +212,19 @@ function AssetSetChip({
                   : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
               }`}
             >
-              {/* Filter checkbox */}
-              <input
-                type="checkbox"
-                checked={isFiltered}
-                onChange={() => onToggleFilter(s.id)}
+              {/* Filter toggle (eye = showing only this set) */}
+              <button
+                type="button"
+                onClick={() => onToggleFilter(s.id)}
                 title={isFiltered ? 'Stop filtering by this set' : 'Filter gallery to this set'}
-                className="accent-blue-500 w-4 h-4 flex-shrink-0 cursor-pointer"
-              />
+                className={`flex-shrink-0 w-4 h-4 flex items-center justify-center transition-colors ${
+                  isFiltered
+                    ? 'text-blue-500'
+                    : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+                }`}
+              >
+                <Icon name={isFiltered ? 'eye' : 'eyeOff'} size={13} />
+              </button>
               {/* Target toggle (multi-select, capped) */}
               <button
                 type="button"
