@@ -2,7 +2,23 @@ import { useMemo, useState } from 'react';
 
 import { Icon, Icons, type IconName } from '@lib/icons';
 
-const ALL_ICON_NAMES = Object.keys(Icons) as IconName[];
+/**
+ * Distinct icons for display. The registry intentionally keeps alias keys that
+ * resolve to the same component (e.g. `zoomIn` and `zoom-in`) as safety nets so
+ * either name style works at call sites — but the picker should show each glyph
+ * once. Collapse by component identity, preferring the camelCase alias (no
+ * `-`/`_`) for a stable, conventional label.
+ */
+const ALL_ICON_NAMES: IconName[] = (() => {
+  const byComponent = new Map<unknown, IconName>();
+  for (const [name, component] of Object.entries(Icons) as [IconName, unknown][]) {
+    const existing = byComponent.get(component);
+    if (!existing || (/[-_]/.test(existing) && !/[-_]/.test(name))) {
+      byComponent.set(component, name);
+    }
+  }
+  return [...byComponent.values()].sort((a, b) => a.localeCompare(b));
+})();
 
 export interface IconPickerProps {
   /** Currently-selected icon name, if any. */
