@@ -84,13 +84,33 @@ class UpdateWorldMetaRequest(BaseModel):
     meta: Dict[str, Any]
 
 
-async def _get_owned_world(world_id: int, user: CurrentUser, game_world_service: GameWorldSvc):
-    """Fetch a world and ensure the requesting user owns it."""
+async def _get_owned_world(
+    world_id: int,
+    user: CurrentUser,
+    game_world_service: GameWorldSvc,
+    *,
+    for_write: bool = False,
+):
+    """Fetch a world and ensure the requesting user owns it.
 
+    ``for_write=True`` additionally enforces scoped-agent authorization: a
+    profile-restricted agent (``default_scopes`` containing ``world:<id>``) may
+    only mutate worlds within its grant, even among worlds its delegating user
+    owns. Reads stay ungated. Unrestricted agents / humans / admins are
+    unaffected. Plan ``scoped-agent-authorization`` (cp3).
+    """
     owner_user_id = _owner_user_id_or_403(user)
     world = await game_world_service.get_world(world_id)
     if not world or world.owner_user_id != owner_user_id:
         raise HTTPException(status_code=404, detail="World not found")
+    if for_write:
+        from pixsim7.backend.main.services.ownership.scope_authz import (
+            ResourceScope,
+            assert_scope_access,
+        )
+        await assert_scope_access(
+            game_world_service.db, user, ResourceScope("world", world_id)
+        )
     return world
 
 
@@ -368,7 +388,7 @@ async def resync_projections(
     scene (graph) belonging to the world and re-runs the projection sync
     functions.  Idempotent — unchanged projections are skipped.
     """
-    await _get_owned_world(world_id, user, game_world_service)
+    await _get_owned_world(world_id, user, game_world_service, for_write=True)
 
     result: ResyncResult = await resync_world_projections(game_world_service.db, world_id)
 
@@ -394,7 +414,7 @@ async def advance_world_time(
     This is primarily intended for development and editor tools; production
     environments may advance time via background jobs instead.
     """
-    world = await _get_owned_world(world_id, user, game_world_service)
+    world = await _get_owned_world(world_id, user, game_world_service, for_write=True)
 
     try:
         state = await game_world_service.advance_world_time(
@@ -425,7 +445,7 @@ async def update_world_meta(
     Schema validation now happens at service layer for defense in depth,
     preventing direct service calls from bypassing validation.
     """
-    await _get_owned_world(world_id, user, game_world_service)
+    await _get_owned_world(world_id, user, game_world_service, for_write=True)
 
     # Update the world metadata (service layer validates)
     try:
@@ -1108,7 +1128,7 @@ async def evolve_world_schemas(
 
     For breaking changes, manual migration is required.
     """
-    world = await _get_owned_world(world_id, user, game_world_service)
+    world = await _get_owned_world(world_id, user, game_world_service, for_write=True)
 
     # Validate new schemas
     try:
@@ -1190,7 +1210,7 @@ async def migrate_world_schema(
 
     Returns the old and new version numbers.
     """
-    world = await _get_owned_world(world_id, user, game_world_service)
+    world = await _get_owned_world(world_id, user, game_world_service, for_write=True)
 
     if not world.meta:
         raise HTTPException(status_code=400, detail="No schema to migrate")
@@ -1297,7 +1317,7 @@ async def update_scheduler_config(
 
     Only specified fields are updated (partial update).
     """
-    world = await _get_owned_world(world_id, user, game_world_service)
+    world = await _get_owned_world(world_id, user, game_world_service, for_write=True)
 
     # Get current config or default
     from pixsim7.backend.main.domain.game.schemas import (
@@ -1448,7 +1468,7 @@ async def tick_world_manually(
     """
     from pixsim7.backend.simulation import WorldScheduler
 
-    world = await _get_owned_world(world_id, user, game_world_service)
+    world = await _get_owned_world(world_id, user, game_world_service, for_write=True)
 
     # Get current world state
     world_state = await game_world_service.get_world_state(world_id)

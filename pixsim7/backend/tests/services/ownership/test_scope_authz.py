@@ -132,3 +132,37 @@ class TestAssertScopeAccess:
         db = _FakeDB(profile=_Profile(assigned_plans=["p1"]))
         # A plan restriction must not bleed into contract access.
         await assert_scope_access(db, AGENT_PLAN_P1, ResourceScope("contract", "c1"))  # no raise
+
+
+# ── cp3: WORLD scope via default_scopes ("world:<id>") ───────────
+
+
+class TestWorldScopeViaDefaultScopes:
+    @pytest.mark.asyncio
+    async def test_in_scope_world_passes(self):
+        db = _FakeDB(profile=_Profile(default_scopes=["world:42"]))
+        # int world id is coerced to str at the ResourceScope boundary.
+        await assert_scope_access(db, AGENT_PLAN_P1, ResourceScope("world", 42))  # no raise
+
+    @pytest.mark.asyncio
+    async def test_out_of_scope_world_denied(self):
+        db = _FakeDB(profile=_Profile(default_scopes=["world:42"]))
+        with pytest.raises(HTTPException) as exc:
+            await assert_scope_access(db, AGENT_PLAN_P1, ResourceScope("world", 99))
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_null_default_scopes_unrestricted(self):
+        db = _FakeDB(profile=_Profile(default_scopes=None))
+        await assert_scope_access(db, AGENT_PLAN_P1, ResourceScope("world", 7))  # no raise
+
+    @pytest.mark.asyncio
+    async def test_world_grant_does_not_narrow_plans(self):
+        # default_scopes restricting worlds must leave plan access unrestricted.
+        db = _FakeDB(profile=_Profile(default_scopes=["world:42"]))
+        await assert_scope_access(db, AGENT_PLAN_P1, ResourceScope("plan", "any-plan"))  # no raise
+
+    @pytest.mark.asyncio
+    async def test_wildcard_world_scope_allows_any_world(self):
+        db = _FakeDB(profile=_Profile(default_scopes=["world:*"]))
+        await assert_scope_access(db, AGENT_PLAN_P1, ResourceScope("world", 123))  # no raise
