@@ -22,12 +22,21 @@ import { validateAndLog } from './utils/validation';
 const isDev = import.meta.env?.DEV ?? false;
 
 /**
- * A single auto-stacked badge group (e.g. the top-right column). Capped to the
- * card via maxHeight/maxWidth so an over-long stack scrolls within the card
- * edge instead of spilling past it. Pointer events are only captured while the
- * stack actually overflows — otherwise the gaps between badges stay
- * click-through to the card, as before. Overflow is measured (ResizeObserver +
- * child-count) so the scroll affordance appears exactly when needed.
+ * Max length of a badge stack before it scrolls, in px (~5 compact badges).
+ * Clamped to the card via `min(100%, …)` so it never exceeds the card, but on
+ * a tall card it folds well before reaching the far edge instead of sprawling
+ * the full height.
+ */
+const STACK_MAX_EXTENT = 'min(100%, 132px)';
+
+/**
+ * A single auto-stacked badge group (e.g. the top-right column). Capped via
+ * {@link STACK_MAX_EXTENT} so an over-long stack scrolls within a short region
+ * at the anchor edge instead of spilling down/across the whole card. Pointer
+ * events are only captured while the stack actually overflows — otherwise the
+ * gaps between badges stay click-through to the card, as before. Overflow is
+ * measured (ResizeObserver + child-count) so the scroll affordance appears
+ * exactly when needed.
  */
 function StackGroupContainer({
   group,
@@ -71,8 +80,8 @@ function StackGroupContainer({
         alignItems: group.alignItems,
         zIndex: group.maxPriority,
         ...(isColumn
-          ? { maxHeight: '100%', overflowY: 'auto', overflowX: 'visible' }
-          : { maxWidth: '100%', overflowX: 'auto', overflowY: 'visible' }),
+          ? { maxHeight: STACK_MAX_EXTENT, overflowY: 'auto', overflowX: 'visible' }
+          : { maxWidth: STACK_MAX_EXTENT, overflowX: 'auto', overflowY: 'visible' }),
         // Only capture pointer events (needed for scrolling) when the stack
         // overflows; otherwise keep the gaps click-through to the card.
         pointerEvents: overflowing ? 'auto' : 'none',
