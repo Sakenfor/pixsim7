@@ -22,12 +22,12 @@ import { validateAndLog } from './utils/validation';
 const isDev = import.meta.env?.DEV ?? false;
 
 /**
- * Max length of a badge stack before it scrolls, in px (~5 compact badges).
- * Clamped to the card via `min(100%, …)` so it never exceeds the card, but on
- * a tall card it folds well before reaching the far edge instead of sprawling
- * the full height.
+ * Max length of a badge stack before it scrolls (~5 compact badges). A plain
+ * px value (not a `%`) so it clamps regardless of ancestor sizing — the bracket
+ * wrapper has auto height, so a `min(100%, …)` cap would fail to resolve and the
+ * stack would sprawl the full card height instead of folding.
  */
-const STACK_MAX_EXTENT = 'min(100%, 132px)';
+const STACK_MAX_EXTENT = 132;
 
 /** Curved "more items" bracket, matching the ButtonGroup overflow affordance. */
 function StackOverflowBracket({
