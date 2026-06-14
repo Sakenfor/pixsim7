@@ -444,17 +444,22 @@ async def refresh_stale_account_credits(ctx: dict) -> dict:
     )
     from pixsim7.backend.main.domain.providers.registry import registry
 
+    from pixsim7.backend.main.services.provider.blocked_detection import (
+        detect_account_blocked,
+    )
+
     refreshed = 0
     skipped = 0
     failed = 0
     errors = 0
+    disabled = 0
 
     now = datetime.now(timezone.utc)
     stale_threshold = now - timedelta(seconds=_CREDIT_STALE_THRESHOLD_SECONDS)
     provider = registry.get("pixverse")
     if not hasattr(provider, "get_credits"):
         logger.warning("credit_sweep_no_get_credits", provider_id="pixverse")
-        return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 0}
+        return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 0, "disabled": 0}
 
     # Phase 1: select the due accounts in a short read-only session and capture
     # their (id, email) as plain values. The per-account work in phase 2 then
@@ -483,7 +488,7 @@ async def refresh_stale_account_credits(ctx: dict) -> dict:
 
             if not accounts:
                 logger.debug("credit_sweep_idle", msg="No eligible Pixverse accounts")
-                return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 0}
+                return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 0, "disabled": 0}
 
             examined = 0
             for account in accounts:
@@ -511,7 +516,7 @@ async def refresh_stale_account_credits(ctx: dict) -> dict:
             skipped += total_accounts - examined
     except Exception as e:
         logger.error("credit_sweep_fatal", error=str(e), exc_info=True)
-        return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 1}
+        return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 1, "disabled": 0}
 
     # Phase 2: refresh each due account in an isolated session.
     for acct_id, acct_email in due:
@@ -522,9 +527,29 @@ async def refresh_stale_account_credits(ctx: dict) -> dict:
                 if account is None:
                     continue
 
-                credits_data = await provider.get_credits(
-                    account, retry_on_session_error=True, force_refresh=True,
-                )
+                try:
+                    credits_data = await provider.get_credits(
+                        account, retry_on_session_error=True, force_refresh=True,
+                    )
+                except Exception as exc:
+                    # A provider-confirmed block/ban (Pixverse 10001 "account is
+                    # blocked") is permanent until manually re-enabled — disable
+                    # the account so it drops out of generation selection AND
+                    # this sweep, instead of erroring on it every cycle.
+                    is_blocked, b_code, b_msg = detect_account_blocked(exc)
+                    if is_blocked:
+                        await account_service.mark_blocked(
+                            acct_id, err_code=b_code, err_msg=b_msg,
+                        )
+                        disabled += 1
+                        logger.warning(
+                            "credit_sweep_account_disabled_blocked",
+                            account_id=acct_id,
+                            email=acct_email,
+                            err_code=b_code,
+                        )
+                        continue
+                    raise
 
                 if credits_data:
                     updated_credits = await apply_provider_credit_snapshot(
@@ -581,6 +606,7 @@ async def refresh_stale_account_credits(ctx: dict) -> dict:
         "skipped": skipped,
         "failed": failed,
         "errors": errors,
+        "disabled": disabled,
     }
     logger.info("credit_sweep_complete", total=total_accounts, **stats)
     return stats

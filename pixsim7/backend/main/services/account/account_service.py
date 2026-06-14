@@ -1470,6 +1470,64 @@ class AccountService:
 
         return account
 
+    async def mark_blocked(
+        self,
+        account_id: int,
+        *,
+        err_code: int | None = None,
+        err_msg: str | None = None,
+    ) -> ProviderAccount:
+        """Disable an account the provider reports as blocked/banned.
+
+        Sets status -> DISABLED so the account is excluded from generation
+        selection and the periodic credit sweep, and stamps the reason on
+        provider_metadata for traceability. Idempotent — a no-op (returns the
+        row) if the account is already DISABLED.
+        """
+        query = select(ProviderAccount).where(
+            ProviderAccount.id == account_id
+        ).with_for_update()
+
+        result = await self.db.execute(query)
+        account = result.scalar_one_or_none()
+
+        if not account:
+            raise ResourceNotFoundError("ProviderAccount", account_id)
+
+        if account.status == AccountStatus.DISABLED:
+            return account
+
+        previous_status = account.status
+        account.status = AccountStatus.DISABLED
+        metadata = dict(account.provider_metadata or {})
+        metadata["disabled_reason"] = "provider_account_blocked"
+        metadata["disabled_at"] = datetime.now(timezone.utc).isoformat()
+        if err_code is not None:
+            metadata["disabled_err_code"] = err_code
+        if err_msg:
+            metadata["disabled_err_msg"] = str(err_msg)[:200]
+        account.provider_metadata = metadata
+
+        logger.warning(
+            "account_marked_blocked",
+            account_id=account_id,
+            email=account.email,
+            provider_id=account.provider_id,
+            previous_status=previous_status.value if previous_status else None,
+            err_code=err_code,
+        )
+        AccountEventService.record(
+            "marked_blocked",
+            account_id,
+            provider_id=account.provider_id,
+            previous_status=previous_status.value if previous_status else None,
+        )
+
+        await self.db.commit()
+        await self.db.refresh(account)
+
+        return account
+
     # ===== CREDIT MANAGEMENT =====
 
     async def set_credit(
