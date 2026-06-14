@@ -169,6 +169,29 @@ class TestWorldScopeViaDefaultScopes:
         await assert_scope_access(db, AGENT_PLAN_P1, ResourceScope("world", 123))  # no raise
 
 
+# ── project scope via default_scopes ("project:<id>") ────────────
+
+
+class TestProjectScopeViaDefaultScopes:
+    @pytest.mark.asyncio
+    async def test_in_scope_project_passes(self):
+        db = _FakeDB(profile=_Profile(default_scopes=["project:12"]))
+        await assert_scope_access(db, AGENT_PLAN_P1, ResourceScope("project", 12))  # no raise
+
+    @pytest.mark.asyncio
+    async def test_out_of_scope_project_denied(self):
+        db = _FakeDB(profile=_Profile(default_scopes=["project:12"]))
+        with pytest.raises(HTTPException) as exc:
+            await assert_scope_access(db, AGENT_PLAN_P1, ResourceScope("project", 99))
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_world_scope_does_not_narrow_projects(self):
+        # A world grant must leave project access unrestricted (distinct kinds).
+        db = _FakeDB(profile=_Profile(default_scopes=["world:42"]))
+        await assert_scope_access(db, AGENT_PLAN_P1, ResourceScope("project", 7))  # no raise
+
+
 # ── cp4: contract discovery filtering (allowed_contracts) ────────
 
 

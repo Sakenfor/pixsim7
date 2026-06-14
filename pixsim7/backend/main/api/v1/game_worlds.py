@@ -114,6 +114,25 @@ async def _get_owned_world(
     return world
 
 
+async def _assert_project_write_scope(
+    user: CurrentUser, game_world_service: GameWorldSvc, project_id: int
+) -> None:
+    """Scoped-agent gate for project-snapshot writes (rename/duplicate/delete).
+
+    A profile-restricted agent (``default_scopes`` containing ``project:<id>``)
+    may only mutate projects within its grant. Ownership is still enforced by
+    the storage layer's owner_user_id filter; this narrows further. Runs before
+    the storage mutation. Plan ``scoped-agent-authorization`` (project scope).
+    """
+    from pixsim7.backend.main.services.ownership.scope_authz import (
+        ResourceScope,
+        assert_scope_access,
+    )
+    await assert_scope_access(
+        game_world_service.db, user, ResourceScope("project", project_id)
+    )
+
+
 async def _build_world_detail(
     world,
     game_world_service: GameWorldSvc,
@@ -607,6 +626,7 @@ async def rename_saved_project(
 ) -> SavedGameProjectSummary:
     storage = GameProjectStorageService(game_world_service.db)
     owner_user_id = _owner_user_id_or_403(user)
+    await _assert_project_write_scope(user, game_world_service, project_id)
     try:
         project = await storage.rename_project(
             owner_user_id=owner_user_id,
@@ -633,6 +653,7 @@ async def duplicate_saved_project(
 ) -> SavedGameProjectSummary:
     storage = GameProjectStorageService(game_world_service.db)
     owner_user_id = _owner_user_id_or_403(user)
+    await _assert_project_write_scope(user, game_world_service, project_id)
     try:
         project = await storage.duplicate_project(
             owner_user_id=owner_user_id,
@@ -658,6 +679,7 @@ async def delete_saved_project(
 ) -> Response:
     storage = GameProjectStorageService(game_world_service.db)
     owner_user_id = _owner_user_id_or_403(user)
+    await _assert_project_write_scope(user, game_world_service, project_id)
     deleted = await storage.delete_project(owner_user_id=owner_user_id, project_id=project_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="project_not_found")
