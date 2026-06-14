@@ -10,7 +10,7 @@ That indirection is what keeps the later collaboration options additive
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,9 +19,15 @@ from pixsim7.common.scope_grants import (
     ScopeGrant,
     assert_can_access,
     build_grants_from_profile,
+    can_access,
 )
 
-__all__ = ["ResourceScope", "load_scope_grants", "assert_scope_access"]
+__all__ = [
+    "ResourceScope",
+    "load_scope_grants",
+    "assert_scope_access",
+    "filter_allowed_contracts",
+]
 
 
 async def load_scope_grants(db: AsyncSession, principal: Any) -> tuple[ScopeGrant, ...]:
@@ -59,3 +65,32 @@ async def assert_scope_access(
     """
     grants = await load_scope_grants(db, principal)
     assert_can_access(principal, scope, grants=grants)
+
+
+async def filter_allowed_contracts(
+    db: AsyncSession, principal: Any, contract_ids: Iterable[str]
+) -> set[str]:
+    """Return the subset of ``contract_ids`` the principal may use.
+
+    Used to narrow contract *discovery* (the ``/meta/contracts`` listing) so a
+    profile-restricted agent's MCP client only registers tools for its
+    ``allowed_contracts``. This is a provisioning/discovery control, not a hard
+    per-call gate — contracts are a discovery layer, not a server dispatch
+    chokepoint, so the authoritative write limits remain the resource-scope
+    gates (plan/world). ``allowed_contracts`` NULL ⇒ every id passes; humans /
+    admins / unrestricted agents get the full set. Plan
+    ``scoped-agent-authorization`` (cp4).
+    """
+    ids = list(contract_ids)
+    grants = await load_scope_grants(db, principal)
+    if not grants:
+        # No grant source narrows anything (unauthenticated caller, human,
+        # admin, or unrestricted agent) ⇒ full visibility. This also avoids
+        # the resolver's ``principal is None`` deny-path hiding everything from
+        # anonymous /meta/contracts callers.
+        return set(ids)
+    return {
+        cid
+        for cid in ids
+        if can_access(principal, ResourceScope("contract", cid), grants=grants)
+    }

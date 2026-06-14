@@ -31,6 +31,7 @@ from sqlalchemy import Text, cast, select, func, distinct, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_current_user_optional, get_database
+from pixsim7.backend.main.services.ownership.scope_authz import filter_allowed_contracts
 from pixsim7.backend.main.services.meta.agent_dispatch import extract_response_text
 from pixsim7.backend.main.domain.docs.models import AgentActivityLog
 from pixsim7.backend.main.services.meta.contract_registry import (
@@ -358,6 +359,8 @@ async def list_contract_endpoints(
         None,
         description="Filter by audience: 'user' or 'dev'. Omit for all.",
     ),
+    principal=Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_database),
 ) -> ContractsIndexResponse:
     """
     Contract discovery graph with live agent activity overlay.
@@ -437,6 +440,16 @@ async def list_contract_endpoints(
         if audience_filter and audience_filter not in contract.audience:
             continue
         contracts.append(contract)
+
+    # Scoped-agent contract provisioning: a profile-restricted agent discovers
+    # only its allowed_contracts (NULL = all). The MCP client builds its
+    # toolset from this listing, so omitting a contract means the agent's tools
+    # for it are never registered. Discovery/provisioning control, not a hard
+    # per-call gate (contracts aren't a server dispatch point); authoritative
+    # write limits stay the resource-scope gates. Plan
+    # ``scoped-agent-authorization`` (cp4).
+    allowed_ids = await filter_allowed_contracts(db, principal, [c.id for c in contracts])
+    contracts = [c for c in contracts if c.id in allowed_ids]
 
     return ContractsIndexResponse(
         version=CONTRACTS_INDEX_VERSION,

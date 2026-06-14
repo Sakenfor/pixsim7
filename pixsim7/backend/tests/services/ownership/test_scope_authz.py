@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from pixsim7.backend.main.services.ownership.scope_authz import (
     ResourceScope,
     assert_scope_access,
+    filter_allowed_contracts,
     load_scope_grants,
 )
 
@@ -166,3 +167,44 @@ class TestWorldScopeViaDefaultScopes:
     async def test_wildcard_world_scope_allows_any_world(self):
         db = _FakeDB(profile=_Profile(default_scopes=["world:*"]))
         await assert_scope_access(db, AGENT_PLAN_P1, ResourceScope("world", 123))  # no raise
+
+
+# ── cp4: contract discovery filtering (allowed_contracts) ────────
+
+
+ALL_CONTRACTS = ["plans.management", "prompts.authoring", "devtools.codegen"]
+
+
+class TestFilterAllowedContracts:
+    @pytest.mark.asyncio
+    async def test_restricted_agent_sees_only_allowed(self):
+        db = _FakeDB(profile=_Profile(allowed_contracts=["plans.management"]))
+        allowed = await filter_allowed_contracts(db, AGENT_PLAN_P1, ALL_CONTRACTS)
+        assert allowed == {"plans.management"}
+
+    @pytest.mark.asyncio
+    async def test_null_allowed_contracts_sees_all(self):
+        db = _FakeDB(profile=_Profile(allowed_contracts=None))
+        allowed = await filter_allowed_contracts(db, AGENT_PLAN_P1, ALL_CONTRACTS)
+        assert allowed == set(ALL_CONTRACTS)
+
+    @pytest.mark.asyncio
+    async def test_empty_allowed_contracts_sees_none(self):
+        db = _FakeDB(profile=_Profile(allowed_contracts=[]))
+        allowed = await filter_allowed_contracts(db, AGENT_PLAN_P1, ALL_CONTRACTS)
+        assert allowed == set()
+
+    @pytest.mark.asyncio
+    async def test_human_sees_all_without_fetch(self):
+        db = _FakeDB(profile=_Profile(allowed_contracts=[]))
+        human = _Principal(is_agent=False)
+        allowed = await filter_allowed_contracts(db, human, ALL_CONTRACTS)
+        assert allowed == set(ALL_CONTRACTS)
+        assert db.get_calls == 0
+
+    @pytest.mark.asyncio
+    async def test_none_principal_sees_all(self):
+        # Unauthenticated /meta/contracts callers (no principal) are unfiltered.
+        db = _FakeDB(profile=_Profile(allowed_contracts=["plans.management"]))
+        allowed = await filter_allowed_contracts(db, None, ALL_CONTRACTS)
+        assert allowed == set(ALL_CONTRACTS)
