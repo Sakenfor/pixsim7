@@ -105,6 +105,7 @@ import { ShadowAnalysisPopover } from './ShadowAnalysisPopover';
 import { ShadowTextarea } from './ShadowTextarea';
 import { RoleBadge } from './shared/RoleBadge';
 import { SimilarPromptsPopover } from './SimilarPromptsPopover';
+import { VariableEditModal } from './VariableEditModal';
 import { VariableEditPopover } from './VariableEditPopover';
 
 type PromptComposerMode = 'text' | 'blocks';
@@ -385,9 +386,12 @@ export function PromptComposer({
   const layoutTriggerRef = useRef<HTMLButtonElement>(null);
   const [showVariablesMenu, setShowVariablesMenu] = useState(false);
   const variablesTriggerRef = useRef<HTMLButtonElement>(null);
+  // Library editor target: a name for edit mode, '' for create mode, null = closed.
+  const [variableEditorTarget, setVariableEditorTarget] = useState<string | null>(null);
   const {
     entries: savedVariableEntries,
     saveVariable,
+    renameVariable,
     deleteVariable,
   } = usePromptVariables();
   const savedVariableNames = useMemo(
@@ -1963,35 +1967,84 @@ export function PromptComposer({
             triggerRef={variablesTriggerRef}
             className="min-w-[200px] max-w-[280px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
           >
-            <div className="px-2 pt-1 pb-0.5 text-[10px] uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
-              Insert variable
+            <div className="flex items-center justify-between gap-2 px-2 pt-1 pb-0.5">
+              <span className="text-[10px] uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                Variables
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowVariablesMenu(false);
+                  setVariableEditorTarget('');
+                }}
+                className="inline-flex items-center gap-1 text-[10px] text-violet-600 dark:text-violet-400 hover:underline"
+              >
+                <Icon name="plus" size={11} /> New
+              </button>
             </div>
             {savedVariableEntries.length === 0 ? (
               <div className="px-2 py-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-                No saved variables yet. Save one from the analysis panel.
+                No saved variables yet. Use “New” to create one.
               </div>
             ) : (
               savedVariableEntries.map((entry) => (
-                <DropdownItem
+                <div
                   key={entry.name}
-                  icon={<Icon name="code" size={14} />}
-                  onClick={() => {
-                    insertVariable(entry.name);
-                    setShowVariablesMenu(false);
-                  }}
+                  className="group flex items-center gap-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
                 >
-                  <span className="flex flex-col">
-                    <span className="font-mono">{entry.name}</span>
-                    {entry.description && (
-                      <span className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate">
-                        {entry.description}
-                      </span>
-                    )}
-                  </span>
-                </DropdownItem>
+                  <button
+                    type="button"
+                    title={`Insert ${entry.name}`}
+                    onClick={() => {
+                      insertVariable(entry.name);
+                      setShowVariablesMenu(false);
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1 text-left"
+                  >
+                    <Icon name="code" size={14} className="shrink-0 text-neutral-400" />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="font-mono text-xs">{entry.name}</span>
+                      {entry.description && (
+                        <span className="truncate text-[10px] text-neutral-400 dark:text-neutral-500">
+                          {entry.description}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    title={`Edit ${entry.name}`}
+                    onClick={() => {
+                      setShowVariablesMenu(false);
+                      setVariableEditorTarget(entry.name);
+                    }}
+                    className="mr-1 shrink-0 rounded p-1 text-neutral-400 opacity-0 transition-opacity hover:bg-neutral-200 hover:text-neutral-700 group-hover:opacity-100 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+                  >
+                    <Icon name="edit" size={13} />
+                  </button>
+                </div>
               ))
             )}
           </Popover>
+          {variableEditorTarget !== null &&
+            (() => {
+              const entry = variableEditorTarget
+                ? savedVariableEntries.find((e) => e.name === variableEditorTarget)
+                : null;
+              return (
+                <VariableEditModal
+                  isOpen
+                  editingName={variableEditorTarget || null}
+                  initialDescription={entry?.description}
+                  initialValue={entry?.value}
+                  initialTransform={entry?.transform}
+                  onClose={() => setVariableEditorTarget(null)}
+                  saveVariable={saveVariable}
+                  renameVariable={renameVariable}
+                  deleteVariable={deleteVariable}
+                />
+              );
+            })()}
         </div>
 
         <button

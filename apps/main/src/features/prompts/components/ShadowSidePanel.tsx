@@ -5,9 +5,9 @@
  * Uses DisclosureSection for collapsible nested categories.
  * Collapses to a thin strip with a sparkles icon toggle.
  */
-import { Button, DisclosureSection, Input, Modal, useToast, useUiCollapsed } from '@pixsim7/shared.ui';
+import { DisclosureSection, useToast, useUiCollapsed } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -19,13 +19,11 @@ import {
   extractPrimitiveMatches,
   type CandidateWithPrimitiveMatch,
 } from '../lib/parsePrimitiveMatch';
-import { groupVariablesByEntity } from '../lib/promptVariableName';
 import {
   buildVariableTransformMap,
   buildVariableValueMap,
   resolvePromptVariables,
 } from '../lib/resolvePromptVariables';
-import { getVariableClassVisual } from '../lib/variableClassVisuals';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptBlockCandidate } from '../types';
 
@@ -261,17 +259,8 @@ export function ShadowSidePanel({
   const {
     variables: savedVariables,
     entries: savedEntries,
-    loading: loadingSavedVariables,
     saveVariable,
-    renameVariable,
-    deleteVariable,
   } = usePromptVariables();
-  const [editingVariable, setEditingVariable] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState('');
-  const [descriptionDraft, setDescriptionDraft] = useState('');
-  const [valueDraft, setValueDraft] = useState('');
-  const [variableError, setVariableError] = useState<string | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const toast = useToast();
 
   // Scroll the pinned role section into view within the panel's own scroll
@@ -342,12 +331,6 @@ export function ShadowSidePanel({
     if (Array.isArray(hinted)) return hinted;
     return detectedVariables.filter((name) => !savedVariableSet.has(name));
   }, [result?.variableHints?.unsaved_detected, detectedVariables, savedVariableSet]);
-  // Stats view: saved + detected grouped by entity (ACTOR1 → DETAILS, POSE, …).
-  // Derived only — see lib/promptVariableName.
-  const variableGroups = useMemo(
-    () => groupVariablesByEntity(savedEntries, detectedVariables),
-    [savedEntries, detectedVariables],
-  );
   // Phase-2 resolved preview: expand variables that have a value. Null when
   // resolution is a no-op (no var with a value appears in the prompt), so the
   // section only shows when there's something to preview.
@@ -362,23 +345,6 @@ export function ShadowSidePanel({
     return resolved !== source ? resolved : null;
   }, [result?.analyzedPrompt, savedEntries]);
 
-  const openVariableModal = (name: string) => {
-    const entry = savedEntries.find((item) => item.name === name);
-    setEditingVariable(name);
-    setRenameDraft(name);
-    setDescriptionDraft(entry?.description ?? '');
-    setValueDraft(entry?.value ?? '');
-    setVariableError(null);
-    setConfirmingDelete(false);
-  };
-  const closeVariableModal = () => {
-    setEditingVariable(null);
-    setRenameDraft('');
-    setDescriptionDraft('');
-    setValueDraft('');
-    setVariableError(null);
-    setConfirmingDelete(false);
-  };
   const handleSaveVariable = async (rawName: string) => {
     const name = rawName.trim().toUpperCase();
     if (!name) return;
@@ -392,67 +358,6 @@ export function ShadowSidePanel({
       return;
     }
     toast.error(resultSave.message ?? `Failed to save ${name}`);
-  };
-  const handleSaveVariableEdit = async () => {
-    if (!editingVariable) return;
-    const nextName = renameDraft.trim().toUpperCase();
-    if (!nextName) {
-      setVariableError('Name is required.');
-      return;
-    }
-    const original = savedEntries.find((item) => item.name === editingVariable);
-    const nextDescription = descriptionDraft.trim();
-    const nextValue = valueDraft.trim();
-    const descriptionChanged = nextDescription !== (original?.description ?? '');
-    const valueChanged = nextValue !== (original?.value ?? '');
-
-    // Rename first (the backend preserves description/value through a rename),
-    // then persist field changes via an allow-existing upsert.
-    let finalName = editingVariable;
-    if (nextName !== editingVariable) {
-      const resultRename = await renameVariable(editingVariable, nextName);
-      if (!resultRename.ok) {
-        setVariableError(
-          resultRename.code === 'duplicate'
-            ? `"${nextName}" already exists. Delete it first or pick another name.`
-            : resultRename.message ?? 'Rename failed.',
-        );
-        return;
-      }
-      finalName = nextName;
-    }
-
-    if (descriptionChanged || valueChanged || finalName !== editingVariable) {
-      const resultDescription = await saveVariable(finalName, {
-        allowExisting: true,
-        description: nextDescription,
-        value: nextValue,
-      });
-      if (!resultDescription.ok) {
-        setVariableError(resultDescription.message ?? 'Failed to save variable.');
-        return;
-      }
-    }
-
-    toast.success(`Saved ${finalName}`);
-    closeVariableModal();
-  };
-  const handleDeleteVariable = async () => {
-    if (!editingVariable) return;
-    // Two-step inline confirm in place of a blocking window.confirm.
-    if (!confirmingDelete) {
-      setConfirmingDelete(true);
-      return;
-    }
-    const name = editingVariable;
-    const resultDelete = await deleteVariable(name);
-    if (resultDelete.ok) {
-      toast.success(`Deleted ${name}`);
-      closeVariableModal();
-      return;
-    }
-    setConfirmingDelete(false);
-    setVariableError(resultDelete.message ?? 'Delete failed.');
   };
 
   // Group candidates by role
@@ -701,8 +606,10 @@ export function ShadowSidePanel({
           </>
         )}
 
-        {/* Variables */}
-        {(detectedVariables.length > 0 || savedVariables.length > 0 || loadingSavedVariables) && (
+        {/* Variables detected in this prompt — click to save to your library.
+            Library management (edit/value/transform/delete) lives in the
+            composer's Variables menu. */}
+        {detectedVariables.length > 0 && (
           <>
             <div className="h-px bg-neutral-200 dark:bg-neutral-700 mx-0.5 my-1" />
             <DisclosureSection
@@ -711,7 +618,7 @@ export function ShadowSidePanel({
                 <SectionLabel
                   dotClass="bg-emerald-500"
                   label="Variables"
-                  count={savedVariables.length}
+                  count={detectedVariables.length}
                 />
               }
               defaultOpen
@@ -719,130 +626,31 @@ export function ShadowSidePanel({
               bordered
             >
               <div className="space-y-1">
-                {loadingSavedVariables && (
-                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                    Loading saved variables...
-                  </div>
-                )}
-                {detectedVariables.length > 0 && (
-                  <div className="space-y-0.5">
-                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                      Detected
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {detectedVariables.map((name) => {
-                        const isSaved = !unsavedDetected.includes(name);
-                        return (
-                          <button
-                            key={`detected-${name}`}
-                            type="button"
-                            onClick={() => handleSaveVariable(name)}
-                            className={clsx(
-                              'px-1.5 py-0.5 rounded border text-[10px] font-mono transition-colors',
-                              isSaved
-                                ? 'border-emerald-300/80 dark:border-emerald-700/70 text-emerald-700 dark:text-emerald-300 bg-emerald-50/70 dark:bg-emerald-900/20'
-                                : 'border-neutral-300/80 dark:border-neutral-700/80 text-neutral-700 dark:text-neutral-300 hover:border-violet-300 dark:hover:border-violet-600 hover:bg-violet-50/70 dark:hover:bg-violet-900/20',
-                            )}
-                            title={
-                              isSaved
-                                ? `${name} is saved`
-                                : `Save ${name} as a known variable`
-                            }
-                          >
-                            {name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                {savedVariables.length > 0 && (
-                  <div className="space-y-0.5">
-                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                      Saved
-                    </div>
-                    <div className="space-y-0.5">
-                      {savedEntries.map((entry) => (
-                        <button
-                          key={`saved-${entry.name}`}
-                          type="button"
-                          onClick={() => openVariableModal(entry.name)}
-                          className="w-full flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[10px] border border-neutral-300/70 dark:border-neutral-700/70 bg-white/70 dark:bg-neutral-800/40 hover:border-violet-300 dark:hover:border-violet-600 transition-colors"
-                          title={entry.description ? `${entry.name} — ${entry.description}` : `Edit ${entry.name}`}
-                        >
-                          <span className="font-mono shrink-0">{entry.name}</span>
-                          {entry.description && (
-                            <span className="truncate text-neutral-500 dark:text-neutral-400 italic">
-                              {entry.description}
-                            </span>
-                          )}
-                          <Icon name="edit" size={10} className="ml-auto shrink-0 text-neutral-400" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {variableGroups.length > 1 && (
-                  <div className="space-y-0.5">
-                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                      By entity
-                    </div>
-                    <div className="space-y-1">
-                      {variableGroups.map((group) => (
-                        <div
-                          key={`entity-${group.entity}`}
-                          className="rounded border border-neutral-200/70 dark:border-neutral-700/60 px-1.5 py-1"
-                        >
-                          <div className="flex items-center gap-1 text-[10px]">
-                            {(() => {
-                              const visual = getVariableClassVisual(group.entity);
-                              if (!visual) return null;
-                              return (
-                                <span className="inline-flex items-center gap-1">
-                                  <span
-                                    className={clsx('w-1.5 h-1.5 rounded-full', visual.dotClass)}
-                                  />
-                                  <Icon name={visual.icon} size={11} className="text-neutral-500" />
-                                </span>
-                              );
-                            })()}
-                            <span className="font-mono font-semibold text-neutral-700 dark:text-neutral-200">
-                              {group.entity}
-                            </span>
-                            <span className="ml-auto text-neutral-400 tabular-nums">
-                              {group.members.length}
-                            </span>
-                          </div>
-                          <div className="mt-0.5 flex flex-wrap gap-1">
-                            {group.members.map((member) => (
-                              <button
-                                key={`member-${member.name}`}
-                                type="button"
-                                onClick={() =>
-                                  member.saved
-                                    ? openVariableModal(member.name)
-                                    : handleSaveVariable(member.name)
-                                }
-                                title={
-                                  member.saved
-                                    ? `Edit ${member.name}${member.description ? ` — ${member.description}` : ''}`
-                                    : `Save ${member.name} as a known variable`
-                                }
-                                className={clsx(
-                                  'px-1.5 py-0.5 rounded border text-[10px] font-mono transition-colors',
-                                  member.saved
-                                    ? 'border-emerald-300/80 dark:border-emerald-700/70 text-emerald-700 dark:text-emerald-300 bg-emerald-50/70 dark:bg-emerald-900/20'
-                                    : 'border-dashed border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-violet-300 dark:hover:border-violet-600 hover:bg-violet-50/70 dark:hover:bg-violet-900/20',
-                                )}
-                              >
-                                {member.facetPath || group.entity}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                <div className="flex flex-wrap gap-1">
+                  {detectedVariables.map((name) => {
+                    const isSaved = !unsavedDetected.includes(name);
+                    return (
+                      <button
+                        key={`detected-${name}`}
+                        type="button"
+                        onClick={() => handleSaveVariable(name)}
+                        className={clsx(
+                          'px-1.5 py-0.5 rounded border text-[10px] font-mono transition-colors',
+                          isSaved
+                            ? 'border-emerald-300/80 dark:border-emerald-700/70 text-emerald-700 dark:text-emerald-300 bg-emerald-50/70 dark:bg-emerald-900/20'
+                            : 'border-neutral-300/80 dark:border-neutral-700/80 text-neutral-700 dark:text-neutral-300 hover:border-violet-300 dark:hover:border-violet-600 hover:bg-violet-50/70 dark:hover:bg-violet-900/20',
+                        )}
+                        title={isSaved ? `${name} is saved` : `Save ${name} as a known variable`}
+                      >
+                        {name}
+                      </button>
+                    );
+                  })}
+                </div>
+                {unsavedDetected.length > 0 && (
+                  <p className="text-[10px] text-neutral-400 italic">
+                    Click an unsaved variable to add it to your library.
+                  </p>
                 )}
               </div>
             </DisclosureSection>
@@ -903,81 +711,6 @@ export function ShadowSidePanel({
           </>
         )}
       </div>
-      <Modal
-        isOpen={!!editingVariable}
-        onClose={closeVariableModal}
-        title="Edit Variable"
-        size="sm"
-      >
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-              Variable Name
-            </label>
-            <Input
-              value={renameDraft}
-              onChange={(event) => setRenameDraft(event.target.value.toUpperCase())}
-              placeholder="ACTOR1"
-              autoFocus
-            />
-            <p className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
-              Uppercase letters, digits, underscore.
-            </p>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-              Description <span className="text-neutral-400">(optional)</span>
-            </label>
-            <Input
-              value={descriptionDraft}
-              onChange={(event) => setDescriptionDraft(event.target.value)}
-              placeholder="the protagonist"
-              maxLength={200}
-            />
-            <p className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
-              A one-line reuse hint shown next to the variable.
-            </p>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-              Expands to <span className="text-neutral-400">(optional)</span>
-            </label>
-            <textarea
-              value={valueDraft}
-              onChange={(event) => setValueDraft(event.target.value)}
-              rows={3}
-              placeholder="Leave empty to keep it a literal symbol"
-              maxLength={2000}
-              className="w-full resize-y rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-2 py-1 text-xs text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-violet-400"
-            />
-            <p className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
-              Substitution text — when set, the variable expands to this in the generated prompt.
-            </p>
-          </div>
-          {variableError && (
-            <div className="text-[11px] text-red-600 dark:text-red-400">
-              {variableError}
-            </div>
-          )}
-          <div className="flex items-center justify-between pt-1 border-t border-neutral-200 dark:border-neutral-700">
-            <Button
-              type="button"
-              variant="danger"
-              onClick={handleDeleteVariable}
-            >
-              {confirmingDelete ? 'Confirm delete' : 'Delete'}
-            </Button>
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="ghost" onClick={closeVariableModal}>
-                Cancel
-              </Button>
-              <Button type="button" variant="primary" onClick={handleSaveVariableEdit}>
-                Save
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

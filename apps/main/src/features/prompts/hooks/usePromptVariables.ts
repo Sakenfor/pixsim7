@@ -43,6 +43,16 @@ export interface PromptVariableMutationResult {
 let cachedEntries: PromptVariableEntry[] | null = null;
 let inflightFetch: Promise<PromptVariableEntry[]> | null = null;
 
+// Cross-instance sync: every mounted hook subscribes, so a mutation in one
+// surface (e.g. the composer's Variables menu) refreshes every other consumer
+// (e.g. the shadow panel's resolved preview) instead of going stale.
+const entryListeners = new Set<(entries: PromptVariableEntry[]) => void>();
+
+function publishEntries(next: PromptVariableEntry[]): void {
+  cachedEntries = next;
+  entryListeners.forEach((listener) => listener(next));
+}
+
 function normalizeResponseEntries(
   payload: PromptVariablesResponse | null | undefined,
 ): PromptVariableEntry[] {
@@ -117,9 +127,18 @@ export function usePromptVariables() {
   const [entries, setEntries] = useState<PromptVariableEntry[]>(cachedEntries ?? []);
   const [loading, setLoading] = useState<boolean>(cachedEntries === null);
 
+  // Update the shared cache and notify every mounted instance (incl. this one).
   const applyEntries = useCallback((next: PromptVariableEntry[]) => {
-    cachedEntries = next;
-    setEntries(next);
+    publishEntries(next);
+  }, []);
+
+  // Subscribe to cross-instance updates for this hook's lifetime.
+  useEffect(() => {
+    entryListeners.add(setEntries);
+    if (cachedEntries) setEntries(cachedEntries);
+    return () => {
+      entryListeners.delete(setEntries);
+    };
   }, []);
 
   const refresh = useCallback(async () => {
