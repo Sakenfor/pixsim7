@@ -1,5 +1,5 @@
 import { Button, useToastStore } from '@pixsim7/shared.ui';
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, type ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -29,7 +29,7 @@ import { useProviders } from '@features/providers';
 import { openWorkspacePanel, useWorkspaceStore } from '@features/workspace';
 
 import { MasonryGrid } from '@/components/layout/MasonryGrid';
-import { MediaCard } from '@/components/media/MediaCard';
+import { MediaCard, type MediaCardActions } from '@/components/media/MediaCard';
 
 import type { AssetFilters, AssetModel } from '../hooks/useAssets';
 import { useAssetsController } from '../hooks/useAssetsController';
@@ -379,6 +379,99 @@ function AssetSetChip({
     </FilterChip>
   );
 }
+
+// ---------------------------------------------------------------------------
+// RemoteGalleryCard — memoized so a single asset-update event (which replaces
+// only the changed asset's ref in the list) re-renders just that one card
+// rather than every card in the grid. That per-card churn was a major fuel
+// source for the asset-update render storms. All props except `asset` /
+// `isSelected` must stay referentially stable across update bursts (callbacks
+// via useCallback, providers from useState, a selection stabilized on the
+// selection set, etc.) — otherwise the memo silently stops working.
+// ---------------------------------------------------------------------------
+
+interface RemoteGalleryCardProps {
+  asset: AssetModel;
+  isSelected: boolean;
+  providers: { id: string; name: string }[];
+  filterProviderId: string | undefined;
+  activeSets: ManualAssetSet[];
+  contextMenuSelection: ComponentProps<typeof MediaCard>['contextMenuSelection'];
+  overlayConfig: ComponentProps<typeof MediaCard>['overlayConfig'];
+  overlayPresetId?: string;
+  getAssetActions: (asset: AssetModel) => MediaCardActions;
+  reuploadAsset: (asset: AssetModel, providerId: string) => Promise<void>;
+  onOpenAsset: (asset: AssetModel) => void;
+  onFilterByTagShortcut: (tagSlug: string) => void;
+  onAddToActiveTargets: (assetId: number) => void;
+  onToggleSelection: (asset: AssetModel) => void;
+  onResetAssets: () => void;
+}
+
+const RemoteGalleryCard = memo(function RemoteGalleryCard({
+  asset,
+  isSelected,
+  providers,
+  filterProviderId,
+  activeSets,
+  contextMenuSelection,
+  overlayConfig,
+  overlayPresetId,
+  getAssetActions,
+  reuploadAsset,
+  onOpenAsset,
+  onFilterByTagShortcut,
+  onAddToActiveTargets,
+  onToggleSelection,
+  onResetAssets,
+}: RemoteGalleryCardProps) {
+  const actions = useMemo(
+    () =>
+      buildRemoteAssetActions(asset, {
+        baseActions: {
+          ...getAssetActions(asset),
+          onAddToActiveSet: activeSets.length > 0 ? onAddToActiveTargets : undefined,
+        },
+        providers,
+        filterProviderId,
+        reuploadAsset,
+        refresh: onResetAssets,
+      }),
+    [asset, getAssetActions, activeSets, onAddToActiveTargets, providers, filterProviderId, reuploadAsset, onResetAssets],
+  );
+
+  const customWidgets = useMemo(() => {
+    const widgets = buildActiveTargetWidgets(asset.id, activeSets);
+    return widgets.length > 0 ? widgets : undefined;
+  }, [asset, activeSets]);
+
+  return (
+    <div
+      className={`relative cursor-pointer group rounded-md ${
+        isSelected ? 'ring-4 ring-purple-500' : ''
+      }`}
+      onClick={(e) => {
+        if (e.ctrlKey || e.metaKey || e.shiftKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          onToggleSelection(asset);
+        }
+      }}
+    >
+      <MediaCard
+        asset={asset}
+        onOpen={() => onOpenAsset(asset)}
+        onFilterByTagShortcut={onFilterByTagShortcut}
+        onToggleFavorite={() => toggleFavoriteTag(asset)}
+        actions={actions}
+        contextMenuSelection={contextMenuSelection}
+        customWidgets={customWidgets}
+        overlayConfig={overlayConfig}
+        overlayPresetId={overlayPresetId}
+      />
+    </div>
+  );
+});
 
 // ---------------------------------------------------------------------------
 
@@ -1249,17 +1342,32 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     ]
   );
 
-  // Handle asset selection for gallery tools
-  const toggleAssetSelection = (asset: AssetModel) => {
-    controller.toggleAssetSelection(asset);
-  };
-
   // Resolve single provider filter for reupload actions
   const filterProviderId = Array.isArray(controller.filters.provider_id)
     ? controller.filters.provider_id.length === 1
       ? controller.filters.provider_id[0]
       : undefined
     : controller.filters.provider_id || undefined;
+
+  // Stable card helpers — keep RemoteGalleryCard's props referentially constant
+  // across asset-update bursts so its memo holds (only the updated card's
+  // `asset` ref changes). The full asset list and the viewer-open callback are
+  // read through refs so they don't re-thread into every card on each update.
+  const assetsRef = useRef(controller.assets);
+  assetsRef.current = controller.assets;
+  const openGalleryAssetRef = useRef(openGalleryAsset);
+  openGalleryAssetRef.current = openGalleryAsset;
+  const handleOpenAsset = useCallback(
+    (a: AssetModel) => openGalleryAssetRef.current(a, assetsRef.current),
+    [],
+  );
+  // Selection handed to cards — recomputed only when the selection *set* changes
+  // (not when `controller.assets` churns on updates), so it doesn't defeat the
+  // card memo. Distinct from `selectedAssets` (used for bulk-action handlers).
+  const cardSelection = useMemo(
+    () => assetsRef.current.filter((a) => controller.selectedAssetIds.has(String(a.id))),
+    [controller.selectedAssetIds],
+  );
 
   // Render cards
   const cardItems = visibleAssets.map((a) => {
@@ -1278,7 +1386,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
                 ...controller.getAssetActions(a),
                 onAddToActiveSet: activeSets.length > 0 ? addAssetToActiveTargets : undefined,
               }}
-              contextMenuSelection={selectedAssets}
+              contextMenuSelection={cardSelection}
               overlayConfig={overlayConfig}
               overlayPresetId={overlayPresetId}
             />
@@ -1298,43 +1406,24 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     }
 
     return (
-      <div
+      <RemoteGalleryCard
         key={a.id}
-        className={`relative cursor-pointer group rounded-md ${
-          isSelected ? 'ring-4 ring-purple-500' : ''
-        }`}
-        onClick={(e) => {
-          if (e.ctrlKey || e.metaKey || e.shiftKey) {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleAssetSelection(a);
-          }
-        }}
-      >
-        <MediaCard
-          asset={a}
-          onOpen={() => openGalleryAsset(a, controller.assets)}
-          onFilterByTagShortcut={filterByQuickTagShortcut}
-          onToggleFavorite={() => toggleFavoriteTag(a)}
-          actions={buildRemoteAssetActions(a, {
-            baseActions: {
-              ...controller.getAssetActions(a),
-              onAddToActiveSet: activeSets.length > 0 ? addAssetToActiveTargets : undefined,
-            },
-            providers,
-            filterProviderId,
-            reuploadAsset: controller.reuploadAsset,
-            refresh: resetAssets,
-          })}
-          contextMenuSelection={selectedAssets}
-          customWidgets={(() => {
-            const widgets = buildActiveTargetWidgets(a.id, activeSets);
-            return widgets.length > 0 ? widgets : undefined;
-          })()}
-          overlayConfig={overlayConfig}
-          overlayPresetId={overlayPresetId}
-        />
-      </div>
+        asset={a}
+        isSelected={isSelected}
+        providers={providers}
+        filterProviderId={filterProviderId}
+        activeSets={activeSets}
+        contextMenuSelection={cardSelection}
+        overlayConfig={overlayConfig}
+        overlayPresetId={overlayPresetId}
+        getAssetActions={controller.getAssetActions}
+        reuploadAsset={controller.reuploadAsset}
+        onOpenAsset={handleOpenAsset}
+        onFilterByTagShortcut={filterByQuickTagShortcut}
+        onAddToActiveTargets={addAssetToActiveTargets}
+        onToggleSelection={controller.toggleAssetSelection}
+        onResetAssets={resetAssets}
+      />
     );
   });
 
@@ -1351,56 +1440,36 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       if (!a) return null;
       const isSelected = controller.selectedAssetIds.has(String(a.id));
       return (
-        <div
+        <RemoteGalleryCard
           key={a.id}
-          className={`relative cursor-pointer group rounded-md ${
-            isSelected ? 'ring-4 ring-purple-500' : ''
-          }`}
-          onClick={(e) => {
-            if (e.ctrlKey || e.metaKey || e.shiftKey) {
-              e.preventDefault();
-              e.stopPropagation();
-              toggleAssetSelection(a);
-            }
-          }}
-        >
-          <MediaCard
-            asset={a}
-            onOpen={() => openGalleryAsset(a, controller.assets)}
-            onFilterByTagShortcut={filterByQuickTagShortcut}
-            onToggleFavorite={() => toggleFavoriteTag(a)}
-            actions={buildRemoteAssetActions(a, {
-              baseActions: {
-                ...controller.getAssetActions(a),
-                onAddToActiveSet: activeSets.length > 0 ? addAssetToActiveTargets : undefined,
-              },
-              providers,
-              filterProviderId,
-              reuploadAsset: controller.reuploadAsset,
-              refresh: resetAssets,
-            })}
-            contextMenuSelection={selectedAssets}
-            customWidgets={(() => {
-              const widgets = buildActiveTargetWidgets(a.id, activeSets);
-              return widgets.length > 0 ? widgets : undefined;
-            })()}
-            overlayConfig={overlayConfig}
-            overlayPresetId={overlayPresetId}
-          />
-        </div>
+          asset={a}
+          isSelected={isSelected}
+          providers={providers}
+          filterProviderId={filterProviderId}
+          activeSets={activeSets}
+          contextMenuSelection={cardSelection}
+          overlayConfig={overlayConfig}
+          overlayPresetId={overlayPresetId}
+          getAssetActions={controller.getAssetActions}
+          reuploadAsset={controller.reuploadAsset}
+          onOpenAsset={handleOpenAsset}
+          onFilterByTagShortcut={filterByQuickTagShortcut}
+          onAddToActiveTargets={addAssetToActiveTargets}
+          onToggleSelection={controller.toggleAssetSelection}
+          onResetAssets={resetAssets}
+        />
       );
     },
     [
       assetById,
       controller.selectedAssetIds,
       controller.getAssetActions,
-      controller.assets,
       controller.reuploadAsset,
+      controller.toggleAssetSelection,
       activeSets,
       addAssetToActiveTargets,
-      openGalleryAsset,
-      toggleAssetSelection,
-      selectedAssets,
+      handleOpenAsset,
+      cardSelection,
       providers,
       filterProviderId,
       resetAssets,
