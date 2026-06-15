@@ -7,7 +7,7 @@ package recipes
 // label recognised shapes and seed the type-swap UI.
 
 relation_recipes: #RelationRecipes & {
-    version: "2.3.0"
+    version: "2.4.0"
 
     recipes: [
         // ── var = body | var > body | var < body ──────────────────────
@@ -43,6 +43,39 @@ relation_recipes: #RelationRecipes & {
                 {
                     op:           "<"
                     meaning:      "reverse-directional / scoped assignment"
+                    swap_targets: ["<", ">", "=", ":"]
+                },
+            ]
+        },
+
+        // ── body = var | body > var | body < var ──────────────────────
+        // Symmetric sibling of `chain_var_to_prose`: a chain where a prose /
+        // value element on the left is followed by a var on the right. Covers
+        // the tail of mixed chains like `… = (Sonus duplex est. …) < DELIBERATE`
+        // where a paren-wrapped value body relates onward to a var. Without
+        // this, prose→var operators resolve to no meaning.
+        {
+            id:    "chain_prose_to_var"
+            label: "Body to label"
+            context: {
+                line_kind: "chain"
+                prev_kind: "prose"
+                next_kind: "var"
+            }
+            operators: [
+                {
+                    op:           "="
+                    meaning:      "body bound to / identified as the var"
+                    swap_targets: ["=", ":", ">", "<"]
+                },
+                {
+                    op:           ">"
+                    meaning:      "body directed toward the var"
+                    swap_targets: [">", "<", "=", ":"]
+                },
+                {
+                    op:           "<"
+                    meaning:      "body shaped by / receives from the var"
                     swap_targets: ["<", ">", "=", ":"]
                 },
             ]
