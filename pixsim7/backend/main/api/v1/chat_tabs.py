@@ -414,12 +414,24 @@ async def create_chat_tab(
                 detail="ChatTab with this id already exists",
             )
 
+    # Reopening a session into a fresh tab inherits the identity the session
+    # carries (mirrored there from the original tab on set_tab_identity), so a
+    # resumed tab shows the same glyph/subtitle even on reopen paths that don't
+    # forward it explicitly. An explicit value in the payload still wins.
+    icon = payload.icon
+    subtitle = payload.subtitle
+    if session_id is not None and existing is not None:
+        if icon is None:
+            icon = existing.icon
+        if subtitle is None:
+            subtitle = existing.subtitle
+
     tab_kwargs: dict = dict(
         user_id=user.id,
         session_id=session_id,
         label=payload.label or "Untitled",
-        icon=payload.icon,
-        subtitle=payload.subtitle,
+        icon=icon,
+        subtitle=subtitle,
         plan_id=payload.plan_id,
         scope_key=payload.scope_key,
         pinned=payload.pinned,
@@ -595,6 +607,18 @@ async def set_self_tab_identity(
     for key, value in updates.items():
         setattr(tab, key, value)
     tab.updated_at = utcnow()
+
+    # Mirror the identity onto the bound ChatSession so it survives the tab
+    # being closed (closing deletes the ChatTab row). The resume picker reads
+    # the session copy to render the same glyph/subtitle the tab had when live
+    # (plan `agent-freeform-tab-identity` — resume parity).
+    if tab.session_id:
+        session = await db.get(ChatSession, tab.session_id)
+        if session is not None:
+            for key in ("icon", "subtitle"):
+                if key in updates:
+                    setattr(session, key, updates[key])
+
     await db.commit()
     await db.refresh(tab)
     return await _to_response_single(db, tab)
@@ -704,6 +728,28 @@ async def delete_chat_tab(
     """
     tab = await _load_owned_tab(db, tab_id, user.id)
     session_id = tab.session_id
+
+    # Snapshot the tab's identity onto its session before the row is deleted.
+    # The user-facing name (and agent-set icon/subtitle) live on the ChatTab;
+    # ChatSession.label is otherwise a generic "CLI session (…)" placeholder
+    # (or the last user message). Once this tab is gone there's no ChatTab left
+    # to read the real name from, so persist it here — that's what keeps the
+    # closed-tab / Recent Chats picker showing "variables etc" instead of
+    # "CLI session (…)". Only overwrite with meaningful values: skip the
+    # "Untitled" create-time default, and don't clobber an existing
+    # session icon/subtitle with an empty tab one. If another tab still binds
+    # this session (cross-device), the snapshot simply reflects this tab's
+    # last-known identity, which is fine — they share the conversation.
+    if session_id:
+        session = await db.get(ChatSession, session_id)
+        if session is not None:
+            if tab.label and tab.label != "Untitled":
+                session.label = tab.label
+            if tab.icon:
+                session.icon = tab.icon
+            if tab.subtitle:
+                session.subtitle = tab.subtitle
+
     await db.delete(tab)
     await db.flush()  # so the count-other-tabs query below sees the deletion
 
@@ -755,6 +801,10 @@ class OrphanSession(BaseModel):
     id: str
     engine: str
     label: str
+    # Agent-set identity mirrored from the (now-closed) tab, so the reopen
+    # picker can show the same glyph/subtitle it had when live.
+    icon: Optional[str] = None
+    subtitle: Optional[str] = None
     profileId: Optional[str] = None
     scopeKey: Optional[str] = None
     lastPlanId: Optional[str] = None
@@ -818,6 +868,8 @@ async def list_orphan_sessions(
             id=r.id,
             engine=r.engine,
             label=r.label,
+            icon=r.icon,
+            subtitle=r.subtitle,
             profileId=r.profile_id,
             scopeKey=r.scope_key,
             lastPlanId=r.last_plan_id,

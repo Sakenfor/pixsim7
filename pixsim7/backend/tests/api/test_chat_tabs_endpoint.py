@@ -310,11 +310,18 @@ def _extract_id_in(sql: str) -> Optional[set]:
     return ids
 
 
-def _make_session(user_id: int, session_id: Optional[str] = None) -> ChatSession:
+def _make_session(
+    user_id: int,
+    session_id: Optional[str] = None,
+    *,
+    engine: str = "claude",
+    profile_id: Optional[str] = None,
+) -> ChatSession:
     return ChatSession(
         id=session_id or uuid4().hex,
         user_id=user_id,
-        engine="claude",
+        engine=engine,
+        profile_id=profile_id,
         label="Untitled",
         source="chat",
         created_at=datetime.now(timezone.utc),
@@ -381,6 +388,25 @@ async def test_list_empty_for_user_with_no_tabs() -> None:
 
     result = await list_chat_tabs(user=_user(1), db=db)
     assert result.tabs == []
+
+
+@pytest.mark.asyncio
+async def test_list_includes_session_engine_and_profile_hints() -> None:
+    db = _FakeSession()
+    session = db.seed_session(
+        _make_session(
+            user_id=1,
+            session_id="sess-hints",
+            engine="codex",
+            profile_id="assistant:code-helper",
+        )
+    )
+    db.seed_tab(_make_tab(user_id=1, session_id=session.id, label="bound"))
+
+    result = await list_chat_tabs(user=_user(1), db=db)
+    assert len(result.tabs) == 1
+    assert result.tabs[0].engine == "codex"
+    assert result.tabs[0].profileId == "assistant:code-helper"
 
 
 # ---------------------------------------------------------------------------
@@ -652,6 +678,50 @@ async def test_delete_removes_tab_but_preserves_session() -> None:
     # Critical: the underlying ChatSession survives so it can be reopened.
     assert session.id in db.sessions
     assert db.deleted_sessions == []
+
+
+@pytest.mark.asyncio
+async def test_delete_snapshots_tab_identity_onto_session() -> None:
+    """Closing a tab persists its real name/icon/subtitle onto the session.
+
+    The ChatSession.label is otherwise a generic "CLI session (…)" placeholder
+    (or the last message); the human name lives on the ChatTab. Since the tab
+    row is deleted on close, its identity must be snapshotted onto the session
+    so the Recent Chats picker keeps showing the real name afterwards.
+    """
+    db = _FakeSession()
+    session = db.seed_session(_make_session(user_id=1, session_id="keep-me"))
+    session.label = "CLI session (keep-me)"
+    tab = db.seed_tab(_make_tab(user_id=1, session_id="keep-me", label="variables etc"))
+    tab.icon = "clipboard"
+    tab.subtitle = "plan: prompt-variable-placeholders"
+
+    await delete_chat_tab(tab_id=tab.id, user=_user(1), db=db)
+
+    assert session.id in db.sessions  # survives
+    assert session.label == "variables etc"
+    assert session.icon == "clipboard"
+    assert session.subtitle == "plan: prompt-variable-placeholders"
+
+
+@pytest.mark.asyncio
+async def test_delete_untitled_tab_does_not_clobber_session_label() -> None:
+    """The "Untitled" create-time default is not a real name — closing such a
+    tab must leave the session's own (possibly meaningful) label intact, and an
+    empty tab icon/subtitle must not wipe an existing session one.
+    """
+    db = _FakeSession()
+    session = db.seed_session(_make_session(user_id=1, session_id="keep-me"))
+    session.label = "real session label"
+    session.icon = "sparkles"
+    session.subtitle = "kept"
+    tab = db.seed_tab(_make_tab(user_id=1, session_id="keep-me", label="Untitled"))
+
+    await delete_chat_tab(tab_id=tab.id, user=_user(1), db=db)
+
+    assert session.label == "real session label"
+    assert session.icon == "sparkles"
+    assert session.subtitle == "kept"
 
 
 @pytest.mark.asyncio
