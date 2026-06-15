@@ -1277,6 +1277,123 @@
           }
         ]
       }
+    },
+    {
+      "id": "value-group-after-assign",
+      "text": "MOOD = (very tense and quiet)",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "MOOD",
+                "start": 0,
+                "end": 4
+              },
+              {
+                "kind": "value",
+                "text": "(very tense and quiet)",
+                "start": 7,
+                "end": 29
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 5,
+                "op_end": 6
+              }
+            ],
+            "start": 0,
+            "end": 29
+          }
+        ]
+      }
+    },
+    {
+      "id": "value-group-then-var",
+      "text": "ACTOR2 = (Sonus duplex est.) < DELIBERATE",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR2",
+                "start": 0,
+                "end": 6
+              },
+              {
+                "kind": "value",
+                "text": "(Sonus duplex est.)",
+                "start": 9,
+                "end": 28
+              },
+              {
+                "kind": "var",
+                "text": "DELIBERATE",
+                "start": 31,
+                "end": 41
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 7,
+                "op_end": 8
+              },
+              {
+                "op": "<",
+                "run": 1,
+                "op_start": 29,
+                "op_end": 30
+              }
+            ],
+            "start": 0,
+            "end": 41
+          }
+        ]
+      }
+    },
+    {
+      "id": "value-group-leading-prose",
+      "text": "see (note) here = x",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "see (note) here",
+                "start": 0,
+                "end": 15
+              },
+              {
+                "kind": "prose",
+                "text": "x",
+                "start": 18,
+                "end": 19
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 16,
+                "op_end": 17
+              }
+            ],
+            "start": 0,
+            "end": 19
+          }
+        ]
+      }
     }
   ]
 }

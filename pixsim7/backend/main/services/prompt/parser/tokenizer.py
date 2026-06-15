@@ -231,8 +231,9 @@ class HeaderLine:
 
 @dataclass(slots=True)
 class ChainElement:
-    """One element in a chain. `var` if exactly one UPPER_IDENT; `prose` otherwise."""
-    kind: Literal["var", "prose"]
+    """One element in a chain: `var` (UPPER_IDENT or NAME(value)), `value` (a
+    bare `( ... )` literal), or `prose` (anything else)."""
+    kind: Literal["var", "prose", "value"]
     text: str
     start: int
     end: int
@@ -316,6 +317,16 @@ def _is_var_call(tokens: List[Token], f: int, t: int) -> bool:
     if k >= t or tokens[k].kind != "LPAREN":
         return False
     return tokens[t - 1].kind == "RPAREN"
+
+
+def _is_value_group(tokens: List[Token], f: int, t: int) -> bool:
+    """True if tokens[f:t] is a wholly parenthesised value literal `( ... )`.
+
+    Starts with `(` and ends with the matching `)`. Distinct from a var-call
+    (`NAME(...)`, which starts with an IDENT): this is a bare value/body operand,
+    e.g. `(Sonus duplex est. …)` on one side of a chain operator.
+    """
+    return t - f >= 2 and tokens[f].kind == "LPAREN" and tokens[t - 1].kind == "RPAREN"
 
 
 def _try_assemble_mixed_label(
@@ -427,12 +438,15 @@ def _try_chain(
         elem_start = tokens[f].start
         elem_end = tokens[t - 1].end
         if t - f == 1 and tokens[f].kind == "IDENT" and _is_upper_ident(tokens[f].text):
-            kind: Literal["var", "prose"] = "var"
+            kind: Literal["var", "prose", "value"] = "var"
         elif _is_var_call(tokens, f, t):
             # Parameterised/valued variable: UPPER_IDENT immediately followed by a
             # parenthesised value, e.g. ACTOR2_PERSONALITY(very shy). The bare name
             # stays the variable identity; the (value) is a free-text argument.
             kind = "var"
+        elif _is_value_group(tokens, f, t):
+            # Bare parenthesised value/body operand, e.g. `(Sonus duplex est. …)`.
+            kind = "value"
         else:
             kind = "prose"
         elements.append(ChainElement(kind=kind, text=elem_text, start=elem_start, end=elem_end))

@@ -26,9 +26,10 @@ import GRAMMAR_RULES from './grammar_rules.json';
 
 // ── output shape (mirrors tokenizer.py `_node_to_dict`) ────────────────────
 
-/** One element in a chain line. `var` iff exactly one UPPER_IDENT after WS-trim. */
+/** One element in a chain line: `var` (UPPER_IDENT or NAME(value)), `value` (a
+ *  bare `( ... )` literal), or `prose`. */
 export interface PromptTokenChainElement {
-  kind: 'var' | 'prose';
+  kind: 'var' | 'prose' | 'value';
   /** Element text after WS-trim; empty string when this slot is empty. */
   text: string;
   start: number;
@@ -130,6 +131,15 @@ function isVarCall(tokens: Token[], from: number, to: number): boolean {
   while (k < to && tokens[k].kind === 'WS') k++;
   if (k >= to || tokens[k].kind !== 'LPAREN') return false;
   return tokens[to - 1].kind === 'RPAREN';
+}
+
+/**
+ * True if tokens[from..to) is a wholly parenthesised value literal `( ... )` —
+ * starts with `(` and ends with the matching `)`. Distinct from a var-call
+ * (`NAME(...)`, starts with an IDENT): a bare value/body operand.
+ */
+function isValueGroup(tokens: Token[], from: number, to: number): boolean {
+  return to - from >= 2 && tokens[from].kind === 'LPAREN' && tokens[to - 1].kind === 'RPAREN';
 }
 
 // ── line splitting ─────────────────────────────────────────────────────────
@@ -262,10 +272,15 @@ function tryChain(line: LineSlice, tokens: Token[], i: number, end: number): Pro
     const elemEnd = tokens[t - 1].end;
     // `var` = a single UPPER_IDENT, OR a parameterised UPPER_IDENT(value) — the
     // bare name is the identity; the (value) is a free-text argument.
-    const kind: 'var' | 'prose' =
-      (t - f === 1 && tokens[f].kind === 'IDENT' && isUpperIdent(tokens[f].text)) || isVarCall(tokens, f, t)
-        ? 'var'
-        : 'prose';
+    // `value` = a bare `( ... )` literal operand. Else `prose`.
+    let kind: 'var' | 'prose' | 'value';
+    if ((t - f === 1 && tokens[f].kind === 'IDENT' && isUpperIdent(tokens[f].text)) || isVarCall(tokens, f, t)) {
+      kind = 'var';
+    } else if (isValueGroup(tokens, f, t)) {
+      kind = 'value';
+    } else {
+      kind = 'prose';
+    }
     elements.push({ kind, text: elemText, start: elemStart, end: elemEnd });
   }
 

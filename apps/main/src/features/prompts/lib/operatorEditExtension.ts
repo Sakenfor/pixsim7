@@ -21,6 +21,14 @@ function varClass(text: string | undefined): string | undefined {
   return parseVariableName(text).className || undefined;
 }
 
+/** Coerce a chain element kind to the relation context recipes match on: `var`
+ *  stays `var`; `value` and `prose` both read as `prose` (a body). Undefined
+ *  passes through (no adjacent element). */
+function relationKind(kind: 'var' | 'prose' | 'value' | undefined): 'var' | 'prose' | undefined {
+  if (kind === 'var') return 'var';
+  return kind ? 'prose' : undefined;
+}
+
 /** Leading facet token of a var element (`HIP` from `ACTOR1_HIP`), or undefined
  *  when the var has no facet. Pure helper over parseVariableName. */
 function leadingFacet(text: string | undefined): string | undefined {
@@ -155,8 +163,10 @@ export function collectOperatorRanges(
             raw: op.op,
             run: op.run,
             context: 'chain',
-            prevKind: prevEl?.kind,
-            nextKind: nextEl?.kind,
+            // Recipes match on var vs body; a `value` literal relates like a
+            // body, so coerce value → prose for the relation context.
+            prevKind: relationKind(prevEl?.kind),
+            nextKind: relationKind(nextEl?.kind),
             prevVarKind: prevEl?.kind === 'var' ? varClass(prevEl.text) : undefined,
             nextVarKind: nextEl?.kind === 'var' ? varClass(nextEl.text) : undefined,
             prevFacet: prevEl?.kind === 'var' ? leadingFacet(prevEl.text) : undefined,

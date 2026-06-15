@@ -187,6 +187,10 @@ const chainElementProseMark = Decoration.mark({
   attributes: { class: 'cm-shadow-chain-elem cm-shadow-chain-elem-prose', 'data-elem-kind': 'prose' },
 });
 
+const chainElementValueMark = Decoration.mark({
+  attributes: { class: 'cm-shadow-chain-elem cm-shadow-chain-elem-value', 'data-elem-kind': 'value' },
+});
+
 function buildChainDecorations(
   tokenLines: PromptTokenLine[] | undefined,
   view: EditorView,
@@ -242,7 +246,12 @@ function buildChainDecorations(
       for (const el of tokenLine.elements) {
         if (el.start >= el.end) continue;
         if (el.start < 0 || el.end > docLen) continue;
-        const mark = el.kind === 'var' ? chainElementVarMark : chainElementProseMark;
+        const mark =
+          el.kind === 'var'
+            ? chainElementVarMark
+            : el.kind === 'value'
+              ? chainElementValueMark
+              : chainElementProseMark;
         entries.push({
           from: el.start,
           to: el.end,
@@ -411,6 +420,15 @@ function shadowClickHandler(callbacks: ShadowAnalysisCallbacks) {
   return EditorView.domEventHandlers({
     click: (e, view) => {
       if (!callbacks.onCandidateClick) return false;
+      if (!(e.target instanceof Node)) return false;
+
+      // Only treat direct hits on decorated candidate text as valid clicks.
+      // This avoids opening the popover from line gutters, end-of-line space,
+      // or empty lines that may still map to nearby document positions.
+      const baseEl =
+        e.target instanceof HTMLElement ? e.target : e.target.parentElement;
+      const candidateEl = baseEl?.closest<HTMLElement>('.cm-shadow-candidate');
+      if (!candidateEl) return false;
 
       const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
       if (pos === null) return false;
@@ -422,16 +440,7 @@ function shadowClickHandler(callbacks: ShadowAnalysisCallbacks) {
       const candidate = findCandidateAt(positioned, pos);
       if (!candidate) return false;
 
-      // Find the decorated span element so the popover can anchor to it.
-      // Click target is typically the span with data-role; fall back to the
-      // click coords if no span was found directly.
-      let anchor: HTMLElement | null = null;
-      if (e.target instanceof HTMLElement) {
-        anchor = e.target.closest<HTMLElement>('[data-role]') ?? e.target;
-      }
-      if (!anchor) return false;
-
-      callbacks.onCandidateClick(candidate, anchor);
+      callbacks.onCandidateClick(candidate, candidateEl);
       return false;
     },
   });
@@ -485,6 +494,12 @@ const headerLineTheme = EditorView.baseTheme({
   },
   '.cm-shadow-chain-elem-prose': {
     fontStyle: 'italic',
+  },
+  // Value literal operand `( … )` — faint violet wash so an explicit value body
+  // reads distinctly from incidental prose.
+  '.cm-shadow-chain-elem-value': {
+    backgroundColor: 'rgba(168, 85, 247, 0.07)',
+    borderRadius: '2px',
   },
   // ── Candidate spans: underline at rest, bg wash on hover ────────────────
   '.cm-shadow-candidate:hover': {

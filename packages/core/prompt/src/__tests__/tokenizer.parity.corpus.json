@@ -48,6 +48,9 @@
     { "id": "var-call-standalone-stays-prose", "text": "ACTOR2_PERSONALITY(very shy)" },
     { "id": "var-call-space-before-paren-tolerated", "text": "FOO (bar) = x" },
     { "id": "var-call-space-in-chain", "text": "ACTOR2_HIP < MODUS_OPERANDI (TEASE)" },
-    { "id": "var-call-trailing-text-prose", "text": "FOO(bar) baz = x" }
+    { "id": "var-call-trailing-text-prose", "text": "FOO(bar) baz = x" },
+    { "id": "value-group-after-assign", "text": "MOOD = (very tense and quiet)" },
+    { "id": "value-group-then-var", "text": "ACTOR2 = (Sonus duplex est.) < DELIBERATE" },
+    { "id": "value-group-leading-prose", "text": "see (note) here = x" }
   ]
 }

@@ -23,8 +23,8 @@ import type { PromptBlockCandidate } from '../types';
 
 /** One element in a chain line. */
 export interface PromptTokenChainElement {
-  /** `var` iff exactly one UPPER_IDENT after WS-trim; else `prose`. */
-  kind: 'var' | 'prose';
+  /** `var` (UPPER_IDENT or NAME(value)), `value` (a bare `( ... )` literal), or `prose`. */
+  kind: 'var' | 'prose' | 'value';
   /** Element text after WS-trim; empty string when this slot is empty. */
   text: string;
   start: number;
@@ -65,6 +65,12 @@ export interface PromptTokenLine {
   text?: string;  // prose only
 }
 
+export interface PromptVariableHints {
+  saved: string[];
+  detected: string[];
+  unsaved_detected: string[];
+}
+
 interface AnalyzePromptResponse {
   analysis?: {
     prompt?: string;
@@ -75,6 +81,7 @@ interface AnalyzePromptResponse {
   role_in_sequence?: string;
   sequence_context?: SequenceContext;
   tokens?: { lines: PromptTokenLine[] };
+  variable_hints?: PromptVariableHints;
 }
 
 export interface ShadowAnalysisResult {
@@ -83,6 +90,7 @@ export interface ShadowAnalysisResult {
   roleInSequence: string;
   sequenceContext: SequenceContext;
   tokens?: { lines: PromptTokenLine[] };
+  variableHints: PromptVariableHints;
 }
 
 export interface ShadowAnalysisState {
@@ -103,6 +111,11 @@ const DEFAULT_SEQUENCE_CONTEXT: SequenceContext = {
   source: 'none',
   confidence: null,
   matched_block_id: null,
+};
+const DEFAULT_VARIABLE_HINTS: PromptVariableHints = {
+  saved: [],
+  detected: [],
+  unsaved_detected: [],
 };
 
 function normalizeSequenceRole(raw: unknown): string {
@@ -145,6 +158,22 @@ function resolveSequenceContext(response: AnalyzePromptResponse): SequenceContex
     role_in_sequence: fallbackRole,
     source: normalized.source === 'none' ? 'response.role_in_sequence' : normalized.source,
   };
+}
+
+function normalizeVariableHints(raw: unknown): PromptVariableHints {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_VARIABLE_HINTS };
+  const record = raw as Record<string, unknown>;
+  const toList = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string').map((item) => item.trim().toUpperCase()).filter(Boolean)
+      : [];
+  const saved = Array.from(new Set(toList(record.saved))).sort();
+  const detected = Array.from(new Set(toList(record.detected)));
+  const savedSet = new Set(saved);
+  const unsaved_detected = Array.from(
+    new Set(toList(record.unsaved_detected).filter((name) => !savedSet.has(name))),
+  );
+  return { saved, detected, unsaved_detected };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -200,6 +229,7 @@ export function useShadowAnalysis(
             roleInSequence: sequenceContext.role_in_sequence,
             sequenceContext,
             tokens: cached.tokens,
+            variableHints: normalizeVariableHints(cached.variable_hints),
           });
           setLoading(false);
           return;
@@ -226,6 +256,7 @@ export function useShadowAnalysis(
         const tags = response?.analysis?.tags ?? [];
         const tokens = response?.tokens;
         const sequenceContext = resolveSequenceContext(response);
+        const variableHints = normalizeVariableHints(response?.variable_hints);
 
         // Write to shared cache
         setCachedAnalysis(normalized, analyzerIdRef.current, {
@@ -235,6 +266,7 @@ export function useShadowAnalysis(
           role_in_sequence: sequenceContext.role_in_sequence,
           sequence_context: sequenceContext,
           ...(tokens ? { tokens } : {}),
+          variable_hints: variableHints,
         });
 
         setResult({
@@ -243,6 +275,7 @@ export function useShadowAnalysis(
           roleInSequence: sequenceContext.role_in_sequence,
           sequenceContext,
           tokens,
+          variableHints,
         });
       } catch {
         // Fail silently
