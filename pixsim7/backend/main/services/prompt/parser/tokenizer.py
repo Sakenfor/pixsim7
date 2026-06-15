@@ -29,6 +29,11 @@ import pathlib
 from dataclasses import dataclass, field
 from typing import List, Optional, Literal, Tuple
 
+try:  # normal package import
+    from .offsets import build_utf16_prefix, has_astral
+except ImportError:  # imported as a bare top-level module (parity fixture generator)
+    from offsets import build_utf16_prefix, has_astral  # type: ignore[no-redef]
+
 # ── load grammar rules from generated JSON ─────────────────────────────────
 
 _RULES_PATH = pathlib.Path(__file__).parent / "grammar_rules.json"
@@ -557,21 +562,6 @@ def parse_lines(tokens: List[Token], source: str) -> List[LineNode]:
 
 # ── public API ─────────────────────────────────────────────────────────────
 
-def _build_utf16_prefix(text: str) -> List[int]:
-    """``prefix[i]`` = number of UTF-16 code units in ``text[:i]``.
-
-    A char outside the BMP (code point > U+FFFF) is one Python code point but two
-    UTF-16 units; everything else is one of each. Used to remap code-point offsets
-    to the UTF-16 frame the TS tokenizer + CodeMirror use.
-    """
-    prefix = [0] * (len(text) + 1)
-    total = 0
-    for idx, ch in enumerate(text):
-        total += 2 if ord(ch) > 0xFFFF else 1
-        prefix[idx + 1] = total
-    return prefix
-
-
 # Offset-bearing keys in the tokenize() output (all are absolute char offsets).
 _OFFSET_KEYS = ("start", "end", "body_start", "op_start", "op_end")
 
@@ -612,8 +602,8 @@ def tokenize(text: str) -> dict:
     lines = [_node_to_dict(n) for n in nodes]
     # Remap code-point offsets to UTF-16 only when astral chars are present —
     # for BMP text the two frames coincide, so committed BMP fixtures are stable.
-    if any(ord(ch) > 0xFFFF for ch in text):
-        prefix = _build_utf16_prefix(text)
+    if has_astral(text):
+        prefix = build_utf16_prefix(text)
         for line in lines:
             _remap_offsets_to_utf16(line, prefix)
     return {"lines": lines}

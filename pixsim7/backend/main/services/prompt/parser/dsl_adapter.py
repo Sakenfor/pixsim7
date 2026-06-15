@@ -23,6 +23,7 @@ from pixsim7.backend.main.services.prompt.parser.primitive_projection import (
     enrich_candidates_with_primitive_projection,
     normalize_primitive_projection_mode,
 )
+from .offsets import remap_candidate_positions
 from .simple import SimplePromptParser
 from .tokenizer import tokenize
 
@@ -77,6 +78,13 @@ async def parse_prompt_to_candidates(
             dumped_candidates,
             mode=projection_mode,
         )
+
+    # Candidate start_pos/end_pos come out of the parser as Python code-point
+    # offsets; remap to UTF-16 code units (built from the same `text` frame the
+    # parser positioned against) so they line up with CodeMirror + the token
+    # offsets in analyze_prompt. No-op for BMP-only text; None offsets (LLM
+    # candidates) pass through.
+    remap_candidate_positions(dumped_candidates, text)
 
     return {"candidates": dumped_candidates}
 
