@@ -50,13 +50,19 @@ class MockWebSocket implements MockWsHandler {
   onerror: (() => void) | null = null;
   onmessage: ((e: { data: string }) => void) | null = null;
   sent: string[] = [];
+  /** Mirror the real server: reply `pong` to every `ping` (ws_chat.py:1504).
+   *  Flip to false to simulate a half-open socket (mobile wifi drop). */
+  autoPong = true;
 
   constructor(url: string) {
     this.url = url;
     MockWebSocket.instances.push(this);
   }
 
-  send(data: string) { this.sent.push(data); }
+  send(data: string) {
+    this.sent.push(data);
+    if (data === 'ping' && this.autoPong) this.onmessage?.({ data: 'pong' });
+  }
   close() {
     this.readyState = MockWebSocket.CLOSED;
     this.onclose?.();
@@ -1019,6 +1025,88 @@ describe('AssistantChatBridge', () => {
       // Simulate pong — should not affect any request
       ws.onmessage?.({ data: 'pong' });
       expect(bridge.get('tab-1')!.status).toBe('pending');
+    });
+
+    it('keeps a pong-answering socket alive across many intervals', async () => {
+      const sendPromise = bridge.send('tab-1', { message: 'hi' });
+      await vi.advanceTimersByTimeAsync(0);
+      const ws = MockWebSocket.instances[0];
+      ws.simulateOpen();
+      await sendPromise;
+      ws.simulateMessage({ type: 'heartbeat', tab_id: 'tab-1', action: 'w', detail: 'Working', task_id: 't1' });
+
+      // 5 ping intervals — each gets an auto-pong, so the socket is never
+      // mistaken for half-open and no reconnect churn happens.
+      await vi.advanceTimersByTimeAsync(150_000);
+      expect(ws.readyState).toBe(MockWebSocket.OPEN);
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────
+  // Half-open socket detection (mobile wifi drop)
+  //
+  // The OS often doesn't fire `onclose` when mobile wifi drops — the socket
+  // goes half-open: pings buffer into the void, no pong returns. Without
+  // detection the in-flight turn dies on the 90s stale timeout (as an error)
+  // instead of reconnecting. The bridge pings every 30s and recycles a socket
+  // whose ping went a full interval unanswered.
+  // ────────────────────────────────────────────────────────
+
+  describe('half-open socket detection', () => {
+    it('recycles a socket whose pings go unanswered and reconnects in-flight', async () => {
+      const p = bridge.send('tab-1', { message: 'hi' });
+      await vi.advanceTimersByTimeAsync(0);
+      const ws1 = MockWebSocket.instances[0];
+      ws1.simulateOpen();
+      await p;
+      ws1.simulateMessage({ type: 'heartbeat', tab_id: 'tab-1', action: 'w', detail: 'Working', task_id: 't1' });
+
+      // Socket goes half-open — server stops replying pong.
+      ws1.autoPong = false;
+
+      // First interval sends a ping (no pong → awaiting); the next interval
+      // sees the unanswered ping and force-closes the dead socket.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(ws1.readyState).toBe(MockWebSocket.CLOSED);
+
+      // onclose → reconnect opens a fresh socket and re-attaches the turn.
+      await vi.advanceTimersByTimeAsync(5_000);
+      const ws2 = MockWebSocket.instances[1];
+      expect(ws2).toBeDefined();
+      expect(ws2).not.toBe(ws1);
+      ws2.simulateOpen();
+      await vi.advanceTimersByTimeAsync(0);
+      const reconnectMsg = ws2.sent.find((s) => JSON.parse(s).type === 'reconnect');
+      expect(JSON.parse(reconnectMsg!)).toMatchObject({ type: 'reconnect', tab_id: 'tab-1', task_id: 't1' });
+    });
+  });
+
+  // ────────────────────────────────────────────────────────
+  // Foreground / online resume trigger (mobile)
+  // ────────────────────────────────────────────────────────
+
+  describe('network-resume reconnect', () => {
+    it('reconnects in-flight work immediately on the online event', async () => {
+      const p = bridge.send('tab-1', { message: 'hi' });
+      await vi.advanceTimersByTimeAsync(0);
+      const ws1 = MockWebSocket.instances[0];
+      ws1.simulateOpen();
+      await p;
+      ws1.simulateMessage({ type: 'heartbeat', tab_id: 'tab-1', action: 'w', detail: 'Working', task_id: 't1' });
+
+      // Network dropped → socket closed.
+      ws1.simulateClose();
+
+      // online fires before the 5s scheduled reconnect — should reconnect now.
+      window.dispatchEvent(new Event('online'));
+      await vi.advanceTimersByTimeAsync(0);
+      const ws2 = MockWebSocket.instances[1];
+      expect(ws2).toBeDefined();
+      ws2.simulateOpen();
+      await vi.advanceTimersByTimeAsync(0);
+      const reconnectMsg = ws2.sent.find((s) => JSON.parse(s).type === 'reconnect');
+      expect(JSON.parse(reconnectMsg!)).toMatchObject({ type: 'reconnect', tab_id: 'tab-1', task_id: 't1' });
     });
   });
 

@@ -289,6 +289,16 @@ class AssistantChatBridge {
   private _wsPingTimer: ReturnType<typeof setInterval> | null = null;
   private _wsConnecting = false;
   private _wsToken: string | null = null;
+  /**
+   * True when a `ping` has been sent and its `pong` hasn't come back yet.
+   * The server replies `pong` to every `ping` (ws_chat.py), and any inbound
+   * frame (heartbeat/result/pong) clears this — so a full ping interval with
+   * the flag still set means the socket is half-open (the common mobile
+   * wifi-drop failure: the OS never fires `onclose`). We force-close it so
+   * `onclose` → `_scheduleReconnect` re-attaches the in-flight turn, instead
+   * of letting it die on the 90s stale timeout. Plan: ws-drop-root-cause.
+   */
+  private _wsAwaitingPong = false;
   /** task_not_found retry counters keyed by tab id. Reset on new send / successful result. */
   private _reconnectRetries = new Map<string, { attempts: number; timer: ReturnType<typeof setTimeout> | null }>();
 
@@ -299,6 +309,15 @@ class AssistantChatBridge {
     // Flush in-flight state (including thinkingLog) on page unload so it survives refresh
     if (typeof window !== 'undefined') {
       window.addEventListener('beforeunload', () => this._persistInflight(true));
+      // Mobile resume triggers: when the network returns or the tab is
+      // foregrounded, probe the (possibly half-open) socket and reconnect
+      // in-flight work immediately rather than waiting out a throttled timer.
+      window.addEventListener('online', () => this._probeLiveness());
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') this._probeLiveness();
+        });
+      }
     }
   }
 
@@ -496,14 +515,27 @@ class AssistantChatBridge {
           clearTimeout(timeout);
           this._wsConnected = true;
           this._wsConnecting = false;
-          // Start ping keepalive
+          this._wsAwaitingPong = false;
+          // Ping keepalive with half-open detection. If the previous ping
+          // went a full interval without any inbound frame, the socket is
+          // dead even though the browser hasn't fired onclose (mobile wifi
+          // drop) — recycle it so reconnect re-attaches the in-flight turn.
           this._wsPingTimer = setInterval(() => {
-            if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+            if (ws.readyState !== WebSocket.OPEN) return;
+            if (this._wsAwaitingPong) {
+              try { ws.close(); } catch { /* already closing */ }
+              return;
+            }
+            this._wsAwaitingPong = true;
+            ws.send('ping');
           }, 30000);
           resolve(true);
         };
 
         ws.onmessage = (event) => {
+          // Any inbound frame proves the socket is alive — clear the
+          // half-open probe before doing anything else.
+          this._wsAwaitingPong = false;
           if (event.data === 'pong') return;
           this._onWsMessage(event.data);
         };
@@ -540,23 +572,65 @@ class AssistantChatBridge {
     this._wsReconnectTimer = setTimeout(async () => {
       this._wsReconnectTimer = null;
       const ok = await this._connectWs();
-      if (ok) {
-        // Reattach to in-flight tasks (reset staleness timer)
-        for (const [, req] of this._requests) {
-          if ((req.status === 'pending' || req.status === 'streaming') && req.taskId) {
-            req._lastActivity = Date.now();
-            this._ws?.send(JSON.stringify({
-              type: 'reconnect',
-              tab_id: req.tabId,
-              task_id: req.taskId,
-              ...(req.bridgeSessionId ? { bridge_session_id: req.bridgeSessionId } : {}),
-            }));
-          }
-        }
-      } else {
-        this._scheduleReconnect();
-      }
+      if (ok) this._resendReconnects();
+      else this._scheduleReconnect();
     }, 5000);
+  }
+
+  /** Re-send `reconnect` frames for every in-flight request on a fresh socket,
+   *  resetting each staleness clock. Server's `_handle_reconnect` re-streams
+   *  the live turn (or replays its buffered result). */
+  private _resendReconnects(): void {
+    for (const [, req] of this._requests) {
+      if ((req.status === 'pending' || req.status === 'streaming') && req.taskId) {
+        req._lastActivity = Date.now();
+        this._ws?.send(JSON.stringify({
+          type: 'reconnect',
+          tab_id: req.tabId,
+          task_id: req.taskId,
+          ...(req.bridgeSessionId ? { bridge_session_id: req.bridgeSessionId } : {}),
+        }));
+      }
+    }
+  }
+
+  /** Reconnect immediately (no 5s wait) when there's in-flight work — used by
+   *  the foreground/online triggers where promptness is the whole point. */
+  private _reconnectNow(): void {
+    if (this._wsReconnectTimer) { clearTimeout(this._wsReconnectTimer); this._wsReconnectTimer = null; }
+    const hasPending = Array.from(this._requests.values()).some(
+      (r) => r.status === 'pending' || r.status === 'streaming',
+    );
+    if (!hasPending) return;
+    void this._connectWs().then((ok) => {
+      if (ok) this._resendReconnects();
+      else this._scheduleReconnect();
+    });
+  }
+
+  /** Probe the socket when the tab returns to foreground or the network comes
+   *  back. Mobile throttles timers while backgrounded, so the 30s ping can't
+   *  be relied on to have caught a half-open socket — check it now. A dead or
+   *  half-open socket is recycled immediately; a genuinely-open one is left
+   *  alone (a transient focus shouldn't tear down a healthy stream). */
+  private _probeLiveness(): void {
+    const hasPending = Array.from(this._requests.values()).some(
+      (r) => r.status === 'pending' || r.status === 'streaming',
+    );
+    if (!hasPending) return;
+    if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
+      this._reconnectNow();
+      return;
+    }
+    // Claims open — but after a mobile resume it may be half-open. Ping now
+    // and give it a short deadline; recycle if no frame comes back.
+    this._wsAwaitingPong = true;
+    try { this._ws.send('ping'); } catch { this._reconnectNow(); return; }
+    setTimeout(() => {
+      if (this._wsAwaitingPong && this._ws?.readyState === WebSocket.OPEN) {
+        try { this._ws.close(); } catch { /* already closing → onclose reconnects */ }
+      }
+    }, 3000);
   }
 
   private _onWsMessage(raw: string): void {
