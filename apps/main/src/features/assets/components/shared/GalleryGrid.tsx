@@ -101,25 +101,18 @@ export function GalleryGrid<T>({
 
         {isEmpty && emptyState ? (
           emptyState
-        ) : layout === 'masonry' ? (
+        ) : (
+          // Both layouts route through MasonryGrid's viewport virtualization so a
+          // long scroll doesn't mount every card (unbounded decoded-image memory).
+          // 'masonry' = staggered columns; 'grid' = aligned rows (old CSS-grid look).
           <MasonryGrid
+            mode={layout === 'masonry' ? 'masonry' : 'grid'}
             items={renderedCards}
             rowGap={rowGap}
             columnGap={columnGap}
             minColumnWidth={cardSize}
             scrollParentRef={effectiveScrollRef}
           />
-        ) : (
-          <div
-            className="grid"
-            style={{
-              gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardSize}px, 100%), 1fr))`,
-              rowGap: `${rowGap}px`,
-              columnGap: `${columnGap}px`,
-            }}
-          >
-            {renderedCards}
-          </div>
         )}
 
         {after}

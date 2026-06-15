@@ -1,6 +1,6 @@
 import { ActionHintBadge, IconButton, useHoverExpand } from '@pixsim7/shared.ui';
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
@@ -331,6 +331,18 @@ const DEFAULT_CARD_SIZE = 100;
 const MIN_CARD_SIZE = 60;
 const MAX_CARD_SIZE = 200;
 
+// Grid geometry, mirrored from the Tailwind classes on the scroll container and
+// grid below: `p-3` (12px padding every side) and `gap-2` (8px between cards).
+// Cards are square (`aspectSquare`) and, with border-box sizing, their outer
+// height equals their column width — so rows are uniform and the window is pure
+// scroll arithmetic (same approach as RecentStripPanel). Kept as constants so the
+// windowing math and the rendered layout can't drift apart.
+const GRID_PAD = 12;
+const GRID_GAP = 8;
+// Render this many px of cards beyond each viewport edge so a fast scroll doesn't
+// expose un-mounted blanks before they fill in.
+const GRID_OVERSCAN = 400;
+
 function MiniGalleryContent({
   initialFilters: propInitialFilters,
   sourceLabel: propSourceLabel,
@@ -494,6 +506,71 @@ function MiniGalleryContent({
     observer.observe(el);
     return () => observer.disconnect();
   }, [useExternalData, usePaging, hasMore, loading, loadMore]);
+
+  // ── Grid virtualization ──────────────────────────────────────────────────
+  // Only the cards near the viewport are mounted. Infinite scroll appends to the
+  // result set without bound; mounting a MediaCard (with its decoded preview
+  // <img>, up to ~1600px → multi-MB RGBA bitmap in Chrome's GPU process) for
+  // every scrolled-past item is the prime driver of the tab's native-memory
+  // climb — invisible to JS-heap tooling. Cards are equal-size squares, so the
+  // window is pure scroll arithmetic.
+  const gridScrollRef = useRef<HTMLDivElement | null>(null);
+  const [gridViewport, setGridViewport] = useState({ width: 0, height: 0 });
+  const [gridScrollTop, setGridScrollTop] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = gridScrollRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      setGridViewport((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = gridScrollRef.current;
+    if (!el) return;
+    let raf: number | null = null;
+    const onScroll = () => {
+      if (raf != null) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        setGridScrollTop(el.scrollTop);
+      });
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (raf != null) cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  const gridWindow = useMemo(() => {
+    const n = displayItems.length;
+    const innerWidth = Math.max(0, gridViewport.width - GRID_PAD * 2);
+    if (n === 0 || innerWidth <= 0) {
+      return { columns: 1, colWidth: 0, rowHeight: 0, totalHeight: 0, firstIndex: 0, lastIndex: -1 };
+    }
+    // Mirror CSS `repeat(auto-fill, minmax(min(cardSize,100%), 1fr))`: pack as many
+    // cardSize-min tracks as fit (accounting for gaps), then stretch them to fill.
+    const columns = Math.max(1, Math.floor((innerWidth + GRID_GAP) / (cardSize + GRID_GAP)));
+    const colWidth = (innerWidth - (columns - 1) * GRID_GAP) / columns;
+    const rowHeight = colWidth; // square cards + border-box → outer height === width
+    const rows = Math.ceil(n / columns);
+    const stride = rowHeight + GRID_GAP;
+    const totalHeight = rows * rowHeight + (rows - 1) * GRID_GAP;
+    const viewTop = gridScrollTop - GRID_PAD;
+    const firstRow = Math.max(0, Math.floor((viewTop - GRID_OVERSCAN) / stride));
+    const lastRow = Math.min(rows - 1, Math.floor((viewTop + gridViewport.height + GRID_OVERSCAN) / stride));
+    const firstIndex = firstRow * columns;
+    const lastIndex = Math.min(n - 1, (lastRow + 1) * columns - 1);
+    return { columns, colWidth, rowHeight, totalHeight, firstIndex, lastIndex };
+  }, [displayItems.length, gridViewport.width, gridViewport.height, gridScrollTop, cardSize]);
 
   // Generation scope stores
   const { useInputStore, useSessionStore, useSettingsStore, id: scopeId } = useGenerationScopeStores();
@@ -720,7 +797,7 @@ function MiniGalleryContent({
       )}
 
       {/* Scrollable grid */}
-      <div className="flex-1 overflow-auto p-3">
+      <div ref={gridScrollRef} className="flex-1 overflow-auto p-3">
         {displayItems.length === 0 && !loading && (
           <div className="text-xs text-neutral-500 italic text-center py-4">
             {emptyMessage}
@@ -734,29 +811,44 @@ function MiniGalleryContent({
         )}
 
         {displayItems.length > 0 && (
-          <div
-            className="grid gap-2"
-            style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardSize}px, 100%), 1fr))` }}
-          >
-            {displayItems.map((asset) => (
-              <MiniGalleryItem
-                key={asset.id}
-                asset={asset}
-                isResolving={resolvingIds.has(asset.id)}
-                operationType={operationType}
-                onSelect={() => handleSelect(asset)}
-                onSelectSlot={handleSelectSlot}
-                onOpenViewer={() => handleOpenViewer(asset)}
-                inputScopeId={scopeId}
-                maxSlots={maxSlots}
-                isReplaceMode={isReplaceMode}
-                extraOverlay={renderItemOverlay?.(asset)}
-                suppressHoverActions={suppressHoverActions}
-                renderActions={renderItemActions}
-                extraWidgets={renderItemWidgets?.(asset)}
-                onHover={onItemHover}
-              />
-            ))}
+          // Virtualized grid: a full-height spacer preserves the scrollbar /
+          // scroll position while only near-viewport cards are mounted and
+          // positioned absolutely. See `gridWindow` for the windowing math.
+          <div className="relative w-full" style={{ height: gridWindow.totalHeight }}>
+            {displayItems.slice(gridWindow.firstIndex, gridWindow.lastIndex + 1).map((asset, i) => {
+              const index = gridWindow.firstIndex + i;
+              const row = Math.floor(index / gridWindow.columns);
+              const col = index % gridWindow.columns;
+              return (
+                <div
+                  key={asset.id}
+                  className="absolute"
+                  style={{
+                    left: col * (gridWindow.colWidth + GRID_GAP),
+                    top: row * (gridWindow.rowHeight + GRID_GAP),
+                    width: gridWindow.colWidth,
+                    height: gridWindow.rowHeight,
+                  }}
+                >
+                  <MiniGalleryItem
+                    asset={asset}
+                    isResolving={resolvingIds.has(asset.id)}
+                    operationType={operationType}
+                    onSelect={() => handleSelect(asset)}
+                    onSelectSlot={handleSelectSlot}
+                    onOpenViewer={() => handleOpenViewer(asset)}
+                    inputScopeId={scopeId}
+                    maxSlots={maxSlots}
+                    isReplaceMode={isReplaceMode}
+                    extraOverlay={renderItemOverlay?.(asset)}
+                    suppressHoverActions={suppressHoverActions}
+                    renderActions={renderItemActions}
+                    extraWidgets={renderItemWidgets?.(asset)}
+                    onHover={onItemHover}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
 

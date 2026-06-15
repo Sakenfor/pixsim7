@@ -1,5 +1,14 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
+// Circuit breaker for the stale-height relayout feedback loop. Normal layout
+// converges in 1-3 passes; a relayout *storm* (a burst of asset-update events
+// changing card heights faster than layout settles) can otherwise bump
+// layoutVersion every commit and trip React's "Maximum update depth". Cap the
+// consecutive bumps per (item-count × width) signature — well above normal
+// convergence — and settle once after the burst subsides.
+const MAX_CONSECUTIVE_RELAYOUTS = 12;
+const RELAYOUT_SETTLE_MS = 200;
+
 function setsEqual(a: Set<number> | null, b: Set<number> | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
@@ -19,6 +28,15 @@ export interface MasonryGridProps {
   scrollParentRef?: React.RefObject<HTMLElement | null>;
   /** Pixel overscan beyond viewport edges (default 300) */
   overscan?: number;
+  /**
+   * Placement strategy:
+   * - 'masonry' (default): shortest-column fill — staggered, variable-height columns.
+   * - 'grid': aligned rows — item i sits in column `i % cols`; each row is as
+   *   tall as its tallest card (CSS-grid auto-rows semantics). Use this to
+   *   virtualize an otherwise-plain CSS grid while keeping the aligned look.
+   * Both modes share the same measured-height windowing + scroll anchoring.
+   */
+  mode?: 'masonry' | 'grid';
 }
 
 export function MasonryGrid({
@@ -28,6 +46,7 @@ export function MasonryGrid({
   minColumnWidth = 260,
   scrollParentRef,
   overscan = 300,
+  mode = 'masonry',
 }: MasonryGridProps) {
   // JS-driven masonry layout for full control over placement
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -136,6 +155,9 @@ export function MasonryGrid({
         viewportHeightRef.current = scrollEl.clientHeight;
         updateOffset();
         updateVisibleSet();
+        // A real scroll exposes legitimately-new cards — give relayout a fresh
+        // budget so windowing stays accurate during long scrolls.
+        relayoutStormRef.current.count = 0;
       });
     };
 
@@ -198,6 +220,13 @@ export function MasonryGrid({
   const lastHeightsRef = useRef<Map<HTMLElement, number>>(new Map());
   const observerRef = useRef<ResizeObserver | null>(null);
   const observedSetRef = useRef(new Set<HTMLElement>());
+
+  // Relayout-storm circuit breaker (see MAX_CONSECUTIVE_RELAYOUTS).
+  const relayoutStormRef = useRef<{ sig: string; count: number }>({ sig: '', count: 0 });
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+  }, []);
 
   // Create the shared observer once
   useEffect(() => {
@@ -272,7 +301,26 @@ export function MasonryGrid({
     observedSetRef.current = currentMounted;
 
     if (staleHeight) {
-      setLayoutVersion((v) => v + 1);
+      // Circuit breaker: cap consecutive stale-height relayouts so an
+      // asset-update storm can't drive an unbounded synchronous render loop.
+      const sig = `${items.length}x${containerWidth}`;
+      const storm = relayoutStormRef.current;
+      if (storm.sig !== sig) {
+        storm.sig = sig;
+        storm.count = 0;
+      }
+      if (storm.count < MAX_CONSECUTIVE_RELAYOUTS) {
+        storm.count += 1;
+        setLayoutVersion((v) => v + 1);
+      } else if (settleTimerRef.current == null) {
+        // Cap hit — defer one relayout so positions still settle once the burst
+        // subsides, instead of re-entering the synchronous loop now.
+        settleTimerRef.current = setTimeout(() => {
+          settleTimerRef.current = null;
+          relayoutStormRef.current.count = 0;
+          setLayoutVersion((v) => v + 1);
+        }, RELAYOUT_SETTLE_MS);
+      }
     }
   });
 
@@ -310,45 +358,84 @@ export function MasonryGrid({
     }
 
     const nextPositions: { top: number; left: number; height: number }[] = [];
-    const colBottoms = new Array<number>(cols).fill(0);
 
     let anyMeasured = false;
 
-    items.forEach((_, index) => {
+    // Per-item height resolver shared by both modes: DOM height for mounted
+    // items, last measured height for virtualized placeholders. Measure with
+    // sub-pixel precision and round UP: `offsetHeight` rounds to the nearest
+    // integer, so an aspect-ratio card with a fractional height can round down,
+    // placing the next card slightly too high (a few px of overlap, worst on
+    // tall portraits). `Math.ceil(getBoundingClientRect().height)` errs toward a
+    // sub-pixel gap instead.
+    const heightAt = (index: number): number => {
       const el = itemRefs.current[index];
-      // Use DOM height for mounted items, fall back to last measured height for
-      // virtualized placeholders. Measure with sub-pixel precision and round UP:
-      // `offsetHeight` rounds to the nearest integer, so an aspect-ratio card
-      // with a fractional height can round down, placing the next card in the
-      // column slightly too high (a few px of overlap, worst on tall portraits).
-      // `Math.ceil(getBoundingClientRect().height)` errs toward a sub-pixel gap
-      // instead.
       const height = el
         ? Math.ceil(el.getBoundingClientRect().height)
         : (measuredHeightsRef.current.get(index) ?? 0);
-
-      // Store measured height for future virtualized layout passes
       if (el && height > 0) {
         measuredHeightsRef.current.set(index, height);
         anyMeasured = true;
       }
+      return height;
+    };
 
-      if (height === 0) {
-        nextPositions[index] = { top: 0, left: 0, height: 0 };
-        return;
+    let maxBottom = 0;
+
+    if (mode === 'grid') {
+      // Aligned rows: item i sits in column `i % cols`; each row starts below
+      // the tallest card of the previous row (CSS-grid auto-rows semantics).
+      let rowTop = 0;
+      for (let rowStart = 0; rowStart < items.length; rowStart += cols) {
+        const rowEnd = Math.min(rowStart + cols, items.length);
+        const heights: number[] = [];
+        let rowMaxH = 0;
+        for (let index = rowStart; index < rowEnd; index++) {
+          const h = heightAt(index);
+          heights[index - rowStart] = h;
+          if (h > rowMaxH) rowMaxH = h;
+        }
+        for (let index = rowStart; index < rowEnd; index++) {
+          const c = index - rowStart;
+          const height = heights[c];
+          if (height === 0) {
+            nextPositions[index] = { top: 0, left: 0, height: 0 };
+            continue;
+          }
+          nextPositions[index] = {
+            top: rowTop,
+            left: c * (colWidth + columnGap),
+            height,
+          };
+        }
+        if (rowMaxH > 0) rowTop += rowMaxH + rowGap;
       }
+      maxBottom = rowTop > 0 ? rowTop - rowGap : 0;
+    } else {
+      const colBottoms = new Array<number>(cols).fill(0);
 
-      // Find shortest column
-      let minCol = 0;
-      for (let c = 1; c < cols; c++) {
-        if (colBottoms[c] < colBottoms[minCol]) minCol = c;
-      }
+      items.forEach((_, index) => {
+        const height = heightAt(index);
 
-      const top = colBottoms[minCol];
-      const left = minCol * (colWidth + columnGap);
-      nextPositions[index] = { top, left, height };
-      colBottoms[minCol] = top + height + rowGap;
-    });
+        if (height === 0) {
+          nextPositions[index] = { top: 0, left: 0, height: 0 };
+          return;
+        }
+
+        // Find shortest column
+        let minCol = 0;
+        for (let c = 1; c < cols; c++) {
+          if (colBottoms[c] < colBottoms[minCol]) minCol = c;
+        }
+
+        const top = colBottoms[minCol];
+        const left = minCol * (colWidth + columnGap);
+        nextPositions[index] = { top, left, height };
+        colBottoms[minCol] = top + height + rowGap;
+      });
+
+      maxBottom = colBottoms.length > 0 ? Math.max(...colBottoms) - rowGap : 0;
+    }
 
     // ── Scroll anchoring ─────────────────────────────────────────────────
     // Find the item closest to the viewport top and record how much it
@@ -381,9 +468,6 @@ export function MasonryGrid({
 
     setPositions(nextPositions);
 
-    const maxBottom = colBottoms.length > 0
-      ? Math.max(...colBottoms) - rowGap
-      : 0;
     setContainerHeight(Math.max(0, maxBottom));
 
     // Enable virtualization after first successful measurement pass
@@ -391,7 +475,7 @@ export function MasonryGrid({
     if (!hasInitialLayout && anyMeasured) {
       setHasInitialLayout(true);
     }
-  }, [items.length, containerWidth, columnGap, rowGap, cols, colWidth, columnWidth, layoutVersion]);
+  }, [items.length, containerWidth, columnGap, rowGap, cols, colWidth, columnWidth, layoutVersion, mode]);
 
   // ── Apply scroll anchor adjustment after positions commit ─────────────
   // Runs in useLayoutEffect (before paint) so the user never sees the jump.

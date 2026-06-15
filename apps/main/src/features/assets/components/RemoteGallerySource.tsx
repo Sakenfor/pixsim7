@@ -1660,28 +1660,19 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
               ),
             )}
           </div>
-        ) : layout === 'masonry' ? (
+        ) : (
+          // Both layouts share MasonryGrid's viewport virtualization (mounting
+          // every card unbounded was the prime driver of the tab's native-memory
+          // climb while scrolling). 'masonry' = staggered columns; 'grid' =
+          // aligned rows matching the old CSS-grid look.
           <MasonryGrid
+            mode={layout === 'masonry' ? 'masonry' : 'grid'}
             items={cardItems}
             rowGap={layoutSettings.rowGap}
             columnGap={layoutSettings.columnGap}
             minColumnWidth={cardSize}
             scrollParentRef={scrollContainerRef}
           />
-        ) : (
-          <div
-            className="grid"
-            style={{
-              // min(cardSize, 100%) caps the track at the container width so a
-              // single column on a narrow phone shrinks to fit instead of
-              // forcing the grid wider than the viewport (right-edge crop).
-              gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardSize}px, 100%), 1fr))`,
-              rowGap: `${layoutSettings.rowGap}px`,
-              columnGap: `${layoutSettings.columnGap}px`,
-            }}
-          >
-            {cardItems}
-          </div>
         )}
         {/* Bottom pagination controls (duplicate of top for convenience) */}
         {showParallelGroups ? null : showGroupOverview ? (
