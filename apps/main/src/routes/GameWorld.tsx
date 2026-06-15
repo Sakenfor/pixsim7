@@ -13,6 +13,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { resolveGameLocations } from '@lib/resolvers';
 
+import { useWorldContextStore } from '@features/scene';
+
 import { DynamicThemeRulesPanel } from '@/components/game/panels/DynamicThemeRulesPanel';
 import { InteractionPresetUsagePanel } from '@/components/game/panels/InteractionPresetUsagePanel';
 import { ThemePacksPanel } from '@/components/game/panels/ThemePacksPanel';
@@ -109,7 +111,12 @@ export function GameWorld() {
     worldLoadError,
   } = useSharedWorldSelection({ autoSelectFirst: true });
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Location selection is store-backed (single source of truth), mirroring how
+  // world selection already flows through worldContextStore. This lets the same
+  // editors read the current location from context in a route, dockview, or
+  // floating panel instead of having it prop-drilled from here.
+  const selectedId = useWorldContextStore((s) => s.locationId);
+  const setSelectedId = useWorldContextStore((s) => s.setLocationId);
   const [detail, setDetail] = useState<GameLocationDetail | null>(null);
   const [savedHotspotsJson, setSavedHotspotsJson] = useState<string>('[]');
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
@@ -140,11 +147,17 @@ export function GameWorld() {
           { consumerId: 'GameWorld.loadLocations' },
         );
         setLocations(locs);
-        setSelectedId((prev) =>
-          prev != null && locs.some((loc) => loc.id === prev)
-            ? prev
-            : (locs[0]?.id ?? null),
-        );
+        // Preserve an existing in-context selection if it's still valid;
+        // otherwise auto-select the first location. Read from the store
+        // (not the closed-over value) to avoid a stale selection.
+        const currentLocationId = useWorldContextStore.getState().locationId;
+        const nextLocationId =
+          currentLocationId != null && locs.some((loc) => loc.id === currentLocationId)
+            ? currentLocationId
+            : (locs[0]?.id ?? null);
+        if (nextLocationId !== currentLocationId) {
+          setSelectedId(nextLocationId);
+        }
       } catch (e: any) {
         setError(String(e?.message ?? e));
       }
