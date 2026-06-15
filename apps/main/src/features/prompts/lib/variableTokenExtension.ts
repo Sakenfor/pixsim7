@@ -222,20 +222,56 @@ function facetMarkFor(known: boolean): Decoration {
   return mark;
 }
 
+// Value-literal operand mark — a bare `( … )` chain operand. Faint violet wash
+// (echoing the analysis-layer value tint) so an explicit value/body reads
+// distinctly from incidental prose in the structure layer. Non-interactive for
+// now (value editing/binding is deferred).
+const valueMark = Decoration.mark({ attributes: { class: 'cm-prompt-value' } });
+
+/** Doc ranges of `value` chain elements (bare `( … )` operands), WS-trimmed. */
+function collectValueRanges(config: VariableTokensConfig, doc: Text): Array<{ from: number; to: number }> {
+  const { tokenLines } = config;
+  if (!tokenLines) return [];
+  const out: Array<{ from: number; to: number }> = [];
+  const docLength = doc.length;
+  for (const line of tokenLines) {
+    if (line.kind !== 'chain' || !Array.isArray(line.elements)) continue;
+    for (const el of line.elements) {
+      if (el.kind !== 'value') continue;
+      if (typeof el.start !== 'number' || typeof el.end !== 'number' || el.start < 0 || el.end > docLength || el.start >= el.end) {
+        continue;
+      }
+      const raw = doc.sliceString(el.start, el.end);
+      const leading = raw.length - raw.trimStart().length;
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const from = el.start + leading;
+      const to = from + trimmed.length;
+      if (from < to && to <= docLength) out.push({ from, to });
+    }
+  }
+  return out;
+}
+
 function buildDecorations(config: VariableTokensConfig, doc: Text): DecorationSet {
   try {
-    const ranges = collectVariableRanges(config, doc);
-    if (ranges.length === 0) return Decoration.none;
-    const builder = new RangeSetBuilder<Decoration>();
-    for (const r of ranges) {
+    // Collect var (+ nested facet) and value marks into one list, then add them
+    // sorted by position — RangeSetBuilder requires monotonic `from`.
+    const entries: Array<{ from: number; to: number; deco: Decoration }> = [];
+    for (const r of collectVariableRanges(config, doc)) {
       if (r.from >= r.to || r.from < 0 || r.to > doc.length) continue;
-      builder.add(r.from, r.to, markFor(r));
-      // Nested facet mark — added after the base mark and at a strictly later
-      // `from` (after the `_`), so the builder stays monotonic.
+      entries.push({ from: r.from, to: r.to, deco: markFor(r) });
       if (r.facet && r.facet.from > r.from && r.facet.from < r.facet.to && r.facet.to <= doc.length) {
-        builder.add(r.facet.from, r.facet.to, facetMarkFor(r.facet.known));
+        entries.push({ from: r.facet.from, to: r.facet.to, deco: facetMarkFor(r.facet.known) });
       }
     }
+    for (const v of collectValueRanges(config, doc)) {
+      entries.push({ from: v.from, to: v.to, deco: valueMark });
+    }
+    if (entries.length === 0) return Decoration.none;
+    entries.sort((a, b) => a.from - b.from || a.to - b.to);
+    const builder = new RangeSetBuilder<Decoration>();
+    for (const e of entries) builder.add(e.from, e.to, e.deco);
     return builder.finish();
   } catch (err) {
     console.warn('[variableTokenExtension] buildDecorations failed:', err);
@@ -338,6 +374,12 @@ const variableTheme = EditorView.baseTheme({
   '.cm-prompt-facet': {
     borderRadius: '2px',
     transition: 'background-color 100ms ease, border-color 100ms ease',
+  },
+  // Value-literal operand `( … )` — faint violet wash so an explicit value/body
+  // reads distinctly from incidental prose.
+  '.cm-prompt-value': {
+    backgroundColor: 'rgba(168, 85, 247, 0.07)',
+    borderRadius: '2px',
   },
 });
 
