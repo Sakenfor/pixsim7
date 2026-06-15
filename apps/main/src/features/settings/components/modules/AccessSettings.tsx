@@ -35,11 +35,14 @@ import { formatActorLabel } from '@lib/identity/actorDisplay';
 import { useAuthStore } from '@/stores/authStore';
 
 import {
+  denyAllowed,
   draftEquals,
   draftFor,
+  draftToScopeUpdate,
   EMPTY_DRAFT,
-  listOrNull,
+  type FieldDraft,
   type ScopeDraft,
+  type ScopeMode,
 } from './agentScopeDraft';
 
 function normalizePermissions(permissions: string[]): string[] {
@@ -243,6 +246,85 @@ function ScopeChipPicker({
   );
 }
 
+const MODE_LABEL: Record<ScopeMode, string> = {
+  unrestricted: 'Unrestricted',
+  restricted: 'Restricted',
+  deny: 'Deny all',
+};
+
+// One scope field with an explicit tri-state (agent-scope-admin-ux cp3): the mode
+// segmented control maps 1:1 to the resolver — Unrestricted (null) / Restricted
+// (the chip selection) / Deny all ([]). `canDeny` is false for world/project,
+// whose default_scopes scope-strings have no deny-all representation, so they
+// show only the first two modes.
+function ScopeFieldEditor({
+  label,
+  options,
+  value,
+  onChange,
+  canDeny,
+  disabled,
+}: {
+  label: string;
+  options: ScopeOption[];
+  value: FieldDraft;
+  onChange: (next: FieldDraft) => void;
+  canDeny: boolean;
+  disabled?: boolean;
+}) {
+  const modes: ScopeMode[] = canDeny
+    ? ['unrestricted', 'restricted', 'deny']
+    : ['unrestricted', 'restricted'];
+  const kind = label.toLowerCase();
+  return (
+    <FormField label={label}>
+      <div className="space-y-1">
+        <div className="inline-flex overflow-hidden rounded border border-neutral-200 dark:border-neutral-700">
+          {modes.map((m) => {
+            const active = value.mode === m;
+            const activeClass =
+              m === 'deny'
+                ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
+                : 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300';
+            return (
+              <button
+                key={m}
+                type="button"
+                disabled={disabled}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => onChange({ mode: m, ids: m === 'restricted' ? value.ids : [] })}
+                className={`px-2 py-0.5 text-[10px] transition-colors ${
+                  active
+                    ? activeClass
+                    : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                }`}
+              >
+                {MODE_LABEL[m]}
+              </button>
+            );
+          })}
+        </div>
+        {value.mode === 'restricted' && (
+          <ScopeChipPicker
+            options={options}
+            selected={value.ids}
+            onChange={(ids) => onChange({ mode: 'restricted', ids })}
+            disabled={disabled}
+          />
+        )}
+        {value.mode === 'unrestricted' && (
+          <p className="text-[10px] text-neutral-400">Full access — no {kind} restriction.</p>
+        )}
+        {value.mode === 'deny' && (
+          <p className="text-[10px] text-red-600 dark:text-red-400">
+            Deny-all — this agent may touch no {kind} of this kind.
+          </p>
+        )}
+      </div>
+    </FormField>
+  );
+}
+
 function AgentProfileScopes({ userId }: { userId: number }) {
   const [profiles, setProfiles] = useState<AdminAgentProfile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -301,7 +383,7 @@ function AgentProfileScopes({ userId }: { userId: number }) {
     };
   }, [userId]);
 
-  const setDraftField = useCallback((id: string, key: keyof ScopeDraft, val: string[]) => {
+  const setDraftField = useCallback((id: string, key: keyof ScopeDraft, val: FieldDraft) => {
     setDrafts((prev) => ({
       ...prev,
       [id]: { ...(prev[id] ?? EMPTY_DRAFT), [key]: val },
@@ -320,13 +402,7 @@ function AgentProfileScopes({ userId }: { userId: number }) {
       setSavingId(p.id);
       setError('');
       try {
-        applyUpdated(
-          await adminUpdateAgentProfileScope(p.id, {
-            assigned_plans: listOrNull(d.plans),
-            default_scopes: listOrNull([...d.worlds, ...d.projects]),
-            allowed_contracts: listOrNull(d.contracts),
-          }),
-        );
+        applyUpdated(await adminUpdateAgentProfileScope(p.id, draftToScopeUpdate(d)));
       } catch (err) {
         setError(extractErrorMessage(err, 'Failed to update profile scopes'));
       } finally {
@@ -356,9 +432,10 @@ function AgentProfileScopes({ userId }: { userId: number }) {
     <>
       <SectionHeader className="mt-2">Agent profile scopes</SectionHeader>
       <p className="text-[10px] leading-snug text-neutral-500">
-        Restrict what this user&apos;s agents (their Claude) may touch. Pick from resolved
-        plans, worlds, projects, and contracts. Leaving a field empty means unrestricted (full
-        access).
+        Restrict what this user&apos;s agents (their Claude) may touch. Per field:{' '}
+        <strong>Unrestricted</strong> (full access), <strong>Restricted</strong> (only the picked
+        items), or <strong>Deny all</strong>. Worlds and projects can&apos;t express deny-all today,
+        so they offer only the first two.
       </p>
 
       {loading ? (
@@ -397,38 +474,38 @@ function AgentProfileScopes({ userId }: { userId: number }) {
                     {p.agent_type}
                   </code>
                 </div>
-                <FormField label="Plans">
-                  <ScopeChipPicker
-                    options={planOptions}
-                    selected={d.plans}
-                    onChange={(next) => setDraftField(p.id, 'plans', next)}
-                    disabled={busy}
-                  />
-                </FormField>
-                <FormField label="Worlds">
-                  <ScopeChipPicker
-                    options={worldOptions}
-                    selected={d.worlds}
-                    onChange={(next) => setDraftField(p.id, 'worlds', next)}
-                    disabled={busy}
-                  />
-                </FormField>
-                <FormField label="Projects">
-                  <ScopeChipPicker
-                    options={projectOptions}
-                    selected={d.projects}
-                    onChange={(next) => setDraftField(p.id, 'projects', next)}
-                    disabled={busy}
-                  />
-                </FormField>
-                <FormField label="Contracts">
-                  <ScopeChipPicker
-                    options={contractOptions}
-                    selected={d.contracts}
-                    onChange={(next) => setDraftField(p.id, 'contracts', next)}
-                    disabled={busy}
-                  />
-                </FormField>
+                <ScopeFieldEditor
+                  label="Plans"
+                  options={planOptions}
+                  value={d.plans}
+                  canDeny={denyAllowed('plans')}
+                  onChange={(next) => setDraftField(p.id, 'plans', next)}
+                  disabled={busy}
+                />
+                <ScopeFieldEditor
+                  label="Worlds"
+                  options={worldOptions}
+                  value={d.worlds}
+                  canDeny={denyAllowed('worlds')}
+                  onChange={(next) => setDraftField(p.id, 'worlds', next)}
+                  disabled={busy}
+                />
+                <ScopeFieldEditor
+                  label="Projects"
+                  options={projectOptions}
+                  value={d.projects}
+                  canDeny={denyAllowed('projects')}
+                  onChange={(next) => setDraftField(p.id, 'projects', next)}
+                  disabled={busy}
+                />
+                <ScopeFieldEditor
+                  label="Contracts"
+                  options={contractOptions}
+                  value={d.contracts}
+                  canDeny={denyAllowed('contracts')}
+                  onChange={(next) => setDraftField(p.id, 'contracts', next)}
+                  disabled={busy}
+                />
                 <div className="flex items-center gap-2">
                   <Button
                     size="sm"

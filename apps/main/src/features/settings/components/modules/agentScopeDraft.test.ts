@@ -1,11 +1,69 @@
 import { describe, expect, it } from 'vitest';
 
-import { draftEquals, draftFor, listOrNull, splitDefaultScopes } from './agentScopeDraft';
+import {
+  denyAllowed,
+  draftEquals,
+  draftFor,
+  draftToScopeUpdate,
+  fieldFromList,
+  fieldToList,
+  mergeDefaultScopes,
+  scopeFieldFromStrings,
+  splitDefaultScopes,
+  type ScopeDraft,
+} from './agentScopeDraft';
 
-// cp2 (agent-scope-admin-ux): default_scopes is a single grant list mixing world
-// and project scopes. The pickers split it per-kind on load and re-merge on save;
-// these helpers are the load/save seam, so the round-trip must be lossless and the
-// null-vs-list semantics must match the resolver (empty selection = unrestricted).
+// agent-scope-admin-ux cp2/cp3: each scope field is a tri-state mapping 1:1 to the
+// resolver (pixsim7/common/scope_grants.py): null = unrestricted, [] = deny-all,
+// [ids] = restricted. Deny-all is only representable for the dedicated []-capable
+// fields (plan/contract); world/project ride default_scopes scope-strings where
+// [] reads back as unrestricted, so they are two-state only. These tests pin both
+// the per-field codec and the default_scopes split/merge seam.
+
+describe('denyAllowed', () => {
+  it('allows deny-all only for the dedicated []-capable fields', () => {
+    expect(denyAllowed('plans')).toBe(true);
+    expect(denyAllowed('contracts')).toBe(true);
+    expect(denyAllowed('worlds')).toBe(false);
+    expect(denyAllowed('projects')).toBe(false);
+  });
+});
+
+describe('fieldFromList (load dedicated field)', () => {
+  it('null → unrestricted', () => {
+    expect(fieldFromList(null)).toEqual({ mode: 'unrestricted', ids: [] });
+  });
+  it('[] → deny-all', () => {
+    expect(fieldFromList([])).toEqual({ mode: 'deny', ids: [] });
+  });
+  it('[ids] → restricted', () => {
+    expect(fieldFromList(['plan-a', 'plan-b'])).toEqual({
+      mode: 'restricted',
+      ids: ['plan-a', 'plan-b'],
+    });
+  });
+});
+
+describe('fieldToList (save dedicated field)', () => {
+  it('unrestricted → null, deny → [], restricted → ids', () => {
+    expect(fieldToList({ mode: 'unrestricted', ids: [] })).toBeNull();
+    expect(fieldToList({ mode: 'deny', ids: [] })).toEqual([]);
+    expect(fieldToList({ mode: 'restricted', ids: ['x'] })).toEqual(['x']);
+  });
+
+  it('round-trips null/[]/[ids] losslessly', () => {
+    for (const v of [null, [], ['a', 'b']] as Array<string[] | null>) {
+      expect(fieldToList(fieldFromList(v))).toEqual(v);
+    }
+  });
+});
+
+describe('scopeFieldFromStrings (world/project, two-state)', () => {
+  it('present scope-strings → restricted; absent → unrestricted', () => {
+    expect(scopeFieldFromStrings(['world:1'])).toEqual({ mode: 'restricted', ids: ['world:1'] });
+    expect(scopeFieldFromStrings([])).toEqual({ mode: 'unrestricted', ids: [] });
+  });
+});
 
 describe('splitDefaultScopes', () => {
   it('routes project: entries to projects and everything else to worlds', () => {
@@ -13,45 +71,31 @@ describe('splitDefaultScopes', () => {
     expect(worlds).toEqual(['world:42', 'world:*']);
     expect(projects).toEqual(['project:7']);
   });
-
-  it('treats null/empty as empty selections (unrestricted)', () => {
+  it('treats null/empty as empty selections', () => {
     expect(splitDefaultScopes(null)).toEqual({ worlds: [], projects: [] });
     expect(splitDefaultScopes([])).toEqual({ worlds: [], projects: [] });
   });
-
-  it('keeps world:* on the world side, not projects', () => {
-    const { worlds, projects } = splitDefaultScopes(['world:*']);
-    expect(worlds).toEqual(['world:*']);
-    expect(projects).toEqual([]);
-  });
 });
 
-describe('listOrNull', () => {
-  it('returns null for an empty selection (unrestricted)', () => {
-    expect(listOrNull([])).toBeNull();
-  });
-
-  it('returns the list when non-empty (restricted)', () => {
-    expect(listOrNull(['plan-a', 'plan-b'])).toEqual(['plan-a', 'plan-b']);
-  });
-});
-
-describe('default_scopes round-trip (load split → save merge)', () => {
-  it('reconstructs the merged grant from the split worlds/projects drafts', () => {
-    const original = ['world:1', 'world:*', 'project:9'];
-    const { worlds, projects } = splitDefaultScopes(original);
-    const merged = listOrNull([...worlds, ...projects]);
-    // worlds preserved in order, then projects appended.
+describe('mergeDefaultScopes', () => {
+  it('only restricted fields contribute; worlds then projects', () => {
+    const merged = mergeDefaultScopes(
+      { mode: 'restricted', ids: ['world:1', 'world:*'] },
+      { mode: 'restricted', ids: ['project:9'] },
+    );
     expect(merged).toEqual(['world:1', 'world:*', 'project:9']);
   });
-
-  it('clearing both kinds saves null (back to unrestricted)', () => {
-    const merged = listOrNull([]);
-    expect(merged).toBeNull();
+  it('unrestricted fields contribute nothing; both unrestricted → null', () => {
+    expect(
+      mergeDefaultScopes({ mode: 'restricted', ids: ['world:1'] }, { mode: 'unrestricted', ids: [] }),
+    ).toEqual(['world:1']);
+    expect(
+      mergeDefaultScopes({ mode: 'unrestricted', ids: [] }, { mode: 'unrestricted', ids: [] }),
+    ).toBeNull();
   });
 });
 
-describe('draftFor / draftEquals', () => {
+describe('draftFor / draftToScopeUpdate full round-trip', () => {
   const profile = {
     id: 'collab-claude',
     user_id: 7,
@@ -64,23 +108,62 @@ describe('draftFor / draftEquals', () => {
     allowed_contracts: null,
   };
 
-  it('builds a per-kind draft from a profile, splitting default_scopes', () => {
-    const d = draftFor(profile);
-    expect(d).toEqual({
-      plans: ['plan-a'],
-      worlds: ['world:42'],
-      projects: ['project:3'],
-      contracts: [],
+  it('builds a per-kind tri-state draft, splitting default_scopes', () => {
+    expect(draftFor(profile)).toEqual({
+      plans: { mode: 'restricted', ids: ['plan-a'] },
+      worlds: { mode: 'restricted', ids: ['world:42'] },
+      projects: { mode: 'restricted', ids: ['project:3'] },
+      contracts: { mode: 'unrestricted', ids: [] },
     });
   });
 
-  it('round-trips equal: draftFor(profile) equals itself', () => {
-    expect(draftEquals(draftFor(profile), draftFor(profile))).toBe(true);
+  it('serializes back to the original grant fields', () => {
+    expect(draftToScopeUpdate(draftFor(profile))).toEqual({
+      assigned_plans: ['plan-a'],
+      default_scopes: ['world:42', 'project:3'],
+      allowed_contracts: null,
+    });
   });
 
+  it('represents deny-all for plan/contract but never silently for worlds', () => {
+    const draft: ScopeDraft = {
+      plans: { mode: 'deny', ids: [] },
+      worlds: { mode: 'unrestricted', ids: [] },
+      projects: { mode: 'unrestricted', ids: [] },
+      contracts: { mode: 'deny', ids: [] },
+    };
+    expect(draftToScopeUpdate(draft)).toEqual({
+      assigned_plans: [],
+      default_scopes: null,
+      allowed_contracts: [],
+    });
+  });
+});
+
+describe('draftEquals', () => {
+  const profile = {
+    id: 'p',
+    user_id: 7,
+    label: 'P',
+    agent_type: 'claude',
+    status: 'active',
+    is_global: false,
+    assigned_plans: ['plan-a'],
+    default_scopes: ['world:42'],
+    allowed_contracts: null,
+  };
+
+  it('equal to itself', () => {
+    expect(draftEquals(draftFor(profile), draftFor(profile))).toBe(true);
+  });
+  it('detects a changed mode', () => {
+    const a = draftFor(profile);
+    const b: ScopeDraft = { ...a, plans: { mode: 'deny', ids: [] } };
+    expect(draftEquals(a, b)).toBe(false);
+  });
   it('detects a changed selection', () => {
     const a = draftFor(profile);
-    const b = { ...a, worlds: ['world:42', 'world:99'] };
+    const b: ScopeDraft = { ...a, worlds: { mode: 'restricted', ids: ['world:42', 'world:99'] } };
     expect(draftEquals(a, b)).toBe(false);
   });
 });
