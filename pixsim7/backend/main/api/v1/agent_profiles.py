@@ -54,6 +54,7 @@ class AgentProfileResponse(BaseModel):
     config: Optional[Dict] = None
     default_scopes: Optional[List[str]] = None
     assigned_plans: Optional[List[str]] = None
+    token_level: str = "basic"
     status: str
     is_default: bool = False
     is_global: bool = False
@@ -81,6 +82,7 @@ class AgentProfileCreateRequest(BaseModel):
     config: Optional[Dict] = None
     default_scopes: Optional[List[str]] = None
     assigned_plans: Optional[List[str]] = None
+    token_level: str = Field(default="basic", pattern="^(basic|admin)$")
 
 
 class AgentProfileUpdateRequest(BaseModel):
@@ -97,6 +99,7 @@ class AgentProfileUpdateRequest(BaseModel):
     config: Optional[Dict] = None
     default_scopes: Optional[List[str]] = None
     assigned_plans: Optional[List[str]] = None
+    token_level: Optional[str] = Field(default=None, pattern="^(basic|admin)$")
     status: Optional[str] = None
     is_default: Optional[bool] = None
 
@@ -160,6 +163,7 @@ def _to_response(p: AgentProfile) -> dict:
         "config": p.config,
         "default_scopes": p.default_scopes,
         "assigned_plans": p.assigned_plans,
+        "token_level": getattr(p, "token_level", "basic") or "basic",
         "status": p.status,
         "is_default": p.is_default,
         "is_global": p.is_global,
@@ -581,6 +585,7 @@ async def create_agent_profile(
         config=payload.config,
         default_scopes=payload.default_scopes,
         assigned_plans=payload.assigned_plans,
+        token_level=payload.token_level,
         status="active",
         created_at=now,
         updated_at=now,
@@ -786,14 +791,30 @@ async def mint_profile_token(
 
     effective_user_id = _effective_user_id(principal)
     run_id = str(uuid4())
-    inherited_permissions = await resolve_inheritable_agent_permissions(db, effective_user_id)
+
+    # Admin elevation is opt-in per profile AND gated on the caller being an
+    # admin — a non-admin owner with token_level="admin" still gets a basic
+    # token (fail closed). When granted, the agent token carries is_admin=True
+    # plus the user's full permission set instead of the narrow inheritable
+    # allowlist, so the agent can reach CurrentAdminUser endpoints on the
+    # user's behalf. See AgentProfile.token_level / token_policy._agent_claims.
+    grant_admin = profile.token_level == "admin" and principal.is_admin()
+    if grant_admin:
+        from pixsim7.backend.main.domain import User
+
+        user = await db.get(User, int(effective_user_id)) if effective_user_id else None
+        token_permissions = list(getattr(user, "permissions", None) or [])
+    else:
+        token_permissions = await resolve_inheritable_agent_permissions(db, effective_user_id)
+
     token = mint_token(
         TokenKind.AGENT,
         agent_id=profile.id,
         agent_type=profile.agent_type,
         scopes=profile.default_scopes,
         on_behalf_of=effective_user_id,
-        permissions=inherited_permissions,
+        permissions=token_permissions,
+        is_admin=grant_admin,
         run_id=run_id,
         ttl=timedelta(hours=hours),
         scope_key=scope_key,
@@ -833,7 +854,14 @@ async def mint_profile_token(
             domain="agent", entity_type="agent_token",
             entity_id=token_id, entity_label=f"{profile.label} ({hours}h)",
             action="created",
-            extra={"profile_id": profile.id, "hours": hours, "scope": scope, "run_id": run_id},
+            extra={
+                "profile_id": profile.id,
+                "hours": hours,
+                "scope": scope,
+                "run_id": run_id,
+                "token_level": profile.token_level,
+                "admin_granted": grant_admin,
+            },
         )
         await db.commit()
 

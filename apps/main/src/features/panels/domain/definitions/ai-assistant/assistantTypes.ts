@@ -74,6 +74,9 @@ export interface UnifiedProfile {
   is_default: boolean;
   is_global: boolean;
   config: Record<string, unknown> | null;
+  /** Privilege level of auto-minted session tokens: 'basic' (default) | 'admin'.
+      'admin' only actually elevates when the minting user is an admin. */
+  token_level?: string;
 }
 
 export interface ChatSessionEntry {
@@ -84,6 +87,13 @@ export interface ChatSessionEntry {
   last_plan_id?: string | null;
   last_contract_id?: string | null;
   label: string;
+  /**
+   * Agent-set identity mirrored onto the session (survives tab close), so the
+   * resume picker + `buildResumedTab` can restore the same icon/subtitle the
+   * tab showed when live. Null until the agent set it via `set_tab_identity`.
+   */
+  icon?: string | null;
+  subtitle?: string | null;
   message_count: number;
   source?: string | null;  // 'chat' | 'mcp' | 'mcp-auto' | 'bridge'
   last_used_at: string;

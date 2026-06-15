@@ -948,8 +948,11 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           </div>
         </div>
 
-        {/* Toolbar — profile, model, token, actions below the textarea */}
-        <div className="flex gap-1.5 items-center">
+        {/* Toolbar — profile, model, token, actions below the textarea.
+            flex-wrap so a narrow panel (mobile) wraps the controls to a second
+            row instead of pushing Send/token off the right edge — every child
+            is shrink-0, so without wrapping the row overflows horizontally. */}
+        <div className="flex flex-wrap gap-1.5 items-center">
           <button onClick={() => setActionPickerOpen(!actionPickerOpen)} disabled={connected === 0}
             className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${actionPickerOpen ? 'bg-accent text-accent-text' : 'text-th-muted hover:bg-surface-secondary'}`}
             title="Browse actions">
@@ -1134,17 +1137,30 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             <Icon name="send" size={14} />
           </Button>
 
-          {/* Inject token toggle */}
-          <button
-            onClick={() => onUpdateTab({ injectToken: !tab.injectToken })}
-            disabled={sending || !tab.profileId}
-            className={`shrink-0 h-7 flex items-center gap-0.5 px-1 rounded-lg text-[9px] transition-colors disabled:opacity-30 ${
-              tab.injectToken ? 'text-signal-warning' : 'text-th-muted hover:text-th'
-            }`}
-            title={tab.injectToken ? 'Token will be auto-injected (click to disable)' : 'Auto-inject session token'}
-          >
-            <Icon name="key" size={12} />
-          </button>
+          {/* Inject token toggle. When the bound profile is admin-level, the
+              auto-injected token carries full admin rights — surface that
+              loudly (red key + label) so it's never a silent elevation. */}
+          {(() => {
+            const tokenIsAdmin = activeProfile?.token_level === 'admin';
+            const activeColor = tokenIsAdmin ? 'text-signal-error' : 'text-signal-warning';
+            return (
+              <button
+                onClick={() => onUpdateTab({ injectToken: !tab.injectToken })}
+                disabled={sending || !tab.profileId}
+                className={`shrink-0 h-7 flex items-center gap-0.5 px-1 rounded-lg text-[9px] transition-colors disabled:opacity-30 ${
+                  tab.injectToken ? activeColor : 'text-th-muted hover:text-th'
+                }`}
+                title={
+                  tab.injectToken
+                    ? `${tokenIsAdmin ? 'ADMIN ' : ''}token will be auto-injected (click to disable)`
+                    : `Auto-inject ${tokenIsAdmin ? 'admin ' : ''}session token`
+                }
+              >
+                <Icon name="key" size={12} />
+                {tab.injectToken && tokenIsAdmin && <span className="font-semibold">admin</span>}
+              </button>
+            );
+          })()}
 
           {/* Work summaries */}
           <WorkSummaryBadge sessionId={tab.sessionId} messageCount={messages.length} sending={sending} />

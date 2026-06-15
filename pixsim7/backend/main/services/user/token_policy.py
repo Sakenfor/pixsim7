@@ -165,7 +165,13 @@ def _agent_claims(
     scope_key: str | None = None,
     chat_session_id: str | None = None,
     tab_id: str | None = None,
+    is_admin: bool = False,
 ) -> dict[str, Any]:
+    # `is_admin` defaults False — the safe agent invariant. It is set True ONLY
+    # for an explicitly admin-elevated profile token, and only when the minting
+    # caller is themselves an admin (gate in mint_profile_token). The decode
+    # side (actor.from_jwt_payload) likewise honors this claim only for agent
+    # tokens that carry it, so existing/basic tokens stay non-admin.
     data: dict[str, Any] = {
         "sub": "0",
         "purpose": "agent",
@@ -173,7 +179,7 @@ def _agent_claims(
         "profile_id": profile_id or agent_id,
         "agent_type": agent_type,
         "role": "agent",
-        "is_admin": False,
+        "is_admin": bool(is_admin),
         "is_active": True,
         # Permissions inherited from the on-behalf user, narrowed to the
         # agent-inheritable allowlist by the caller (see

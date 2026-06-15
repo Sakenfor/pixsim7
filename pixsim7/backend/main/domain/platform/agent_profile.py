@@ -72,6 +72,18 @@ class AgentProfile(SQLModel, table=True):
         sa_column=Column(JSON),
         description="Plan IDs this agent may work on. NULL = unrestricted.",
     )
+    # Privilege level baked into auto-minted session tokens.
+    #   "basic" — the default agent token (is_admin=False, only the narrow
+    #             AGENT_INHERITABLE_PERMISSIONS allowlist). This is the safe
+    #             default the whole system assumes for agent tokens.
+    #   "admin" — opt-in elevation: the mint endpoint stamps is_admin=True +
+    #             the on-behalf user's full permissions, BUT only when the
+    #             caller minting the token is themselves an admin (gate lives
+    #             in mint_profile_token). A non-admin owner setting this gets a
+    #             basic token regardless. See token_policy._agent_claims and
+    #             actor.from_jwt_payload (both honor is_admin only for elevated
+    #             agent tokens).
+    token_level: str = Field(default="basic", max_length=16)  # basic | admin
 
     # Status & defaults
     status: str = Field(default="active", max_length=32)  # active | paused | archived
@@ -119,6 +131,14 @@ class ChatSession(SQLModel, table=True):
     last_plan_id: Optional[str] = Field(default=None, max_length=120, index=True)
     last_contract_id: Optional[str] = Field(default=None, max_length=120, index=True)
     label: str = Field(default="Untitled", max_length=255)
+    # Agent-set identity, mirrored from the bound ChatTab on every
+    # `set_tab_identity` write so it OUTLIVES the tab. Closing a tab deletes
+    # the ChatTab row (where identity primarily lives), so the resume picker
+    # would otherwise lose the agent's icon/subtitle. Persisting a copy here
+    # lets a resumed session render the same glyph + secondary line it had
+    # when live (plan `agent-freeform-tab-identity` — resume parity).
+    icon: Optional[str] = Field(default=None, max_length=50)
+    subtitle: Optional[str] = Field(default=None, max_length=255)
     source: Optional[str] = Field(default=None, max_length=32)  # chat, mcp, mcp-auto, bridge
     message_count: int = Field(default=0)
     messages: Optional[List[Dict]] = Field(

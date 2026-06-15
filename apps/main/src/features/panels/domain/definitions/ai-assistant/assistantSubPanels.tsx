@@ -3,6 +3,7 @@
  * Secondary UI panels/widgets for the AI Assistant — pickers, editors, badges.
  */
 
+import { isAdminUser } from '@pixsim7/shared.auth.core';
 import {
   Badge,
   Button,
@@ -11,13 +12,18 @@ import {
 } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+
 import { getEngineBrand } from '@lib/agent/engineBrands';
 import { pixsimClient } from '@lib/api/client';
 import { Icon, getIcon, type IconName } from '@lib/icons';
 
 import { refreshChatUnread } from '@features/notifications/lib/chatUnreadPoll';
 
+import { useAuthStore } from '@/stores/authStore';
+
+
 import type { AgentEngine } from './assistantChatStore';
+import { useAssistantChatStore } from './assistantChatStore';
 import type { ChatSessionEntry, UnifiedProfile } from './assistantTypes';
 import { AGENT_COMMANDS } from './assistantTypes';
 import { listOrphanSessions } from './chatTabsApi';
@@ -59,8 +65,14 @@ export function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps)
   const [modelId, setModelId] = useState(profile?.model_id || '');
   const [reasoningEffort, setReasoningEffort] = useState((profile?.config?.reasoning_effort as string) || '');
   const [systemPrompt, setSystemPrompt] = useState(profile?.system_prompt || '');
+  const [tokenLevel, setTokenLevel] = useState(profile?.token_level || 'basic');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Admin-token elevation is only offered to admins — the backend gates the
+  // actual grant on the minting caller being admin, so showing it to others
+  // would be a dead control.
+  const isAdmin = isAdminUser(useAuthStore((s) => s.user));
 
   const handleSave = useCallback(async () => {
     if (!label.trim()) return;
@@ -74,7 +86,7 @@ export function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps)
           id: slug, label: label.trim(), description: description.trim() || null,
           icon: icon.trim() || null, system_prompt: systemPrompt.trim() || null,
           agent_type: agentType, method: method || null, model_id: modelId.trim() || null,
-          config, audience: 'user',
+          config, audience: 'user', token_level: isAdmin ? tokenLevel : 'basic',
         });
         onSave(res.profile);
       } else {
@@ -90,6 +102,7 @@ export function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps)
           updates.config = { ...(profile.config || {}), reasoning_effort: reasoningEffort || null };
         }
         if (systemPrompt !== (profile.system_prompt || '')) updates.system_prompt = systemPrompt.trim() || null;
+        if (isAdmin && tokenLevel !== (profile.token_level || 'basic')) updates.token_level = tokenLevel;
         if (Object.keys(updates).length > 0) {
           const res = await pixsimClient.patch<{ profile: UnifiedProfile }>(`/dev/agent-profiles/${profile.id}`, updates);
           onSave(res.profile);
@@ -102,7 +115,7 @@ export function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps)
     } finally {
       setSaving(false);
     }
-  }, [isNew, id, label, description, icon, agentType, method, modelId, reasoningEffort, systemPrompt, profile, onSave, onCancel]);
+  }, [isNew, id, label, description, icon, agentType, method, modelId, reasoningEffort, systemPrompt, tokenLevel, isAdmin, profile, onSave, onCancel]);
 
   return (
     <div className="p-2 space-y-2">
@@ -160,6 +173,25 @@ export function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps)
         rows={3}
         className="w-full px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated resize-none focus:outline-none focus:ring-1 focus:ring-accent" />
 
+      {/* Token privilege level — admin-only. 'admin' mints session tokens with
+          is_admin + your full permissions so the agent can hit admin endpoints
+          (e.g. live config / DB tools) instead of being limited to the basic
+          agent scope. */}
+      {isAdmin && (
+        <div className="space-y-1">
+          <select value={tokenLevel} onChange={(e) => setTokenLevel(e.target.value)}
+            className="w-full px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated focus:outline-none focus:ring-1 focus:ring-accent">
+            <option value="basic">Token: Basic (agent scope)</option>
+            <option value="admin">Token: Admin (full rights) ⚠</option>
+          </select>
+          {tokenLevel === 'admin' && (
+            <div className="text-[9px] text-signal-warning leading-tight">
+              This agent's auto-injected token will have full admin rights — it can do anything you can.
+            </div>
+          )}
+        </div>
+      )}
+
       {error && <div className="text-[10px] text-signal-error">{error}</div>}
 
       <div className="flex gap-1.5 justify-end">
@@ -181,12 +213,55 @@ export function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps)
 const RESUME_SESSION_PAGE_SIZE = 100;
 const RESUME_SESSION_MAX_LIMIT = 100;
 
+/** A session's live tab identity, keyed by sessionId (see {@link useTabIdentityBySession}). */
+interface TabIdentity {
+  label: string;
+  icon: string | null;
+  subtitle: string | null;
+}
+
+/**
+ * Map of `sessionId → the open tab's identity`. The resume picker lists
+ * `ChatSession` rows whose `label` is frequently a generic "CLI session (…)"
+ * placeholder (bridge/CLI-registered) or the last user message — neither is the
+ * name the user recognises. The human-facing name (and the agent-set
+ * icon/subtitle) lives on the `ChatTab` the user renames. When a session still
+ * has an open tab, prefer the tab's identity so the picker matches the tab bar.
+ * Sessions without an open tab fall back to their own `ChatSession` fields.
+ */
+function useTabIdentityBySession(): ReadonlyMap<string, TabIdentity> {
+  const tabs = useAssistantChatStore((s) => s.tabs);
+  return useMemo(() => {
+    const map = new Map<string, TabIdentity>();
+    for (const t of tabs) {
+      if (t.sessionId) map.set(t.sessionId, { label: t.label, icon: t.icon, subtitle: t.subtitle });
+    }
+    return map;
+  }, [tabs]);
+}
+
+/** Resolve the display identity for a session row, preferring its open tab. */
+function resolveSessionIdentity(
+  s: ChatSessionEntry,
+  tabIdentity: ReadonlyMap<string, TabIdentity>,
+): { label: string; icon: string | null; subtitle: string | null } {
+  const tab = tabIdentity.get(s.id);
+  // A real tab label wins; "Untitled" (the create-time default) does not.
+  const label = tab && tab.label && tab.label !== 'Untitled' ? tab.label : s.label;
+  return {
+    label,
+    icon: tab?.icon ?? s.icon ?? null,
+    subtitle: (tab?.subtitle ?? s.subtitle)?.trim() || null,
+  };
+}
+
 export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
   onResume: ResumeHandler;
   profileId?: string | null;
   profileLabels?: ReadonlyMap<string, string>;
 }) {
   const [open, setOpen] = useState(false);
+  const tabIdentity = useTabIdentityBySession();
   const [sessions, setSessions] = useState<ChatSessionEntry[]>([]);
   const [limit, setLimit] = useState<number>(RESUME_SESSION_PAGE_SIZE);
   const [loading, setLoading] = useState(false);
@@ -423,12 +498,16 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
             const sessionProfileLabel = s.profile_id && profileLabels?.get(s.profile_id)
               ? profileLabels.get(s.profile_id)!
               : null;
+            // Prefer the open tab's identity (label/icon/subtitle) over the
+            // ChatSession's own — the session label is often a generic
+            // "CLI session (…)" placeholder while the tab carries the real name.
+            const identity = resolveSessionIdentity(s, tabIdentity);
             // Agent-set identity (mirrors SessionItem): a valid @lib/icons name
             // wins as the leading glyph; subtitle replaces the profile label on
             // the secondary line. Garbage/unset falls back to engine + profile.
-            const agentIcon = s.icon?.trim();
+            const agentIcon = identity.icon?.trim();
             const validAgentIcon = agentIcon && getIcon(agentIcon) ? (agentIcon as IconName) : null;
-            const sessionSubtitle = s.subtitle?.trim() || null;
+            const sessionSubtitle = identity.subtitle;
             const engineColor = getEngineBrand(s.engine).textColor;
             const scopeKeyChip = s.scope_key
               && !(s.last_plan_id && s.scope_key === `plan:${s.last_plan_id}`)
@@ -454,21 +533,17 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                     size={11}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className={`text-[11px] truncate flex items-center gap-1 ${engineColor}`}>
-                      {(s.source === 'mcp' || s.source === 'mcp-auto') && (
-                        <span
-                          className="shrink-0 px-1 rounded bg-signal-warning/15 text-signal-warning text-[8px] font-semibold tracking-wide"
-                          title="Started from CLI/MCP — chat will show work summaries as context"
-                        >
-                          CLI
-                        </span>
-                      )}
-                      <span className="truncate">{s.label}</span>
+                    {/* Title — primary line, larger like the chat header title. */}
+                    <div className={`text-sm font-semibold leading-tight truncate ${engineColor}`}>
+                      {identity.label}
                     </div>
-                    <div className="text-[9px] text-th-muted">
-                      {(sessionSubtitle ?? sessionProfileLabel) ? `${sessionSubtitle ?? sessionProfileLabel} · ` : ''}
-                      {s.message_count} msgs · {new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
+                    {/* Subtitle (agent-set subtitle or profile label) — secondary
+                        line, also enlarged. */}
+                    {(sessionSubtitle ?? sessionProfileLabel) && (
+                      <div className="text-[11px] text-th-secondary truncate">
+                        {sessionSubtitle ?? sessionProfileLabel}
+                      </div>
+                    )}
                     {(s.last_contract_id || s.last_plan_id || scopeKeyChip) && (
                       <div className="mt-0.5 flex flex-wrap items-center gap-1">
                         {s.last_contract_id && (
@@ -482,8 +557,22 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                         )}
                       </div>
                     )}
+                    {/* Technical metadata — CLI/engine/msgs/date — dropped to a
+                        small muted footer matching the chat-header chip scale. */}
+                    <div className="mt-0.5 flex items-center gap-1.5 text-[8px] text-th-muted">
+                      {(s.source === 'mcp' || s.source === 'mcp-auto') && (
+                        <span
+                          className="shrink-0 px-1 rounded bg-signal-warning/15 text-signal-warning font-semibold tracking-wide"
+                          title="Started from CLI/MCP — chat will show work summaries as context"
+                        >
+                          CLI
+                        </span>
+                      )}
+                      <span className={`uppercase ${engineColor}`}>{s.engine}</span>
+                      <span>{s.message_count} msgs</span>
+                      <span>{new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
                   </div>
-                  <span className={`text-[8px] uppercase shrink-0 opacity-0 group-hover:opacity-60 transition-opacity ${engineColor}`}>{s.engine}</span>
                 </button>
                 {showArchived ? (
                   <button
@@ -548,6 +637,7 @@ export function InlineResumePicker({ profileId, profileLabels, onResume }: {
   const [loading, setLoading] = useState(false);
   const [fetched, setFetched] = useState(false);
   const [open, setOpen] = useState(false);
+  const tabIdentity = useTabIdentityBySession();
 
   const load = useCallback(() => {
     if (fetched) return;
@@ -581,9 +671,12 @@ export function InlineResumePicker({ profileId, profileLabels, onResume }: {
           <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-72 max-h-[200px] overflow-y-auto rounded-lg border border-th bg-surface shadow-lg z-20">
             {sessions.map((s) => {
               const profileName = s.profile_id && profileLabels?.get(s.profile_id);
-              const agentIcon = s.icon?.trim();
+              // Prefer the open tab's identity over the session's own placeholder
+              // label/icon — see resolveSessionIdentity.
+              const identity = resolveSessionIdentity(s, tabIdentity);
+              const agentIcon = identity.icon?.trim();
               const validAgentIcon = agentIcon && getIcon(agentIcon) ? (agentIcon as IconName) : null;
-              const sessionSubtitle = s.subtitle?.trim() || null;
+              const sessionSubtitle = identity.subtitle;
               const engineColor = getEngineBrand(s.engine).textColor;
               return (
                 <button
@@ -597,12 +690,16 @@ export function InlineResumePicker({ profileId, profileLabels, onResume }: {
                     size={11}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-medium text-th truncate">{s.label}</div>
-                    <div className="flex items-center gap-1 text-[9px] text-th-muted">
-                      {sessionSubtitle
-                        ? <span className="truncate">{sessionSubtitle}</span>
-                        : profileName && <span className={engineColor}>{profileName}</span>}
-                      {s.engine !== 'claude' && <span>{s.engine}</span>}
+                    {/* Title + subtitle enlarged; technical metadata dropped to a
+                        small muted footer matching the chat-header chip scale. */}
+                    <div className="text-sm font-semibold leading-tight text-th truncate">{identity.label}</div>
+                    {(sessionSubtitle ?? profileName) && (
+                      <div className="text-[11px] text-th-secondary truncate">
+                        {sessionSubtitle ?? profileName}
+                      </div>
+                    )}
+                    <div className="mt-0.5 flex items-center gap-1.5 text-[8px] text-th-muted">
+                      {s.engine !== 'claude' && <span className={`uppercase ${engineColor}`}>{s.engine}</span>}
                       <span>{s.message_count} msgs</span>
                       {s.last_plan_id && <span className="text-signal-success">plan:{s.last_plan_id}</span>}
                     </div>

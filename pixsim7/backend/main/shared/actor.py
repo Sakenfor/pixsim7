@@ -213,7 +213,12 @@ class RequestPrincipal(BaseModel):
                 tab_id=payload.get("tab_id"),
                 on_behalf_of=delegated_user_id if delegated_user_id > 0 else None,
                 role="agent",
-                admin=False,
+                # Agent tokens are non-admin by default. Honor is_admin ONLY when
+                # the claim is explicitly present and true — set exclusively by an
+                # admin-elevated profile token minted by an admin caller (see
+                # token_policy._agent_claims / mint_profile_token). Basic and all
+                # pre-existing agent tokens omit the claim → stay non-admin.
+                admin=bool(payload.get("is_admin", False)),
                 permissions=payload.get("permissions", []),
                 username=f"agent:{resolved_profile_id}",
             )
