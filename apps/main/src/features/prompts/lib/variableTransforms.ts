@@ -14,7 +14,9 @@ export type TransformFn = (value: string, arg: string | null) => string;
 
 const spaced: TransformFn = (value, arg) => {
   const separator = arg !== null && arg !== '' ? arg : ' ';
-  return value.split('').join(separator);
+  // Iterate by code point (not UTF-16 code unit) so astral chars (emoji) aren't
+  // torn between their surrogate halves — matches Python's `separator.join(value)`.
+  return Array.from(value).join(separator);
 };
 
 const upper: TransformFn = (value) => value.toUpperCase();
@@ -47,7 +49,11 @@ export function isKnownTransform(spec: string): boolean {
 export function applyTransform(spec: string | null | undefined, value: string): string {
   if (!spec) return value;
   const [id, arg] = parseTransformSpec(spec);
-  const fn = TRANSFORMS[id];
+  // Own-property lookup only — a raw `TRANSFORMS[id]` walks the prototype chain,
+  // so an id like `__proto__`/`constructor` would resolve to an Object.prototype
+  // member and throw or mis-run. Matches Python's `.get()` no-op and the
+  // hasOwnProperty check already used by isKnownTransform.
+  const fn = Object.prototype.hasOwnProperty.call(TRANSFORMS, id) ? TRANSFORMS[id] : undefined;
   return fn ? fn(value, arg) : value;
 }
 

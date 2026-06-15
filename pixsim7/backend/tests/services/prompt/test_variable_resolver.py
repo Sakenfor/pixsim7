@@ -96,3 +96,20 @@ def test_transform_without_value_does_not_apply() -> None:
     # No value => no expansion => transform never runs (token stays symbolic).
     out = resolve_prompt_variables("ACTOR1", {}, transforms={"ACTOR1": "upper"})
     assert out == "ACTOR1"
+
+
+def test_non_ascii_adjacent_token_is_not_a_whole_token() -> None:
+    # Python's `\b` is Unicode-aware: `é` is a word char, so ACTOR1 is embedded in
+    # `caféACTOR1` and must not expand. A real boundary still expands.
+    assert resolve_prompt_variables("caféACTOR1", {"ACTOR1": "X"}) == "caféACTOR1"
+    assert resolve_prompt_variables("café ACTOR1", {"ACTOR1": "X"}) == "café X"
+
+
+def test_output_budget_bounds_exponential_fanout() -> None:
+    # Distinct-name fan-out (L0 -> L1 x6 -> ...) evades the cycle guard and grows
+    # O(6 ** depth). The output budget must halt amplification so the worker can't
+    # be OOM'd by crafted recursive values. Unbounded this is millions of chars.
+    values = {f"L{i}": " ".join([f"L{i + 1}"] * 6) for i in range(9)}
+    values["L9"] = "leaf"
+    out = resolve_prompt_variables("L0", values, max_output_chars=5_000)
+    assert len(out) < 50_000

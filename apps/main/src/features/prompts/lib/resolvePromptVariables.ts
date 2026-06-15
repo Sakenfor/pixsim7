@@ -5,12 +5,18 @@
  *
  * Rules: expand iff a value is set (no value → literal symbol); whole-token
  * match (ACTOR1 ≠ ACTOR1_DETAILS); recursive with depth cap + per-branch cycle
- * detection; backslash escape (\ACTOR1 → literal ACTOR1).
+ * detection + an output-size budget; backslash escape (\ACTOR1 → literal ACTOR1).
+ *
+ * Token boundaries are Unicode-aware (`\p{L}\p{N}_` lookarounds, not ASCII `\b`)
+ * so they match Python's Unicode `\b` — a token glued to an accented letter
+ * (`caféACTOR1`) is part of a larger word and does NOT expand, on both engines.
  */
 
 import { applyTransform } from './variableTransforms';
 
 export const DEFAULT_MAX_DEPTH = 10;
+/** Output-size safety valve mirroring the backend (see resolver.py). */
+export const DEFAULT_MAX_OUTPUT_CHARS = 100_000;
 
 export interface VariableValueLike {
   name: string;
@@ -55,6 +61,7 @@ export function resolvePromptVariables(
   values: Record<string, string>,
   transforms: Record<string, string> = {},
   maxDepth: number = DEFAULT_MAX_DEPTH,
+  maxOutputChars: number = DEFAULT_MAX_OUTPUT_CHARS,
 ): string {
   if (!text) return text;
 
@@ -72,17 +79,31 @@ export function resolvePromptVariables(
   }
 
   // Longest first (defensive; token boundaries already prevent prefix matches).
+  // Unicode-aware boundaries (`\p{L}\p{N}_` lookarounds + `u` flag) mirror
+  // Python's Unicode `\b`; ASCII `\b` would wrongly match a token abutting a
+  // non-ASCII letter and diverge from the authoritative backend.
   const names = [...valueMap.keys()].sort((a, b) => b.length - a.length);
-  const pattern = new RegExp(`(\\\\)?\\b(${names.map(escapeRegExp).join('|')})\\b`, 'g');
+  const pattern = new RegExp(
+    `(\\\\)?(?<![\\p{L}\\p{N}_])(${names.map(escapeRegExp).join('|')})(?![\\p{L}\\p{N}_])`,
+    'gu',
+  );
 
+  // Output-size budget shared across the recursive tree — mirrors resolver.py so
+  // a crafted fan-out can't freeze the tab building the preview.
+  let produced = 0;
   const expand = (source: string, depth: number, active: ReadonlySet<string>): string =>
     source.replace(pattern, (_full, escaped: string | undefined, name: string) => {
       if (escaped) return name; // literal — drop the escape
       if (active.has(name) || depth >= maxDepth) return name; // cycle / too deep
+      if (produced >= maxOutputChars) return name; // output budget exhausted
       const next = new Set(active);
       next.add(name);
-      const resolved = expand(valueMap.get(name) as string, depth + 1, next);
-      return applyTransform(transformMap.get(name), resolved);
+      const resolved = applyTransform(
+        transformMap.get(name),
+        expand(valueMap.get(name) as string, depth + 1, next),
+      );
+      produced += resolved.length;
+      return resolved;
     });
 
   return expand(text, 0, new Set());
