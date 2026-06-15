@@ -15,6 +15,7 @@ import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi'
 
 import { usePromptVariables } from '../hooks/usePromptVariables';
 import type { PromptTokenLine, ShadowAnalysisState } from '../hooks/useShadowAnalysis';
+import { extractInlineVarValues } from '../lib/inlineVarValues';
 import {
   extractPrimitiveMatches,
   type CandidateWithPrimitiveMatch,
@@ -337,9 +338,12 @@ export function ShadowSidePanel({
   const resolvedPreview = useMemo(() => {
     const source = result?.analyzedPrompt ?? '';
     if (!source) return null;
+    // Inline VAR(value) bindings from the prompt win over stored values
+    // (mirrors the backend outbound path).
+    const { values: inlineValues, collapsed } = extractInlineVarValues(source);
     const resolved = resolvePromptVariables(
-      source,
-      buildVariableValueMap(savedEntries),
+      collapsed,
+      { ...buildVariableValueMap(savedEntries), ...inlineValues },
       buildVariableTransformMap(savedEntries),
     );
     return resolved !== source ? resolved : null;

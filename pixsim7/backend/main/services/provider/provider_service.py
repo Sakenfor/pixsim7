@@ -33,6 +33,7 @@ from pixsim7.backend.main.shared.operation_mapping import (
     OPERATION_REGISTRY,
 )
 from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
+from pixsim7.backend.main.services.prompt.inline_values import extract_inline_var_values
 from pixsim7.backend.main.services.prompt.resolver import resolve_prompt_variables
 from pixsim7.backend.main.services.prompt.variable_registry import (
     read_prompt_variable_transforms,
@@ -330,15 +331,20 @@ class ProviderService:
         values, transforms = await self._load_prompt_variable_resolution(
             getattr(generation, "user_id", None)
         )
-        if not values:
+        # Inline VAR(value) bindings from the prompt itself win over stored values
+        # (tokenizer-gated, so incidental `UPPER (text)` in prose is not a binding).
+        inline_values, collapsed = extract_inline_var_values(prompt_text)
+        if not values and not inline_values:
             return
-        resolved = resolve_prompt_variables(prompt_text, values, transforms=transforms)
+        merged = {**values, **inline_values}
+        resolved = resolve_prompt_variables(collapsed, merged, transforms=transforms)
         if resolved != prompt_text:
             params["prompt"] = resolved
             logger.info(
                 "prompt_variables_resolved",
                 generation_id=getattr(generation, "id", None),
-                variable_count=len(values),
+                variable_count=len(merged),
+                inline_count=len(inline_values),
                 transform_count=len(transforms),
             )
 
