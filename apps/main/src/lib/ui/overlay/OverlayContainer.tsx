@@ -32,6 +32,9 @@ const STACK_MAX_EXTENT = 132;
 const STACK_MIN_EXTENT = 44;
 /** Gap kept between the scroll region's far edge and the card edge. */
 const STACK_EDGE_MARGIN = 8;
+/** Cap the region to this fraction of the card so it stays proportionally tight
+ *  on small cards (where the room-to-edge alone is still too generous). */
+const STACK_MAX_FRACTION = 0.42;
 
 /** Curved "more items" bracket, matching the ButtonGroup overflow affordance. */
 function StackOverflowBracket({
@@ -115,7 +118,12 @@ function StackGroupContainer({
       const room = isColumn
         ? cardRect.bottom - elRect.top - STACK_EDGE_MARGIN
         : cardRect.right - elRect.left - STACK_EDGE_MARGIN;
-      setMaxExtent(Math.max(STACK_MIN_EXTENT, Math.min(STACK_MAX_EXTENT, room)));
+      // Bound by the ceiling, the room down to the card edge, AND a fraction of
+      // the card — the last keeps it proportionally tight on small cards where
+      // room-to-edge alone still fills most of the card.
+      const cardExtent = isColumn ? cardRect.height : cardRect.width;
+      const cap = Math.min(STACK_MAX_EXTENT, room, cardExtent * STACK_MAX_FRACTION);
+      setMaxExtent(Math.max(STACK_MIN_EXTENT, cap));
     }
 
     const size = isColumn ? el.clientHeight : el.clientWidth;
