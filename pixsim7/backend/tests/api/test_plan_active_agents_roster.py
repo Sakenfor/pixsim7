@@ -134,6 +134,7 @@ class TestActiveAgentsEndpoint:
         db = SimpleNamespace(
             execute=AsyncMock(
                 side_effect=[
+                    _Result(scalars=[]),  # sweep_idle_claims (nothing to release)
                     _Result(scalars=rows),  # list_active_participants
                     _Result(scalars=["run-term"]),  # load_terminal_run_ids
                     _Result(rows=[("plan-a", "Plan A"), ("plan-b", "Plan B")]),  # titles
@@ -167,6 +168,7 @@ class TestActiveAgentsEndpoint:
         db = SimpleNamespace(
             execute=AsyncMock(
                 side_effect=[
+                    _Result(scalars=[]),  # sweep_idle_claims (nothing to release)
                     _Result(scalars=[stale]),
                     _Result(scalars=[]),
                     _Result(rows=[]),

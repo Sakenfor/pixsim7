@@ -57,6 +57,8 @@ async def get_plan_runtime_settings(
         "plans_db_only_mode": settings.plans_db_only_mode,
         "source": "runtime",
         "forge_commit_url_template": git_forge_commit_url_template(),
+        "participant_stale_minutes": _h.participant_stale_minutes(),
+        "claim_idle_release_minutes": _h.claim_idle_release_minutes(),
     }
 
 
@@ -78,7 +80,21 @@ async def update_plan_runtime_settings(
     _admin: CurrentAdminUser,
 ):
     settings.plans_db_only_mode = payload.plans_db_only_mode
-    return {"plans_db_only_mode": settings.plans_db_only_mode, "source": "runtime"}
+    # Apply a TTL override only when the field was explicitly sent — omitting it
+    # leaves the current value untouched; sending null resets to env/default.
+    # Process-global (runtime override): the resolvers read settings first.
+    fields_set = payload.model_fields_set
+    if "participant_stale_minutes" in fields_set:
+        settings.plan_participant_stale_minutes = payload.participant_stale_minutes
+    if "claim_idle_release_minutes" in fields_set:
+        settings.plan_claim_idle_release_minutes = payload.claim_idle_release_minutes
+    return {
+        "plans_db_only_mode": settings.plans_db_only_mode,
+        "source": "runtime",
+        "forge_commit_url_template": git_forge_commit_url_template(),
+        "participant_stale_minutes": _h.participant_stale_minutes(),
+        "claim_idle_release_minutes": _h.claim_idle_release_minutes(),
+    }
 
 
 @router.post("/sync", response_model=SyncResultResponse)

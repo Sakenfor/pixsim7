@@ -164,6 +164,28 @@ class Settings(BaseSettings):
             "disable filesystem bootstrap, commit-back exports, and manifest sync endpoint."
         ),
     )
+    # Plan-participant liveness/claim TTLs. None => fall back to the
+    # PIXSIM_PLAN_PARTICIPANT_STALE_MINUTES / PIXSIM_PLAN_CLAIM_IDLE_RELEASE_MINUTES
+    # env vars, then the built-in default. Set at runtime via PATCH
+    # /dev/plans/settings (process-global, admin) — see
+    # participant_helpers._participant_stale_ttl / _claim_idle_release_ttl.
+    # GLOBAL/system, deliberately NOT per-user: the TTL is a multi-agent
+    # coordination signal; per-user values would make two agents on one plan
+    # disagree about whether a claim is live. Plan `plan-participant-liveness`.
+    plan_participant_stale_minutes: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Runtime override for the participant stale-after window (minutes). None => env/default (15).",
+    )
+    plan_claim_idle_release_minutes: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Runtime override for the idle-release window (minutes) after which an open claim "
+            "is auto-released without a terminal run. Clamped to never drop below the stale TTL. "
+            "None => env/default (= stale TTL)."
+        ),
+    )
 
     # ===== SERVER IDENTITY =====
     server_id: str = Field(

@@ -896,10 +896,32 @@ class PlanRuntimeSettingsResponse(ApiModel):
     plans_db_only_mode: bool
     source: str = "runtime"
     forge_commit_url_template: Optional[str] = Field(None)
+    # Effective (resolved) participant-liveness TTLs in minutes — runtime
+    # override > env var > built-in default. GLOBAL/system, not per-user.
+    participant_stale_minutes: Optional[float] = Field(
+        None, description="Effective participant stale-after window (minutes)."
+    )
+    claim_idle_release_minutes: Optional[float] = Field(
+        None,
+        description="Effective idle-release window (minutes); clamped >= participant_stale_minutes.",
+    )
 
 
 class PlanRuntimeSettingsUpdateRequest(BaseModel):
     plans_db_only_mode: bool = Field(...)
+    # Optional runtime overrides for participant-liveness TTLs. Omit a field to
+    # leave it unchanged; send null to reset it back to the env/default. Must be
+    # positive. GLOBAL/system coordination knob — deliberately not per-user (a
+    # per-user TTL would make two agents on one plan disagree about claim
+    # liveness). Plan `plan-participant-liveness`.
+    participant_stale_minutes: Optional[float] = Field(
+        None, gt=0, description="Override the participant stale-after window (minutes)."
+    )
+    claim_idle_release_minutes: Optional[float] = Field(
+        None,
+        gt=0,
+        description="Override the idle-claim-release window (minutes); clamped >= stale TTL.",
+    )
 
 
 class PlanStageOptionEntry(ApiModel):

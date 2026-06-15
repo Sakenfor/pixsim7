@@ -5,7 +5,6 @@ Extracted from dev_plans.py. Used by route modules in the plans package.
 """
 import asyncio
 import json
-import os
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -14,7 +13,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Set,
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser
@@ -43,6 +42,57 @@ from pixsim7.backend.main.services.docs.plan_write import (
     list_plan_bundles,
 )
 from pixsim7.backend.main.services.crud.primitives import DeleteResponse
+from pixsim7.backend.main.api.v1.plans.checkpoint_helpers import (
+    _checkpoint_int,
+    _compute_checkpoint_delta,
+    _compute_open_summary,
+    _derive_checkpoint_points,
+    _truncate_note,
+)
+from pixsim7.backend.main.api.v1.plans.participant_helpers import (
+    CLAIM_META_KEY,
+    _claim_idle_release_ttl,
+    _participant_stale_ttl,
+    claim_idle_release_minutes,
+    participant_stale_minutes,
+    participant_liveness_at,
+    participant_is_stale,
+    participant_claim,
+    claim_is_open,
+    participant_is_live_claimant,
+    derive_tab_identity_suggestion,
+)
+from pixsim7.backend.main.api.v1.plans.review_request_helpers import (
+    _REVIEW_REQUEST_TARGET_MODES,
+    _REVIEW_REQUEST_DISPATCH_STATES,
+    _REVIEW_REQUEST_MODES,
+    _request_meta_dict,
+    _request_dispatch_meta,
+    _review_request_mode_from_meta,
+    _review_request_base_revision_from_meta,
+    _review_request_config_view,
+    _str_field,
+    _review_request_dispatch_view,
+    _request_dispatch_payload_from_row,
+    _truncate_prompt_block,
+    _build_review_request_prompt,
+    _merge_request_meta_with_execution,
+    _infer_provider_from_model_id,
+    _resolve_review_request_execution_config,
+    _merge_request_meta_with_dispatch,
+    _merge_request_meta_with_review_config,
+    _review_request_to_entry,
+)
+from pixsim7.backend.main.api.v1.plans.query_evidence_helpers import (
+    EVIDENCE_KINDS,
+    _normalize_evidence_ref,
+    _evidence_key,
+    _merge_evidence,
+    _matches_query,
+    _checkpoint_text_matches,
+    _collect_matched_checkpoint_ids,
+    _filter_bundles,
+)
 from pixsim7.backend.main.api.v1.plans.schemas import (
     PlanChildSummary,
     PlanSummary,
@@ -57,7 +107,6 @@ from pixsim7.backend.main.api.v1.plans.schemas import (
     PlanSourceSnippetLine,
     PlanTodoSummary,
     OpenCheckpoint,
-    OpenSummary,
     validate_plan_id as _validate_plan_id,
 )
 from pixsim7.backend.main.services.docs.plan_stages import (
@@ -142,65 +191,6 @@ def _bundle_to_summary(
         children=child_entries,
         matched_checkpoint_ids=matched_checkpoint_ids,
         **list_fields,
-    )
-
-
-def _compute_open_summary(
-    checkpoints: List[Any],
-    *,
-    max_open_checkpoints: int = 8,
-) -> Optional[OpenSummary]:
-    """Compute the open-work aggregate for a list of checkpoint dicts.
-
-    Shared by ``_bundle_to_summary`` (PlanSummary.open_summary) and
-    ``_bundle_to_todo_summary`` (the equivalent flat fields on
-    PlanTodoSummary). Returns ``None`` only when the input is empty — an
-    all-done plan returns an OpenSummary with zero counts so consumers can
-    distinguish "all complete" from "no checkpoints declared".
-
-    Open is computed from ``points_done < points_total`` only. ``status``
-    is ignored — a checkpoint marked ``status: "done"`` but still underwater
-    on points is correctly counted as open.
-    """
-    if not checkpoints:
-        return None
-
-    open_entries: List[OpenCheckpoint] = []
-    open_points = 0
-    total_points = 0
-
-    for cp in checkpoints:
-        if not isinstance(cp, dict):
-            continue
-        done, total = _derive_checkpoint_points(cp)
-        if total is not None:
-            total_points += total
-
-        if total and done < total:
-            open_points += (total - done)
-            last_update = cp.get("last_update") if isinstance(cp.get("last_update"), dict) else None
-            last_at = last_update.get("at") if last_update else None
-            last_note = last_update.get("note") if last_update else None
-            open_entries.append(OpenCheckpoint(
-                id=str(cp.get("id") or ""),
-                label=str(cp.get("label") or ""),
-                status=str(cp.get("status") or "pending"),
-                points_done=done,
-                points_total=total,
-                last_update_at=str(last_at) if last_at else None,
-                last_note=_truncate_note(last_note),
-            ))
-
-    open_entries.sort(
-        key=lambda c: (c.last_update_at or "", c.id),
-        reverse=True,
-    )
-
-    return OpenSummary(
-        open_points=open_points,
-        total_points=total_points,
-        open_checkpoint_count=len(open_entries),
-        open_checkpoints=open_entries[:max_open_checkpoints],
     )
 
 
@@ -430,9 +420,6 @@ _CAUSAL_REVIEW_RELATIONS: Set[str] = frozenset(
     {"because_of", "supports", "contradicts", "supersedes"}
 )
 _TERMINAL_REVIEW_REQUEST_STATUSES: Set[str] = frozenset({"fulfilled", "cancelled"})
-_REVIEW_REQUEST_TARGET_MODES: Set[str] = frozenset({"auto", "session", "recent_agent"})
-_REVIEW_REQUEST_DISPATCH_STATES: Set[str] = frozenset({"assigned", "queued", "unassigned"})
-_REVIEW_REQUEST_MODES: Set[str] = frozenset({"review_only", "propose_patch", "apply_patch"})
 PLAN_REQUEST_KINDS: Set[str] = frozenset({"review", "build", "research"})
 from pixsim7.backend.main.services.meta.agent_dispatch import REMOTE_METHODS as _REVIEW_REQUEST_REMOTE_METHODS
 
@@ -708,47 +695,6 @@ def _review_node_to_entry(row: PlanReviewNode) -> PlanReviewNodeEntry:
 # makes "is this agent still here?" answerable without manual cleanup.
 
 
-def _participant_stale_ttl() -> timedelta:
-    """Stale-after window. Override via PIXSIM_PLAN_PARTICIPANT_STALE_MINUTES (default 15)."""
-    raw = os.getenv("PIXSIM_PLAN_PARTICIPANT_STALE_MINUTES")
-    minutes = 15.0
-    if raw:
-        try:
-            parsed = float(raw)
-            if parsed > 0:
-                minutes = parsed
-        except (TypeError, ValueError):
-            pass
-    return timedelta(minutes=minutes)
-
-
-def participant_liveness_at(row: PlanParticipant) -> Optional[datetime]:
-    """Most recent liveness signal: max of last_heartbeat_at and last_seen_at."""
-    candidates = [
-        t for t in (getattr(row, "last_heartbeat_at", None), row.last_seen_at) if t is not None
-    ]
-    return max(candidates) if candidates else None
-
-
-def participant_is_stale(
-    row: PlanParticipant,
-    *,
-    now: Optional[datetime] = None,
-    ttl: Optional[timedelta] = None,
-) -> bool:
-    """True when the participant has not signalled liveness within the TTL.
-
-    Pure: no DB, no run check. The run-terminal override is applied by
-    callers that have AgentRun status loaded (see load_terminal_run_ids).
-    """
-    seen = participant_liveness_at(row)
-    if seen is None:
-        return True
-    reference = now or utcnow()
-    window = ttl or _participant_stale_ttl()
-    return (reference - seen) > window
-
-
 async def load_terminal_run_ids(db: AsyncSession, run_ids: Set[str]) -> Set[str]:
     """Subset of run_ids whose AgentRun is terminal (completed/failed).
 
@@ -808,40 +754,6 @@ async def touch_participant_heartbeat(
 # live claimant is surfaced as a conflict, not an error. A terminal
 # agent run (completed/failed) closes the claim, via load_terminal_
 # run_ids (derived) and release_claims_for_run (explicit, on run end).
-
-CLAIM_META_KEY = "claim"
-
-
-def participant_claim(row: PlanParticipant) -> Optional[Dict[str, Any]]:
-    meta = row.meta if isinstance(row.meta, dict) else None
-    if not meta:
-        return None
-    claim = meta.get(CLAIM_META_KEY)
-    return claim if isinstance(claim, dict) else None
-
-
-def claim_is_open(claim: Optional[Dict[str, Any]]) -> bool:
-    return bool(claim) and not claim.get("released_at")
-
-
-def participant_is_live_claimant(
-    row: PlanParticipant,
-    *,
-    checkpoint_id: Optional[str] = None,
-    now: Optional[datetime] = None,
-    run_terminal: bool = False,
-) -> bool:
-    """Open, non-stale claim whose run hasn't ended. checkpoint_id=None
-    matches any checkpoint (plan-level overview)."""
-    claim = participant_claim(row)
-    if not claim_is_open(claim):
-        return False
-    if checkpoint_id is not None and claim.get("checkpoint_id") != checkpoint_id:
-        return False
-    if run_terminal:
-        return False
-    return not participant_is_stale(row, now=now)
-
 
 def _actor_owns_participant(row: PlanParticipant, actor: Dict[str, Any]) -> bool:
     """True when a participant row belongs to the acting principal.
@@ -1043,58 +955,6 @@ async def maybe_tab_identity_nudge(
     return text
 
 
-# Plan-type → @lib/icons IconName hint. The agent is free to ignore this —
-# it's a reasonable starting point, not a directive. Names match the
-# lucide-style set documented on the set_tab_identity tool.
-_PLAN_TYPE_ICON_HINTS: Dict[str, str] = {
-    "bugfix": "bug",
-    "refactor": "wrench",
-    "feature": "sparkles",
-    "exploration": "search",
-    "task": "clipboard",
-}
-
-# Tag-keyword → icon override (first match wins). Walked in declaration order.
-_TAG_ICON_HINTS: List[Tuple[str, str]] = [
-    ("auth", "lock"),
-    ("security", "lock"),
-    ("ui", "monitor"),
-    ("frontend", "monitor"),
-    ("panel", "monitor"),
-    ("backend", "database"),
-    ("api", "database"),
-    ("database", "database"),
-    ("test", "flask"),
-    ("docs", "book"),
-    ("plan", "clipboard"),
-]
-
-_TAB_SUBTITLE_MAX_LEN = 40
-
-
-def derive_tab_identity_suggestion(bundle: "PlanBundle") -> Dict[str, str]:
-    """Best-effort {icon, subtitle} hint for set_tab_identity, derived from
-    the plan. Subtitle is the plan title truncated to ≤40 chars; icon
-    prefers tag-keyword matches and falls back to plan-type."""
-    title = (bundle.doc.title or bundle.id or "").strip()
-    if len(title) > _TAB_SUBTITLE_MAX_LEN:
-        subtitle = title[: _TAB_SUBTITLE_MAX_LEN - 1].rstrip() + "…"
-    else:
-        subtitle = title
-
-    icon = ""
-    tags = [str(t).lower() for t in (bundle.doc.tags or []) if t]
-    for keyword, hint in _TAG_ICON_HINTS:
-        if any(keyword in tag for tag in tags):
-            icon = hint
-            break
-    if not icon:
-        plan_type = getattr(bundle.plan, "plan_type", None) or ""
-        icon = _PLAN_TYPE_ICON_HINTS.get(plan_type.lower(), "clipboard")
-
-    return {"icon": icon, "subtitle": subtitle}
-
-
 async def release_claims_for_run(db: AsyncSession, run_id: str) -> int:
     """Auto-close any open claims owned by an agent run (called on run end)."""
     rid = _normalize_participant_value(run_id)
@@ -1113,6 +973,82 @@ async def release_claims_for_run(db: AsyncSession, run_id: str) -> int:
         )
         row.last_action = "release:run_end"
         released += 1
+    return released
+
+
+async def sweep_idle_claims(
+    db: AsyncSession, *, now: Optional[datetime] = None, limit: int = 500
+) -> int:
+    """Auto-release open claims abandoned by agents that went idle without a
+    terminal run (crash, killed process, chat tab left open).
+
+    Complements ``release_claims_for_run`` (the run-end hook): that closes
+    claims when an ``AgentRun`` reaches completed/failed, but a run that is
+    never finalized leaves its claim ``released_at=null`` forever — invisible on
+    the live roster (staleness already hides it) yet wrong if claims are queried
+    directly. This stamps ``released_at`` once the owning participant's liveness
+    exceeds the idle-release TTL, independent of run state, so the persisted
+    record matches roster reality. Best-effort maintenance: callers swallow
+    failures and own the commit.
+
+    A coarse, dialect-agnostic SQL prefilter bounds the scan — rows whose
+    liveness is older than the cutoff and whose last action was not already a
+    release (the accumulating released ledger is skipped). The open-claim test
+    is refined in Python so we never reach into the ``meta`` JSON from SQL.
+    Processes at most ``limit`` rows per call (oldest first); a capped batch is
+    logged and the remainder is picked up on the next sweep.
+    """
+    if not hasattr(db, "execute"):
+        return 0
+    reference = now or utcnow()
+    ttl = _claim_idle_release_ttl()
+    cutoff = reference - ttl
+    stmt = (
+        select(PlanParticipant)
+        .where(
+            or_(
+                PlanParticipant.last_heartbeat_at < cutoff,
+                and_(
+                    PlanParticipant.last_heartbeat_at.is_(None),
+                    PlanParticipant.last_seen_at < cutoff,
+                ),
+            ),
+            or_(
+                PlanParticipant.last_action.is_(None),
+                PlanParticipant.last_action.notlike("release%"),
+            ),
+        )
+        .order_by(PlanParticipant.last_seen_at.asc())
+        .limit(limit + 1)
+    )
+    rows = list((await db.execute(stmt)).scalars().all())
+    capped = len(rows) > limit
+    if capped:
+        rows = rows[:limit]
+
+    now_iso = reference.isoformat()
+    released = 0
+    for row in rows:
+        # The SQL prefilter keys on a single timestamp; re-check against the
+        # canonical liveness (max of heartbeat/seen) so a row with a fresh
+        # last_seen_at but stale heartbeat is correctly left alone.
+        if not participant_is_stale(row, now=reference, ttl=ttl):
+            continue
+        claim = participant_claim(row)
+        if not claim_is_open(claim):
+            continue
+        row.meta = _participant_merge_meta(
+            row.meta, {CLAIM_META_KEY: {**claim, "released_at": now_iso}}
+        )
+        row.last_action = "release:idle"
+        released += 1
+    if capped:
+        logger.info(
+            "sweep_idle_claims_batch_capped",
+            limit=limit,
+            released=released,
+            idle_minutes=ttl.total_seconds() / 60.0,
+        )
     return released
 
 
@@ -1268,299 +1204,6 @@ def _review_link_to_entry(row: PlanReviewLink) -> PlanReviewLinkEntry:
         created_by=row.created_by,
         created_at=row.created_at.isoformat() if row.created_at else "",
     )
-
-
-def _request_meta_dict(row: PlanRequest) -> Dict[str, Any]:
-    return dict(row.meta) if isinstance(row.meta, dict) else {}
-
-
-def _request_dispatch_meta(row: PlanRequest) -> Dict[str, Any]:
-    raw = _request_meta_dict(row).get("dispatch")
-    return dict(raw) if isinstance(raw, dict) else {}
-
-
-def _review_request_mode_from_meta(meta: Dict[str, Any]) -> str:
-    raw_mode = meta.get("review_mode")
-    mode = str(raw_mode or "review_only").strip().lower()
-    if mode not in _REVIEW_REQUEST_MODES:
-        mode = "review_only"
-    return mode
-
-
-def _review_request_base_revision_from_meta(meta: Dict[str, Any]) -> Optional[int]:
-    raw_revision = meta.get("base_revision")
-    if isinstance(raw_revision, int) and raw_revision > 0:
-        return int(raw_revision)
-    if isinstance(raw_revision, str):
-        text = raw_revision.strip()
-        if text.isdigit():
-            parsed = int(text)
-            if parsed > 0:
-                return parsed
-    return None
-
-
-def _review_request_config_view(row: PlanRequest) -> Dict[str, Any]:
-    meta = _request_meta_dict(row)
-    mode = _review_request_mode_from_meta(meta)
-    base_revision = _review_request_base_revision_from_meta(meta)
-    if mode in ("propose_patch", "apply_patch") and base_revision is None:
-        mode = "review_only"
-    return {
-        "review_mode": mode,
-        "base_revision": base_revision,
-    }
-
-
-def _str_field(dispatch: dict, key: str, fallback: "Any" = None) -> Optional[str]:
-    """Extract a string field from dispatch meta, falling back to a row attribute."""
-    val = dispatch.get(key)
-    if isinstance(val, str) and val.strip():
-        return val.strip()
-    if isinstance(fallback, str) and fallback.strip():
-        return fallback.strip()
-    return None
-
-
-def _review_request_dispatch_view(row: PlanRequest) -> Dict[str, Any]:
-    dispatch = _request_dispatch_meta(row)
-    mode = dispatch.get("target_mode")
-    if mode not in _REVIEW_REQUEST_TARGET_MODES:
-        mode = "session" if (getattr(row, "target_agent_id", None) or getattr(row, "target_bridge_id", None)) else "auto"
-
-    target_bridge_id = _str_field(dispatch, "target_bridge_id", getattr(row, "target_bridge_id", None))
-    target_session_id = _str_field(dispatch, "target_session_id")
-    preferred_agent_id = _str_field(dispatch, "preferred_agent_id")
-    target_profile_id = _str_field(dispatch, "target_profile_id")
-    target_method = _str_field(dispatch, "target_method")
-    target_model_id = _str_field(dispatch, "target_model_id")
-    target_provider = _str_field(dispatch, "target_provider")
-    dispatch_reason = _str_field(dispatch, "dispatch_reason")
-
-    target_user_id_raw = dispatch.get("target_user_id")
-    if isinstance(target_user_id_raw, int) and target_user_id_raw > 0:
-        target_user_id = target_user_id_raw
-    elif isinstance(getattr(row, "target_user_id", None), int) and getattr(row, "target_user_id", None) > 0:
-        target_user_id = int(getattr(row, "target_user_id"))
-    else:
-        target_user_id = None
-
-    dispatch_state = dispatch.get("dispatch_state")
-    if dispatch_state not in _REVIEW_REQUEST_DISPATCH_STATES:
-        dispatch_state = "assigned" if (getattr(row, "target_agent_id", None) or target_bridge_id) else "unassigned"
-
-    queue_if_busy = bool(dispatch.get("queue_if_busy", False))
-    auto_reroute_if_busy = bool(dispatch.get("auto_reroute_if_busy", True))
-
-    return {
-        "target_mode": mode,
-        "target_user_id": target_user_id,
-        "target_bridge_id": target_bridge_id,
-        "target_session_id": target_session_id,
-        "preferred_agent_id": preferred_agent_id,
-        "target_profile_id": target_profile_id,
-        "target_method": target_method,
-        "target_model_id": target_model_id,
-        "target_provider": target_provider,
-        "queue_if_busy": queue_if_busy,
-        "auto_reroute_if_busy": auto_reroute_if_busy,
-        "dispatch_state": dispatch_state,
-        "dispatch_reason": dispatch_reason,
-    }
-
-
-def _request_dispatch_payload_from_row(
-    row: PlanRequest,
-) -> PlanRequestCreateRequest:
-    dispatch = _review_request_dispatch_view(row)
-    review_cfg = _review_request_config_view(row)
-    return PlanRequestCreateRequest(
-        round_id=str(row.round_id) if row.round_id else None,
-        title=row.title,
-        body=row.body,
-        target_mode=dispatch["target_mode"],
-        target_bridge_id=dispatch["target_bridge_id"],
-        target_agent_id=getattr(row, "target_agent_id", None),
-        target_agent_type=getattr(row, "target_agent_type", None),
-        target_session_id=dispatch["target_session_id"],
-        preferred_agent_id=dispatch["preferred_agent_id"],
-        target_profile_id=dispatch["target_profile_id"],
-        target_method=dispatch["target_method"],
-        target_model_id=dispatch["target_model_id"],
-        target_provider=dispatch["target_provider"],
-        target_user_id=dispatch["target_user_id"],
-        review_mode=review_cfg["review_mode"],
-        base_revision=review_cfg["base_revision"],
-        queue_if_busy=dispatch["queue_if_busy"],
-        auto_reroute_if_busy=dispatch["auto_reroute_if_busy"],
-        meta=_request_meta_dict(row) or None,
-    )
-
-
-def _truncate_prompt_block(text: Optional[str], limit: int) -> str:
-    value = (text or "").strip()
-    if not value:
-        return ""
-    if len(value) <= limit:
-        return value
-    return value[:limit].rstrip() + "\n...[truncated]"
-
-
-def _build_review_request_prompt(
-    *,
-    bundle: PlanBundle,
-    request_row: PlanRequest,
-    round_row: PlanReviewRound,
-) -> str:
-    checkpoints = bundle.plan.checkpoints if isinstance(bundle.plan.checkpoints, list) else []
-    compact_checkpoints: List[Dict[str, Any]] = []
-    for item in checkpoints[:20]:
-        if not isinstance(item, dict):
-            continue
-        compact_checkpoints.append(
-            {
-                "id": item.get("id"),
-                "label": item.get("label"),
-                "status": item.get("status"),
-                "owner": item.get("owner"),
-            }
-        )
-
-    summary_block = _truncate_prompt_block(bundle.doc.summary, 1200)
-    markdown_block = _truncate_prompt_block(bundle.doc.markdown, 12000)
-    request_body = _truncate_prompt_block(request_row.body, 4000)
-    review_cfg = _review_request_config_view(request_row)
-    review_mode = str(review_cfg["review_mode"])
-    base_revision = review_cfg["base_revision"]
-
-    parts = [
-        "You are reviewing a development plan and must produce actionable review feedback.",
-        "Focus on correctness risks, missing requirements, sequencing, and validation gaps.",
-        "",
-        f"Plan ID: {bundle.id}",
-        f"Plan Title: {bundle.doc.title}",
-        f"Plan Status: {bundle.doc.status}",
-        f"Plan Stage: {bundle.plan.stage}",
-        f"Round Number: {round_row.round_number}",
-        f"Review Request: {request_row.title}",
-        f"Review Mode: {review_mode}",
-        f"Base Revision: {base_revision if base_revision is not None else 'not specified'}",
-        "",
-        "Request Instructions:",
-        request_body or "(empty)",
-    ]
-    if review_mode == "propose_patch":
-        parts.extend(
-            [
-                "",
-                "Mode Instructions:",
-                "- Include a concrete proposed plan patch in addition to regular review feedback.",
-                "- Do not claim that changes were applied; this mode is proposal-only.",
-            ]
-        )
-    elif review_mode == "apply_patch":
-        parts.extend(
-            [
-                "",
-                "Mode Instructions:",
-                "- Apply plan updates directly when tooling allows.",
-                "- Report what changed and include resulting revision details in the response.",
-            ]
-        )
-    if summary_block:
-        parts.extend(["", "Plan Summary:", summary_block])
-    if compact_checkpoints:
-        parts.extend(
-            [
-                "",
-                "Checkpoints (compact):",
-                json.dumps(compact_checkpoints, ensure_ascii=True, indent=2),
-            ]
-        )
-    if markdown_block:
-        parts.extend(["", "Plan Markdown:", markdown_block])
-
-    parts.extend(
-        [
-            "",
-            "Respond with these sections:",
-            "1) Findings (severity + rationale).",
-            "2) Suggested changes.",
-            "3) What still needs clarification.",
-            "4) Conclusion.",
-        ]
-    )
-    return "\n".join(parts)
-
-
-def _merge_request_meta_with_execution(
-    base_meta: Optional[Dict[str, Any]],
-    patch: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
-    merged: Dict[str, Any] = dict(base_meta) if isinstance(base_meta, dict) else {}
-    existing = merged.get("execution")
-    execution_meta = dict(existing) if isinstance(existing, dict) else {}
-    for key, value in patch.items():
-        if value is None:
-            continue
-        execution_meta[key] = value
-    if execution_meta:
-        merged["execution"] = execution_meta
-    return merged or None
-
-
-def _infer_provider_from_model_id(model_id: Optional[str]) -> Optional[str]:
-    model = (model_id or "").strip()
-    if not model:
-        return None
-    if ":" in model:
-        return model.split(":", 1)[0].strip() or None
-    return None
-
-
-def _resolve_review_request_execution_config(
-    *,
-    dispatch_view: Dict[str, Any],
-    profile_hint: Optional[Dict[str, Any]],
-) -> Dict[str, Optional[str]]:
-    from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability
-    from pixsim7.backend.main.services.ai_model.defaults import FALLBACK_DEFAULTS
-    from pixsim7.backend.main.services.ai_model.registry import ai_model_registry
-
-    fallback_model, fallback_method = FALLBACK_DEFAULTS.get(
-        AiModelCapability.ASSISTANT_CHAT,
-        ("anthropic:claude-3.5", "remote"),
-    )
-
-    target_method = (dispatch_view.get("target_method") or "").strip().lower()
-    if not target_method and profile_hint:
-        target_method = str(profile_hint.get("method") or "").strip().lower()
-    if not target_method:
-        target_method = (fallback_method or "remote").strip().lower()
-    if target_method == "direct":
-        target_method = "api"
-
-    target_model_id = (dispatch_view.get("target_model_id") or "").strip()
-    if not target_model_id and profile_hint:
-        target_model_id = str(profile_hint.get("model_id") or "").strip()
-    if not target_model_id:
-        target_model_id = (fallback_model or "anthropic:claude-3.5").strip()
-
-    target_provider = (dispatch_view.get("target_provider") or "").strip().lower()
-    if not target_provider and profile_hint:
-        target_provider = str(profile_hint.get("provider") or "").strip().lower()
-
-    registry_model = ai_model_registry.get_or_none(target_model_id) if target_model_id else None
-    if not target_provider and registry_model and registry_model.provider_id:
-        target_provider = str(registry_model.provider_id).strip().lower()
-    if not target_provider:
-        target_provider = _infer_provider_from_model_id(target_model_id) or ""
-
-    return {
-        "method": target_method or "remote",
-        "model_id": target_model_id or None,
-        "provider": target_provider or None,
-    }
 
 
 async def _try_start_shared_bridge(*, pool_size: int = 1) -> Dict[str, Any]:
@@ -2852,52 +2495,6 @@ def _resolve_review_request_targeting(
     )
 
 
-def _merge_request_meta_with_dispatch(
-    base_meta: Optional[Dict[str, Any]],
-    dispatch: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
-    merged: Dict[str, Any] = dict(base_meta) if isinstance(base_meta, dict) else {}
-    merged["dispatch"] = {
-        "target_mode": dispatch.get("target_mode"),
-        "target_bridge_id": dispatch.get("target_bridge_id"),
-        "target_session_id": dispatch.get("target_session_id"),
-        "preferred_agent_id": dispatch.get("preferred_agent_id"),
-        "target_profile_id": dispatch.get("target_profile_id"),
-        "target_method": dispatch.get("target_method"),
-        "target_model_id": dispatch.get("target_model_id"),
-        "target_provider": dispatch.get("target_provider"),
-        "target_user_id": dispatch.get("target_user_id"),
-        "delegation_grant_id": dispatch.get("delegation_grant_id"),
-        "queue_if_busy": bool(dispatch.get("queue_if_busy", False)),
-        "auto_reroute_if_busy": bool(dispatch.get("auto_reroute_if_busy", True)),
-        "dispatch_state": dispatch.get("dispatch_state"),
-        "dispatch_reason": dispatch.get("dispatch_reason"),
-        "resolved_bridge_id": dispatch.get("target_bridge_id"),
-        "resolved_agent_id": dispatch.get("target_agent_id"),
-        "resolved_agent_type": dispatch.get("target_agent_type"),
-        "dispatched_at": utcnow().isoformat(),
-    }
-    return merged or None
-
-
-def _merge_request_meta_with_review_config(
-    base_meta: Optional[Dict[str, Any]],
-    *,
-    review_mode: Optional[str],
-    base_revision: Optional[int],
-) -> Optional[Dict[str, Any]]:
-    merged: Dict[str, Any] = dict(base_meta) if isinstance(base_meta, dict) else {}
-    mode = str(review_mode or "review_only").strip().lower()
-    if mode not in _REVIEW_REQUEST_MODES:
-        mode = "review_only"
-    merged["review_mode"] = mode
-    if isinstance(base_revision, int) and base_revision > 0:
-        merged["base_revision"] = int(base_revision)
-    else:
-        merged.pop("base_revision", None)
-    return merged or None
-
-
 async def _list_recent_review_agents(
     db: AsyncSession,
     *,
@@ -2986,54 +2583,6 @@ async def _list_recent_review_agents(
     return out[:limit]
 
 
-def _review_request_to_entry(row: PlanRequest) -> PlanRequestEntry:
-    dispatch = _review_request_dispatch_view(row)
-    review_cfg = _review_request_config_view(row)
-    return PlanRequestEntry(
-        id=str(row.id),
-        kind=getattr(row, "kind", "review") or "review",
-        dismissed=bool(getattr(row, "dismissed", False)),
-        plan_id=row.plan_id,
-        round_id=str(row.round_id) if row.round_id else None,
-        title=row.title,
-        body=row.body,
-        status=row.status,
-        target_mode=dispatch["target_mode"],
-        target_bridge_id=dispatch["target_bridge_id"],
-        target_agent_id=getattr(row, "target_agent_id", None),
-        target_agent_type=getattr(row, "target_agent_type", None),
-        target_session_id=dispatch["target_session_id"],
-        preferred_agent_id=dispatch["preferred_agent_id"],
-        target_profile_id=dispatch["target_profile_id"],
-        target_method=dispatch["target_method"],
-        target_model_id=dispatch["target_model_id"],
-        target_provider=dispatch["target_provider"],
-        target_user_id=dispatch["target_user_id"],
-        review_mode=review_cfg["review_mode"],
-        base_revision=review_cfg["base_revision"],
-        queue_if_busy=dispatch["queue_if_busy"],
-        auto_reroute_if_busy=dispatch["auto_reroute_if_busy"],
-        dispatch_state=dispatch["dispatch_state"],
-        dispatch_reason=dispatch["dispatch_reason"],
-        requested_by=row.requested_by,
-        requested_by_principal_type=row.requested_by_principal_type,
-        requested_by_agent_id=row.requested_by_agent_id,
-        requested_by_run_id=row.requested_by_run_id,
-        requested_by_user_id=row.requested_by_user_id,
-        meta=row.meta,
-        resolution_note=row.resolution_note,
-        resolved_node_id=str(row.resolved_node_id) if row.resolved_node_id else None,
-        resolved_by=row.resolved_by,
-        resolved_by_principal_type=row.resolved_by_principal_type,
-        resolved_by_agent_id=row.resolved_by_agent_id,
-        resolved_by_run_id=row.resolved_by_run_id,
-        resolved_by_user_id=row.resolved_by_user_id,
-        created_at=row.created_at.isoformat() if row.created_at else "",
-        updated_at=row.updated_at.isoformat() if row.updated_at else "",
-        resolved_at=row.resolved_at.isoformat() if row.resolved_at else None,
-    )
-
-
 def _graph_has_path(adjacency: Dict[UUID, Set[UUID]], start: UUID, goal: UUID) -> bool:
     if start == goal:
         return True
@@ -3050,68 +2599,6 @@ def _graph_has_path(adjacency: Dict[UUID, Set[UUID]], start: UUID, goal: UUID) -
             if nxt not in visited:
                 stack.append(nxt)
     return False
-
-
-def _checkpoint_int(value: Any) -> Optional[int]:
-    if isinstance(value, bool):
-        return None
-    return value if isinstance(value, int) else None
-
-
-def _derive_checkpoint_points(checkpoint: Dict[str, Any]) -> tuple[int, Optional[int]]:
-    """Resolve checkpoint progress points.
-
-    Precedence (per authoring contract ``2026-05-10.1``):
-      1. ``steps[]`` is the canonical signal when present and non-empty.
-         ``points_total`` becomes ``len(steps)``; ``points_done`` becomes
-         the count of completed steps. Explicit ``points_*`` fields are
-         overridden so the two sources of truth cannot drift silently.
-      2. Bare explicit ``points_*`` (no steps, or empty steps list) — the
-         "early-stage / not yet decomposed" path — pass through as-is.
-
-    A warning is logged on the rare case where both sources disagree, so the
-    author sees the override in the backend log and can clean up stale data.
-    """
-    points_done = _checkpoint_int(checkpoint.get("points_done"))
-    points_total = _checkpoint_int(checkpoint.get("points_total"))
-
-    steps = checkpoint.get("steps")
-    if isinstance(steps, list) and steps:
-        step_dicts = [s for s in steps if isinstance(s, dict)]
-        steps_total = len(step_dicts)
-        steps_done = sum(1 for s in step_dicts if bool(s.get("done")))
-
-        if (
-            (points_total is not None and points_total != steps_total)
-            or (points_done is not None and points_done != steps_done)
-        ):
-            logger.warning(
-                "checkpoint %r has both steps[] and explicit points_*; "
-                "steps win (steps=%d/%d, explicit=%s/%s) — drop the "
-                "explicit fields or update them to match.",
-                checkpoint.get("id"),
-                steps_done, steps_total,
-                points_done, points_total,
-            )
-
-        points_total = steps_total
-        points_done = steps_done
-
-    if points_done is None:
-        points_done = 0
-    return points_done, points_total
-
-
-# ── TODO summary + activity-delta helpers ───────────────────────
-
-_NOTE_TRUNCATE_CHARS = 240
-
-
-def _truncate_note(text: Optional[str], n: int = _NOTE_TRUNCATE_CHARS) -> Optional[str]:
-    if text is None:
-        return None
-    s = str(text)
-    return s if len(s) <= n else s[: n - 1] + "…"
 
 
 def _bundle_to_todo_summary(
@@ -3197,351 +2684,6 @@ def _bundle_to_todo_summary(
         recent_note=_truncate_note(most_recent_note),
         matched_checkpoint_ids=matched_checkpoint_ids,
     )
-
-
-def _compute_checkpoint_delta(
-    old_raw: Optional[str],
-    new_raw: Optional[str],
-) -> Optional[List[Dict[str, Any]]]:
-    """Diff two checkpoint-array JSON strings into a compact per-checkpoint delta.
-
-    Used by ``get_activity`` (C-lite) to replace the giant ``old_value`` /
-    ``new_value`` strings (5–10 KB per event) with just what changed.
-
-    Returns:
-        - ``None`` if both inputs are missing / unparseable / produce no delta
-          (caller should leave ``checkpoint_delta`` unset and keep the raw
-          old/new values for audit fidelity in that pathological case).
-        - ``List[Dict]`` of compact delta records otherwise. Each record is a
-          plain dict that validates against the ``CheckpointDelta`` schema.
-    """
-    def _parse(raw: Optional[str]) -> List[Dict[str, Any]]:
-        if not raw:
-            return []
-        try:
-            data = json.loads(raw)
-        except (TypeError, ValueError):
-            return []
-        return [c for c in data if isinstance(c, dict)] if isinstance(data, list) else []
-
-    old_list = _parse(old_raw)
-    new_list = _parse(new_raw)
-    if not old_list and not new_list:
-        return None
-
-    by_id_old = {str(c.get("id")): c for c in old_list if c.get("id")}
-    by_id_new = {str(c.get("id")): c for c in new_list if c.get("id")}
-
-    deltas: List[Dict[str, Any]] = []
-
-    # Added checkpoints
-    for cp_id in by_id_new.keys() - by_id_old.keys():
-        cp = by_id_new[cp_id]
-        done, total = _derive_checkpoint_points(cp)
-        deltas.append({
-            "checkpoint_id": cp_id,
-            "kind": "added",
-            "points_done_after": done,
-            "points_total_after": total,
-            "status_after": cp.get("status"),
-        })
-
-    # Removed checkpoints
-    for cp_id in by_id_old.keys() - by_id_new.keys():
-        cp = by_id_old[cp_id]
-        done, total = _derive_checkpoint_points(cp)
-        deltas.append({
-            "checkpoint_id": cp_id,
-            "kind": "removed",
-            "points_done_before": done,
-            "points_total_before": total,
-            "status_before": cp.get("status"),
-        })
-
-    # Modified checkpoints
-    for cp_id in by_id_old.keys() & by_id_new.keys():
-        old_cp = by_id_old[cp_id]
-        new_cp = by_id_new[cp_id]
-        old_done, old_total = _derive_checkpoint_points(old_cp)
-        new_done, new_total = _derive_checkpoint_points(new_cp)
-        old_status = old_cp.get("status")
-        new_status = new_cp.get("status")
-        old_label = old_cp.get("label")
-        new_label = new_cp.get("label")
-
-        old_lu = old_cp.get("last_update") if isinstance(old_cp.get("last_update"), dict) else None
-        new_lu = new_cp.get("last_update") if isinstance(new_cp.get("last_update"), dict) else None
-        old_at = (old_lu or {}).get("at")
-        new_at = (new_lu or {}).get("at")
-        new_note = (new_lu or {}).get("note") if new_lu else None
-
-        unchanged = (
-            (old_done, old_total, old_status, old_label) == (new_done, new_total, new_status, new_label)
-            and old_at == new_at
-        )
-        if unchanged:
-            continue
-
-        if old_status != new_status:
-            kind = "status"
-        elif (old_done, old_total) != (new_done, new_total):
-            kind = "progressed"
-        elif old_label != new_label:
-            kind = "renamed"
-        else:
-            # Only thing that changed was last_update (timestamp / note).
-            kind = "noted"
-
-        deltas.append({
-            "checkpoint_id": cp_id,
-            "kind": kind,
-            "points_done_before": old_done,
-            "points_done_after": new_done,
-            "points_total_before": old_total,
-            "points_total_after": new_total,
-            "status_before": old_status,
-            "status_after": new_status,
-            "note": _truncate_note(new_note),
-        })
-
-    return deltas if deltas else None
-
-
-EVIDENCE_KINDS = (
-    "file_path",     # repo-relative source file path
-    "test_suite",    # registered test suite ID
-    "git_commit",    # commit SHA
-    "doc_ref",       # reference to a document/plan
-    "issue_link",    # external issue tracker link
-    "migration",     # database migration file
-)
-
-
-def _normalize_evidence_ref(
-    item: Any,
-    *,
-    strict: bool = True,
-) -> Optional[Dict[str, str]]:
-    """Normalize an evidence item to ``{"kind": ..., "ref": ...}`` form.
-
-    Accepts:
-    - ``str`` (legacy file path) -> ``{"kind": "file_path", "ref": "..."}``
-    - ``{"kind": "<kind>", "ref": "<value>"}`` -> validated pass-through
-
-    When *strict* is True (default), raises ValueError for unrecognized kinds.
-    When False, unknown kinds are passed through (for reading legacy data).
-    """
-    if isinstance(item, str):
-        text = item.strip()
-        return {"kind": "file_path", "ref": text} if text else None
-    if isinstance(item, dict) and item.get("ref"):
-        kind = item.get("kind", "file_path")
-        ref = str(item["ref"]).strip()
-        if not ref:
-            return None
-        if strict and kind not in EVIDENCE_KINDS:
-            raise ValueError(
-                f"Unknown evidence kind '{kind}'. "
-                f"Valid kinds: {', '.join(EVIDENCE_KINDS)}"
-            )
-        return {"kind": kind, "ref": ref}
-    return None
-
-
-def _evidence_key(ref: Dict[str, str]) -> str:
-    return f"{ref['kind']}:{ref['ref']}"
-
-
-def _merge_evidence(existing: Any, appends: Optional[list]) -> List[Dict[str, str]]:
-    """Merge evidence refs, deduplicating by kind+ref.
-
-    Backward-compatible: bare strings in ``existing`` are promoted to
-    ``{"kind": "file_path", "ref": "..."}`` on read.
-    """
-    out: List[Dict[str, str]] = []
-    seen: set[str] = set()
-
-    for item in (existing if isinstance(existing, list) else []):
-        ref = _normalize_evidence_ref(item, strict=False)
-        if ref is None:
-            continue
-        key = _evidence_key(ref)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(ref)
-
-    for item in appends or []:
-        ref = _normalize_evidence_ref(item)  # strict=True for new evidence
-        if ref is None:
-            continue
-        key = _evidence_key(ref)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(ref)
-
-    return out
-
-
-def _matches_query(
-    bundle: PlanBundle,
-    needle: str,
-    *,
-    include_body: bool = False,
-) -> Tuple[bool, List[str]]:
-    """Return ``(matched, matched_checkpoint_ids)`` for ``bundle`` against ``needle``.
-
-    Search scope:
-    - **Scalars** (always): id, title, summary, owner, namespace, scope, plan_type
-    - **Lists** (always): doc.tags + ``PLAN_LIST_FIELDS`` (code_paths, companions,
-      handoffs, depends_on, phases)
-    - **Checkpoints** (always): per checkpoint — id, label, description, note,
-      criteria + steps[].label + last_update.note. Any checkpoint that hits
-      contributes its id to ``matched_checkpoint_ids``.
-    - **Markdown body** (opt-in via ``include_body=True``): ``doc.markdown``.
-      Bodies are long; opt-in keeps default recall tight.
-
-    Empty needle returns ``(True, [])`` — caller is expected to skip the call
-    when ``q`` is not set.
-    """
-    if not needle:
-        return True, []
-    doc = bundle.doc
-    plan = bundle.plan
-
-    scalar_hit = False
-    scalar_fields = (
-        bundle.id,
-        doc.title,
-        doc.summary,
-        doc.owner,
-        doc.namespace,
-        plan.scope,
-        plan.plan_type,
-    )
-    for value in scalar_fields:
-        if needle in str(value or "").lower():
-            scalar_hit = True
-            break
-
-    if not scalar_hit:
-        list_fields = [doc.tags or []]
-        for field in PLAN_LIST_FIELDS:
-            list_fields.append(getattr(plan, field, None) or [])
-        for values in list_fields:
-            for value in values:
-                if needle in str(value or "").lower():
-                    scalar_hit = True
-                    break
-            if scalar_hit:
-                break
-
-    # Always scan checkpoints — record every hit so callers can echo
-    # ``matched_checkpoint_ids``. We keep scanning even after a scalar match
-    # because the echo is useful regardless of why the plan made the cut.
-    matched_cp_ids: List[str] = []
-    for cp in (plan.checkpoints or []):
-        if not isinstance(cp, dict):
-            continue
-        cp_id = str(cp.get("id") or "")
-        if not cp_id:
-            continue
-        if _checkpoint_text_matches(cp, needle):
-            matched_cp_ids.append(cp_id)
-
-    body_hit = False
-    if include_body and not scalar_hit and not matched_cp_ids:
-        if needle in str(doc.markdown or "").lower():
-            body_hit = True
-
-    matched = scalar_hit or bool(matched_cp_ids) or body_hit
-    return matched, matched_cp_ids
-
-
-def _checkpoint_text_matches(cp: Dict[str, Any], needle: str) -> bool:
-    """True if any text field within a checkpoint dict contains ``needle``."""
-    text_keys = ("id", "label", "description", "note", "criteria", "eta")
-    for key in text_keys:
-        if needle in str(cp.get(key) or "").lower():
-            return True
-    for step in (cp.get("steps") or []):
-        if not isinstance(step, dict):
-            continue
-        if needle in str(step.get("label") or "").lower():
-            return True
-    last_update = cp.get("last_update") or cp.get("lastUpdate")
-    if isinstance(last_update, dict):
-        if needle in str(last_update.get("note") or "").lower():
-            return True
-    for blocker in (cp.get("blockers") or []):
-        if needle in str(blocker or "").lower():
-            return True
-    return False
-
-
-def _collect_matched_checkpoint_ids(
-    bundle: PlanBundle,
-    q: Optional[str],
-    *,
-    include_body: bool = False,
-) -> List[str]:
-    """Per-bundle echo helper: matched checkpoint IDs for response payloads.
-
-    Returns ``[]`` when ``q`` is not set or the bundle matched only on
-    non-checkpoint fields. Re-scans the bundle (cheap; bounded by the page
-    size that callers iterate after slicing).
-    """
-    needle = (q or "").strip().lower()
-    if not needle:
-        return []
-    _, matched_cp_ids = _matches_query(bundle, needle, include_body=include_body)
-    return matched_cp_ids
-
-
-def _filter_bundles(
-    bundles: List[PlanBundle],
-    *,
-    status: Optional[str] = None,
-    owner: Optional[str] = None,
-    namespace: Optional[str] = None,
-    priority: Optional[str] = None,
-    plan_type: Optional[str] = None,
-    tag: Optional[str] = None,
-    q: Optional[str] = None,
-    include_hidden: bool = False,
-    include_body: bool = False,
-) -> List[PlanBundle]:
-    """Apply common filters to a list of plan bundles.
-
-    ``q`` matches across scalars, list fields, and checkpoint text by default.
-    Pass ``include_body=True`` to also scan ``doc.markdown`` (opt-in: bodies
-    are long and produce noisier matches).
-    """
-    query = (q or "").strip().lower()
-
-    out: list[PlanBundle] = []
-    for b in sorted(bundles, key=lambda b: b.id):
-        if not include_hidden and not status and b.doc.status in HIDDEN_STATUSES:
-            continue
-        if status and b.doc.status != status:
-            continue
-        if owner and owner.lower() not in b.doc.owner.lower():
-            continue
-        if namespace and b.doc.namespace != namespace:
-            continue
-        if priority and b.plan.priority != priority:
-            continue
-        if plan_type and b.plan.plan_type != plan_type:
-            continue
-        if tag and tag not in (b.doc.tags or []):
-            continue
-        if query:
-            matched, _ = _matches_query(b, query, include_body=include_body)
-            if not matched:
-                continue
-        out.append(b)
-    return out
 
 
 async def _ensure_plan_exists(db: AsyncSession, plan_id: str) -> None:
@@ -3689,3 +2831,7 @@ async def _resolve_companion_docs(
             resolved.append(ref)
 
     return resolved
+
+
+
+

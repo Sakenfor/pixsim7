@@ -738,14 +738,17 @@ def _builtin_plans_management() -> MetaContract:
                 id="plans.settings_get",
                 method="GET",
                 path="/api/v1/dev/plans/settings",
-                summary="Read runtime plan mode flags, including DB-only mode.",
+                summary=(
+                    "Read runtime plan mode flags (DB-only mode) and effective "
+                    "participant-liveness TTLs (stale + idle-release minutes)."
+                ),
                 tags=["settings", "planning"],
             ),
             MetaContractEndpoint(
                 id="plans.settings_update",
                 method="PATCH",
                 path="/api/v1/dev/plans/settings",
-                summary="Toggle runtime plan mode flags (admin, applies to current backend process).",
+                summary="Toggle runtime plan mode flags + participant-liveness TTLs (admin, applies to current backend process).",
                 requires_admin=True,
                 permissions=["admin"],
                 input_schema={
@@ -756,6 +759,17 @@ def _builtin_plans_management() -> MetaContract:
                             "required": ["plans_db_only_mode"],
                             "properties": {
                                 "plans_db_only_mode": {"type": "boolean"},
+                                # Optional GLOBAL/system TTL overrides (not per-user):
+                                # omit to leave unchanged, send null to reset to
+                                # env/default. Positive minutes.
+                                "participant_stale_minutes": {
+                                    "type": ["number", "null"],
+                                    "exclusiveMinimum": 0,
+                                },
+                                "claim_idle_release_minutes": {
+                                    "type": ["number", "null"],
+                                    "exclusiveMinimum": 0,
+                                },
                             },
                         },
                     },

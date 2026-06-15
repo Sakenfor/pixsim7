@@ -200,6 +200,105 @@ class TestClaimHelpers:
 
 
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
+class TestSweepIdleClaims:
+    """Idle-release sweep: an open claim whose agent went idle without a
+    terminal run is auto-released so the persisted record matches the roster.
+    Plan ``plan-participant-liveness`` checkpoint ``claim-idle-release-and-ttl-settings``."""
+
+    @pytest.mark.asyncio
+    async def test_sweep_releases_idle_open_claim(self):
+        idle = utcnow() - timedelta(hours=2)
+        row = _participant(
+            last_seen_at=idle, last_heartbeat_at=idle, meta={"claim": _open_claim()}
+        )
+        db = SimpleNamespace(execute=AsyncMock(return_value=_result([row])))
+        n = await _h.sweep_idle_claims(db)
+        assert n == 1
+        assert row.meta["claim"]["released_at"]  # closed
+        assert row.last_action == "release:idle"
+
+    @pytest.mark.asyncio
+    async def test_sweep_skips_fresh_released_and_unclaimed(self):
+        idle = utcnow() - timedelta(hours=2)
+        fresh = _participant(meta={"claim": _open_claim()})  # within stale TTL
+        already = _participant(
+            last_seen_at=idle,
+            last_heartbeat_at=idle,
+            meta={"claim": {**_open_claim(), "released_at": utcnow().isoformat()}},
+        )
+        no_claim = _participant(last_seen_at=idle, last_heartbeat_at=idle, meta={})
+        db = SimpleNamespace(
+            execute=AsyncMock(return_value=_result([fresh, already, no_claim]))
+        )
+        n = await _h.sweep_idle_claims(db)
+        assert n == 0
+        assert fresh.meta["claim"]["released_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_sweep_idle_ttl_clamped_to_stale_floor(self, monkeypatch):
+        # A sub-stale idle override must not release a still-live claimant: the
+        # idle TTL is clamped to never drop below the stale TTL.
+        monkeypatch.setenv("PIXSIM_PLAN_PARTICIPANT_STALE_MINUTES", "15")
+        monkeypatch.setenv("PIXSIM_PLAN_CLAIM_IDLE_RELEASE_MINUTES", "1")
+        recent = utcnow() - timedelta(minutes=5)  # stale<15? no — still live
+        row = _participant(
+            last_seen_at=recent, last_heartbeat_at=recent, meta={"claim": _open_claim()}
+        )
+        db = SimpleNamespace(execute=AsyncMock(return_value=_result([row])))
+        n = await _h.sweep_idle_claims(db)
+        assert n == 0
+        assert row.meta["claim"]["released_at"] is None
+
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
+class TestLivenessTtlResolution:
+    """Effective TTL precedence (runtime override > env > default) and the
+    idle-release clamp. The runtime override is what PATCH /dev/plans/settings
+    writes onto the process-global settings object. Plan
+    ``plan-participant-liveness`` checkpoint ``claim-idle-release-and-ttl-settings``."""
+
+    @staticmethod
+    def _clear_env(monkeypatch):
+        monkeypatch.delenv("PIXSIM_PLAN_PARTICIPANT_STALE_MINUTES", raising=False)
+        monkeypatch.delenv("PIXSIM_PLAN_CLAIM_IDLE_RELEASE_MINUTES", raising=False)
+
+    @staticmethod
+    def _settings():
+        from pixsim7.backend.main.shared.config import settings
+
+        return settings
+
+    def test_defaults_when_unset(self, monkeypatch):
+        self._clear_env(monkeypatch)
+        monkeypatch.setattr(self._settings(), "plan_participant_stale_minutes", None)
+        monkeypatch.setattr(self._settings(), "plan_claim_idle_release_minutes", None)
+        assert _h.participant_stale_minutes() == 15.0
+        # idle defaults to the stale TTL
+        assert _h.claim_idle_release_minutes() == 15.0
+
+    def test_runtime_override_beats_env(self, monkeypatch):
+        monkeypatch.setenv("PIXSIM_PLAN_PARTICIPANT_STALE_MINUTES", "20")
+        monkeypatch.setattr(self._settings(), "plan_participant_stale_minutes", 45.0)
+        # runtime (45) wins over env (20)
+        assert _h.participant_stale_minutes() == 45.0
+
+    def test_env_used_when_no_runtime_override(self, monkeypatch):
+        monkeypatch.setenv("PIXSIM_PLAN_PARTICIPANT_STALE_MINUTES", "25")
+        monkeypatch.setattr(self._settings(), "plan_participant_stale_minutes", None)
+        assert _h.participant_stale_minutes() == 25.0
+
+    def test_idle_override_applies_and_clamps_to_stale_floor(self, monkeypatch):
+        self._clear_env(monkeypatch)
+        monkeypatch.setattr(self._settings(), "plan_participant_stale_minutes", 30.0)
+        # idle override above the floor is honoured
+        monkeypatch.setattr(self._settings(), "plan_claim_idle_release_minutes", 90.0)
+        assert _h.claim_idle_release_minutes() == 90.0
+        # idle override below the stale floor is clamped up to it
+        monkeypatch.setattr(self._settings(), "plan_claim_idle_release_minutes", 5.0)
+        assert _h.claim_idle_release_minutes() == 30.0
+
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
 class TestRunEndHook:
     @pytest.mark.asyncio
     async def test_complete_run_triggers_release(self):

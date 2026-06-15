@@ -578,6 +578,19 @@ async def list_active_agents(
     not terminal), grouped by plan. The at-a-glance "who is working on
     what right now" overview."""
     now = utcnow()
+
+    # Best-effort maintenance: release claims left open by agents that went
+    # idle without a terminal run, so the persisted claim record matches the
+    # roster (which already hides stale claimants). Isolated commit — must
+    # never break the read. Plan `plan-participant-liveness`, checkpoint
+    # `claim-idle-release-and-ttl-settings`.
+    try:
+        swept = await _h.sweep_idle_claims(db, now=now)
+        if swept:
+            await db.commit()
+    except Exception:
+        await db.rollback()
+
     rows = await _h.list_active_participants(db, now=now)
     terminal = await _h.load_terminal_run_ids(
         db, {r.run_id for r in rows if r.run_id}
