@@ -293,7 +293,6 @@ const DASHBOARD_TOOLS = [
   { id: 'routine-graph', label: 'Routines', description: 'NPC routine graphs', categoryKey: null },
   { id: 'gallery', label: 'Assets', description: 'Browse & manage assets', categoryKey: null },
   { id: 'quick-generate', label: 'Generate', description: 'AI generation', categoryKey: null },
-  { id: 'game-theming', label: 'Theming', description: 'Visual theme', categoryKey: null },
   { id: 'hud-designer', label: 'HUD', description: 'HUD & UI design', categoryKey: null },
 ] as const;
 

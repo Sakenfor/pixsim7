@@ -5,6 +5,7 @@
  */
 
 export { useWorldTheme, generateThemeCSS } from './useWorldTheme';
+export { useSessionThemeOverrideStore } from './sessionThemeOverrideStore';
 export {
   useViewMode,
   filterToolsByViewMode,

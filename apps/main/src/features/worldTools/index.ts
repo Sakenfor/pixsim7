@@ -146,5 +146,6 @@ export {
   relationshipDiffDebugTool,
   worldThemeEditorTool,
   blockPrimitivesDebugTool,
+  sessionThemeOverrideTool,
   builtInWorldTools,
 } from './plugins';

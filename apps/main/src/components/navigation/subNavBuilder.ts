@@ -61,7 +61,7 @@ const PAGE_NAV_HINTS: Record<string, PageNavHints> = {
     featureTagHints: ['automation', 'template'],
   },
   game: {
-    panelIds: ['game-world', 'npc-brain-lab', 'npc-portraits', 'game-theming', 'world-context', 'world-visual-roles'],
+    panelIds: ['game-world', 'npc-brain-lab', 'npc-portraits', 'world-context', 'world-visual-roles'],
     routePageIds: ['npc-brain-lab', 'npcs'],
     featureTagHints: ['game', 'world', 'npc'],
   },

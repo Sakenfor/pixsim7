@@ -245,15 +245,6 @@ const defaultPanelConfigs: Partial<Record<string, PanelConfig>> = {
     description: "NPC behavior testing",
     icon: "🧠",
   },
-  "game-theming": {
-    id: "game-theming",
-    enabled: true,
-    settings: {},
-    category: "game",
-    tags: ["theming", "customization"],
-    description: "Game theme customization",
-    icon: "🎨",
-  },
   "scene-management": {
     id: "scene-management",
     enabled: true,

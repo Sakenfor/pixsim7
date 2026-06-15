@@ -42,7 +42,7 @@ const DEV_PRESETS = ['dev-default', 'dev-plugins', 'dev-architecture'];
 const DEV_PANELS = ['dev-tools', 'health', 'inspector'];
 
 /** Panels that indicate layout mode */
-const LAYOUT_PANELS = ['hud-designer', 'world-visual-roles', 'game-theming'];
+const LAYOUT_PANELS = ['hud-designer', 'world-visual-roles'];
 
 /**
  * Derive the primary view from active panels and preset

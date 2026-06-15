@@ -95,7 +95,7 @@ import {
 } from '../lib/game/runtime';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
-import { useWorldTheme, useViewMode, filterToolsByViewMode } from '../lib/theming';
+import { useWorldTheme, useViewMode, filterToolsByViewMode, useSessionThemeOverrideStore } from '../lib/theming';
 
 
 // WorldTime type for display (kept for backward compatibility with UI components)
@@ -304,8 +304,10 @@ export function Game2D() {
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
-  // Apply per-world theme when world changes
-  useWorldTheme(worldDetail);
+  // Apply per-world theme when world changes, merging any active session
+  // theme override (set via the Session Theme Override world tool).
+  const sessionThemeOverride = useSessionThemeOverrideStore((s) => s.currentOverride);
+  useWorldTheme(worldDetail, gameSession ?? undefined, sessionThemeOverride ?? undefined);
 
   // Get current view mode from world configuration
   const viewMode = useViewMode(worldDetail);

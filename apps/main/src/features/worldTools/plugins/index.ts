@@ -15,6 +15,7 @@ import { questLogTool } from './questLog';
 import { relationshipDashboardTool } from './relationshipDashboard';
 import { relationshipDiffDebugTool } from './relationshipDiffDebug';
 import { sessionFlagsDebugTool } from './sessionFlagsDebug';
+import { sessionThemeOverrideTool } from './sessionThemeOverride';
 import { turnHistoryDebugTool } from './turnHistoryDebug';
 import { worldInfoTool } from './worldInfo';
 import { worldManifestDebugTool } from './worldManifestDebug';
@@ -36,6 +37,7 @@ export {
   relationshipDiffDebugTool,
   worldThemeEditorTool,
   blockPrimitivesDebugTool,
+  sessionThemeOverrideTool,
 };
 
 // Export a helper to register all built-in tools
@@ -54,4 +56,5 @@ export const builtInWorldTools = [
   relationshipDiffDebugTool,
   worldThemeEditorTool,
   blockPrimitivesDebugTool,
+  sessionThemeOverrideTool,
 ];

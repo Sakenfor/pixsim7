@@ -13,7 +13,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { resolveGameLocations } from '@lib/resolvers';
 
+import { DynamicThemeRulesPanel } from '@/components/game/panels/DynamicThemeRulesPanel';
 import { InteractionPresetUsagePanel } from '@/components/game/panels/InteractionPresetUsagePanel';
+import { ThemePacksPanel } from '@/components/game/panels/ThemePacksPanel';
 import { WorldValidationPanel } from '@/components/game/panels/WorldValidationPanel';
 import { useSharedWorldSelection } from '@/hooks';
 
@@ -25,7 +27,15 @@ import { NpcSlotEditor } from '../components/NpcSlotEditor';
 import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO, GameWorldDetail } from '../lib/api/game';
 import { getGameLocation, saveGameLocationHotspots, getGameWorld } from '../lib/api/game';
 
-type GameWorldTab = 'hotspots' | '2d-layout' | 'room-nav' | 'presets' | 'usage' | 'validation';
+type GameWorldTab =
+  | 'hotspots'
+  | '2d-layout'
+  | 'room-nav'
+  | 'presets'
+  | 'usage'
+  | 'validation'
+  | 'theme-rules'
+  | 'theme-packs';
 type GameWorldSection = 'location-tools' | 'world-tools';
 
 type GameWorldNavSection = {
@@ -375,6 +385,10 @@ export function GameWorld() {
                 Select a world to run validation checks.
               </div>
             )
+          ) : activeTab === 'theme-rules' ? (
+            <DynamicThemeRulesPanel />
+          ) : activeTab === 'theme-packs' ? (
+            <ThemePacksPanel />
           ) : !detail ? (
             <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-400">
               {isLoadingDetail ? 'Loading location details...' : 'Select a world location to begin editing.'}

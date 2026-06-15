@@ -6,6 +6,8 @@
  * Uses DynamicSettingsPanel with schema from icon.settings.tsx and theme.settings.tsx.
  */
 
+import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPanel';
+
 import { settingsRegistry } from '../../lib/core/registry';
 import { registerIconSettings } from '../../lib/schemas/icon.settings';
 import { registerModelBadgeSettings } from '../../lib/schemas/modelBadge.settings';
@@ -34,6 +36,19 @@ function ModelBadgesSettings() {
   return (
     <div className="flex-1 overflow-auto p-4">
       <DynamicSettingsPanel categoryId="appearance" tabId="model-badges" />
+    </div>
+  );
+}
+
+/**
+ * Accessibility & UI preferences (high contrast, reduced motion, density).
+ * Relocated from the dissolved GameThemingPanel "User Preferences" tab — these
+ * are app-wide accessibility settings, not a game-authoring surface.
+ */
+function AccessibilitySettings() {
+  return (
+    <div className="flex-1 overflow-auto p-4">
+      <UserPreferencesPanel />
     </div>
   );
 }
@@ -67,6 +82,12 @@ settingsRegistry.register({
       label: 'Model Badges',
       icon: 'tag',
       component: ModelBadgesSettings,
+    },
+    {
+      id: 'accessibility',
+      label: 'Accessibility',
+      icon: 'eye',
+      component: AccessibilitySettings,
     },
   ],
 });
