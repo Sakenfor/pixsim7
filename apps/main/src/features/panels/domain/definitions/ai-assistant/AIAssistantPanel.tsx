@@ -7,10 +7,12 @@
  * - Message history (persisted to localStorage)
  */
 
+import { isAdminUser } from '@pixsim7/shared.auth.core';
 import {
   Badge,
   Button,
   EmptyState,
+  Popover,
   SidebarPaneShell,
 } from '@pixsim7/shared.ui';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -25,6 +27,8 @@ import { usePanelSkin } from '@features/appearance';
 import { useChatUnread } from '@features/notifications/hooks/useChatUnread';
 import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 import { navigateToPlan } from '@features/workspace/lib/openPanel';
+
+import { useAuthStore } from '@/stores/authStore';
 
 import { chatBridge } from './assistantChatBridge';
 import {
@@ -172,6 +176,120 @@ async function injectPlanContext(tabId: string, planId: string): Promise<void> {
 // render the notice and to dedupe it (the signal can arrive on a heartbeat
 // and again on the result envelope). Plan `chat-session-durable-resume`.
 const RESUME_FAILED_NOTICE = '⚠ Conversation context lost.';
+
+// =============================================================================
+// Session-token button — popover with the auto-inject toggle + (admin-only)
+// the profile's privilege level. Replaces the bare on/off key so the token
+// controls are reachable any time, not just on a fresh tab via the profile
+// editor. Token level is profile-wide (per the design); editing it here PATCHes
+// the bound profile and refreshes.
+// =============================================================================
+
+function SessionTokenButton({ tab, profile, onUpdateTab, onRefreshProfiles, sending }: {
+  tab: ChatTab;
+  profile: UnifiedProfile | undefined;
+  onUpdateTab: (updates: Partial<ChatTab>) => void;
+  onRefreshProfiles: () => void;
+  sending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  const isAdmin = isAdminUser(useAuthStore((s) => s.user));
+  const level = profile?.token_level || 'basic';
+  const tokenIsAdmin = level === 'admin';
+  const hasProfile = !!tab.profileId;
+
+  const setLevel = useCallback(async (next: 'basic' | 'admin') => {
+    if (!profile || (profile.token_level || 'basic') === next) return;
+    setBusy(true);
+    try {
+      await pixsimClient.patch(`/dev/agent-profiles/${profile.id}`, { token_level: next });
+      onRefreshProfiles();
+    } catch {
+      // Surfaced by the refetch staying on the old value; nothing to persist.
+    } finally {
+      setBusy(false);
+    }
+  }, [profile, onRefreshProfiles]);
+
+  return (
+    <>
+      <button
+        ref={ref}
+        onClick={() => setOpen((o) => !o)}
+        disabled={sending}
+        className={`shrink-0 h-7 flex items-center gap-0.5 px-1 rounded-lg text-[9px] transition-colors disabled:opacity-30 ${
+          tab.injectToken ? (tokenIsAdmin ? 'text-signal-error' : 'text-signal-warning') : 'text-th-muted hover:text-th'
+        }`}
+        title="Session token options"
+      >
+        <Icon name="key" size={12} />
+        {tab.injectToken && tokenIsAdmin && <span className="font-semibold">admin</span>}
+      </button>
+      <Popover
+        anchor={ref.current}
+        placement="top"
+        align="end"
+        offset={6}
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={ref}
+        className="w-60 rounded-lg border border-th bg-surface shadow-lg"
+      >
+        <div className="p-2 space-y-2 text-[11px]">
+          <div className="font-medium text-th-secondary">Session token</div>
+          {!hasProfile ? (
+            <div className="text-th-muted">Bind an agent profile to this tab to mint a token.</div>
+          ) : (
+            <>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={tab.injectToken}
+                  onChange={(e) => onUpdateTab({ injectToken: e.target.checked })}
+                  className="h-3 w-3 rounded border-th text-accent focus:ring-accent"
+                />
+                <span>Auto-inject token each turn</span>
+              </label>
+
+              {isAdmin ? (
+                <div className="space-y-1">
+                  <div className="text-th-muted">Privilege level (profile-wide)</div>
+                  <div className="flex gap-1">
+                    {(['basic', 'admin'] as const).map((lvl) => (
+                      <button
+                        key={lvl}
+                        disabled={busy}
+                        onClick={() => void setLevel(lvl)}
+                        className={`flex-1 px-2 py-1 rounded border text-[10px] transition-colors disabled:opacity-40 ${
+                          level === lvl
+                            ? lvl === 'admin'
+                              ? 'border-signal-error text-signal-error'
+                              : 'border-accent text-accent'
+                            : 'border-th text-th-secondary hover:bg-surface-secondary'
+                        }`}
+                      >
+                        {lvl === 'admin' ? 'Admin ⚠' : 'Basic'}
+                      </button>
+                    ))}
+                  </div>
+                  {tokenIsAdmin && (
+                    <div className="text-[9px] text-signal-warning leading-tight">
+                      Admin token = full rights; the agent can do anything you can.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-[9px] text-th-muted">Level: {level}</div>
+              )}
+            </>
+          )}
+        </div>
+      </Popover>
+    </>
+  );
+}
 
 // =============================================================================
 // Tab Chat View — one per tab, owns its own message state
@@ -1137,30 +1255,14 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             <Icon name="send" size={14} />
           </Button>
 
-          {/* Inject token toggle. When the bound profile is admin-level, the
-              auto-injected token carries full admin rights — surface that
-              loudly (red key + label) so it's never a silent elevation. */}
-          {(() => {
-            const tokenIsAdmin = activeProfile?.token_level === 'admin';
-            const activeColor = tokenIsAdmin ? 'text-signal-error' : 'text-signal-warning';
-            return (
-              <button
-                onClick={() => onUpdateTab({ injectToken: !tab.injectToken })}
-                disabled={sending || !tab.profileId}
-                className={`shrink-0 h-7 flex items-center gap-0.5 px-1 rounded-lg text-[9px] transition-colors disabled:opacity-30 ${
-                  tab.injectToken ? activeColor : 'text-th-muted hover:text-th'
-                }`}
-                title={
-                  tab.injectToken
-                    ? `${tokenIsAdmin ? 'ADMIN ' : ''}token will be auto-injected (click to disable)`
-                    : `Auto-inject ${tokenIsAdmin ? 'admin ' : ''}session token`
-                }
-              >
-                <Icon name="key" size={12} />
-                {tab.injectToken && tokenIsAdmin && <span className="font-semibold">admin</span>}
-              </button>
-            );
-          })()}
+          {/* Session-token menu — auto-inject toggle + admin-only level. */}
+          <SessionTokenButton
+            tab={tab}
+            profile={activeProfile}
+            onUpdateTab={onUpdateTab}
+            onRefreshProfiles={onRefreshProfiles}
+            sending={sending}
+          />
 
           {/* Work summaries */}
           <WorkSummaryBadge sessionId={tab.sessionId} messageCount={messages.length} sending={sending} />
