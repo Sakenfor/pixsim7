@@ -19,11 +19,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import {
-  fetchVariantOutcomes,
-  searchSimilarPrompts,
-  type VariantSlot,
-} from '@lib/api/prompts';
+import { fetchVariantOutcomes, type VariantSlot } from '@lib/api/prompts';
+
+import { searchSimilarPromptsCached } from '../lib/similarPromptsSearchCache';
 
 const DEBOUNCE_MS = 350;
 /** Neighbour search: tight enough to cluster, wide enough to find variations. */
@@ -87,14 +85,14 @@ export function useVariantOutcomes({
     setLoading(true);
     setError(null);
     try {
-      const similar = await searchSimilarPrompts({
+      const neighbours = await searchSimilarPromptsCached({
         prompt: query,
         mode: 'vector',
         limit: NEIGHBOUR_LIMIT,
         threshold: NEIGHBOUR_THRESHOLD,
       });
       if (reqId !== reqIdRef.current) return;
-      const versionIds = similar.results.map((r) => r.version_id);
+      const versionIds = neighbours.map((r) => r.version_id);
       setNeighbourCount(versionIds.length);
       if (versionIds.length < 2) {
         setSlots([]);

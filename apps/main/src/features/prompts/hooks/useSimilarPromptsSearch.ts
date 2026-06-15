@@ -21,17 +21,13 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { searchSimilarPrompts, type SimilarPromptMatch } from '@lib/api/prompts';
-import { createKeyedAsyncCache } from '@lib/utils';
+import { type SimilarPromptMatch } from '@lib/api/prompts';
 
-/**
- * Persistent across unmount/remount + HMR, keyed by the full param set, so the
- * (expensive) vector search isn't re-paid when the composer remounts with the
- * same inputs. In-flight de-dupe also collapses concurrent identical searches.
- */
-const searchCache = createKeyedAsyncCache<SimilarPromptMatch[]>('useSimilarPromptsSearch', {
-  maxEntries: 50,
-});
+import {
+  peekSimilarPrompts,
+  searchSimilarPromptsCached,
+  type SimilarPromptsQuery,
+} from '../lib/similarPromptsSearchCache';
 
 const DEBOUNCE_MS = 300;
 const DEFAULT_LIMIT = 10;
@@ -125,9 +121,18 @@ export function useSimilarPromptsSearch({
       return;
     }
     searchedKeyRef.current = key;
+    const queryObj: SimilarPromptsQuery = {
+      prompt: query,
+      mode: 'vector',
+      limit,
+      threshold,
+      rank: hybrid ? 'hybrid' : 'similarity',
+      ...(familyId ? { family_id: familyId } : {}),
+    };
 
-    // Cache hit (possibly from an earlier mount): serve instantly, no spinner.
-    const cached = searchCache.get(key);
+    // Cache hit (possibly from an earlier mount, or another feature's identical
+    // search): serve instantly, no spinner.
+    const cached = peekSimilarPrompts(queryObj);
     if (cached) {
       reqIdRef.current++; // invalidate any in-flight response
       setResults(cached);
@@ -140,16 +145,7 @@ export function useSimilarPromptsSearch({
     setLoading(true);
     setError(null);
     try {
-      const matches = await searchCache.fetch(key, () =>
-        searchSimilarPrompts({
-          prompt: query,
-          mode: 'vector',
-          limit,
-          threshold,
-          rank: hybrid ? 'hybrid' : 'similarity',
-          ...(familyId ? { family_id: familyId } : {}),
-        }).then((res) => res.results),
-      );
+      const matches = await searchSimilarPromptsCached(queryObj);
       if (reqId !== reqIdRef.current) return; // stale
       setResults(matches);
     } catch (e) {
@@ -189,11 +185,18 @@ export function useSimilarPromptsSearch({
     if (!open) setArmed(false);
   }, [open]);
 
-  // Hydrate from the persistent cache on mount: if these exact params were
-  // searched before (even in a prior mount/HMR generation), show the results
-  // immediately instead of requiring a fresh "Find". Mount-only by design.
+  // Hydrate from the shared cache on mount: if these exact params were searched
+  // before (even in a prior mount/HMR generation, or by another feature), show
+  // the results immediately instead of requiring a fresh "Find". Mount-only.
   useEffect(() => {
-    const cached = searchCache.get(key);
+    const cached = peekSimilarPrompts({
+      prompt: query,
+      mode: 'vector',
+      limit,
+      threshold,
+      rank: hybrid ? 'hybrid' : 'similarity',
+      ...(familyId ? { family_id: familyId } : {}),
+    });
     if (cached && searchedKeyRef.current !== key) {
       searchedKeyRef.current = key;
       setResults(cached);
