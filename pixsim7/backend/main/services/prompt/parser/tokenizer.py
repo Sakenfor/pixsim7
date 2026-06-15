@@ -401,10 +401,22 @@ def _try_chain(
     An *operator* is a maximal contiguous run of ``RUN(<|>|=)`` and/or
     ``COLON`` tokens. Whitespace breaks an operator.
     """
+    # Paren-aware: operators inside a balanced `( ... )` group are NOT chain
+    # operators — the group is one operand (e.g. `HIP < (MODUS = TEASE) < X` is
+    # var < group < var, not split on the inner `=`). Only depth-0 ops split.
     op_token_spans: List[Tuple[int, int]] = []
     k = i
+    depth = 0
     while k < end:
-        if _is_chain_op_token(tokens[k]):
+        kind = tokens[k].kind
+        if kind == "LPAREN":
+            depth += 1
+            k += 1
+        elif kind == "RPAREN":
+            if depth > 0:
+                depth -= 1
+            k += 1
+        elif depth == 0 and _is_chain_op_token(tokens[k]):
             op_from = k
             while k < end and _is_chain_op_token(tokens[k]):
                 k += 1

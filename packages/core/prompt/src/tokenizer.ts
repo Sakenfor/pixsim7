@@ -230,10 +230,21 @@ function isChainOpToken(tok: Token): boolean {
  * Returns null when no operator tokens appear (caller falls through to prose).
  */
 function tryChain(line: LineSlice, tokens: Token[], i: number, end: number): PromptTokenLine | null {
+  // Paren-aware: operators inside a balanced `( ... )` group are NOT chain
+  // operators — the group is one operand (e.g. `HIP < (MODUS = TEASE) < X` is
+  // var < group < var, not split on the inner `=`). Only depth-0 ops split.
   const opTokenSpans: Array<[number, number]> = [];
   let k = i;
+  let depth = 0;
   while (k < end) {
-    if (isChainOpToken(tokens[k])) {
+    const kind = tokens[k].kind;
+    if (kind === 'LPAREN') {
+      depth++;
+      k++;
+    } else if (kind === 'RPAREN') {
+      if (depth > 0) depth--;
+      k++;
+    } else if (depth === 0 && isChainOpToken(tokens[k])) {
       const opFrom = k;
       while (k < end && isChainOpToken(tokens[k])) k++;
       opTokenSpans.push([opFrom, k]);

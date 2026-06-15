@@ -51,6 +51,9 @@
     { "id": "var-call-trailing-text-prose", "text": "FOO(bar) baz = x" },
     { "id": "value-group-after-assign", "text": "MOOD = (very tense and quiet)" },
     { "id": "value-group-then-var", "text": "ACTOR2 = (Sonus duplex est.) < DELIBERATE" },
-    { "id": "value-group-leading-prose", "text": "see (note) here = x" }
+    { "id": "value-group-leading-prose", "text": "see (note) here = x" },
+    { "id": "group-protects-inner-ops", "text": "ACTOR2_HIP < (MODUS = TEASE) < DELIBERATE" },
+    { "id": "group-inner-chain-rhs", "text": "X = (A < B)" },
+    { "id": "group-unbalanced-open", "text": "X = (A < B" }
   ]
 }

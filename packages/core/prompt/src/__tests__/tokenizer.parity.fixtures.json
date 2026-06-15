@@ -1394,6 +1394,123 @@
           }
         ]
       }
+    },
+    {
+      "id": "group-protects-inner-ops",
+      "text": "ACTOR2_HIP < (MODUS = TEASE) < DELIBERATE",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR2_HIP",
+                "start": 0,
+                "end": 10
+              },
+              {
+                "kind": "value",
+                "text": "(MODUS = TEASE)",
+                "start": 13,
+                "end": 28
+              },
+              {
+                "kind": "var",
+                "text": "DELIBERATE",
+                "start": 31,
+                "end": 41
+              }
+            ],
+            "operators": [
+              {
+                "op": "<",
+                "run": 1,
+                "op_start": 11,
+                "op_end": 12
+              },
+              {
+                "op": "<",
+                "run": 1,
+                "op_start": 29,
+                "op_end": 30
+              }
+            ],
+            "start": 0,
+            "end": 41
+          }
+        ]
+      }
+    },
+    {
+      "id": "group-inner-chain-rhs",
+      "text": "X = (A < B)",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "X",
+                "start": 0,
+                "end": 1
+              },
+              {
+                "kind": "value",
+                "text": "(A < B)",
+                "start": 4,
+                "end": 11
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 2,
+                "op_end": 3
+              }
+            ],
+            "start": 0,
+            "end": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "group-unbalanced-open",
+      "text": "X = (A < B",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "X",
+                "start": 0,
+                "end": 1
+              },
+              {
+                "kind": "prose",
+                "text": "(A < B",
+                "start": 4,
+                "end": 10
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 2,
+                "op_end": 3
+              }
+            ],
+            "start": 0,
+            "end": 10
+          }
+        ]
+      }
     }
   ]
 }
