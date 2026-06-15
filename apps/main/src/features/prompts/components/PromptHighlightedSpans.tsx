@@ -21,10 +21,27 @@ import type { CSSProperties } from 'react';
 
 import { getPromptRoleHex, getPromptRoleInlineClasses } from '@/lib/promptRoleUi';
 
-import type { CandidateSpan } from '../lib/buildCandidateSpans';
+import type { CandidateSpan, PromptVariableSpan } from '../lib/buildCandidateSpans';
+import { getVariableClassVisual } from '../lib/variableClassVisuals';
 import type { PromptBlockCandidate } from '../types';
 
 export type PromptHighlightMode = 'visible' | 'backdrop';
+
+const _VAR_SAVED_HEX = 'rgba(16, 185, 129, 0.85)'; // emerald — saved, no class hue
+const _VAR_UNKNOWN_HEX = 'rgba(120, 120, 120, 0.55)';
+
+/** Inline style for a clickable variable token — mirrors variableTokenExtension:
+ *  underline solid (saved) / dotted (default-recognised) / dashed (unknown),
+ *  coloured by the variable's class hue when it has one. */
+function variableSpanStyle(variable: PromptVariableSpan): CSSProperties {
+  const underline = variable.saved ? 'solid' : variable.defaultClass ? 'dotted' : 'dashed';
+  const classHex = getVariableClassVisual(variable.name)?.hex;
+  const lineColor = classHex ?? (variable.saved ? _VAR_SAVED_HEX : _VAR_UNKNOWN_HEX);
+  const style: CSSProperties = { borderBottom: `1px ${underline} ${lineColor}`, cursor: 'pointer' };
+  const textColor = classHex ?? (variable.saved ? _VAR_SAVED_HEX : undefined);
+  if (textColor) style.color = textColor;
+  return style;
+}
 
 export interface PromptHighlightedSpansProps {
   spans: CandidateSpan[];
@@ -38,6 +55,13 @@ export interface PromptHighlightedSpansProps {
   onSpanEnter?: (event: React.MouseEvent<HTMLSpanElement>, candidate: PromptBlockCandidate) => void;
   onSpanLeave?: (event: React.MouseEvent<HTMLSpanElement>) => void;
   onSpanClick?: (event: React.MouseEvent<HTMLSpanElement>, candidate: PromptBlockCandidate) => void;
+  /** Click on a variable token (visible mode only). Takes precedence over the
+   *  candidate click when a span is both. The element is the popover anchor. */
+  onVariableClick?: (
+    event: React.MouseEvent<HTMLSpanElement>,
+    variable: PromptVariableSpan,
+    anchor: HTMLSpanElement,
+  ) => void;
 }
 
 /** Confidence → opacity curve. 100% conf → 1.0, 50% conf → 0.7, 0% conf → 0.4. */
@@ -55,13 +79,37 @@ export function PromptHighlightedSpans({
   onSpanEnter,
   onSpanLeave,
   onSpanClick,
+  onVariableClick,
 }: PromptHighlightedSpansProps) {
   return (
     <>
       {spans.map((span, idx) => {
+        // Variable affordance is a visible-mode concern only — the editable
+        // backdrop never sets `span.variable`, so this branch is inert there.
+        const variable = mode === 'visible' ? span.variable : undefined;
+
         if (!span.candidate) {
-          // Gap span — no styling. In backdrop mode keep it transparent so
-          // the textarea text shows through; in visible mode let the text render.
+          // No candidate. A variable-only span still needs its clickable token
+          // affordance; a plain gap renders unstyled (transparent in backdrop
+          // mode so the textarea text shows through).
+          if (variable) {
+            return (
+              <span
+                key={idx}
+                data-span-idx={idx}
+                data-var-name={variable.name}
+                className="cm-prompt-var rounded-sm transition-colors hover:bg-violet-500/15"
+                style={variableSpanStyle(variable)}
+                onClick={
+                  onVariableClick
+                    ? (e) => onVariableClick(e, variable, e.currentTarget)
+                    : undefined
+                }
+              >
+                {span.text}
+              </span>
+            );
+          }
           return (
             <span key={idx} className={mode === 'backdrop' ? 'text-transparent' : undefined}>
               {span.text}
@@ -91,7 +139,9 @@ export function PromptHighlightedSpans({
 
         const style: CSSProperties = {
           opacity,
-          borderBottom: `2px solid ${hex}`,
+          // A variable token on this span owns the underline (its save state is
+          // the more actionable signal); otherwise the role hue underlines it.
+          ...(variable ? variableSpanStyle(variable) : { borderBottom: `2px solid ${hex}` }),
         };
         if (mode === 'backdrop') {
           style.pointerEvents = 'auto';
@@ -102,18 +152,27 @@ export function PromptHighlightedSpans({
           bg,
           mode === 'backdrop' ? 'text-transparent' : 'cursor-pointer transition-colors',
           mode === 'visible' && hover,
+          variable && 'cm-prompt-var hover:bg-violet-500/15',
           isHovered && 'ring-1 ring-current',
           // Pinned/hovered role: outline its spans so emphasis reads as a
           // deliberate highlight, not just "everything else dimmed".
           isEmphasized && !isHovered && 'ring-1 ring-current ring-offset-0',
         );
 
+        // Variable click preempts the candidate click (more specific action);
+        // hover/tooltip stay on the candidate so role context is still shown.
         const handlers =
           mode === 'visible'
             ? {
                 onMouseEnter: onSpanEnter ? (e: React.MouseEvent<HTMLSpanElement>) => onSpanEnter(e, candidate) : undefined,
                 onMouseLeave: onSpanLeave,
-                onClick: onSpanClick ? (e: React.MouseEvent<HTMLSpanElement>) => onSpanClick(e, candidate) : undefined,
+                onClick:
+                  variable && onVariableClick
+                    ? (e: React.MouseEvent<HTMLSpanElement>) =>
+                        onVariableClick(e, variable, e.currentTarget)
+                    : onSpanClick
+                      ? (e: React.MouseEvent<HTMLSpanElement>) => onSpanClick(e, candidate)
+                      : undefined,
               }
             : {};
 
@@ -121,6 +180,7 @@ export function PromptHighlightedSpans({
           <span
             key={idx}
             data-span-idx={idx}
+            data-var-name={variable?.name}
             className={className}
             style={style}
             {...handlers}

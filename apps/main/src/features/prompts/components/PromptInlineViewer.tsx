@@ -12,16 +12,26 @@
  * - PromptBlock = stored entity in database (different from this)
  */
 
+import { Popover, useToast } from '@pixsim7/shared.ui';
 import { useCallback, useMemo, useState } from 'react';
 
 import { getPromptRoleBadgeClass, getPromptRoleInlineClasses, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
-import { buildCandidateSpans } from '../lib/buildCandidateSpans';
+import { usePromptVariables } from '../hooks/usePromptVariables';
+import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
+import {
+  buildCandidateSpans,
+  buildVariableAwareSpans,
+  type PromptVariableSpan,
+  type VariableSpanInput,
+} from '../lib/buildCandidateSpans';
+import { collectVariableRangesFromString } from '../lib/variableTokenExtension';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptBlockCandidate } from '../types';
 
 import { PromptHighlightedSpans } from './PromptHighlightedSpans';
 import { PromptSpanTooltip } from './PromptSpanTooltip';
+import { VariableEditPopover } from './VariableEditPopover';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -46,6 +56,12 @@ export interface PromptInlineViewerProps {
   onCandidateClick?: (candidate: PromptCandidateDisplay) => void;
   /** When set, candidates of other roles render dimmed. */
   emphasizedRole?: string | null;
+  /** Token lines from the same analysis response — the source of VAR-token
+   *  ranges. Required for `enableVariableSave` to have anything to decorate. */
+  tokenLines?: PromptTokenLine[];
+  /** Opt in to the clickable VAR-token save/unsave popover (mirrors the
+   *  CodeMirror viewer's `enableVariableSave`). Non-mutating to the prompt. */
+  enableVariableSave?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,12 +81,47 @@ export function PromptInlineViewer({
   className = '',
   onCandidateClick,
   emphasizedRole = null,
+  tokenLines,
+  enableVariableSave = false,
 }: PromptInlineViewerProps) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [hoveredSpanIdx, setHoveredSpanIdx] = useState<number | null>(null);
   const promptRoleColors = usePromptSettingsStore((state) => state.promptRoleColors);
 
-  const spans = useMemo(() => buildCandidateSpans(prompt, candidates), [prompt, candidates]);
+  const { entries: savedVariableEntries, saveVariable, deleteVariable } = usePromptVariables();
+  const toast = useToast();
+  const savedVariableNames = useMemo(
+    () => new Set(savedVariableEntries.map((entry) => entry.name)),
+    [savedVariableEntries],
+  );
+  const [varPopover, setVarPopover] = useState<{
+    anchor: HTMLElement;
+    variable: PromptVariableSpan;
+  } | null>(null);
+
+  // VAR-token ranges from the backend tokenizer (same extraction the CodeMirror
+  // surface uses), positioned against the original prompt text.
+  const variableRanges = useMemo<VariableSpanInput[]>(() => {
+    if (!enableVariableSave || !tokenLines) return [];
+    return collectVariableRangesFromString({ tokenLines, savedNames: savedVariableNames }, prompt).map(
+      (r) => ({ from: r.from, to: r.to, name: r.name, saved: r.saved, defaultClass: r.defaultClass }),
+    );
+  }, [enableVariableSave, tokenLines, savedVariableNames, prompt]);
+
+  const spans = useMemo(
+    () =>
+      variableRanges.length > 0
+        ? buildVariableAwareSpans(prompt, candidates, variableRanges)
+        : buildCandidateSpans(prompt, candidates),
+    [prompt, candidates, variableRanges],
+  );
+
+  const handleVariableClick = useCallback(
+    (_event: React.MouseEvent<HTMLSpanElement>, variable: PromptVariableSpan, anchor: HTMLSpanElement) => {
+      setVarPopover({ anchor, variable });
+    },
+    [],
+  );
 
   // Unique roles present in candidates (drives the legend).
   const presentRoles = useMemo(() => {
@@ -106,7 +157,7 @@ export function PromptInlineViewer({
 
   return (
     <div className={`relative ${className}`}>
-      <div className="font-mono text-sm leading-relaxed whitespace-pre-wrap">
+      <div className="text-base leading-relaxed whitespace-pre-wrap">
         <PromptHighlightedSpans
           spans={spans}
           roleColors={promptRoleColors}
@@ -116,8 +167,56 @@ export function PromptInlineViewer({
           onSpanEnter={handleSpanEnter}
           onSpanLeave={handleSpanLeave}
           onSpanClick={onCandidateClick ? handleSpanClick : undefined}
+          onVariableClick={enableVariableSave ? handleVariableClick : undefined}
         />
       </div>
+
+      {enableVariableSave && (
+        <Popover
+          anchor={varPopover?.anchor ?? null}
+          placement="bottom"
+          align="start"
+          offset={6}
+          open={!!varPopover}
+          onClose={() => setVarPopover(null)}
+        >
+          {varPopover &&
+            (() => {
+              const { variable } = varPopover;
+              const entry = savedVariableEntries.find((e) => e.name === variable.name);
+              const saved = savedVariableNames.has(variable.name);
+              return (
+                <VariableEditPopover
+                  name={variable.name}
+                  saved={saved}
+                  defaultClass={variable.defaultClass}
+                  description={entry?.description}
+                  value={entry?.value}
+                  transform={entry?.transform}
+                  onCancel={() => setVarPopover(null)}
+                  onSave={async (value, transform) => {
+                    setVarPopover(null);
+                    const result = await saveVariable(variable.name, {
+                      allowExisting: true,
+                      value,
+                      transform: transform ?? '',
+                    });
+                    if (result.ok) toast.success(`Saved ${variable.name}`);
+                    else if (result.code === 'duplicate')
+                      toast.info(`${variable.name} is already saved`);
+                    else toast.error(result.message ?? `Failed to save ${variable.name}`);
+                  }}
+                  onRemove={async () => {
+                    setVarPopover(null);
+                    const result = await deleteVariable(variable.name);
+                    if (result.ok) toast.success(`Removed ${variable.name}`);
+                    else toast.error(result.message ?? `Failed to remove ${variable.name}`);
+                  }}
+                />
+              );
+            })()}
+        </Popover>
+      )}
 
       {tooltip && (
         <PromptSpanTooltip

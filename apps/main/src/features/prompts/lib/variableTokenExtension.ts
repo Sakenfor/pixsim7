@@ -77,8 +77,19 @@ const variableTokensFacet = Facet.define<VariableTokensConfig, VariableTokensCon
   combine: (values) => values[0] ?? EMPTY_CONFIG,
 });
 
+/**
+ * Minimal structural view of a document — just what range collection needs.
+ * CodeMirror's `Text` satisfies it; a plain string is wrapped by
+ * {@link collectVariableRangesFromString} so the DOM-span viewer can share the
+ * exact same extraction logic as the CodeMirror surface.
+ */
+export interface TextSlice {
+  readonly length: number;
+  sliceString(from: number, to: number): string;
+}
+
 /** Exported for unit tests — the host uses the extension, not this directly. */
-export function collectVariableRanges(config: VariableTokensConfig, doc: Text): VariableRange[] {
+export function collectVariableRanges(config: VariableTokensConfig, doc: TextSlice): VariableRange[] {
   const { tokenLines, savedNames, facetVocab } = config;
   if (!tokenLines) return [];
   const out: VariableRange[] = [];
@@ -139,6 +150,21 @@ export function collectVariableRanges(config: VariableTokensConfig, doc: Text): 
 
   out.sort((a, b) => a.from - b.from);
   return out;
+}
+
+/**
+ * String-backed twin of {@link collectVariableRanges} for non-CodeMirror
+ * surfaces (the inline DOM-span viewer). Keeps variable extraction identical to
+ * the editor so saved/decorated tokens line up across both engines.
+ */
+export function collectVariableRangesFromString(
+  config: VariableTokensConfig,
+  text: string,
+): VariableRange[] {
+  return collectVariableRanges(config, {
+    length: text.length,
+    sliceString: (from, to) => text.slice(from, to),
+  });
 }
 
 // Token styling combines two signals:
