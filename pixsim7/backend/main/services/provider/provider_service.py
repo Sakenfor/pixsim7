@@ -35,6 +35,7 @@ from pixsim7.backend.main.shared.operation_mapping import (
 from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
 from pixsim7.backend.main.services.prompt.resolver import resolve_prompt_variables
 from pixsim7.backend.main.services.prompt.variable_registry import (
+    read_prompt_variable_transforms,
     read_prompt_variable_values,
 )
 from pixsim7.backend.main.services.provider.provider_logging import (
@@ -298,24 +299,26 @@ class ProviderService:
 
     # ===== PROMPT VARIABLE SUBSTITUTION (phase-2) =====
 
-    async def _load_prompt_variable_values(self, user_id: Optional[int]) -> Dict[str, str]:
-        """Owner's saved variable values (name -> value) for outbound resolution.
+    async def _load_prompt_variable_resolution(
+        self, user_id: Optional[int]
+    ) -> tuple[Dict[str, str], Dict[str, str]]:
+        """Owner's saved variable values and transforms for outbound resolution.
 
-        Returns an empty map (no-op) when there's no owner, no user, or no
-        variable carries a value.
+        Returns ``(values, transforms)`` — both name-keyed. Empty maps (a no-op)
+        when there's no owner, no user, or no variable carries a value.
         """
         if not user_id:
-            return {}
+            return {}, {}
         try:
             from pixsim7.backend.main.domain import User
 
             user = await self.db.get(User, user_id)
         except Exception:
-            return {}
+            return {}, {}
         prefs = getattr(user, "preferences", None) if user else None
         if not isinstance(prefs, dict):
-            return {}
-        return read_prompt_variable_values(prefs)
+            return {}, {}
+        return read_prompt_variable_values(prefs), read_prompt_variable_transforms(prefs)
 
     async def _resolve_prompt_variables_inplace(
         self, generation: Generation, params: Dict[str, Any]
@@ -324,16 +327,19 @@ class ProviderService:
         prompt_text = params.get("prompt")
         if not isinstance(prompt_text, str) or not prompt_text:
             return
-        values = await self._load_prompt_variable_values(getattr(generation, "user_id", None))
+        values, transforms = await self._load_prompt_variable_resolution(
+            getattr(generation, "user_id", None)
+        )
         if not values:
             return
-        resolved = resolve_prompt_variables(prompt_text, values)
+        resolved = resolve_prompt_variables(prompt_text, values, transforms=transforms)
         if resolved != prompt_text:
             params["prompt"] = resolved
             logger.info(
                 "prompt_variables_resolved",
                 generation_id=getattr(generation, "id", None),
                 variable_count=len(values),
+                transform_count=len(transforms),
             )
 
     # ===== PROVIDER EXECUTION =====

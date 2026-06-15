@@ -20,7 +20,11 @@ import {
   type CandidateWithPrimitiveMatch,
 } from '../lib/parsePrimitiveMatch';
 import { groupVariablesByEntity } from '../lib/promptVariableName';
-import { buildVariableValueMap, resolvePromptVariables } from '../lib/resolvePromptVariables';
+import {
+  buildVariableTransformMap,
+  buildVariableValueMap,
+  resolvePromptVariables,
+} from '../lib/resolvePromptVariables';
 import { getVariableClassVisual } from '../lib/variableClassVisuals';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptBlockCandidate } from '../types';
@@ -350,7 +354,11 @@ export function ShadowSidePanel({
   const resolvedPreview = useMemo(() => {
     const source = result?.analyzedPrompt ?? '';
     if (!source) return null;
-    const resolved = resolvePromptVariables(source, buildVariableValueMap(savedEntries));
+    const resolved = resolvePromptVariables(
+      source,
+      buildVariableValueMap(savedEntries),
+      buildVariableTransformMap(savedEntries),
+    );
     return resolved !== source ? resolved : null;
   }, [result?.analyzedPrompt, savedEntries]);
 

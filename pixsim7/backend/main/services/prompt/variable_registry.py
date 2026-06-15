@@ -18,20 +18,25 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable, List, Optional
 
+from pixsim7.backend.main.services.prompt.variable_transforms import is_known_transform
+
 PROMPT_VARIABLES_PREF_KEY = "prompt_variables"
 _PROMPT_VAR_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _DESCRIPTION_MAX_LENGTH = 200
 _VALUE_MAX_LENGTH = 2000
+_TRANSFORM_MAX_LENGTH = 100
 
 
 @dataclass(frozen=True)
 class PromptVariable:
-    """A saved prompt variable: a name, an optional one-line description, and an
-    optional ``value`` (the substitution text for phase-2 resolution)."""
+    """A saved prompt variable: a name, an optional one-line description, an
+    optional ``value`` (the substitution text for phase-2 resolution), and an
+    optional ``transform`` spec applied to that value on resolve."""
 
     name: str
     description: Optional[str] = None
     value: Optional[str] = None
+    transform: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"name": self.name}
@@ -39,6 +44,8 @@ class PromptVariable:
             payload["description"] = self.description
         if self.value:
             payload["value"] = self.value
+        if self.transform:
+            payload["transform"] = self.transform
         return payload
 
 
@@ -88,6 +95,26 @@ def normalize_prompt_variable_value(raw: Any) -> Optional[str]:
     return trimmed[:_VALUE_MAX_LENGTH]
 
 
+def normalize_prompt_variable_transform(raw: Any) -> Optional[str]:
+    """Normalize and validate an optional transform spec (``id`` or ``id:arg``).
+
+    Returns ``None`` for missing/empty values. The id is validated against the
+    transform registry so typos fail at write time; the arg (after the first
+    ``:``) is preserved verbatim apart from the overall length cap.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError("Variable transform must be a string")
+    trimmed = raw.strip()
+    if not trimmed:
+        return None
+    capped = trimmed[:_TRANSFORM_MAX_LENGTH]
+    if not is_known_transform(capped):
+        raise ValueError(f"Unknown variable transform: {capped!r}")
+    return capped
+
+
 def coerce_prompt_variable(entry: Any) -> PromptVariable:
     """Coerce an entry to a ``PromptVariable``.
 
@@ -99,6 +126,7 @@ def coerce_prompt_variable(entry: Any) -> PromptVariable:
             name=normalize_prompt_variable_name(entry.name),
             description=normalize_prompt_variable_description(entry.description),
             value=normalize_prompt_variable_value(entry.value),
+            transform=normalize_prompt_variable_transform(entry.transform),
         )
     if isinstance(entry, str):
         return PromptVariable(name=normalize_prompt_variable_name(entry))
@@ -106,7 +134,8 @@ def coerce_prompt_variable(entry: Any) -> PromptVariable:
         name = normalize_prompt_variable_name(entry.get("name"))
         description = normalize_prompt_variable_description(entry.get("description"))
         value = normalize_prompt_variable_value(entry.get("value"))
-        return PromptVariable(name=name, description=description, value=value)
+        transform = normalize_prompt_variable_transform(entry.get("transform"))
+        return PromptVariable(name=name, description=description, value=value, transform=transform)
     raise ValueError("Variable entry must be a string or object")
 
 
@@ -128,11 +157,17 @@ def canonicalize_prompt_variables(values: Iterable[Any]) -> List[PromptVariable]
         kept = out[existing]
         filled_description = kept.description or variable.description
         filled_value = kept.value or variable.value
-        if filled_description != kept.description or filled_value != kept.value:
+        filled_transform = kept.transform or variable.transform
+        if (
+            filled_description != kept.description
+            or filled_value != kept.value
+            or filled_transform != kept.transform
+        ):
             out[existing] = PromptVariable(
                 name=kept.name,
                 description=filled_description,
                 value=filled_value,
+                transform=filled_transform,
             )
     out.sort(key=lambda item: item.name)
     return out
@@ -172,6 +207,19 @@ def read_prompt_variable_values(preferences: Any) -> dict[str, str]:
         variable.name: variable.value
         for variable in read_prompt_variable_entries(preferences)
         if variable.value
+    }
+
+
+def read_prompt_variable_transforms(preferences: Any) -> dict[str, str]:
+    """Map of name -> transform spec for valued entries that carry a transform.
+
+    Feeds the resolver alongside ``read_prompt_variable_values``; only variables
+    with a value can expand, so a transform without a value is omitted (inert).
+    """
+    return {
+        variable.name: variable.transform
+        for variable in read_prompt_variable_entries(preferences)
+        if variable.value and variable.transform
     }
 
 

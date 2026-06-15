@@ -4,6 +4,12 @@ import { useState } from 'react';
 import { Icon } from '@lib/icons';
 
 import { getVariableClassVisual } from '../lib/variableClassVisuals';
+import {
+  applyTransform,
+  buildTransformSpec,
+  parseTransformSpec,
+  TRANSFORM_OPTIONS,
+} from '../lib/variableTransforms';
 
 export interface VariableEditPopoverProps {
   /** Canonical uppercase variable name. */
@@ -16,8 +22,11 @@ export interface VariableEditPopoverProps {
   description?: string;
   /** Current substitution value (phase 2). */
   value?: string;
-  /** Save the token as a known variable, persisting the (possibly empty) value. */
-  onSave: (value: string) => void;
+  /** Current transform spec ('id' or 'id:arg') applied to the resolved value. */
+  transform?: string;
+  /** Save the token as a known variable, persisting the (possibly empty) value
+   *  and transform (null = no transform). */
+  onSave: (value: string, transform: string | null) => void;
   /** Remove the saved variable. */
   onRemove: () => void;
   onCancel: () => void;
@@ -35,12 +44,36 @@ export function VariableEditPopover({
   defaultClass = false,
   description,
   value,
+  transform,
   onSave,
   onRemove,
   onCancel,
 }: VariableEditPopoverProps) {
   const [draft, setDraft] = useState(value ?? '');
-  const dirty = draft.trim() !== (value ?? '').trim();
+
+  // Split the incoming spec into the picker's id + arg. An unknown id (newer
+  // backend transform) falls back to "none" rather than erroring.
+  const [initialId, initialArg] = transform ? parseTransformSpec(transform) : ['', null];
+  const knownInitialId = TRANSFORM_OPTIONS.some((o) => o.id === initialId) ? initialId : '';
+  const [transformId, setTransformId] = useState(knownInitialId);
+  const [transformArg, setTransformArg] = useState(initialArg ?? '');
+
+  const selectedOption = TRANSFORM_OPTIONS.find((o) => o.id === transformId);
+  const draftSpec = buildTransformSpec(transformId, transformArg);
+  const hasValue = draft.trim().length > 0;
+
+  const valueDirty = draft.trim() !== (value ?? '').trim();
+  const transformDirty = (draftSpec ?? '') !== (transform ?? '');
+  const dirty = valueDirty || transformDirty;
+
+  const selectTransform = (id: string) => {
+    setTransformId(id);
+    if (id) {
+      const opt = TRANSFORM_OPTIONS.find((o) => o.id === id);
+      // Seed the default arg only when switching into an arg-taking option fresh.
+      if (opt?.takesArg && !transformArg) setTransformArg(opt.argDefault ?? '');
+    }
+  };
 
   return (
     <div
@@ -112,6 +145,66 @@ export function VariableEditPopover({
         </p>
       </div>
 
+      {/* Transform — post-process the resolved value (inert without a value) */}
+      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700">
+        <div className="text-[10px] uppercase tracking-wider text-neutral-400 mb-1">Transform</div>
+        <div className={clsx('flex flex-wrap gap-1', !hasValue && 'opacity-40')}>
+          <button
+            type="button"
+            disabled={!hasValue}
+            onClick={() => selectTransform('')}
+            className={clsx(
+              'px-2 py-0.5 rounded text-[11px] border transition-colors',
+              transformId === ''
+                ? 'bg-violet-500 text-white border-violet-500'
+                : 'border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+              !hasValue && 'cursor-not-allowed',
+            )}
+          >
+            None
+          </button>
+          {TRANSFORM_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              disabled={!hasValue}
+              onClick={() => selectTransform(opt.id)}
+              className={clsx(
+                'px-2 py-0.5 rounded text-[11px] border transition-colors',
+                transformId === opt.id
+                  ? 'bg-violet-500 text-white border-violet-500'
+                  : 'border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                !hasValue && 'cursor-not-allowed',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {hasValue && selectedOption?.takesArg && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="text-[10px] text-neutral-400">{selectedOption.argLabel}</span>
+            <input
+              type="text"
+              value={transformArg}
+              onChange={(e) => setTransformArg(e.target.value)}
+              placeholder={selectedOption.argPlaceholder}
+              className="w-20 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-1.5 py-0.5 text-[11px] font-mono text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-violet-400"
+            />
+          </div>
+        )}
+
+        {hasValue && draftSpec && (
+          <p className="mt-1.5 text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+            Preview:{' '}
+            <span className="font-mono text-neutral-700 dark:text-neutral-200">
+              {applyTransform(draftSpec, draft.trim())}
+            </span>
+          </p>
+        )}
+      </div>
+
       {/* Footer — actions */}
       <div className="flex gap-1 p-1.5">
         <button
@@ -132,7 +225,7 @@ export function VariableEditPopover({
         )}
         <button
           type="button"
-          onClick={() => onSave(draft)}
+          onClick={() => onSave(draft, hasValue ? draftSpec : null)}
           disabled={saved && !dirty}
           className="flex-1 px-2 py-1 rounded text-xs bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >

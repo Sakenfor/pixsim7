@@ -2479,12 +2479,14 @@ export function PromptComposer({
                           defaultClass={variable.defaultClass}
                           description={entry?.description}
                           value={entry?.value}
+                          transform={entry?.transform}
                           onCancel={() => setCmVariablePopover(null)}
-                          onSave={async (value) => {
+                          onSave={async (value, transform) => {
                             setCmVariablePopover(null);
                             const result = await saveVariable(variable.name, {
                               allowExisting: true,
                               value,
+                              transform: transform ?? '',
                             });
                             if (result.ok) toast.success(`Saved ${variable.name}`);
                             else if (result.code === 'duplicate')

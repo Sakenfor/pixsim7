@@ -19,7 +19,9 @@ a preview, a test, or the outbound generation hook identically.
 from __future__ import annotations
 
 import re
-from typing import Mapping
+from typing import Mapping, Optional
+
+from pixsim7.backend.main.services.prompt.variable_transforms import apply_transform
 
 DEFAULT_MAX_DEPTH = 10
 
@@ -28,11 +30,17 @@ def resolve_prompt_variables(
     text: str,
     values: Mapping[str, str],
     *,
+    transforms: Optional[Mapping[str, str]] = None,
     max_depth: int = DEFAULT_MAX_DEPTH,
 ) -> str:
     """Resolve variable tokens in ``text`` against ``values`` (name -> value).
 
     Names absent from ``values`` (or with empty values) are left untouched.
+
+    ``transforms`` (name -> transform spec) optionally post-processes an expanded
+    value: the transform is applied to a variable's *fully resolved* text before
+    it is spliced back in (so ``ACTOR1`` value ``"cat"`` + transform ``"spaced:__"``
+    yields ``"c__a__t"``). A name with no transform expands verbatim.
     """
     if not text or not values:
         return text
@@ -50,6 +58,12 @@ def resolve_prompt_variables(
     names = sorted(value_map.keys(), key=len, reverse=True)
     pattern = re.compile(r"(\\)?\b(" + "|".join(re.escape(n) for n in names) + r")\b")
 
+    transform_map = {
+        name.strip().upper(): spec
+        for name, spec in (transforms or {}).items()
+        if isinstance(name, str) and isinstance(spec, str) and spec
+    }
+
     def expand(source: str, depth: int, active: frozenset[str]) -> str:
         def repl(match: re.Match[str]) -> str:
             escaped = match.group(1)
@@ -58,7 +72,8 @@ def resolve_prompt_variables(
                 return name  # literal — drop the escape, do not expand
             if name in active or depth >= max_depth:
                 return name  # cycle / too deep — leave the symbol in place
-            return expand(value_map[name], depth + 1, active | {name})
+            resolved = expand(value_map[name], depth + 1, active | {name})
+            return apply_transform(transform_map.get(name), resolved)
 
         return pattern.sub(repl, source)
 

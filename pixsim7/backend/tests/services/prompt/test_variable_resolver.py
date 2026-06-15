@@ -61,3 +61,38 @@ def test_no_values_returns_text_unchanged() -> None:
     assert resolve_prompt_variables("ACTOR1 ==> ACTOR2", {}) == "ACTOR1 ==> ACTOR2"
     # Empty values are ignored (treated as no value).
     assert resolve_prompt_variables("ACTOR1", {"ACTOR1": ""}) == "ACTOR1"
+
+
+def test_transform_applies_to_resolved_value() -> None:
+    out = resolve_prompt_variables(
+        "ACTOR1",
+        {"ACTOR1": "cat"},
+        transforms={"ACTOR1": "spaced:__"},
+    )
+    assert out == "c__a__t"
+
+
+def test_transform_default_separator_is_space() -> None:
+    out = resolve_prompt_variables("ACTOR1", {"ACTOR1": "cat"}, transforms={"ACTOR1": "spaced"})
+    assert out == "c a t"
+
+
+def test_transform_applies_after_recursive_expansion() -> None:
+    # The transform wraps the FULLY-resolved subtree, not the raw value text.
+    out = resolve_prompt_variables(
+        "ACTOR1_FULL",
+        {"ACTOR1_FULL": "ab ACTOR1_X", "ACTOR1_X": "cd"},
+        transforms={"ACTOR1_FULL": "upper"},
+    )
+    assert out == "AB CD"
+
+
+def test_unknown_transform_is_a_noop() -> None:
+    out = resolve_prompt_variables("ACTOR1", {"ACTOR1": "cat"}, transforms={"ACTOR1": "nope"})
+    assert out == "cat"
+
+
+def test_transform_without_value_does_not_apply() -> None:
+    # No value => no expansion => transform never runs (token stays symbolic).
+    out = resolve_prompt_variables("ACTOR1", {}, transforms={"ACTOR1": "upper"})
+    assert out == "ACTOR1"

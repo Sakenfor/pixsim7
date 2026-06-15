@@ -42,6 +42,7 @@ from pixsim7.backend.main.services.prompt.variable_registry import (
     PromptVariable,
     normalize_prompt_variable_description,
     normalize_prompt_variable_name,
+    normalize_prompt_variable_transform,
     normalize_prompt_variable_value,
     read_prompt_variable_entries,
     write_prompt_variables,
@@ -362,6 +363,10 @@ class PromptVariableEntry(BaseModel):
         None,
         description="Optional substitution text. When set, the variable expands to this on the resolved prompt; when absent it stays a literal symbol.",
     )
+    transform: Optional[str] = Field(
+        None,
+        description="Optional transform spec ('id' or 'id:arg', e.g. 'spaced:__') applied to the resolved value. Registered ids: spaced, upper, lower.",
+    )
 
 
 class PromptVariablesResponse(BaseModel):
@@ -377,6 +382,10 @@ class UpsertPromptVariableRequest(BaseModel):
     value: Optional[str] = Field(
         None,
         description="Optional substitution text. Updates the value when the variable already exists.",
+    )
+    transform: Optional[str] = Field(
+        None,
+        description="Optional transform spec ('id' or 'id:arg', e.g. 'spaced:__'). Updates the transform when the variable already exists.",
     )
     allow_existing: bool = Field(
         False,
@@ -404,7 +413,12 @@ async def _load_preferences_for_prompt_variables(
 def _variables_response(entries: List[PromptVariable]) -> PromptVariablesResponse:
     return PromptVariablesResponse(
         variables=[
-            PromptVariableEntry(name=entry.name, description=entry.description, value=entry.value)
+            PromptVariableEntry(
+                name=entry.name,
+                description=entry.description,
+                value=entry.value,
+                transform=entry.transform,
+            )
             for entry in entries
         ]
     )
@@ -428,6 +442,7 @@ async def upsert_prompt_variable(
     normalized_name = normalize_prompt_variable_name(request.name)
     description = normalize_prompt_variable_description(request.description)
     value = normalize_prompt_variable_value(request.value)
+    transform = normalize_prompt_variable_transform(request.transform)
     owner_user_id, preferences = await _load_preferences_for_prompt_variables(principal, user_service)
     current = read_prompt_variable_entries(preferences)
     existing = next((entry for entry in current if entry.name == normalized_name), None)
@@ -441,15 +456,23 @@ async def upsert_prompt_variable(
     if existing is None:
         next_entries = [
             *current,
-            PromptVariable(name=normalized_name, description=description, value=value),
+            PromptVariable(
+                name=normalized_name, description=description, value=value, transform=transform
+            ),
         ]
     else:
-        # allow_existing acts as an edit: update description/value only for fields
-        # explicitly provided in the request; otherwise keep the stored ones.
+        # allow_existing acts as an edit: update description/value/transform only
+        # for fields explicitly provided in the request; otherwise keep stored ones.
         resolved_description = description if request.description is not None else existing.description
         resolved_value = value if request.value is not None else existing.value
+        resolved_transform = transform if request.transform is not None else existing.transform
         next_entries = [
-            PromptVariable(name=normalized_name, description=resolved_description, value=resolved_value)
+            PromptVariable(
+                name=normalized_name,
+                description=resolved_description,
+                value=resolved_value,
+                transform=resolved_transform,
+            )
             if entry.name == normalized_name
             else entry
             for entry in current
@@ -479,7 +502,12 @@ async def rename_prompt_variable(
         raise HTTPException(status_code=409, detail=f"Prompt variable '{new_name}' already exists")
 
     next_entries = [
-        PromptVariable(name=new_name, description=entry.description, value=entry.value)
+        PromptVariable(
+            name=new_name,
+            description=entry.description,
+            value=entry.value,
+            transform=entry.transform,
+        )
         if entry.name == current_name
         else entry
         for entry in current

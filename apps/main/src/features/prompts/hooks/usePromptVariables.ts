@@ -7,6 +7,8 @@ export interface PromptVariableEntry {
   description?: string;
   /** Substitution text (phase 2). When set the variable expands to this. */
   value?: string;
+  /** Transform spec ('id' or 'id:arg', e.g. 'spaced:__') applied to the resolved value. */
+  transform?: string;
 }
 
 interface PromptVariablesResponse {
@@ -26,6 +28,8 @@ export interface SaveVariableOptions {
   description?: string;
   /** Optional substitution text (phase 2). Persisted/updated when provided. */
   value?: string;
+  /** Optional transform spec ('id' or 'id:arg'). Persisted/updated when provided. */
+  transform?: string;
 }
 
 export interface PromptVariableMutationResult {
@@ -55,7 +59,11 @@ function normalizeResponseEntries(
       typeof item?.value === 'string' && item.value.trim().length > 0
         ? item.value
         : undefined;
-    byName.set(name, { name, description, value });
+    const transform =
+      typeof item?.transform === 'string' && item.transform.trim().length > 0
+        ? item.transform.trim()
+        : undefined;
+    byName.set(name, { name, description, value, transform });
   }
   return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -145,6 +153,7 @@ export function usePromptVariables() {
       const normalized = name.trim().toUpperCase();
       const description = options.description?.trim() || undefined;
       const value = options.value?.trim() || undefined;
+      const transform = options.transform?.trim() || undefined;
       const snapshot = cachedEntries ?? [];
 
       // Optimistically reflect the add / field-edit. A duplicate add (no
@@ -154,11 +163,15 @@ export function usePromptVariables() {
         const existing = snapshot.find((entry) => entry.name === normalized);
         if (!existing) {
           applyEntries(
-            [...snapshot, { name: normalized, description, value }].sort((a, b) =>
+            [...snapshot, { name: normalized, description, value, transform }].sort((a, b) =>
               a.name.localeCompare(b.name),
             ),
           );
-        } else if (options.description !== undefined || options.value !== undefined) {
+        } else if (
+          options.description !== undefined ||
+          options.value !== undefined ||
+          options.transform !== undefined
+        ) {
           applyEntries(
             snapshot.map((entry) =>
               entry.name === normalized
@@ -167,6 +180,7 @@ export function usePromptVariables() {
                     description:
                       options.description !== undefined ? description : entry.description,
                     value: options.value !== undefined ? value : entry.value,
+                    transform: options.transform !== undefined ? transform : entry.transform,
                   }
                 : entry,
             ),
@@ -184,6 +198,9 @@ export function usePromptVariables() {
         }
         if (options.value !== undefined) {
           body.value = options.value;
+        }
+        if (options.transform !== undefined) {
+          body.transform = options.transform;
         }
         const payload = await api.post<PromptVariablesResponse>('/prompts/meta/variables', body);
         const next = normalizeResponseEntries(payload);
@@ -210,7 +227,12 @@ export function usePromptVariables() {
           snapshot
             .map((entry) =>
               entry.name === from
-                ? { name: to, description: entry.description, value: entry.value }
+                ? {
+                    name: to,
+                    description: entry.description,
+                    value: entry.value,
+                    transform: entry.transform,
+                  }
                 : entry,
             )
             .sort((a, b) => a.name.localeCompare(b.name)),
