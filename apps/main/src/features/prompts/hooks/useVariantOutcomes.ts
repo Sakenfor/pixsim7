@@ -20,8 +20,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { fetchVariantOutcomes, type VariantSlot } from '@lib/api/prompts';
+import { createKeyedAsyncCache } from '@lib/utils';
 
 import { searchSimilarPromptsCached } from '../lib/similarPromptsSearchCache';
+
+/**
+ * Persist the full two-step pipeline result across unmount/remount + HMR, keyed
+ * by the query text, so reopening the popover for the same prompt doesn't re-run
+ * the (expensive) neighbour search + variant-outcomes POST. `scope` is a
+ * client-side filter, so it's not part of the key. In-flight de-dupe collapses
+ * concurrent identical lookups.
+ */
+const outcomesCache = createKeyedAsyncCache<{ slots: VariantSlot[]; neighbourCount: number }>(
+  'useVariantOutcomes',
+  { maxEntries: 50 },
+);
 
 const DEBOUNCE_MS = 350;
 /** Neighbour search: tight enough to cluster, wide enough to find variations. */
@@ -81,31 +94,45 @@ export function useVariantOutcomes({
       return;
     }
     fetchedKeyRef.current = query;
+
+    // Cache hit (earlier mount/HMR, or a prior open): serve instantly, no spinner.
+    const cached = outcomesCache.get(query);
+    if (cached) {
+      reqIdRef.current++; // invalidate any in-flight response
+      setSlots(cached.slots);
+      setNeighbourCount(cached.neighbourCount);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     const reqId = ++reqIdRef.current;
     setLoading(true);
     setError(null);
     try {
-      const neighbours = await searchSimilarPromptsCached({
-        prompt: query,
-        mode: 'vector',
-        limit: NEIGHBOUR_LIMIT,
-        threshold: NEIGHBOUR_THRESHOLD,
+      // The whole pipeline is cached as a unit; step 1 also rides the shared
+      // vector-search cache, so a warm neighbour set is reused even on a miss here.
+      const result = await outcomesCache.fetch(query, async () => {
+        const neighbours = await searchSimilarPromptsCached({
+          prompt: query,
+          mode: 'vector',
+          limit: NEIGHBOUR_LIMIT,
+          threshold: NEIGHBOUR_THRESHOLD,
+        });
+        const versionIds = neighbours.map((r) => r.version_id);
+        if (versionIds.length < 2) {
+          return { slots: [], neighbourCount: versionIds.length };
+        }
+        const res = await fetchVariantOutcomes({
+          version_ids: versionIds,
+          min_value_gens: MIN_VALUE_GENS,
+          qualifying_only: true,
+        });
+        return { slots: res.slots, neighbourCount: versionIds.length };
       });
       if (reqId !== reqIdRef.current) return;
-      const versionIds = neighbours.map((r) => r.version_id);
-      setNeighbourCount(versionIds.length);
-      if (versionIds.length < 2) {
-        setSlots([]);
-        setLoading(false);
-        return;
-      }
-      const res = await fetchVariantOutcomes({
-        version_ids: versionIds,
-        min_value_gens: MIN_VALUE_GENS,
-        qualifying_only: true,
-      });
-      if (reqId !== reqIdRef.current) return;
-      setSlots(res.slots);
+      setSlots(result.slots);
+      setNeighbourCount(result.neighbourCount);
     } catch (e) {
       if (reqId !== reqIdRef.current) return;
       setError(e instanceof Error ? e.message : 'Lookup failed');
