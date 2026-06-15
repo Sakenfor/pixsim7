@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { useDockviewId } from '@lib/dockview';
 import { getDurationOptions } from '@lib/generation-ui';
+import { Icon } from '@lib/icons';
 
 import type { AssetModel } from '@features/assets';
 import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
@@ -44,6 +45,8 @@ import { PromptComposerSurface, useQuickGenerateController } from '@features/pro
 import { useMaskOverlayStore } from '@/components/media/viewer/overlays/builtins/maskOverlayStore';
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
+
+import { useInputPromptHistory } from '../hooks/useInputPromptHistory';
 
 import { PromptModerationChip } from './PromptModerationChip';
 import { type QuickGenPanelProps } from './quickGenPanelTypes';
@@ -86,8 +89,11 @@ export function PromptPanel(props: QuickGenPanelProps) {
   const allowAnySelected = !ctx;
   const isMobile = useIsMobileViewport();
   const controller = useQuickGenerateController();
-  const { useSessionStore } = useGenerationScopeStores();
+  const { useSessionStore, useInputStore } = useGenerationScopeStores();
   const setSessionUiState = useSessionStore((s) => s.setUiState);
+  // Per-asset prompt pin: write target for a prompt bound to the current input.
+  // Plan: per-asset-prompt-pin.
+  const setInputPrompt = useInputStore((s) => s.setInputPrompt);
   // Phase 2b: PromptComposer fires onSpanProvenanceChange after each
   // Adjust-tab acceptance with the live snapshot (auto-shifting positions
   // from spanProvenanceField). The session store holds it, then
@@ -226,9 +232,6 @@ export function PromptPanel(props: QuickGenPanelProps) {
       ? transitionDurations[transitionIndex]
       : durationOptions[0];
 
-  const promptValue = hasTransitionPrompt
-    ? transitionPrompts?.[transitionIndex] ?? ''
-    : prompt;
   const currentInput = useMemo(() => {
     const inputs = controller.operationInputs;
     if (!Array.isArray(inputs) || inputs.length === 0) {
@@ -237,6 +240,20 @@ export function PromptPanel(props: QuickGenPanelProps) {
     const index = Math.max(0, Math.min(operationInputIndex - 1, inputs.length - 1));
     return inputs[index] ?? null;
   }, [controller.operationInputs, operationInputIndex]);
+
+  // Per-asset prompt pin (plan: per-asset-prompt-pin). A pin binds the prompt
+  // to THIS input only; un-pinned inputs follow the shared operation default.
+  // Transition mode keeps its own per-segment prompts and is out of scope.
+  const canPin = !isTransitionMode && !!currentInput?.id && !!currentInput?.asset;
+  const pinnedPrompt =
+    typeof currentInput?.promptOverride === 'string' && currentInput.promptOverride.length > 0
+      ? currentInput.promptOverride
+      : undefined;
+  const isPinned = canPin && pinnedPrompt !== undefined;
+
+  const promptValue = hasTransitionPrompt
+    ? transitionPrompts?.[transitionIndex] ?? ''
+    : (pinnedPrompt ?? prompt);
   const primaryAssetId = currentInput?.asset?.id ?? resolvedDisplayAssets[0]?.id ?? null;
   const maskRegions = useMemo(() => {
     if (primaryAssetId === null) return [];
@@ -342,6 +359,12 @@ export function PromptPanel(props: QuickGenPanelProps) {
   }, [setSessionUiState]);
   const handlePromptChange = useCallback((value: string) => {
     if (!hasTransitionPrompt) {
+      // While pinned, edits write to this input's override (not the shared
+      // default), so the pinned asset keeps its own prompt as you type.
+      if (isPinned && currentInput?.id) {
+        setInputPrompt(operationType as OperationType, currentInput.id, value);
+        return;
+      }
       setPrompt(value);
       return;
     }
@@ -353,7 +376,28 @@ export function PromptPanel(props: QuickGenPanelProps) {
       next[transitionIndex] = value;
       return next;
     });
-  }, [hasTransitionPrompt, setPrompt, setTransitionPrompts, transitionCount, transitionIndex]);
+  }, [
+    hasTransitionPrompt,
+    isPinned,
+    currentInput?.id,
+    setInputPrompt,
+    operationType,
+    setPrompt,
+    setTransitionPrompts,
+    transitionCount,
+    transitionIndex,
+  ]);
+
+  // Toggle the pin: ON snapshots the currently shown prompt onto this input;
+  // OFF clears the override so the input falls back to the shared default.
+  const handleTogglePin = useCallback(() => {
+    if (!canPin || !currentInput?.id) return;
+    setInputPrompt(
+      operationType as OperationType,
+      currentInput.id,
+      isPinned ? undefined : promptValue,
+    );
+  }, [canPin, currentInput?.id, setInputPrompt, operationType, isPinned, promptValue]);
   const handleTransitionDurationChange = useCallback((nextValue: number) => {
     setTransitionDurations((prev) => {
       const next = [...(prev ?? [])];
@@ -512,6 +556,53 @@ export function PromptPanel(props: QuickGenPanelProps) {
       />
     ) : undefined;
 
+  // "Prompts used with this input" — lineage-derived recall of prompts already
+  // tried against the selected input asset (plan: quickgen-input-prompt-history).
+  // Surfaced as a second tab inside the composer's prompt-history popover (one
+  // history button, two views) rather than a separate trigger.
+  const inputHistoryMediaType =
+    resolvedPromptSettings.inputHistoryMediaFilter === 'all'
+      ? undefined
+      : resolvedPromptSettings.inputHistoryMediaFilter;
+  const inputPromptHistory = useInputPromptHistory(primaryAssetId, {
+    mediaType: inputHistoryMediaType,
+    limit: resolvedPromptSettings.inputHistoryMaxResults,
+  });
+
+  // Per-asset prompt pin toggle (plan: per-asset-prompt-pin). Lives on the
+  // prompt box because that's where the prompt is authored: pinned = this
+  // prompt is private to the current asset; un-pinned = shared operation default.
+  const pinToggle = canPin ? (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={handleTogglePin}
+      aria-pressed={isPinned}
+      title={
+        isPinned
+          ? 'Prompt pinned to this asset — other inputs use the shared prompt. Click to unpin.'
+          : 'Pin this prompt to the current asset only (other inputs keep the shared prompt)'
+      }
+      className={[
+        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors',
+        isPinned
+          ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+          : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200',
+      ].join(' ')}
+    >
+      <Icon name="pin" size={11} className={isPinned ? '' : 'opacity-70'} />
+      {isPinned ? 'Pinned' : 'Pin'}
+    </button>
+  ) : undefined;
+
+  const composerAccessory =
+    pinToggle || moderationChip ? (
+      <div className="flex items-center gap-1.5">
+        {pinToggle}
+        {moderationChip}
+      </div>
+    ) : undefined;
+
   const surface = (
     <PromptComposerSurface
       adapter={promptAdapter}
@@ -521,7 +612,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
         // On mobile the composer's bottom counter row is clipped by the prompt
         // section's fixed height (QuickGenPanelHost), so the chip is hoisted to
         // a pinned header below instead of riding the counter row.
-        counterAccessory: isMobile ? undefined : moderationChip,
+        counterAccessory: isMobile ? undefined : composerAccessory,
         resizable: resolvedPromptSettings.resizable,
         minHeight: resolvedPromptSettings.minHeight,
         historyScopeKey: promptHistoryScopeKey,
@@ -529,6 +620,13 @@ export function PromptPanel(props: QuickGenPanelProps) {
         historyScopeLabel: promptHistoryScopeLabel,
         historyScopeValue: resolvedPromptSettings.historyScope,
         onHistoryScopeChange: handlePromptHistoryScopeChange,
+        // "This input" tab in the prompt-history popover — only wired when an
+        // input asset is selected, so the tab appears exactly there.
+        inputPrompts: primaryAssetId !== null ? inputPromptHistory.prompts : undefined,
+        inputPromptsLoading: inputPromptHistory.loading,
+        inputPromptsIsEmpty: inputPromptHistory.isEmpty,
+        onSelectInputPrompt: primaryAssetId !== null ? handlePromptChange : undefined,
+        historyDefaultTab: resolvedPromptSettings.historyDefaultTab,
         error,
         transition: transitionDisplay,
       }}
@@ -537,11 +635,11 @@ export function PromptPanel(props: QuickGenPanelProps) {
 
   // Mobile: pin the moderation chip to a header above the composer so it stays
   // visible (the desktop counter-row placement is clipped at small heights).
-  if (isMobile && moderationChip) {
+  if (isMobile && composerAccessory) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex flex-shrink-0 items-center justify-end px-2 pt-1">
-          {moderationChip}
+          {composerAccessory}
         </div>
         <div className="min-h-0 flex-1">{surface}</div>
       </div>

@@ -1,8 +1,13 @@
 /**
- * PromptHistoryPopover — shows the undo/redo timeline with clause-level diffs.
+ * PromptHistoryPopover — the prompt history surface, with two views behind one
+ * trigger:
+ *   - "Edits": the undo/redo timeline with clause-level diffs (default).
+ *   - "This input": prompts previously used in generations made *from* the
+ *     selected input asset (lineage-derived; only present when the host wires
+ *     `onSelectInputPrompt`). Plan: quickgen-input-prompt-history.
  *
- * Entries start collapsed (header + badge only). Click the chevron to expand
- * and see the full text preview + inline diff.
+ * Edit entries start collapsed (header + badge only). Click the chevron to
+ * expand and see the full text preview + inline diff.
  */
 
 import { Popover } from '@pixsim7/shared.ui';
@@ -16,9 +21,22 @@ import { diffHoverSummary, diffPrompt, diffSummary } from '../lib/promptDiff';
 
 type PromptHistoryScope = 'provider-operation' | 'operation' | 'global';
 
+/**
+ * One row of the "This input" view. Plain structural shape so this prompts-side
+ * component never imports from the generation feature (avoids a cycle).
+ */
+export interface InputPromptEntry {
+  /** The prompt text. */
+  text: string;
+  /** How many generations from this input used this (deduped) prompt. */
+  count: number;
+  /** Newest child asset that used this prompt — stable list key. */
+  assetId: number;
+}
+
 function truncate(text: string, max: number) {
   if (text.length <= max) return text;
-  return `${text.slice(0, Math.max(0, max - 1))}\u2026`;
+  return `${text.slice(0, Math.max(0, max - 1))}…`;
 }
 
 interface DiffDisplayProps {
@@ -68,6 +86,16 @@ export interface PromptHistoryPopoverProps {
   promotionNotice?: string | null;
   promotionError?: string | null;
   onJumpTo: (index: number) => void;
+  /**
+   * "This input" view. When `onSelectInputPrompt` is provided the popover gains
+   * a second tab listing `inputPrompts`; clicking a row applies it.
+   */
+  inputPrompts?: InputPromptEntry[];
+  inputPromptsLoading?: boolean;
+  inputPromptsIsEmpty?: boolean;
+  onSelectInputPrompt?: (text: string) => void;
+  /** Which view opens first when both are available. Defaults to 'input'. */
+  defaultTab?: 'input' | 'edits';
 }
 
 export function PromptHistoryPopover({
@@ -86,9 +114,30 @@ export function PromptHistoryPopover({
   promotionNotice,
   promotionError,
   onJumpTo,
+  inputPrompts,
+  inputPromptsLoading = false,
+  inputPromptsIsEmpty = false,
+  onSelectInputPrompt,
+  defaultTab,
 }: PromptHistoryPopoverProps) {
   const { entries, currentIndex, pinnedByIndex, pinnedCount } = timeline;
   const [expandedSet, setExpandedSet] = useState<Set<number>>(() => new Set());
+
+  const hasEditsView = entries.length > 1;
+  const hasInputView = typeof onSelectInputPrompt === 'function';
+  const showTabs = hasEditsView && hasInputView;
+
+  // Default to the lineage view when it's available (that's the surface that
+  // wires it — the QuickGen viewer — where recalling prior prompts matters
+  // most); fall back to edits otherwise. The host can override via `defaultTab`.
+  const [tab, setTab] = useState<'edits' | 'input'>(
+    () => defaultTab ?? (hasInputView ? 'input' : 'edits'),
+  );
+  const activeTab: 'edits' | 'input' = !hasInputView
+    ? 'edits'
+    : !hasEditsView
+      ? 'input'
+      : tab;
 
   const toggleExpanded = useCallback((idx: number) => {
     setExpandedSet((prev) => {
@@ -99,7 +148,18 @@ export function PromptHistoryPopover({
     });
   }, []);
 
-  if (!open || entries.length <= 1) return null;
+  const currentValue = entries[currentIndex] ?? '';
+  const currentKey = currentValue.trim().toLowerCase();
+
+  const handleSelectInput = useCallback(
+    (text: string) => {
+      onSelectInputPrompt?.(text);
+      onClose();
+    },
+    [onSelectInputPrompt, onClose],
+  );
+
+  if (!open || (!hasEditsView && !hasInputView)) return null;
 
   return (
     <Popover
@@ -117,16 +177,45 @@ export function PromptHistoryPopover({
           <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
             Prompt History
           </span>
-          <div className="text-[10px] text-neutral-400 tabular-nums flex items-center gap-2">
-            <span>{entries.length} entries</span>
-            {pinnedCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
-                {pinnedCount} pinned
-              </span>
-            )}
-          </div>
+          {activeTab === 'edits' && (
+            <div className="text-[10px] text-neutral-400 tabular-nums flex items-center gap-2">
+              <span>{entries.length} entries</span>
+              {pinnedCount > 0 && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                  {pinnedCount} pinned
+                </span>
+              )}
+            </div>
+          )}
+          {activeTab === 'input' && (inputPrompts?.length ?? 0) > 0 && (
+            <span className="text-[10px] text-neutral-400 tabular-nums">
+              {inputPrompts?.length}
+            </span>
+          )}
         </div>
-        {(scopeLabel || typeof maxEntries === 'number') && (
+
+        {showTabs && (
+          <div className="mt-1.5 flex items-center gap-1">
+            {(['input', 'edits'] as const).map((key) => (
+              <button
+                key={key}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setTab(key)}
+                className={clsx(
+                  'px-2 py-0.5 rounded text-[10px] font-medium transition-colors',
+                  activeTab === key
+                    ? 'bg-accent/15 text-accent'
+                    : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                )}
+              >
+                {key === 'input' ? 'This input' : 'Edits'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'edits' && (scopeLabel || typeof maxEntries === 'number') && (
           <div className="mt-1 flex items-center gap-1.5 text-[9px] text-neutral-500 dark:text-neutral-400">
             {scopeLabel && !onScopeChange && (
               <span className="px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800">
@@ -154,161 +243,215 @@ export function PromptHistoryPopover({
             )}
           </div>
         )}
-        {promotionNotice && (
+        {activeTab === 'edits' && promotionNotice && (
           <div className="mt-1 text-[10px] text-green-700 dark:text-green-400">{promotionNotice}</div>
         )}
-        {promotionError && (
+        {activeTab === 'edits' && promotionError && (
           <div className="mt-1 text-[10px] text-red-600 dark:text-red-400">{promotionError}</div>
         )}
       </div>
 
-      <div className="overflow-y-auto max-h-[340px] thin-scrollbar">
-        {/* Show newest first */}
-        {[...entries].reverse().map((entry, reverseIdx) => {
-          const idx = entries.length - 1 - reverseIdx;
-          const isCurrent = idx === currentIndex;
-          const isFuture = idx > currentIndex;
-          const isPinned = pinnedByIndex[idx] === true;
-          const prev = idx > 0 ? entries[idx - 1] : null;
-          const summary = prev !== null ? diffSummary(prev, entry) : 'Initial';
-          const isExpanded = expandedSet.has(idx);
-          const hoverTitle = !isExpanded && prev !== null ? diffHoverSummary(prev, entry) : undefined;
-
-          return (
-            <div
-              key={idx}
-              className={clsx(
-                'border-b border-neutral-50 dark:border-neutral-800/50',
-                isCurrent && 'bg-accent/5 dark:bg-accent/10',
-                isFuture && !isCurrent && 'opacity-50',
-                !isCurrent && 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
-              )}
-              onClick={!isCurrent ? () => onJumpTo(idx) : undefined}
-            >
-              {/* Collapsed header — always visible */}
-              <div className="flex items-center gap-2 px-3 py-1.5" title={hoverTitle}>
-                {/* Expand/collapse chevron */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleExpanded(idx);
-                  }}
-                  className="p-0.5 -ml-1 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
-                >
-                  <Icon
-                    name={isExpanded ? 'chevronDown' : 'chevronRight'}
-                    size={10}
-                  />
-                </button>
-
-                <span
-                  className={clsx(
-                    'w-2 h-2 rounded-full shrink-0',
-                    isCurrent
-                      ? 'bg-accent'
-                      : isFuture
-                        ? 'bg-neutral-300 dark:bg-neutral-600'
-                        : 'bg-neutral-400 dark:bg-neutral-500',
-                  )}
-                />
-                <span
-                  className={clsx(
-                    'text-[10px] font-medium',
-                    isCurrent
-                      ? 'text-accent'
-                      : 'text-neutral-500 dark:text-neutral-400',
-                  )}
-                >
-                  {isCurrent ? 'Current' : isFuture ? 'Undone' : `Step ${idx + 1}`}
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onTogglePin?.(idx);
-                  }}
-                  title={isPinned ? 'Unpin step' : 'Pin step'}
-                  className={clsx(
-                    'p-0.5 rounded transition-colors',
-                    isPinned
-                      ? 'text-amber-600 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30'
-                      : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                  )}
-                >
-                  <Icon name="pin" size={10} />
-                </button>
-                {isPinned && onPromote && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onPromote(idx);
-                    }}
-                    disabled={promotingIndex === idx}
-                    className={clsx(
-                      'text-[9px] px-1.5 py-0.5 rounded border transition-colors',
-                      'border-neutral-200 dark:border-neutral-700',
-                      promotingIndex === idx
-                        ? 'text-neutral-400 dark:text-neutral-500'
-                        : 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20',
-                    )}
-                  >
-                    {promotingIndex === idx ? 'Promoting...' : 'Promote'}
-                  </button>
+      {activeTab === 'input' ? (
+        <div className="overflow-y-auto max-h-[340px] thin-scrollbar">
+          {inputPromptsLoading && (inputPrompts?.length ?? 0) === 0 && (
+            <div className="flex items-center gap-2 px-3 py-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+              <Icon name="loader" size={12} className="animate-spin" />
+              <span>Loading…</span>
+            </div>
+          )}
+          {!inputPromptsLoading && inputPromptsIsEmpty && (
+            <div className="px-3 py-3 text-[11px] text-neutral-400 dark:text-neutral-500">
+              No prior prompts for this input yet.
+            </div>
+          )}
+          {(inputPrompts ?? []).map((entry) => {
+            const isCurrent = currentKey.length > 0 && entry.text.trim().toLowerCase() === currentKey;
+            return (
+              <button
+                key={entry.assetId}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => handleSelectInput(entry.text)}
+                title={entry.text}
+                className={clsx(
+                  'w-full text-left border-b border-neutral-50 dark:border-neutral-800/50 px-3 py-1.5',
+                  'flex items-start gap-2 transition-colors',
+                  isCurrent
+                    ? 'bg-accent/5 dark:bg-accent/10'
+                    : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
                 )}
-
-                {/* Collapsed inline preview */}
-                {!isExpanded && (
-                  <span className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate min-w-0 flex-1">
-                    {entry ? truncate(entry, 40) : <em>Empty</em>}
+              >
+                <span
+                  className={clsx(
+                    'text-[11px] leading-snug min-w-0 flex-1',
+                    isCurrent ? 'text-accent' : 'text-neutral-600 dark:text-neutral-300',
+                  )}
+                >
+                  {truncate(entry.text, 140)}
+                </span>
+                {entry.count > 1 && (
+                  <span
+                    className="shrink-0 mt-0.5 text-[9px] tabular-nums px-1.5 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
+                    title={`Used ${entry.count} times`}
+                  >
+                    ×{entry.count}
                   </span>
                 )}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <>
+          <div className="overflow-y-auto max-h-[340px] thin-scrollbar">
+            {/* Show newest first */}
+            {[...entries].reverse().map((entry, reverseIdx) => {
+              const idx = entries.length - 1 - reverseIdx;
+              const isCurrent = idx === currentIndex;
+              const isFuture = idx > currentIndex;
+              const isPinned = pinnedByIndex[idx] === true;
+              const prev = idx > 0 ? entries[idx - 1] : null;
+              const summary = prev !== null ? diffSummary(prev, entry) : 'Initial';
+              const isExpanded = expandedSet.has(idx);
+              const hoverTitle = !isExpanded && prev !== null ? diffHoverSummary(prev, entry) : undefined;
 
-                <span
+              return (
+                <div
+                  key={idx}
                   className={clsx(
-                    'ml-auto text-[9px] px-1.5 py-0.5 rounded-full shrink-0',
-                    summary === 'Set prompt'
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                      : summary === 'Cleared'
-                        ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                        : summary.startsWith('+')
-                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                          : summary.startsWith('-')
-                            ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400',
+                    'border-b border-neutral-50 dark:border-neutral-800/50',
+                    isCurrent && 'bg-accent/5 dark:bg-accent/10',
+                    isFuture && !isCurrent && 'opacity-50',
+                    !isCurrent && 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
                   )}
+                  onClick={!isCurrent ? () => onJumpTo(idx) : undefined}
                 >
-                  {summary}
-                </span>
-              </div>
+                  {/* Collapsed header — always visible */}
+                  <div className="flex items-center gap-2 px-3 py-1.5" title={hoverTitle}>
+                    {/* Expand/collapse chevron */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpanded(idx);
+                      }}
+                      className="p-0.5 -ml-1 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+                    >
+                      <Icon
+                        name={isExpanded ? 'chevronDown' : 'chevronRight'}
+                        size={10}
+                      />
+                    </button>
 
-              {/* Expanded content */}
-              {isExpanded && (
-                <div className="px-3 pb-2 pl-8">
-                  {/* Full text preview */}
-                  <div className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-snug">
-                    {entry ? (
-                      truncate(entry, 200)
-                    ) : (
-                      <span className="italic text-neutral-400 dark:text-neutral-500">Empty</span>
+                    <span
+                      className={clsx(
+                        'w-2 h-2 rounded-full shrink-0',
+                        isCurrent
+                          ? 'bg-accent'
+                          : isFuture
+                            ? 'bg-neutral-300 dark:bg-neutral-600'
+                            : 'bg-neutral-400 dark:bg-neutral-500',
+                      )}
+                    />
+                    <span
+                      className={clsx(
+                        'text-[10px] font-medium',
+                        isCurrent
+                          ? 'text-accent'
+                          : 'text-neutral-500 dark:text-neutral-400',
+                      )}
+                    >
+                      {isCurrent ? 'Current' : isFuture ? 'Undone' : `Step ${idx + 1}`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onTogglePin?.(idx);
+                      }}
+                      title={isPinned ? 'Unpin step' : 'Pin step'}
+                      className={clsx(
+                        'p-0.5 rounded transition-colors',
+                        isPinned
+                          ? 'text-amber-600 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30'
+                          : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                      )}
+                    >
+                      <Icon name="pin" size={10} />
+                    </button>
+                    {isPinned && onPromote && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPromote(idx);
+                        }}
+                        disabled={promotingIndex === idx}
+                        className={clsx(
+                          'text-[9px] px-1.5 py-0.5 rounded border transition-colors',
+                          'border-neutral-200 dark:border-neutral-700',
+                          promotingIndex === idx
+                            ? 'text-neutral-400 dark:text-neutral-500'
+                            : 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20',
+                        )}
+                      >
+                        {promotingIndex === idx ? 'Promoting...' : 'Promote'}
+                      </button>
                     )}
+
+                    {/* Collapsed inline preview */}
+                    {!isExpanded && (
+                      <span className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate min-w-0 flex-1">
+                        {entry ? truncate(entry, 40) : <em>Empty</em>}
+                      </span>
+                    )}
+
+                    <span
+                      className={clsx(
+                        'ml-auto text-[9px] px-1.5 py-0.5 rounded-full shrink-0',
+                        summary === 'Set prompt'
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                          : summary === 'Cleared'
+                            ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                            : summary.startsWith('+')
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                              : summary.startsWith('-')
+                                ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400',
+                      )}
+                    >
+                      {summary}
+                    </span>
                   </div>
 
-                  {/* Inline diff */}
-                  {prev !== null && !isFuture && <DiffDisplay prev={prev} next={entry} />}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                  {/* Expanded content */}
+                  {isExpanded && (
+                    <div className="px-3 pb-2 pl-8">
+                      {/* Full text preview */}
+                      <div className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-snug">
+                        {entry ? (
+                          truncate(entry, 200)
+                        ) : (
+                          <span className="italic text-neutral-400 dark:text-neutral-500">Empty</span>
+                        )}
+                      </div>
 
-      {/* Footer hint */}
-      <div className="px-3 py-1.5 border-t border-neutral-100 dark:border-neutral-800 flex items-center gap-1.5 text-[9px] text-neutral-400">
-        <Icon name="undo" size={10} />
-        <span>Ctrl+Z / Ctrl+Shift+Z to navigate</span>
-      </div>
+                      {/* Inline diff */}
+                      {prev !== null && !isFuture && <DiffDisplay prev={prev} next={entry} />}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Footer hint */}
+          <div className="px-3 py-1.5 border-t border-neutral-100 dark:border-neutral-800 flex items-center gap-1.5 text-[9px] text-neutral-400">
+            <Icon name="undo" size={10} />
+            <span>Ctrl+Z / Ctrl+Shift+Z to navigate</span>
+          </div>
+        </>
+      )}
     </Popover>
   );
 }

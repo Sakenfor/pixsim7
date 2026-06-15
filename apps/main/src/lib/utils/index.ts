@@ -27,3 +27,6 @@ export {
 
 // HMR-safe factories
 export { createHmrSafeContext, hmrSingleton } from './hmrSafe';
+
+// Keyed async result cache (survives unmount/remount + HMR, de-dupes in-flight)
+export { createKeyedAsyncCache, type KeyedAsyncCache } from './keyedAsyncCache';

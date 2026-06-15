@@ -32,6 +32,11 @@ export interface PromptComposerSurfaceDisplay {
   historyScopeLabel?: PromptComposerProps['historyScopeLabel'];
   historyScopeValue?: PromptComposerProps['historyScopeValue'];
   onHistoryScopeChange?: PromptComposerProps['onHistoryScopeChange'];
+  inputPrompts?: PromptComposerProps['inputPrompts'];
+  inputPromptsLoading?: PromptComposerProps['inputPromptsLoading'];
+  inputPromptsIsEmpty?: PromptComposerProps['inputPromptsIsEmpty'];
+  onSelectInputPrompt?: PromptComposerProps['onSelectInputPrompt'];
+  historyDefaultTab?: PromptComposerProps['historyDefaultTab'];
   composerClassName?: string;
   containerClassName?: string;
   contentClassName?: string;
@@ -99,6 +104,11 @@ export function PromptComposerSurface({ adapter, display }: PromptComposerSurfac
           historyScopeLabel={display?.historyScopeLabel}
           historyScopeValue={display?.historyScopeValue}
           onHistoryScopeChange={display?.onHistoryScopeChange}
+          inputPrompts={display?.inputPrompts}
+          inputPromptsLoading={display?.inputPromptsLoading}
+          inputPromptsIsEmpty={display?.inputPromptsIsEmpty}
+          onSelectInputPrompt={display?.onSelectInputPrompt}
+          historyDefaultTab={display?.historyDefaultTab}
           placeholder={adapter.placeholder}
           className={display?.composerClassName ?? 'h-full'}
         />

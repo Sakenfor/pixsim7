@@ -58,6 +58,14 @@ export function registerQuickGenerateComponentSettings() {
               step: 10,
               defaultValue: QUICKGEN_PROMPT_DEFAULTS.minHeight,
             },
+            {
+              id: "autoPinPromptOnInsert",
+              label: "Auto-pin inserted prompts to the current input",
+              description:
+                "When inserting a prompt while an input is selected in the carousel, pin it to that input instead of the shared default. Off pins only inputs already pinned.",
+              type: "toggle",
+              defaultValue: QUICKGEN_PROMPT_DEFAULTS.autoPinPromptOnInsert,
+            },
           ],
         },
         {
@@ -89,12 +97,47 @@ export function registerQuickGenerateComponentSettings() {
         },
         {
           id: "prompt-history",
-          title: "Draft History",
+          title: "History",
           fields: [
             {
+              id: "historyDefaultTab",
+              label: "Default view",
+              description:
+                "Which tab opens first when an input asset is selected (both views available).",
+              type: "select",
+              options: [
+                { value: "input", label: "This input" },
+                { value: "edits", label: "Edits" },
+              ],
+              defaultValue: QUICKGEN_PROMPT_DEFAULTS.historyDefaultTab,
+            },
+            {
+              id: "inputHistoryMediaFilter",
+              label: "This input — media type",
+              description:
+                "Restrict the 'This input' view to prompts that produced one media type.",
+              type: "select",
+              options: [
+                { value: "all", label: "All" },
+                { value: "image", label: "Images only" },
+                { value: "video", label: "Videos only" },
+              ],
+              defaultValue: QUICKGEN_PROMPT_DEFAULTS.inputHistoryMediaFilter,
+            },
+            {
+              id: "inputHistoryMaxResults",
+              label: "This input — max prompts",
+              description: "How many prior prompts to load for the selected input.",
+              type: "number",
+              min: 20,
+              max: 100,
+              step: 10,
+              defaultValue: QUICKGEN_PROMPT_DEFAULTS.inputHistoryMaxResults,
+            },
+            {
               id: "historyScope",
-              label: "History scope",
-              description: "Choose where draft history is shared and restored.",
+              label: "Edits — history scope",
+              description: "Choose where draft (edit) history is shared and restored.",
               type: "select",
               options: [
                 { value: "provider-operation", label: "Provider + operation" },
@@ -105,7 +148,7 @@ export function registerQuickGenerateComponentSettings() {
             },
             {
               id: "historyMaxEntries",
-              label: "Max history entries",
+              label: "Edits — max entries",
               type: "number",
               min: 20,
               max: 300,
@@ -211,6 +254,18 @@ export function registerQuickGenerateComponentSettings() {
               step: 1,
               defaultValue: QUICKGEN_ASSET_DEFAULTS.gridColumns,
               showWhen: (values) => values.displayMode === "grid",
+            },
+            {
+              id: "cardMinSize",
+              label: "Card size",
+              description: "Minimum card edge for the strip layout. Larger = fewer, bigger cards.",
+              type: "range",
+              min: 56,
+              max: 160,
+              step: 8,
+              defaultValue: QUICKGEN_ASSET_DEFAULTS.cardMinSize,
+              format: (v: number) => `${v}px`,
+              showWhen: (values) => values.displayMode === "strip",
             },
           ],
         },
