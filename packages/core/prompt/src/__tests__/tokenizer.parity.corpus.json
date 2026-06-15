@@ -3,7 +3,7 @@
     "Shared corpus for the Python<->TS tokenizer parity check (plan prompt-variable-placeholders, cp-structure-decouple).",
     "Authoritative output is the Python tokenizer (pixsim7/backend/main/services/prompt/parser/tokenizer.py).",
     "Regenerate fixtures: pnpm tokenizer-parity:gen  |  Verify: pnpm tokenizer-parity:check",
-    "OFFSET CAVEAT: Python offsets are code-point based; JS string offsets are UTF-16 code units. They agree across the BMP but diverge on astral characters (emoji, etc.). This corpus is intentionally BMP-only so byte-for-byte parity holds; canonical astral-offset semantics are deferred (cp-sd-5)."
+    "OFFSET BASIS: offsets are UTF-16 code units (matching the TS tokenizer + CodeMirror). The Python tokenizer lexes by code point but remaps its emitted offsets to UTF-16 in tokenize(), so the two agree byte-for-byte on astral characters (emoji) too. The astral-* cases below exercise that remap (cp-sd-5 canonical astral semantics)."
   ],
   "cases": [
     { "id": "empty", "text": "" },
@@ -54,6 +54,11 @@
     { "id": "value-group-leading-prose", "text": "see (note) here = x" },
     { "id": "group-protects-inner-ops", "text": "ACTOR2_HIP < (MODUS = TEASE) < DELIBERATE" },
     { "id": "group-inner-chain-rhs", "text": "X = (A < B)" },
-    { "id": "group-unbalanced-open", "text": "X = (A < B" }
+    { "id": "group-unbalanced-open", "text": "X = (A < B" },
+    { "id": "astral-prose", "text": "the 🎬 scene" },
+    { "id": "astral-chain-after-op", "text": "ACTOR1 = 🎬 cut" },
+    { "id": "astral-chain-before-op", "text": "🎬 ACTOR1 = hi" },
+    { "id": "astral-multi-shift", "text": "A 😀😀 = b ==> c" },
+    { "id": "astral-flag-regional-indicator", "text": "🇺🇸 GO ==> done" }
   ]
 }

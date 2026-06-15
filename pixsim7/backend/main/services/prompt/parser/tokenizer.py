@@ -14,6 +14,13 @@ The line-level parser classifies each line as a section header
 var|prose elements separated by operator runs, or prose.  Neither
 stage raises: unknown characters become TEXT tokens; lines with no
 operators and no header shape become prose nodes.
+
+Offsets in the public ``tokenize()`` output are **UTF-16 code-unit** indices,
+not Python code-point indices. The lexer scans by code point (Python-native),
+but the emitted ``start``/``end``/``op_start``/``op_end``/``body_start`` are
+remapped to UTF-16 so they match the TS tokenizer (grammar.ts) and CodeMirror
+document positions byte-for-byte, including on astral characters (emoji). For
+BMP-only text the two bases are identical, so the remap is a no-op there.
 """
 from __future__ import annotations
 
@@ -550,9 +557,43 @@ def parse_lines(tokens: List[Token], source: str) -> List[LineNode]:
 
 # ── public API ─────────────────────────────────────────────────────────────
 
+def _build_utf16_prefix(text: str) -> List[int]:
+    """``prefix[i]`` = number of UTF-16 code units in ``text[:i]``.
+
+    A char outside the BMP (code point > U+FFFF) is one Python code point but two
+    UTF-16 units; everything else is one of each. Used to remap code-point offsets
+    to the UTF-16 frame the TS tokenizer + CodeMirror use.
+    """
+    prefix = [0] * (len(text) + 1)
+    total = 0
+    for idx, ch in enumerate(text):
+        total += 2 if ord(ch) > 0xFFFF else 1
+        prefix[idx + 1] = total
+    return prefix
+
+
+# Offset-bearing keys in the tokenize() output (all are absolute char offsets).
+_OFFSET_KEYS = ("start", "end", "body_start", "op_start", "op_end")
+
+
+def _remap_offsets_to_utf16(line: dict, prefix: List[int]) -> None:
+    """Rewrite every offset field of a line node from code-point to UTF-16."""
+    for key in _OFFSET_KEYS:
+        if key in line:
+            line[key] = prefix[line[key]]
+    for elem in line.get("elements", ()):  # chain elements
+        elem["start"] = prefix[elem["start"]]
+        elem["end"] = prefix[elem["end"]]
+    for op in line.get("operators", ()):  # chain operators (run is ASCII-only)
+        op["op_start"] = prefix[op["op_start"]]
+        op["op_end"] = prefix[op["op_end"]]
+
+
 def tokenize(text: str) -> dict:
     """
     Tokenise and line-parse *text*.
+
+    Offsets are UTF-16 code-unit indices (see module docstring).
 
     Returns:
         {
@@ -568,7 +609,14 @@ def tokenize(text: str) -> dict:
     """
     toks = lex(text)
     nodes = parse_lines(toks, text)
-    return {"lines": [_node_to_dict(n) for n in nodes]}
+    lines = [_node_to_dict(n) for n in nodes]
+    # Remap code-point offsets to UTF-16 only when astral chars are present —
+    # for BMP text the two frames coincide, so committed BMP fixtures are stable.
+    if any(ord(ch) > 0xFFFF for ch in text):
+        prefix = _build_utf16_prefix(text)
+        for line in lines:
+            _remap_offsets_to_utf16(line, prefix)
+    return {"lines": lines}
 
 
 def _node_to_dict(n: LineNode) -> dict:

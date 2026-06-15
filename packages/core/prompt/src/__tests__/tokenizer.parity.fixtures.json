@@ -1511,6 +1511,172 @@
           }
         ]
       }
+    },
+    {
+      "id": "astral-prose",
+      "text": "the 🎬 scene",
+      "output": {
+        "lines": [
+          {
+            "kind": "prose",
+            "text": "the 🎬 scene",
+            "start": 0,
+            "end": 12
+          }
+        ]
+      }
+    },
+    {
+      "id": "astral-chain-after-op",
+      "text": "ACTOR1 = 🎬 cut",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "var",
+                "text": "ACTOR1",
+                "start": 0,
+                "end": 6
+              },
+              {
+                "kind": "prose",
+                "text": "🎬 cut",
+                "start": 9,
+                "end": 15
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 7,
+                "op_end": 8
+              }
+            ],
+            "start": 0,
+            "end": 15
+          }
+        ]
+      }
+    },
+    {
+      "id": "astral-chain-before-op",
+      "text": "🎬 ACTOR1 = hi",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "🎬 ACTOR1",
+                "start": 0,
+                "end": 9
+              },
+              {
+                "kind": "prose",
+                "text": "hi",
+                "start": 12,
+                "end": 14
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 10,
+                "op_end": 11
+              }
+            ],
+            "start": 0,
+            "end": 14
+          }
+        ]
+      }
+    },
+    {
+      "id": "astral-multi-shift",
+      "text": "A 😀😀 = b ==> c",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "A 😀😀",
+                "start": 0,
+                "end": 6
+              },
+              {
+                "kind": "prose",
+                "text": "b",
+                "start": 9,
+                "end": 10
+              },
+              {
+                "kind": "prose",
+                "text": "c",
+                "start": 15,
+                "end": 16
+              }
+            ],
+            "operators": [
+              {
+                "op": "=",
+                "run": 1,
+                "op_start": 7,
+                "op_end": 8
+              },
+              {
+                "op": "==>",
+                "run": 3,
+                "op_start": 11,
+                "op_end": 14
+              }
+            ],
+            "start": 0,
+            "end": 16
+          }
+        ]
+      }
+    },
+    {
+      "id": "astral-flag-regional-indicator",
+      "text": "🇺🇸 GO ==> done",
+      "output": {
+        "lines": [
+          {
+            "kind": "chain",
+            "elements": [
+              {
+                "kind": "prose",
+                "text": "🇺🇸 GO",
+                "start": 0,
+                "end": 7
+              },
+              {
+                "kind": "prose",
+                "text": "done",
+                "start": 12,
+                "end": 16
+              }
+            ],
+            "operators": [
+              {
+                "op": "==>",
+                "run": 3,
+                "op_start": 8,
+                "op_end": 11
+              }
+            ],
+            "start": 0,
+            "end": 16
+          }
+        ]
+      }
     }
   ]
 }
