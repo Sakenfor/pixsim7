@@ -6,6 +6,7 @@ import {
   ViewPlugin,
   type ViewUpdate,
 } from '@codemirror/view';
+import { expandValueGroups } from '@pixsim7/core.prompt';
 
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 
@@ -95,7 +96,9 @@ export function collectVariableRanges(config: VariableTokensConfig, doc: TextSli
   const out: VariableRange[] = [];
   const docLength = doc.length;
 
-  for (const line of tokenLines) {
+  // Include inner chains of grouped operands so a group's inner vars decorate too.
+  const lines = [...tokenLines, ...expandValueGroups(tokenLines)];
+  for (const line of lines) {
     if (line.kind !== 'chain' || !Array.isArray(line.elements)) continue;
     for (const el of line.elements) {
       if (el.kind !== 'var' || !el.text) continue;
@@ -234,7 +237,9 @@ function collectValueRanges(config: VariableTokensConfig, doc: Text): Array<{ fr
   if (!tokenLines) return [];
   const out: Array<{ from: number; to: number }> = [];
   const docLength = doc.length;
-  for (const line of tokenLines) {
+  // Original lines + nested groups, so a group inside a group also gets washed.
+  const lines = [...tokenLines, ...expandValueGroups(tokenLines)];
+  for (const line of lines) {
     if (line.kind !== 'chain' || !Array.isArray(line.elements)) continue;
     for (const el of line.elements) {
       if (el.kind !== 'value') continue;

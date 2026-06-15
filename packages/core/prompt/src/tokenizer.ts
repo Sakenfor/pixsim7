@@ -396,3 +396,47 @@ export function tokenize(text: string): TokenizeResult {
   const lines = splitLines(tokens, text).map((sl) => parseLine(sl, tokens));
   return { lines };
 }
+
+// ── group expansion (FE-only; NOT part of the parity contract) ──────────────
+
+function shiftChainLine(line: PromptTokenLine, delta: number): PromptTokenLine {
+  return {
+    ...line,
+    start: line.start + delta,
+    end: line.end + delta,
+    elements: line.elements?.map((e) => ({ ...e, start: e.start + delta, end: e.end + delta })),
+    operators: line.operators?.map((o) => ({ ...o, op_start: o.op_start + delta, op_end: o.op_end + delta })),
+  };
+}
+
+/**
+ * Expand grouped sub-chains: for every `value` element that is a bare `( … )`
+ * group whose contents form a chain (i.e. contain operators), re-tokenize the
+ * inner text and return those inner chain lines with offsets mapped back into
+ * the original document frame. Recurses into nested groups.
+ *
+ * This lets the structure layer decorate a group's inner vars/operators and run
+ * per-operator recipes on them, while the tokenizer itself stays flat (the group
+ * remains one opaque `value` element in `tokenize()` output — so the Python↔TS
+ * parity contract is untouched). Callers append these to the top-level lines.
+ */
+export function expandValueGroups(lines: PromptTokenLine[]): PromptTokenLine[] {
+  const extra: PromptTokenLine[] = [];
+  for (const line of lines) {
+    if (line.kind !== 'chain' || !line.elements) continue;
+    for (const el of line.elements) {
+      if (el.kind !== 'value') continue;
+      const open = el.text.indexOf('(');
+      if (open < 0 || !el.text.endsWith(')')) continue;
+      const innerStart = el.start + open + 1;
+      const innerText = el.text.slice(open + 1, -1);
+      for (const inner of tokenize(innerText).lines) {
+        if (inner.kind !== 'chain') continue; // only chains (groups with operators) contribute structure
+        const shifted = shiftChainLine(inner, innerStart);
+        extra.push(shifted);
+        extra.push(...expandValueGroups([shifted])); // nested groups
+      }
+    }
+  }
+  return extra;
+}

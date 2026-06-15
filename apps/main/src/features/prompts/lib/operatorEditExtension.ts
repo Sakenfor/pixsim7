@@ -6,6 +6,7 @@ import {
   ViewPlugin,
   type ViewUpdate,
 } from '@codemirror/view';
+import { expandValueGroups } from '@pixsim7/core.prompt';
 
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 
@@ -125,7 +126,10 @@ export function collectOperatorRanges(
   const out: OperatorRange[] = [];
   const docLength = doc.length;
 
-  for (const line of tokenLines) {
+  // Include inner chains of grouped operands so a group's inner operators (and
+  // access `_`) are clickable and recipe-matched too.
+  const lines = [...tokenLines, ...expandValueGroups(tokenLines)];
+  for (const line of lines) {
     if (line.kind === 'header') {
       if (typeof line.op_start === 'number' && typeof line.op_end === 'number') {
         const from = line.op_start;
