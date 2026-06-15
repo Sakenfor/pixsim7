@@ -28,6 +28,79 @@ export const searchSimilarPrompts = (
   query: SearchSimilarPromptsQuery,
 ): Promise<SimilarPromptsResponse> => promptsApi.searchSimilar(query);
 
+export interface PromoteFamilyCandidateResult {
+  family_id: string;
+  title: string;
+  created: boolean;
+  assigned: number;
+  skipped_grouped: number;
+  skipped_duplicate: number;
+}
+
+/** Group prompt versions into a family (new family when family_id omitted). */
+export const promoteFamilyCandidate = (body: {
+  version_ids: string[];
+  family_id?: string;
+  title?: string;
+}): Promise<PromoteFamilyCandidateResult> =>
+  pixsimClient.post<PromoteFamilyCandidateResult>('/prompts/family-candidates/promote', body);
+
+// ── Variant slot outcomes (per-word success deltas) ──────────────────────────
+
+export type VariantSlotKind = 'word' | 'dsl' | 'mixed';
+
+/** Status-based success of one filler word/phrase within a variable slot. */
+export interface VariantValueOutcome {
+  value: string;
+  versions: number;
+  /** Terminal generations (completed + failed). */
+  generations: number;
+  completed: number;
+  failed: number;
+  /** completed / generations. */
+  completion_rate: number;
+  /** Conservative (Wilson lower-bound) score — sort/threshold on this. */
+  wilson_lower: number;
+}
+
+/** A variable slot across near-identical prompts + per-filler outcomes. */
+export interface VariantSlot {
+  slot_index: number;
+  kind: VariantSlotKind;
+  /** Slot has stable context on both sides (not an edge/truncation artifact). */
+  interior: boolean;
+  prefix: string;
+  suffix: string;
+  /** Fillers meeting min_value_gens. */
+  qualifying: number;
+  best_rate: number;
+  worst_rate: number;
+  /** best_rate − worst_rate among qualifying fillers. */
+  delta: number;
+  /** Fillers, sorted by wilson_lower desc. */
+  values: VariantValueOutcome[];
+}
+
+export interface VariantOutcomesResponse {
+  version_count: number;
+  min_value_gens: number;
+  slot_count: number;
+  slots: VariantSlot[];
+}
+
+/**
+ * Per-word success deltas for a set of related prompt versions (a family or a
+ * candidate cluster). Induces the variable slots and ranks each filler by
+ * observed completion rate. See backend variant_outcomes.py.
+ */
+export const fetchVariantOutcomes = (body: {
+  version_ids: string[];
+  min_value_gens?: number;
+  stable_ratio?: number;
+  qualifying_only?: boolean;
+}): Promise<VariantOutcomesResponse> =>
+  pixsimClient.post<VariantOutcomesResponse>('/prompts/variant-outcomes', body);
+
 export interface GenerationHintContract {
   operation: string;
   priority: number;

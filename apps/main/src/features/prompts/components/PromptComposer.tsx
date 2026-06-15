@@ -61,6 +61,7 @@ import { matchOperator, matchRecipe, useRelationRecipes } from '../hooks/useRela
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 import { useSimilarPromptsSearch } from '../hooks/useSimilarPromptsSearch';
+import { useVariantOutcomes } from '../hooks/useVariantOutcomes';
 import { useVocabularies } from '../hooks/useVocabularies';
 import { relatedFacets, resolveFacet, suggestFacets } from '../lib/facetRecognition';
 import { ghostDiffExtension, type GhostDiffConfig } from '../lib/ghostDiffExtension';
@@ -99,7 +100,7 @@ import {
   type CompareSource,
 } from './PromptCompareSideBySide';
 import { PromptGhostDiff, type GhostDiffSource } from './PromptGhostDiff';
-import { PromptHistoryPopover } from './PromptHistoryPopover';
+import { PromptHistoryPopover, type InputPromptEntry } from './PromptHistoryPopover';
 import { PromptToolsPanel, type PromptToolsApplyPayload } from './PromptToolsPanel';
 import { ShadowAnalysisPopover } from './ShadowAnalysisPopover';
 import { ShadowTextarea } from './ShadowTextarea';
@@ -107,6 +108,7 @@ import { RoleBadge } from './shared/RoleBadge';
 import { SimilarPromptsPopover } from './SimilarPromptsPopover';
 import { VariableEditModal } from './VariableEditModal';
 import { VariableEditPopover } from './VariableEditPopover';
+import { VariantSuggestionsPopover } from './VariantSuggestionsPopover';
 
 type PromptComposerMode = 'text' | 'blocks';
 
@@ -246,6 +248,15 @@ export interface PromptComposerProps {
   historyScopeLabel?: string;
   historyScopeValue?: PromptHistoryScope;
   onHistoryScopeChange?: (nextScope: PromptHistoryScope) => void;
+  /** Lineage-derived "prompts used with this input" view (plan:
+   *  quickgen-input-prompt-history). When `onSelectInputPrompt` is provided the
+   *  prompt-history popover gains a "This input" tab listing `inputPrompts`. */
+  inputPrompts?: InputPromptEntry[];
+  inputPromptsLoading?: boolean;
+  inputPromptsIsEmpty?: boolean;
+  onSelectInputPrompt?: (text: string) => void;
+  /** Which history view opens first when both are available. */
+  historyDefaultTab?: 'input' | 'edits';
   runContextSeed?: Record<string, unknown>;
   onPromptToolRunContextPatch?: (patch: {
     guidance_patch?: Record<string, unknown>;
@@ -357,6 +368,11 @@ export function PromptComposer({
   historyScopeLabel,
   historyScopeValue,
   onHistoryScopeChange,
+  inputPrompts,
+  inputPromptsLoading,
+  inputPromptsIsEmpty,
+  onSelectInputPrompt,
+  historyDefaultTab,
   runContextSeed,
   onPromptToolRunContextPatch,
   onSpanProvenanceChange,
@@ -424,6 +440,14 @@ export function PromptComposer({
   const similarSearch = useSimilarPromptsSearch({ promptText: value, open: showSimilar });
   const similarBusy = similarSearch.loading;
   const similarCount = !similarSearch.stale && !similarSearch.error ? similarSearch.results.length : 0;
+
+  // "Word variations" — per-word success deltas surfaced from neighbouring
+  // prompts. See useVariantOutcomes / VariantSuggestionsPopover.
+  const [showVariants, setShowVariants] = useState(false);
+  const variantsTriggerRef = useRef<HTMLButtonElement>(null);
+  const variantOutcomes = useVariantOutcomes({ promptText: value, open: showVariants });
+  const variantBusy = variantOutcomes.loading;
+  const variantCount = !variantOutcomes.error ? variantOutcomes.slots.length : 0;
 
   // --- Shadow analysis click popover (CM path) ---
   const [cmShadowPopover, setCmShadowPopover] = useState<{
@@ -2318,6 +2342,40 @@ export function PromptComposer({
           )}
         </button>
 
+        <button
+          ref={variantsTriggerRef}
+          type="button"
+          disabled={disabled}
+          onClick={() => setShowVariants((prev) => !prev)}
+          title={
+            variantBusy
+              ? 'Finding word variations…'
+              : variantCount > 0
+                ? `Word variations — ${variantCount} proven swap${variantCount === 1 ? '' : 's'} nearby`
+                : 'Word variations (success-ranked swaps from similar prompts)'
+          }
+          className={clsx(
+            'relative p-1 rounded transition-colors',
+            showVariants
+              ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200'
+              : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+          )}
+        >
+          <Icon name="sparkles" size={14} />
+          {variantBusy ? (
+            <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center">
+              <Icon name="refresh" size={9} className="animate-spin text-accent" />
+            </span>
+          ) : (
+            variantCount > 0 &&
+            !showVariants && (
+              <span className="absolute -top-1 -right-1 min-w-[13px] h-[13px] px-0.5 flex items-center justify-center rounded-full bg-accent text-[8px] leading-none font-semibold tabular-nums text-white">
+                {variantCount > 9 ? '9+' : variantCount}
+              </span>
+            )
+          )}
+        </button>
+
         {mode === 'blocks' && (
           <>
             <button
@@ -2903,6 +2961,11 @@ export function PromptComposer({
         promotionNotice={historyPromotionNotice}
         promotionError={historyPromotionError}
         onJumpTo={handleHistoryJump}
+        inputPrompts={inputPrompts}
+        inputPromptsLoading={inputPromptsLoading}
+        inputPromptsIsEmpty={inputPromptsIsEmpty}
+        onSelectInputPrompt={onSelectInputPrompt}
+        defaultTab={historyDefaultTab}
       />
 
       <SimilarPromptsPopover
@@ -2932,6 +2995,14 @@ export function PromptComposer({
           useWorkspaceStore.getState().openFloatingPanel('prompt-library-inspector');
           setShowSimilar(false);
         }}
+      />
+
+      <VariantSuggestionsPopover
+        open={showVariants}
+        onClose={() => setShowVariants(false)}
+        anchor={variantsTriggerRef.current}
+        triggerRef={variantsTriggerRef}
+        outcomes={variantOutcomes}
       />
 
       <Popover
