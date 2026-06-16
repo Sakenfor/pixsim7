@@ -178,17 +178,41 @@ async function injectPlanContext(tabId: string, planId: string): Promise<void> {
 const RESUME_FAILED_NOTICE = '⚠ Conversation context lost.';
 
 // =============================================================================
-// Session-token button — popover with the auto-inject toggle + (admin-only)
-// the profile's privilege level. Replaces the bare on/off key so the token
-// controls are reachable any time, not just on a fresh tab via the profile
-// editor. Token level is profile-wide (per the design); editing it here PATCHes
-// the bound profile and refreshes.
+// Access-level options shared by the key-button pill and the profile editor.
+// A single per-profile choice — "what identity/privilege does this agent act
+// with" — replaces the old inject-toggle + basic/admin split. Token rotation
+// itself is automatic (the bridge rewrites the per-session MCP token file each
+// request); this only decides WHICH token (none / basic agent / admin agent).
 // =============================================================================
 
-function SessionTokenButton({ tab, profile, onUpdateTab, onRefreshProfiles, sending }: {
-  tab: ChatTab;
+type AgentAccessLevel = 'user' | 'basic' | 'admin';
+
+const ACCESS_LEVELS: ReadonlyArray<{
+  value: AgentAccessLevel;
+  label: string;
+  hint: string;
+  adminOnly?: boolean;
+}> = [
+  { value: 'user', label: 'Run as me', hint: 'No agent token — uses your own login. No agent-scoped attribution.' },
+  { value: 'basic', label: 'Agent', hint: 'Agent-profile token: agent identity + per-tab work attribution.' },
+  { value: 'admin', label: 'Agent · admin ⚠', hint: 'Full admin rights — the agent can do anything you can.', adminOnly: true },
+];
+
+/** Visual treatment for the key-button pill, by level. */
+function accessPill(level: AgentAccessLevel): { icon: 'key' | 'user'; color: string; tag?: string } {
+  if (level === 'admin') return { icon: 'key', color: 'text-signal-error', tag: 'admin' };
+  if (level === 'basic') return { icon: 'key', color: 'text-signal-warning' };
+  return { icon: 'user', color: 'text-th-muted' };
+}
+
+// =============================================================================
+// Session-token button — a status pill showing the bound profile's access
+// level; clicking opens the single per-profile access-level selector. Writing
+// here PATCHes the profile (profile-wide) and refreshes. No per-tab toggle.
+// =============================================================================
+
+function SessionTokenButton({ profile, onRefreshProfiles, sending }: {
   profile: UnifiedProfile | undefined;
-  onUpdateTab: (updates: Partial<ChatTab>) => void;
   onRefreshProfiles: () => void;
   sending: boolean;
 }) {
@@ -196,18 +220,17 @@ function SessionTokenButton({ tab, profile, onUpdateTab, onRefreshProfiles, send
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   const isAdmin = isAdminUser(useAuthStore((s) => s.user));
-  const level = profile?.token_level || 'basic';
-  const tokenIsAdmin = level === 'admin';
-  const hasProfile = !!tab.profileId;
+  const level = (profile?.token_level as AgentAccessLevel) || 'basic';
+  const pill = accessPill(level);
 
-  const setLevel = useCallback(async (next: 'basic' | 'admin') => {
+  const setLevel = useCallback(async (next: AgentAccessLevel) => {
     if (!profile || (profile.token_level || 'basic') === next) return;
     setBusy(true);
     try {
       await pixsimClient.patch(`/dev/agent-profiles/${profile.id}`, { token_level: next });
       onRefreshProfiles();
     } catch {
-      // Surfaced by the refetch staying on the old value; nothing to persist.
+      // Refetch keeps the old value visible; nothing to persist locally.
     } finally {
       setBusy(false);
     }
@@ -219,13 +242,11 @@ function SessionTokenButton({ tab, profile, onUpdateTab, onRefreshProfiles, send
         ref={ref}
         onClick={() => setOpen((o) => !o)}
         disabled={sending}
-        className={`shrink-0 h-7 flex items-center gap-0.5 px-1 rounded-lg text-[9px] transition-colors disabled:opacity-30 ${
-          tab.injectToken ? (tokenIsAdmin ? 'text-signal-error' : 'text-signal-warning') : 'text-th-muted hover:text-th'
-        }`}
-        title="Session token options"
+        className={`shrink-0 h-7 flex items-center gap-0.5 px-1 rounded-lg text-[9px] transition-colors disabled:opacity-30 ${pill.color}`}
+        title="Agent access level"
       >
-        <Icon name="key" size={12} />
-        {tab.injectToken && tokenIsAdmin && <span className="font-semibold">admin</span>}
+        <Icon name={pill.icon} size={12} />
+        {pill.tag && <span className="font-semibold">{pill.tag}</span>}
       </button>
       <Popover
         anchor={ref.current}
@@ -235,55 +256,30 @@ function SessionTokenButton({ tab, profile, onUpdateTab, onRefreshProfiles, send
         open={open}
         onClose={() => setOpen(false)}
         triggerRef={ref}
-        className="w-60 rounded-lg border border-th bg-surface shadow-lg"
+        className="w-64 rounded-lg border border-th bg-surface shadow-lg"
       >
-        <div className="p-2 space-y-2 text-[11px]">
-          <div className="font-medium text-th-secondary">Session token</div>
-          {!hasProfile ? (
-            <div className="text-th-muted">Bind an agent profile to this tab to mint a token.</div>
+        <div className="p-2 space-y-1.5 text-[11px]">
+          <div className="font-medium text-th-secondary">Agent access</div>
+          {!profile ? (
+            <div className="text-th-muted">Bind an agent profile to this tab first.</div>
           ) : (
-            <>
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={tab.injectToken}
-                  onChange={(e) => onUpdateTab({ injectToken: e.target.checked })}
-                  className="h-3 w-3 rounded border-th text-accent focus:ring-accent"
-                />
-                <span>Auto-inject token each turn</span>
-              </label>
-
-              {isAdmin ? (
-                <div className="space-y-1">
-                  <div className="text-th-muted">Privilege level (profile-wide)</div>
-                  <div className="flex gap-1">
-                    {(['basic', 'admin'] as const).map((lvl) => (
-                      <button
-                        key={lvl}
-                        disabled={busy}
-                        onClick={() => void setLevel(lvl)}
-                        className={`flex-1 px-2 py-1 rounded border text-[10px] transition-colors disabled:opacity-40 ${
-                          level === lvl
-                            ? lvl === 'admin'
-                              ? 'border-signal-error text-signal-error'
-                              : 'border-accent text-accent'
-                            : 'border-th text-th-secondary hover:bg-surface-secondary'
-                        }`}
-                      >
-                        {lvl === 'admin' ? 'Admin ⚠' : 'Basic'}
-                      </button>
-                    ))}
-                  </div>
-                  {tokenIsAdmin && (
-                    <div className="text-[9px] text-signal-warning leading-tight">
-                      Admin token = full rights; the agent can do anything you can.
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-[9px] text-th-muted">Level: {level}</div>
-              )}
-            </>
+            ACCESS_LEVELS.filter((opt) => !opt.adminOnly || isAdmin).map((opt) => (
+              <button
+                key={opt.value}
+                disabled={busy}
+                onClick={() => void setLevel(opt.value)}
+                className={`w-full text-left px-2 py-1.5 rounded border transition-colors disabled:opacity-40 ${
+                  level === opt.value
+                    ? opt.value === 'admin'
+                      ? 'border-signal-error text-signal-error'
+                      : 'border-accent text-accent'
+                    : 'border-th text-th-secondary hover:bg-surface-secondary'
+                }`}
+              >
+                <div className="font-medium">{opt.label}</div>
+                <div className="text-[9px] text-th-muted leading-tight">{opt.hint}</div>
+              </button>
+            ))
           )}
         </div>
       </Popover>
@@ -737,7 +733,15 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     // Tag with scope_key + chat_session_id so the MCP server's log_work can
     // attribute work_summaries to this exact tab/session instead of guessing
     // by profile (which cross-attributes when multiple tabs share a profile).
-    if (tab.injectToken && resolvedProfileId) {
+    //
+    // Whether to inject is driven by the bound profile's access level (the
+    // single source of truth): 'user' = run as the human's own token (no agent
+    // token); 'basic'/'admin' = mint a (possibly admin) agent token. A tab with
+    // no explicitly bound profile never injects (matches prior behavior).
+    const boundLevel = tab.profileId
+      ? (profiles.find((p) => p.id === tab.profileId)?.token_level ?? 'basic')
+      : 'user';
+    if (boundLevel !== 'user' && resolvedProfileId) {
       try {
         const tokenParams: Record<string, unknown> = { hours: 24, scope: 'dev' };
         if (typeof body.scope_key === 'string') tokenParams.scope_key = body.scope_key;
@@ -769,7 +773,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
     // Fire-and-forget — the bridge singleton manages the SSE fetch.
     void chatBridge.send(tab.id, body);
-  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.modelOverride, tab.reasoningEffortOverride, tab.customInstructions, tab.focusAreas, tab.injectToken, profiles, onUpdateTab]);
+  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.modelOverride, tab.reasoningEffortOverride, tab.customInstructions, tab.focusAreas, profiles, onUpdateTab]);
 
   const retryLast = useCallback(() => {
     const msgs = useAssistantChatStore.getState().getMessages(tab.id);
@@ -1255,11 +1259,9 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             <Icon name="send" size={14} />
           </Button>
 
-          {/* Session-token menu — auto-inject toggle + admin-only level. */}
+          {/* Agent access-level pill — single per-profile selector. */}
           <SessionTokenButton
-            tab={tab}
             profile={activeProfile}
-            onUpdateTab={onUpdateTab}
             onRefreshProfiles={onRefreshProfiles}
             sending={sending}
           />
@@ -1408,6 +1410,14 @@ export function AIAssistantPanel() {
   const connected = bridge?.connected ?? 0;
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  // Chat search — toggled from the sidebar footer. Filters the session list
+  // (by label / subtitle / plan) so a large chat backlog stays navigable.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
 
   // Auto-create a tab if none exist.
   //
@@ -1506,9 +1516,19 @@ export function AIAssistantPanel() {
   // membership is surfaced in the chat header, never by duplicating the
   // tab here. See plan-participant-liveness / unify-tab-plan-categorization.
   const { planGroups, ungroupedTabs } = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const matches = (tab: ChatTab) => {
+      if (!q) return true;
+      return (
+        tab.label.toLowerCase().includes(q) ||
+        (tab.subtitle?.toLowerCase().includes(q) ?? false) ||
+        (tabPrimaryPlanId(tab)?.toLowerCase().includes(q) ?? false)
+      );
+    };
     const byPlan = new Map<string, ChatTab[]>();
     const ungrouped: ChatTab[] = [];
     for (const tab of tabs) {
+      if (!matches(tab)) continue;
       const primaryPlanId = tabPrimaryPlanId(tab);
       if (primaryPlanId) {
         const group = byPlan.get(primaryPlanId) ?? [];
@@ -1522,7 +1542,7 @@ export function AIAssistantPanel() {
       planGroups: Array.from(byPlan.entries()).map(([planId, items]) => ({ planId, items })),
       ungroupedTabs: ungrouped,
     };
-  }, [tabs]);
+  }, [tabs, searchQuery]);
 
   const commitRename = useCallback((tabId: string, value: string) => {
     const trimmed = value.trim();
@@ -1637,6 +1657,33 @@ export function AIAssistantPanel() {
               </button>
             </div>
           )}
+          {/* Search box — toggled from the footer. Filters the list below. */}
+          {searchOpen && (
+            <div className="shrink-0 px-1.5 pt-1.5 pb-0.5">
+              <div className="relative">
+                <Icon name="search" size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-th-muted pointer-events-none" />
+                <input
+                  ref={searchInputRef}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') { setSearchQuery(''); setSearchOpen(false); }
+                  }}
+                  placeholder="Search chats..."
+                  className="w-full pl-6 pr-6 py-1 text-[11px] rounded-md border border-th bg-surface-elevated text-th focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-th-muted hover:text-th"
+                    title="Clear"
+                  >
+                    <Icon name="x" size={11} />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {/* Session list */}
           <div className="flex-1 overflow-y-auto px-1 py-1 space-y-0.5">
             {/* Plan-bound groups */}
@@ -1668,6 +1715,9 @@ export function AIAssistantPanel() {
             {tabs.length === 0 && (
               <div className="px-2 py-4 text-[10px] text-th-muted text-center">No chats yet</div>
             )}
+            {tabs.length > 0 && planGroups.length === 0 && ungroupedTabs.length === 0 && (
+              <div className="px-2 py-4 text-[10px] text-th-muted text-center">No chats match “{searchQuery}”</div>
+            )}
           </div>
 
           {/* Sidebar footer: actions + status */}
@@ -1695,6 +1745,17 @@ export function AIAssistantPanel() {
                 }
               });
             }} />
+            <button
+              onClick={() => setSearchOpen((o) => {
+                const next = !o;
+                if (!next) setSearchQuery('');
+                return next;
+              })}
+              className={`tap-target transition-colors ${searchOpen || searchQuery ? 'text-accent' : 'text-th-muted hover:text-th'}`}
+              title="Search chats"
+            >
+              <Icon name="search" size={13} />
+            </button>
             <BridgeSettingsPopover />
             <NotificationMutePopover />
             <div className="ml-auto flex items-center gap-1">

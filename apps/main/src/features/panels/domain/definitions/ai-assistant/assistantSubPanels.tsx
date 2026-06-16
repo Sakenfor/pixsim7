@@ -86,7 +86,7 @@ export function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps)
           id: slug, label: label.trim(), description: description.trim() || null,
           icon: icon.trim() || null, system_prompt: systemPrompt.trim() || null,
           agent_type: agentType, method: method || null, model_id: modelId.trim() || null,
-          config, audience: 'user', token_level: isAdmin ? tokenLevel : 'basic',
+          config, audience: 'user', token_level: tokenLevel === 'admin' && !isAdmin ? 'basic' : tokenLevel,
         });
         onSave(res.profile);
       } else {
@@ -102,7 +102,9 @@ export function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps)
           updates.config = { ...(profile.config || {}), reasoning_effort: reasoningEffort || null };
         }
         if (systemPrompt !== (profile.system_prompt || '')) updates.system_prompt = systemPrompt.trim() || null;
-        if (isAdmin && tokenLevel !== (profile.token_level || 'basic')) updates.token_level = tokenLevel;
+        if (tokenLevel !== (profile.token_level || 'basic')) {
+          updates.token_level = tokenLevel === 'admin' && !isAdmin ? 'basic' : tokenLevel;
+        }
         if (Object.keys(updates).length > 0) {
           const res = await pixsimClient.patch<{ profile: UnifiedProfile }>(`/dev/agent-profiles/${profile.id}`, updates);
           onSave(res.profile);
@@ -173,24 +175,25 @@ export function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps)
         rows={3}
         className="w-full px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated resize-none focus:outline-none focus:ring-1 focus:ring-accent" />
 
-      {/* Token privilege level — admin-only. 'admin' mints session tokens with
-          is_admin + your full permissions so the agent can hit admin endpoints
-          (e.g. live config / DB tools) instead of being limited to the basic
-          agent scope. */}
-      {isAdmin && (
-        <div className="space-y-1">
-          <select value={tokenLevel} onChange={(e) => setTokenLevel(e.target.value)}
-            className="w-full px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated focus:outline-none focus:ring-1 focus:ring-accent">
-            <option value="basic">Token: Basic (agent scope)</option>
-            <option value="admin">Token: Admin (full rights) ⚠</option>
-          </select>
-          {tokenLevel === 'admin' && (
-            <div className="text-[9px] text-signal-warning leading-tight">
-              This agent's auto-injected token will have full admin rights — it can do anything you can.
-            </div>
+      {/* Agent access level — the single "what identity/privilege does this
+          agent act with" choice. 'user' = no agent token (run as you); 'basic'
+          = scoped agent token; 'admin' = full rights (admin-only, mints is_admin
+          + your full permissions so the agent can hit admin endpoints). */}
+      <div className="space-y-1">
+        <select value={tokenLevel} onChange={(e) => setTokenLevel(e.target.value)}
+          className="w-full px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated focus:outline-none focus:ring-1 focus:ring-accent">
+          <option value="user">Access: Run as me (no agent token)</option>
+          <option value="basic">Access: Agent (scoped identity)</option>
+          {(isAdmin || tokenLevel === 'admin') && (
+            <option value="admin">Access: Agent · admin (full rights) ⚠</option>
           )}
-        </div>
-      )}
+        </select>
+        {tokenLevel === 'admin' && (
+          <div className="text-[9px] text-signal-warning leading-tight">
+            Admin token = full rights; the agent can do anything you can.
+          </div>
+        )}
+      </div>
 
       {error && <div className="text-[10px] text-signal-error">{error}</div>}
 

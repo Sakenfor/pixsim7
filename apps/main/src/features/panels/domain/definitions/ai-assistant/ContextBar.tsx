@@ -235,6 +235,18 @@ export function ContextBar({
       </button>,
     );
   }
+  chips.push(
+    <button
+      key="tab-id"
+      type="button"
+      onClick={() => { void navigator.clipboard.writeText(tab.id); }}
+      className="inline-flex items-center gap-0.5 text-cyan-400/70 transition-colors hover:text-cyan-300"
+      title={`Tab id: ${tab.id}\nClick to copy`}
+    >
+      <Icon name="hash" size={9} />
+      <span>tab:{tab.id.slice(0, 8)}</span>
+    </button>,
+  );
 
   // Model (manual override, live session model, or profile default)
   const model = tab.modelOverride || poolSession?.cli_model || profile?.model_id;
@@ -254,6 +266,17 @@ export function ContextBar({
     );
   }
 
+  // Reasoning effort (manual per-tab override, else profile default)
+  const effort = tab.reasoningEffortOverride || (profile?.config?.reasoning_effort as string | undefined);
+  if (effort) {
+    chips.push(
+      <span key="effort" className="inline-flex items-center gap-0.5 text-th-secondary" title={`Reasoning effort: ${effort}`}>
+        <Icon name="gauge" size={9} />
+        <span>{effort}</span>
+      </span>,
+    );
+  }
+
   // Custom instructions
   if (tab.customInstructions.trim()) {
     chips.push(
@@ -264,12 +287,17 @@ export function ContextBar({
     );
   }
 
-  // Token injection
-  if (tab.injectToken) {
+  // Agent access level — only when a profile is bound and it's not "run as me".
+  const accessLevel = tab.profileId ? (profile?.token_level || 'basic') : 'user';
+  if (accessLevel !== 'user') {
+    const isAdminToken = accessLevel === 'admin';
     chips.push(
-      <span key="token" className="inline-flex items-center gap-0.5 text-orange-400">
+      <span
+        key="token"
+        className={`inline-flex items-center gap-0.5 ${isAdminToken ? 'text-signal-error' : 'text-orange-400'}`}
+      >
         <Icon name="key" size={9} />
-        <span>token</span>
+        <span>{isAdminToken ? 'admin token' : 'token'}</span>
       </span>,
     );
   }

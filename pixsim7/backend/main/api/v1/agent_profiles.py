@@ -82,7 +82,7 @@ class AgentProfileCreateRequest(BaseModel):
     config: Optional[Dict] = None
     default_scopes: Optional[List[str]] = None
     assigned_plans: Optional[List[str]] = None
-    token_level: str = Field(default="basic", pattern="^(basic|admin)$")
+    token_level: str = Field(default="basic", pattern="^(user|basic|admin)$")
 
 
 class AgentProfileUpdateRequest(BaseModel):
@@ -99,7 +99,7 @@ class AgentProfileUpdateRequest(BaseModel):
     config: Optional[Dict] = None
     default_scopes: Optional[List[str]] = None
     assigned_plans: Optional[List[str]] = None
-    token_level: Optional[str] = Field(default=None, pattern="^(basic|admin)$")
+    token_level: Optional[str] = Field(default=None, pattern="^(user|basic|admin)$")
     status: Optional[str] = None
     is_default: Optional[bool] = None
 

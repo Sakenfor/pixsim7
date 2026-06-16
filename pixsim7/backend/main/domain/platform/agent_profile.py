@@ -72,10 +72,13 @@ class AgentProfile(SQLModel, table=True):
         sa_column=Column(JSON),
         description="Plan IDs this agent may work on. NULL = unrestricted.",
     )
-    # Privilege level baked into auto-minted session tokens.
+    # Agent access level — what identity/privilege a chat using this profile
+    # acts with. Single source of truth for the "session token" UI.
+    #   "user"  — no agent token injected; the chat falls back to the user's
+    #             own login token (run-as-me, no agent-scoped attribution).
     #   "basic" — the default agent token (is_admin=False, only the narrow
-    #             AGENT_INHERITABLE_PERMISSIONS allowlist). This is the safe
-    #             default the whole system assumes for agent tokens.
+    #             AGENT_INHERITABLE_PERMISSIONS allowlist). Safe default the
+    #             whole system assumes for agent tokens.
     #   "admin" — opt-in elevation: the mint endpoint stamps is_admin=True +
     #             the on-behalf user's full permissions, BUT only when the
     #             caller minting the token is themselves an admin (gate lives
@@ -83,7 +86,7 @@ class AgentProfile(SQLModel, table=True):
     #             basic token regardless. See token_policy._agent_claims and
     #             actor.from_jwt_payload (both honor is_admin only for elevated
     #             agent tokens).
-    token_level: str = Field(default="basic", max_length=16)  # basic | admin
+    token_level: str = Field(default="basic", max_length=16)  # user | basic | admin
 
     # Status & defaults
     status: str = Field(default="active", max_length=32)  # active | paused | archived
