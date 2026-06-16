@@ -2,8 +2,12 @@ import { normalizeProviderParams } from '@pixsim7/shared.generation.core';
 
 import { getAsset } from '@lib/api/assets';
 
-import { fromAssetResponse, type AssetModel } from '@features/assets';
+// Deep-import from the leaf model module, not the `@features/assets` barrel:
+// this is a pure-logic module, and the barrel transitively drags UI/dockview
+// and feature stores whose top-level event-bus subscriptions assume the app's
+// load order — pulling them in from a unit-test root throws at import time.
 import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
+import { fromAssetResponse, type AssetModel } from '@features/assets/models/asset';
 import type { SelectedAsset } from '@features/assets/stores/assetSelectionStore';
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import type { InputItem } from '@features/generation';

@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+
+import { useCompositionPackageStore } from '@/stores/compositionPackageStore';
 
 import { buildGenerationRequest, type QuickGenerateContext } from '../quickGenerateLogic';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function createBaseContext(partial: Partial<QuickGenerateContext> = {}): QuickGenerateContext {
   return {
@@ -89,10 +95,12 @@ describe('buildGenerationRequest', () => {
     expect(result.error).toContain('Please enter a prompt');
   });
 
-  it('requires a source image for image_to_image', async () => {
+  it('errors for image_to_image when neither image nor prompt is provided', async () => {
+    // image_to_image allows a prompt-only request (falls back to text-to-image),
+    // so the "No image selected" guard only fires when both are absent.
     const context = createBaseContext({
       operationType: 'image_to_image',
-      prompt: 'Add neon rim light',
+      prompt: '',
       dynamicParams: {},  // No source_asset_id
     });
 
@@ -181,6 +189,17 @@ describe('buildGenerationRequest', () => {
   });
 
   it('infers roles from asset tags when available', async () => {
+    // Role inference is delegated to the composition-package store, which is
+    // empty in unit tests (role definitions are normally loaded from the
+    // backend). Seed the slug/namespace → role mapping the assertion expects.
+    vi.spyOn(useCompositionPackageStore.getState(), 'inferRoleFromTags').mockImplementation(
+      (tags: string[]) => {
+        if (tags.includes('char:hero')) return 'main_character';
+        if (tags.includes('bg')) return 'environment';
+        if (tags.some((t) => t.startsWith('npc:'))) return 'main_character';
+        return undefined;
+      },
+    );
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Combine these images',

@@ -75,14 +75,25 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 // finds the existing state + subscription instead of creating duplicates.
 // Components sync their local state from this counter on mount.
 type CatalogEpochState = { epoch: number; cbs: Set<(e: number) => void> };
-const _epochState: CatalogEpochState = ((globalThis as any)[Symbol.for('dockview:catalogEpoch')] ??= (() => {
+// Lazily initialised on first use, NOT at import time. The subscription touches
+// `panelSelectors`, which can still be undefined during a circular import (or
+// when this module is pulled from a non-app root such as a unit test), so an
+// import-time IIFE would throw. Every consumer below runs inside a mounted
+// component, so deferring to first access is behaviourally identical while
+// removing the import-order hazard.
+function getEpochState(): CatalogEpochState {
+  const slot = globalThis as Record<symbol, CatalogEpochState | undefined>;
+  const key = Symbol.for('dockview:catalogEpoch');
+  const existing = slot[key];
+  if (existing) return existing;
   const s: CatalogEpochState = { epoch: 0, cbs: new Set() };
+  slot[key] = s;
   panelSelectors.subscribe(() => {
     s.epoch++;
     for (const cb of s.cbs) cb(s.epoch);
   });
   return s;
-})());
+}
 
 import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from '@features/contextHub';
 import { type PanelDefinition } from '@features/panels';
@@ -391,7 +402,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // Track global panel registry changes so catalog-reading useMemos recompute.
   // Initialized from the global epoch so a remounted component starts
   // with the current catalog state (not 0).
-  const [globalRegistryVersion, setGlobalRegistryVersion] = useState(() => _epochState.epoch);
+  const [globalRegistryVersion, setGlobalRegistryVersion] = useState(() => getEpochState().epoch);
 
   // Resolve panel IDs from new simplified API or legacy props
   // Priority: panels > scope
@@ -505,10 +516,11 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // unsubscribes, so it catches changes even during HMR when the component
   // is unmounted. On mount we catch up, then listen for future changes.
   useEffect(() => {
-    setGlobalRegistryVersion(_epochState.epoch);
+    const epochState = getEpochState();
+    setGlobalRegistryVersion(epochState.epoch);
     const cb = (epoch: number) => setGlobalRegistryVersion(epoch);
-    _epochState.cbs.add(cb);
-    return () => { _epochState.cbs.delete(cb); };
+    epochState.cbs.add(cb);
+    return () => { epochState.cbs.delete(cb); };
   }, []);
 
   const RECOVERY_POLL_INTERVAL_MS = 50;

@@ -11,7 +11,14 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { hmrSingleton } from '@lib/utils';
 
-import { assetEvents, fromAssetResponse, type AssetModel } from '@features/assets';
+import { fromAssetResponse, type AssetModel } from '@features/assets';
+// Deep-import the event bus from its leaf module, not the barrel: the
+// top-level `assetEvents.subscribeToUpdates(...)` registration below runs
+// during this module's init, and entering the import graph from a non-app
+// root (e.g. a test importing quickGenerateLogic) leaves the heavy
+// `@features/assets` barrel mid-initialization, so `assetEvents` resolves to
+// undefined. The leaf module has no cycle back into generation.
+import { assetEvents } from '@features/assets/lib/assetEvents';
 
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
@@ -46,6 +53,24 @@ export interface InputItem {
   maskUrl?: string; // DEPRECATED — kept for migration, prefer maskLayers
   maskLayers?: InputMaskLayer[]; // List of mask layers to composite at generation time
   skipped?: boolean; // Temporarily omit this input from generation
+  /**
+   * Per-input pinned prompt. When present, this input generates with this exact
+   * prompt instead of the live operation-default prompt (settings `promptMap`).
+   * Absence = follow the operation default (so editing the main prompt updates
+   * all un-pinned inputs at once). Set via `setInputPrompt` (snapshot the current
+   * prompt to pin; pass undefined to un-pin). Plan: `per-asset-prompt-pin`.
+   */
+  promptOverride?: string;
+  /**
+   * Per-input dynamic-param overrides (the prompt pin, generalized to any scalar
+   * setting). Each key present here overrides the shared operation-default param
+   * for THIS input only (e.g. `{ duration: 8 }`); keys absent follow the shared
+   * default, so editing a shared control still updates all un-bound inputs at
+   * once. An empty/absent map = fully follows the shared defaults. Set via
+   * `setInputParamOverride` (bind one key; pass undefined to un-bind). Resolved at
+   * generation time alongside `promptOverride`. Plan: `per-input-param-override`.
+   */
+  paramOverrides?: Record<string, any>;
 }
 
 export interface OperationInputs {
@@ -108,6 +133,21 @@ export interface GenerationInputsState {
   clearAllInputs: () => void;
   updateLockedTimestamp: (operationType: OperationType, inputId: string, timestamp: number | undefined) => void;
   updateRoleOverride: (operationType: OperationType, inputId: string, role: string | undefined) => void;
+  /**
+   * Pin (or un-pin) a per-input prompt. Pass the prompt string to pin this input
+   * to it; pass undefined to clear the pin and fall back to the operation default.
+   * The caller is responsible for snapshotting the current operation prompt (the
+   * input store has no view of settings `promptMap`). Plan: `per-asset-prompt-pin`.
+   */
+  setInputPrompt: (operationType: OperationType, inputId: string, prompt: string | undefined) => void;
+  /**
+   * Bind (or un-bind) a single dynamic param for one input — the prompt pin
+   * generalized. Pass a value to override `key` for THIS input only; pass
+   * undefined to un-bind that key (falls back to the shared operation default).
+   * When un-binding empties the map, `paramOverrides` is cleared to undefined so a
+   * hollow map can't shadow the shared defaults. Plan: `per-input-param-override`.
+   */
+  setInputParamOverride: (operationType: OperationType, inputId: string, key: string, value: any | undefined) => void;
   cycleInputs: (operationType: OperationType, direction?: 'next' | 'prev') => void;
   setInputIndex: (operationType: OperationType, index: number) => void;
   setArmedSlot: (operationType: OperationType, slotIndex?: number | null) => void;
@@ -558,6 +598,55 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
                   items: existing.items.map((item) =>
                     item.id === inputId ? { ...item, roleOverride: role } : item
                   ),
+                },
+              },
+            };
+          });
+        },
+
+        setInputPrompt: (operationType, inputId, prompt) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            // Normalize empty/whitespace-only to "un-pinned" so a blank pin
+            // can't shadow the operation default with an empty prompt.
+            const normalized =
+              typeof prompt === 'string' && prompt.trim().length > 0 ? prompt : undefined;
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) =>
+                    item.id === inputId ? { ...item, promptOverride: normalized } : item
+                  ),
+                },
+              },
+            };
+          });
+        },
+
+        setInputParamOverride: (operationType, inputId, key, value) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) => {
+                    if (item.id !== inputId) return item;
+                    const nextOverrides: Record<string, any> = { ...(item.paramOverrides ?? {}) };
+                    if (value === undefined) {
+                      delete nextOverrides[key];
+                    } else {
+                      nextOverrides[key] = value;
+                    }
+                    // Empty map normalizes to undefined so a hollow override can't
+                    // shadow the shared operation default (mirrors setInputPrompt).
+                    const normalized =
+                      Object.keys(nextOverrides).length > 0 ? nextOverrides : undefined;
+                    return { ...item, paramOverrides: normalized };
+                  }),
                 },
               },
             };

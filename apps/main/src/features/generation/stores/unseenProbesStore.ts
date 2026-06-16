@@ -22,7 +22,12 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 
 import { createBackendStorage, manuallyRehydrateStore } from '@lib/utils';
 
-import { assetEvents } from '@features/assets';
+// Deep-import the event bus from its leaf module, not the barrel: the
+// `ensureSubscribed()` registration below touches `assetEvents` at the bus
+// level, and entering this graph from a non-app root (e.g. a unit test) can
+// leave the heavy `@features/assets` barrel mid-initialization, resolving
+// `assetEvents` to undefined. The leaf module has no cycle back into generation.
+import { assetEvents } from '@features/assets/lib/assetEvents';
 
 interface UnseenProbesState {
   unseen: number;

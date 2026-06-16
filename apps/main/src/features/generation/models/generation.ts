@@ -321,7 +321,18 @@ export const RENDER_MODERATED_ERROR_CODE = 'content_render_moderated';
 /** A job polled past the fast-fail window is very likely rendering a real clip.
  *  The render-time moderation ("fast filter") resolves within ~one poll cycle
  *  (the poller polls every 2s early on), so surviving past this many ms after
- *  start = "accepted & rendering" rather than "just submitted, might fast-fail". */
+ *  start = "accepted & rendering" rather than "just submitted, might fast-fail".
+ *
+ *  Anchored on `createdAt`, NOT `startedAt`: the backend resets `started_at`
+ *  to `now` on every entry into PROCESSING (lifecycle) and to `None` on every
+ *  requeue (auto-retry / content-filter loop). A job bouncing through that loop
+ *  therefore had its per-attempt clock restart each cycle, so the derived
+ *  "rendering" count dropped then re-climbed every retry — a visible flicker.
+ *  `createdAt` never moves, so the crossing is monotonic. Trade-off: a job that
+ *  sat queued well past the window before its first acceptance is labelled
+ *  'rendering' immediately rather than after a post-acceptance grace; acceptable
+ *  for the short-queue probe workflow this badge serves. (The acceptance gate
+ *  below still requires a provider job id, so nothing is "rendering" pre-submit.) */
 export const RENDER_CONFIRMED_AFTER_MS = 6000;
 
 /**
@@ -335,7 +346,7 @@ export const RENDER_CONFIRMED_AFTER_MS = 6000;
 export function resolveGranularStatus(
   g: Pick<
     GenerationModel,
-    'status' | 'retryCount' | 'attemptCount' | 'latestSubmissionPayload' | 'latestSubmissionProviderJobId' | 'waitReason' | 'deferredAction' | 'errorCode' | 'startedAt'
+    'status' | 'retryCount' | 'attemptCount' | 'latestSubmissionPayload' | 'latestSubmissionProviderJobId' | 'waitReason' | 'deferredAction' | 'errorCode' | 'createdAt'
   >,
   nowMs?: number,
 ): GranularStatus {
@@ -354,9 +365,10 @@ export function resolveGranularStatus(
     if (!hasSubmitEvidence) return 'starting';
     if (!hasProviderAcceptance) return 'submitting';
     // Accepted + past the fast-fail window → very likely producing a clip.
-    if (nowMs != null && g.startedAt) {
-      const startedMs = new Date(g.startedAt).getTime();
-      if (Number.isFinite(startedMs) && nowMs - startedMs >= RENDER_CONFIRMED_AFTER_MS) {
+    // Measured from createdAt (stable across retries), see RENDER_CONFIRMED_AFTER_MS.
+    if (nowMs != null && g.createdAt) {
+      const createdMs = new Date(g.createdAt).getTime();
+      if (Number.isFinite(createdMs) && nowMs - createdMs >= RENDER_CONFIRMED_AFTER_MS) {
         return 'rendering';
       }
     }

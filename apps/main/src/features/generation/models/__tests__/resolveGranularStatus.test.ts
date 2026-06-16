@@ -22,7 +22,7 @@ type GranularInput = Pick<
   | 'waitReason'
   | 'deferredAction'
   | 'errorCode'
-  | 'startedAt'
+  | 'createdAt'
 >;
 
 function input(overrides: Partial<GranularInput> = {}): GranularInput {
@@ -35,7 +35,7 @@ function input(overrides: Partial<GranularInput> = {}): GranularInput {
     waitReason: null,
     deferredAction: null,
     errorCode: null,
-    startedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -185,31 +185,32 @@ describe('resolveGranularStatus — render-moderation (fast-filter) retries', ()
 
 describe("resolveGranularStatus — 'rendering' (polled past the fast-fail window)", () => {
   const T0 = 1_700_000_000_000;
-  const startedAtIso = new Date(T0).toISOString();
+  // Anchored on createdAt (stable across retries), not the resettable startedAt.
+  const createdAtIso = new Date(T0).toISOString();
 
   it("stays 'polling' when no nowMs is given (back-compat / filters)", () => {
     expect(
-      resolveGranularStatus(input({ status: 'processing', startedAt: startedAtIso })),
+      resolveGranularStatus(input({ status: 'processing', createdAt: createdAtIso })),
     ).toBe('polling');
   });
 
   it("returns 'rendering' once age >= the fast-fail threshold", () => {
     const now = T0 + RENDER_CONFIRMED_AFTER_MS + 1;
     expect(
-      resolveGranularStatus(input({ status: 'processing', startedAt: startedAtIso }), now),
+      resolveGranularStatus(input({ status: 'processing', createdAt: createdAtIso }), now),
     ).toBe('rendering');
   });
 
   it("stays 'polling' while still inside the fast-fail window", () => {
     const now = T0 + RENDER_CONFIRMED_AFTER_MS - 500;
     expect(
-      resolveGranularStatus(input({ status: 'processing', startedAt: startedAtIso }), now),
+      resolveGranularStatus(input({ status: 'processing', createdAt: createdAtIso }), now),
     ).toBe('polling');
   });
 
-  it("stays 'polling' when startedAt is missing", () => {
+  it("stays 'polling' when createdAt is missing", () => {
     expect(
-      resolveGranularStatus(input({ status: 'processing', startedAt: null }), T0 + 60_000),
+      resolveGranularStatus(input({ status: 'processing', createdAt: '' }), T0 + 60_000),
     ).toBe('polling');
   });
 
@@ -217,7 +218,7 @@ describe("resolveGranularStatus — 'rendering' (polled past the fast-fail windo
     const now = T0 + RENDER_CONFIRMED_AFTER_MS + 1;
     expect(
       resolveGranularStatus(
-        input({ status: 'processing', startedAt: startedAtIso, latestSubmissionProviderJobId: null }),
+        input({ status: 'processing', createdAt: createdAtIso, latestSubmissionProviderJobId: null }),
         now,
       ),
     ).toBe('submitting');
