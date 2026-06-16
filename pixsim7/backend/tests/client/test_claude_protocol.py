@@ -22,7 +22,11 @@ TEST_SUITE = {
 import pytest
 
 try:
+    import asyncio
+    import json as _json
+
     from pixsim7.client.protocols import ClaudeProtocol
+    from pixsim7.client.session import AgentCmdSession
 
     IMPORTS_AVAILABLE = True
 except ImportError:
@@ -160,3 +164,143 @@ class TestClaudeResumeOnlyPassesSessionId:
         resumed = p.build_start_cmd("claude", resume_session_id="conv-abc")
         assert "--include-partial-messages" in fresh
         assert "--include-partial-messages" in resumed
+
+
+class TestClaudeRuntimeControl:
+    """Live mid-session control via stdin ``control_request`` frames. The CLI
+    accepts ``set_model`` to switch the model for subsequent turns without a
+    respawn/resume (verified against the binary's control-request schema). Used
+    to make the per-tab model dropdown take effect mid-conversation. (Effort has
+    no equivalent live control on modern models, so it stays spawn-time.)
+    """
+
+    def test_supports_runtime_control(self):
+        assert ClaudeProtocol().supports_runtime_control() is True
+
+    def test_build_set_model_control_request_envelope(self):
+        import json
+        p = ClaudeProtocol()
+        frame = p.build_control_request("set-model-1", "set_model", model="claude-opus-4-8")
+        assert frame.endswith("\n")  # newline-delimited stdin frame
+        obj = json.loads(frame)
+        assert obj == {
+            "type": "control_request",
+            "request_id": "set-model-1",
+            "request": {"subtype": "set_model", "model": "claude-opus-4-8"},
+        }
+
+
+class _RecordingStdin:
+    def __init__(self):
+        self.writes: list[bytes] = []
+
+    def write(self, data):
+        self.writes.append(data)
+
+    async def drain(self):
+        pass
+
+    def close(self):
+        pass
+
+
+class _AliveProc:
+    """Stand-in process that reports alive (returncode None)."""
+    returncode = None
+
+    def __init__(self):
+        self.stdin = _RecordingStdin()
+
+
+class TestApplyRuntimeModel:
+    """Session.apply_runtime_model writes a ``set_model`` control frame to the
+    live process and commits the switch only when the CLI acks with a matching
+    ``control_response`` (success). Drives the per-tab model dropdown taking
+    effect mid-conversation (agent_pool calls this before each turn).
+    """
+
+    def test_switch_writes_frame_and_commits_on_success(self):
+        async def _run():
+            s = AgentCmdSession("s", command="claude")
+            s._process = _AliveProc()
+            s._live_model = "claude-haiku-4-5"
+
+            async def ack():
+                await asyncio.sleep(0.02)
+                await s._response_queue.put({
+                    "type": "control_response",
+                    "response": {"request_id": "set-model-1", "subtype": "success"},
+                })
+
+            feeder = asyncio.create_task(ack())
+            ok = await s.apply_runtime_model("claude-opus-4-8")
+            await feeder
+            return ok, s
+
+        ok, s = asyncio.run(_run())
+        assert ok is True
+        assert s._live_model == "claude-opus-4-8"
+        assert s.cli_model == "claude-opus-4-8"
+        # The set_model control frame was written to stdin.
+        frames = [_json.loads(w.decode()) for w in s._process.stdin.writes]
+        assert any(
+            f.get("type") == "control_request"
+            and f["request"] == {"subtype": "set_model", "model": "claude-opus-4-8"}
+            for f in frames
+        )
+
+    def test_noop_when_model_unchanged_writes_nothing(self):
+        async def _run():
+            s = AgentCmdSession("s", command="claude")
+            s._process = _AliveProc()
+            s._live_model = "claude-opus-4-8"
+            ok = await s.apply_runtime_model("claude-opus-4-8")
+            return ok, s
+
+        ok, s = asyncio.run(_run())
+        assert ok is True
+        assert s._process.stdin.writes == []  # no frame sent
+
+    def test_empty_model_is_noop(self):
+        async def _run():
+            s = AgentCmdSession("s", command="claude")
+            s._process = _AliveProc()
+            s._live_model = "claude-opus-4-8"
+            return await s.apply_runtime_model(""), s
+
+        ok, s = asyncio.run(_run())
+        assert ok is True
+        assert s._process.stdin.writes == []
+
+    def test_failure_response_does_not_commit(self):
+        async def _run():
+            s = AgentCmdSession("s", command="claude")
+            s._process = _AliveProc()
+            s._live_model = "claude-haiku-4-5"
+
+            async def nack():
+                await asyncio.sleep(0.02)
+                await s._response_queue.put({
+                    "type": "control_response",
+                    "response": {"request_id": "set-model-1", "subtype": "error", "error": "no such model"},
+                })
+
+            feeder = asyncio.create_task(nack())
+            ok = await s.apply_runtime_model("bogus-model")
+            await feeder
+            return ok, s
+
+        ok, s = asyncio.run(_run())
+        assert ok is False
+        assert s._live_model == "claude-haiku-4-5"  # unchanged
+
+    def test_codex_protocol_has_no_live_control(self):
+        async def _run():
+            s = AgentCmdSession("s", command="codex")
+            s._process = _AliveProc()
+            s._live_model = "gpt-5.3-codex"
+            return await s.apply_runtime_model("gpt-5.4"), s
+
+        ok, s = asyncio.run(_run())
+        assert ok is False  # Codex can't switch live — falls back to spawn-time
+        assert s._process.stdin.writes == []

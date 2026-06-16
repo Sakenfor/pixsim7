@@ -105,6 +105,29 @@ class AgentProtocol:
         """True if the process stays alive between messages (Claude). False if one process per message (Codex)."""
         return True
 
+    def supports_runtime_control(self) -> bool:
+        """True if the live process accepts ``control_request`` frames over stdin
+        to change settings (e.g. model) mid-session without a respawn/resume.
+
+        Only the Claude stream-json transport does. Codex (single-turn or
+        JSON-RPC app-server) does not — its model/effort are spawn-time.
+        """
+        return False
+
+    def build_control_request(self, request_id: str, subtype: str, **fields) -> str | None:
+        """Build a stdin ``control_request`` frame, or None if unsupported.
+
+        The envelope (verified against the Claude CLI) is::
+
+            {"type":"control_request","request_id":<id>,
+             "request":{"subtype":<subtype>, **fields}}
+
+        The CLI replies with a ``control_response`` carrying the same
+        ``request_id``. Only subtypes the CLI whitelists are honoured
+        (``set_model`` is the one we use).
+        """
+        return None
+
     def parse_event(self, raw: dict) -> ParsedEvent:
         """Parse a raw JSON event from stdout into a normalized ParsedEvent."""
         raise NotImplementedError
@@ -329,6 +352,17 @@ class ClaudeProtocol(AgentProtocol):
 
     def is_long_running(self):
         return True
+
+    def supports_runtime_control(self):
+        return True
+
+    def build_control_request(self, request_id, subtype, **fields):
+        import json
+        return json.dumps({
+            "type": "control_request",
+            "request_id": request_id,
+            "request": {"subtype": subtype, **fields},
+        }) + "\n"
 
     def parse_event(self, raw):
         t = raw.get("type", "")

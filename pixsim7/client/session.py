@@ -159,6 +159,12 @@ class AgentCmdSession:
         self._resume_session_id = resume_session_id
         self._model = model
         self._reasoning_effort = reasoning_effort
+        # Model currently active in the live process. Starts at the spawn model;
+        # updated when a `set_model` control_request is applied mid-session so we
+        # only push a control frame when the requested model actually changes.
+        self._live_model = model
+        # Monotonic id source for control_request frames.
+        self._control_seq = 0
         self._workdir = workdir
         self.token_file_path = token_file_path
         # Path to the private per-session MCP config clone this pool created
@@ -685,6 +691,74 @@ class AgentCmdSession:
         await self.stop()
         await asyncio.sleep(1)
         return await self.start()
+
+    async def apply_runtime_model(self, model: str | None, *, timeout: float = 10.0) -> bool:
+        """Switch the live process's model mid-session via a ``set_model``
+        control_request — no respawn, no ``--resume`` (so no thinking-block
+        400). Verified against the Claude CLI: it applies to subsequent turns.
+
+        No-op (returns True) when the protocol has no control channel, the
+        requested model is empty, or it already matches the live model. Must be
+        called while the session is NOT mid-turn — the pool invokes it right
+        before ``send_message``. Returns False if the control round-trip failed
+        (the caller proceeds with the current model rather than aborting).
+        """
+        if not model or not model.strip():
+            return True
+        model = model.strip()
+        if model == self._live_model:
+            return True
+        if not self._protocol.supports_runtime_control():
+            # Engine can't switch live (e.g. Codex). Leave it to spawn-time.
+            return False
+        if not self.is_alive or not self._process or not self._process.stdin:
+            return False
+
+        self._control_seq += 1
+        request_id = f"set-model-{self._control_seq}"
+        frame = self._protocol.build_control_request(request_id, "set_model", model=model)
+        if not frame:
+            return False
+
+        self._process.stdin.write(frame.encode())
+        await self._process.stdin.drain()
+
+        # Await the matching control_response. Stray events shouldn't arrive at
+        # this point (no turn in flight), but re-queue anything that isn't ours
+        # so a late init/etc. isn't swallowed.
+        deferred: list = []
+        ok = False
+        try:
+            deadline = asyncio.get_event_loop().time() + timeout
+            while True:
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    break
+                event = await asyncio.wait_for(self._response_queue.get(), timeout=remaining)
+                if event is _EOF_SENTINEL:
+                    self._response_queue.put_nowait(_EOF_SENTINEL)  # let the turn see EOF
+                    break
+                if isinstance(event, dict) and event.get("type") == "control_response":
+                    resp = event.get("response", {})
+                    if resp.get("request_id") == request_id:
+                        ok = str(resp.get("subtype")) == "success"
+                        if not ok:
+                            self._log.warning("session_set_model_failed", model=model, response=resp)
+                        break
+                    # A different control_response — ignore (not ours).
+                    continue
+                deferred.append(event)
+        except asyncio.TimeoutError:
+            self._log.warning("session_set_model_timeout", model=model)
+        finally:
+            for ev in deferred:
+                self._response_queue.put_nowait(ev)
+
+        if ok:
+            self._live_model = model
+            self.cli_model = model
+            self._log.info("session_model_switched", model=model)
+        return ok
 
     async def send_message(
         self,

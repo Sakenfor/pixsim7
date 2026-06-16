@@ -876,6 +876,18 @@ class AgentPool:
             except ImportError:
                 pass
 
+            # Live model switch: when the requested model differs from the
+            # session's active model, push a `set_model` control_request before
+            # the turn so the dropdown takes effect mid-conversation (not just
+            # on a fresh session). No-op when unchanged or when the session is
+            # reused via bridge_session_id at the same model. Effort has no
+            # equivalent live control on modern models, so it stays spawn-time.
+            if model:
+                try:
+                    await session.apply_runtime_model(model)
+                except Exception as exc:
+                    get_logger().warning("pool_set_model_failed", session=session.session_id, model=model, error=str(exc))
+
             response = await session.send_message(message, timeout=timeout, images=images, on_progress=on_progress, tool_gate=tool_gate)
             # Update index after first message (session now has its bridge_session_id)
             self._update_index(session)
