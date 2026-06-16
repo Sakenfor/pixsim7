@@ -49,7 +49,11 @@ function SettingsContent({
   }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+    // h-full (not flex-1) because the parent wrapper in SidebarContentLayout is
+    // a plain block, not a flex container — `flex-1` would be inert there,
+    // leaving this unbounded so its inner overflow-auto never contains the
+    // scroll and the whole panel (incl. the sidebar) scrolls instead.
+    <div className="h-full min-h-0 flex flex-col min-w-0 overflow-hidden">
       {/* Content header */}
       <div className="flex-shrink-0 border-b border-neutral-200 dark:border-neutral-700 px-4 py-3">
         <div className="flex items-center gap-2">
