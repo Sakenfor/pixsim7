@@ -127,6 +127,23 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
     setVideoLoadFailed(false);
   }, [asset.type, resolvedMediaUrl]);
 
+  // Reuse one <video> element across clips (no per-asset `key`). Chrome leaks
+  // ~30MB of un-reclaimed GPU memory per <video> element even after decoder
+  // teardown, so minting a fresh element per clip — hundreds over a browsing
+  // session — was the prime driver of the multi-GB viewer tab. React updates the
+  // declarative `src` on clip switch, but an in-flight stream load won't abort
+  // cleanly on its own (the reason the old code remounted), so force a clean
+  // reload of the reused element: pause() + load() aborts the previous load and
+  // runs resource selection for the newly-selected src. Runs after commit, so
+  // React has already set `el.src` to `resolvedMediaUrl`.
+  useEffect(() => {
+    if (asset.type !== 'video' || suspended) return;
+    const el = resolvedVideoRef.current;
+    if (!el || !resolvedMediaUrl) return;
+    el.pause();
+    el.load();
+  }, [asset.type, resolvedMediaUrl, suspended, resolvedVideoRef]);
+
   useEffect(() => {
     if (asset.type === 'video' && videoCandidates.length === 0) {
       setVideoReady(false);
@@ -231,11 +248,11 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
         <div className="relative">
           {!suspended && (
           <video
-            // Key per asset so switching clips always mounts a fresh element.
-            // Swapping `src` on the shared element while a previous (not-yet-
-            // ready) stream load is in flight can leave it stuck on the aborted
-            // load — a clean remount loads the newly-selected clip reliably.
-            key={asset.id}
+            // No per-asset `key`: the element is REUSED across clips (one
+            // element => one element's worth of GPU memory, instead of leaking
+            // ~30MB per minted element). The clean-reload effect above
+            // (pause()+load() on `resolvedMediaUrl` change) handles the
+            // in-flight-load abort that the old per-asset remount worked around.
             ref={attachVideo}
             src={resolvedMediaUrl}
             className={`${getFitClass()} rounded-lg transition-opacity ${videoReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}

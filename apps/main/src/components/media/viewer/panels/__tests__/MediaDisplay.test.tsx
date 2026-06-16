@@ -6,9 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  *
  * Beyond covering the unresolvable-src watchdog, these tests lock in the
  * memory-relevant invariants for the viewer <video>: exactly one element at a
- * time, the decoder released on asset switch, the active-video registry paired
- * (register/unregister), and a full unmount while suspended. A regression that
- * starts stacking decoders (the multi-GB tab) should trip one of these.
+ * time, the SAME element reused across clip switches (Chrome leaks ~30MB of
+ * un-reclaimed GPU memory per minted <video>, so remounting per clip was the
+ * multi-GB tab), a clean reload (pause+load) on switch, the active-video
+ * registry paired (register/unregister), and a full unmount while suspended.
  * See plan `viewer-media-memory`.
  */
 
@@ -119,10 +120,14 @@ describe('MediaDisplay video', () => {
     expect(container.querySelectorAll('video')).toHaveLength(0);
   });
 
-  it('switching assets never stacks <video> elements and releases the old decoder', () => {
-    mocks.streamSrc.mockReturnValue('http://x/clip.mp4?token=t');
+  it('reuses one <video> element across clip switches and reloads it cleanly', () => {
+    mocks.streamSrc.mockImplementation((url) =>
+      url ? `${url}?token=t` : undefined,
+    );
     const { container, rerender } = renderDisplay(videoAsset({ id: 1 }));
+    const firstVideo = container.querySelector('video');
     expect(container.querySelectorAll('video')).toHaveLength(1);
+    expect(firstVideo).not.toBeNull();
 
     rerender(
       <MediaDisplay
@@ -134,13 +139,16 @@ describe('MediaDisplay video', () => {
       />,
     );
 
-    // key={asset.id} → the old element unmounts, only the new one remains.
+    const secondVideo = container.querySelector('video');
+    // No per-asset key → React keeps the SAME DOM node (one element's worth of
+    // GPU memory, not a fresh per-clip leak).
     expect(container.querySelectorAll('video')).toHaveLength(1);
-    // The outgoing element's decoder was explicitly released (pause + load),
-    // not left for lazy GC.
+    expect(secondVideo).toBe(firstVideo);
+    // The reused element is reloaded for the new clip (pause + load aborts the
+    // prior in-flight stream and runs resource selection for the new src).
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
     expect(HTMLMediaElement.prototype.load).toHaveBeenCalled();
-    // Old registration cleaned up, new one registered.
+    // Registration is re-paired to the new asset id on the same element.
     expect(mocks.unregister).toHaveBeenCalled();
     expect(mocks.registerActiveVideo).toHaveBeenCalledTimes(2);
   });
