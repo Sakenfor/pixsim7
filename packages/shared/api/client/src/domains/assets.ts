@@ -118,6 +118,15 @@ export function createAssetsApi(client: PixSimApiClient) {
       });
     },
 
+    /**
+     * Delete the asset's remote copy on the provider only, keeping the local
+     * record and downloaded file. Used to free provider-side space (e.g. on a
+     * Pixverse account) without removing the asset from the local library.
+     */
+    async deleteAssetFromProvider(assetId: number): Promise<void> {
+      await client.post<void>(`/assets/${assetId}/provider-delete`);
+    },
+
     async archiveAsset(
       assetId: number,
       archived: boolean

@@ -45,6 +45,7 @@ export const listAssets = assetsApi.listAssets;
 export const listAssetGroups = assetsApi.listAssetGroups;
 export const getAsset = assetsApi.getAsset;
 export const deleteAsset = assetsApi.deleteAsset;
+export const deleteAssetFromProvider = assetsApi.deleteAssetFromProvider;
 
 /**
  * Archive or unarchive an asset.

@@ -21,7 +21,7 @@ import { useFilterPersistence } from '@/hooks/useFilterPersistence';
 import { useViewer } from '@/hooks/useViewer';
 import type { OperationType } from '@/types/operations';
 
-import { deleteAsset, bulkDeleteAssets, uploadAssetToProvider, archiveAsset } from '../lib/api';
+import { deleteAsset, deleteAssetFromProvider, bulkDeleteAssets, uploadAssetToProvider, archiveAsset } from '../lib/api';
 import { assetEvents } from '../lib/assetEvents';
 import { isAssetIngesting } from '../lib/assetUrlResolver';
 import { extractUploadError } from '../lib/uploadActions';
@@ -377,6 +377,38 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     }
   }, [deleteModalAssets, closeDeleteModal, viewerAsset, storeRemoveAsset, closeViewer, toast]);
 
+  // Confirm provider-only deletion from modal (single or batch).
+  // Removes the asset from the provider account but KEEPS the local record,
+  // so the asset stays in the gallery — we refresh it rather than removing it.
+  const confirmDeleteAssetFromProvider = useCallback(async () => {
+    const assets = deleteModalAssets;
+    if (!assets.length) return;
+
+    closeDeleteModal();
+
+    const results = await Promise.allSettled(
+      assets.map((asset) => deleteAssetFromProvider(asset.id)),
+    );
+
+    const failures = results.filter((r) => r.status === 'rejected').length;
+
+    // Refresh the kept assets so any provider-removed state is reflected.
+    await Promise.allSettled(
+      assets.map(async (asset) => {
+        try {
+          const refreshed = await getAsset(asset.id);
+          assetEvents.emitAssetUpdated(refreshed);
+        } catch {
+          // best effort — the card stays as-is if the refetch fails
+        }
+      }),
+    );
+
+    if (failures > 0) {
+      toast.error(`Failed to remove ${failures} asset(s) from provider`);
+    }
+  }, [deleteModalAssets, closeDeleteModal, toast]);
+
   // Cancel deletion
   const cancelDeleteAsset = useCallback(() => {
     closeDeleteModal();
@@ -630,6 +662,7 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     deleteModalAssets,
     deleteModalAsset,
     confirmDeleteAsset,
+    confirmDeleteAssetFromProvider,
     cancelDeleteAsset,
   };
 }

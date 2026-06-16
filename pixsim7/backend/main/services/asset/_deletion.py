@@ -11,11 +11,13 @@ from typing import TYPE_CHECKING, Any, Dict
 
 from sqlalchemy import select, func
 
+from datetime import datetime, timezone
+
 from pixsim7.backend.main.domain import Asset, User
 from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.errors import InvalidOperationError
 from pixsim7.backend.main.infrastructure.events.bus import event_bus
-from pixsim7.backend.main.services.asset.events import ASSET_DELETED
+from pixsim7.backend.main.services.asset.events import ASSET_DELETED, ASSET_UPDATED
 from pixsim_logging import get_logger
 
 if TYPE_CHECKING:
@@ -172,6 +174,70 @@ class AssetDeletionMixin:
                 "asset_id": asset_id,
                 "user_id": asset_owner_id,
                 "deleted_by_user_id": deleted_by_user_id,
+            })
+
+        return {
+            "asset_id": asset_id,
+            "post_commit_cleanup": _post_commit_cleanup,
+        }
+
+    async def delete_asset_from_provider_only(self, asset_id: int, user: User) -> Dict[str, Any]:
+        """
+        Delete an asset's remote copy on the provider while KEEPING the local
+        record and files intact.
+
+        Used when the user wants to free space on their provider account (e.g.
+        Pixverse) but keep the asset in their local library. This is the third
+        delete mode alongside local-only and local+provider.
+
+        Records a `provider_removed` marker in media_metadata so the state stays
+        honest (provider_id / provider_asset_id are NOT-NULL columns and are left
+        in place for history). Returns a dict with asset_id and a
+        `post_commit_cleanup` coroutine that runs the best-effort provider
+        deletion in a background task.
+        """
+        asset = await self.get_asset_for_user(asset_id, user)
+
+        if not asset.provider_id or not asset.provider_asset_id:
+            raise InvalidOperationError("Asset has no provider copy to delete")
+
+        # Snapshot for the background provider deletion.
+        provider_id = asset.provider_id
+        provider_asset_id = asset.provider_asset_id
+        provider_account_id = asset.provider_account_id
+        media_type = asset.media_type
+        media_metadata = asset.media_metadata
+        asset_owner_id = asset.user_id
+
+        if not provider_account_id:
+            raise InvalidOperationError("Asset has no provider account to delete from")
+
+        # Record an honest marker: the local record stays, but the provider copy
+        # is being removed. Reassign the dict so SQLAlchemy sees the JSON change.
+        meta = dict(asset.media_metadata or {})
+        meta["provider_removed"] = True
+        meta["provider_removed_at"] = datetime.now(timezone.utc).isoformat()
+        asset.media_metadata = meta
+        self.db.add(asset)
+        await self.db.commit()
+
+        deleted_by_user_id = resolve_effective_user_id(user)
+
+        async def _post_commit_cleanup():
+            """Best-effort provider deletion that runs after the response is sent."""
+            await self._delete_from_provider_by_snapshot(
+                asset_id=asset_id,
+                provider_id=provider_id,
+                provider_asset_id=provider_asset_id,
+                provider_account_id=provider_account_id,
+                media_type=media_type,
+                media_metadata=media_metadata,
+            )
+
+            await event_bus.publish(ASSET_UPDATED, {
+                "asset_id": asset_id,
+                "user_id": asset_owner_id,
+                "updated_by_user_id": deleted_by_user_id,
             })
 
         return {

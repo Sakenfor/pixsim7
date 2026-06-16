@@ -683,9 +683,16 @@ async def set_signal_override(
             signal_metrics["user_override"] = request.override
         meta["signal_metrics"] = signal_metrics
         asset.media_metadata = meta
+        # Keep the denormalized mirror column in sync (dashboard aggregates it).
+        asset.signal_override = request.override
         # SQLAlchemy mutation tracking on JSON columns: reassign to trigger update.
         db.add(asset)
         await db.commit()
+        # Bust the cached coverage snapshot so the override shows on next open.
+        from pixsim7.backend.main.services.asset.signal_stats_cache import (
+            invalidate_signal_stats_cache,
+        )
+        await invalidate_signal_stats_cache(db)
         return SignalOverrideResponse(id=asset.id, override=request.override)
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Asset not found")

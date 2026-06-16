@@ -250,6 +250,7 @@ export { AssetPickerField, type AssetPickerFieldProps } from './components/picke
 export {
   bulkDeleteAssets,
   deleteAsset,
+  deleteAssetFromProvider,
   uploadAssetToProvider,
   getAsset,
   getFilterMetadata,

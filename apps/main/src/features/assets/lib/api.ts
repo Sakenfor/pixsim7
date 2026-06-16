@@ -3,6 +3,7 @@ export {
   assignTags,
   bulkDeleteAssets,
   deleteAsset,
+  deleteAssetFromProvider,
   downloadAsset,
   extractFrame,
   getAsset,

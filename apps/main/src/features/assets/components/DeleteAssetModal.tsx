@@ -4,7 +4,8 @@
  * Supports single and multi-asset deletion.
  * Provides explicit choice for deletion scope:
  * - Delete locally only (keeps on provider like Pixverse)
- * - Delete from provider too (removes from provider account)
+ * - Delete from provider too (removes locally AND from provider account)
+ * - Delete only on provider (keeps local copy, frees provider-side space)
  */
 
 import { Modal, Button } from '@pixsim7/shared.ui';
@@ -14,12 +15,15 @@ import type { AssetModel } from '../hooks/useAssets';
 export interface DeleteAssetModalProps {
   assets: AssetModel[];
   onConfirm: (deleteFromProvider: boolean) => void;
+  /** Remove only the provider-side copy, keeping the local record. */
+  onConfirmProviderOnly?: () => void;
   onCancel: () => void;
 }
 
 export function DeleteAssetModal({
   assets,
   onConfirm,
+  onConfirmProviderOnly,
   onCancel,
 }: DeleteAssetModalProps) {
   if (assets.length === 0) return null;
@@ -30,6 +34,8 @@ export function DeleteAssetModal({
   const providerLabel = asset.providerId
     ? asset.providerId.charAt(0).toUpperCase() + asset.providerId.slice(1)
     : 'Provider';
+  const hasProvider = assets.some((a) => a.providerId);
+  const showProviderOnly = hasProvider && !!onConfirmProviderOnly;
 
   return (
     <Modal isOpen={true} onClose={onCancel} title={isSingle ? 'Delete Asset' : `Delete ${assets.length} Assets`} size="sm">
@@ -59,6 +65,16 @@ export function DeleteAssetModal({
             Yes + {providerLabel} too
           </Button>
 
+          {showProviderOnly && (
+            <Button
+              onClick={onConfirmProviderOnly}
+              variant="secondary"
+              className="w-full justify-center"
+            >
+              Only on {providerLabel} (keep local)
+            </Button>
+          )}
+
           <Button
             onClick={onCancel}
             variant="ghost"
@@ -69,7 +85,8 @@ export function DeleteAssetModal({
         </div>
 
         <p className="text-xs text-neutral-500 dark:text-neutral-400 text-center">
-          "+ {providerLabel}" also removes from your {providerLabel} account
+          "+ {providerLabel}" also removes from your {providerLabel} account.
+          {showProviderOnly && ` "Only on ${providerLabel}" frees ${providerLabel} space but keeps your local copy.`}
         </p>
       </div>
     </Modal>

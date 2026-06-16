@@ -15,7 +15,9 @@ import {
   useAssetSelectionStore,
   selectedAssetToViewer,
   deleteAsset,
+  deleteAssetFromProvider,
   bulkDeleteAssets,
+  getAsset,
   assetEvents,
   extractUploadError,
 } from '@features/assets';
@@ -123,6 +125,35 @@ export function AssetsRoute() {
       toast.error(extractUploadError(err, 'Failed to delete asset(s)'));
     }
   }, [deleteModalAssets, closeDeleteModal, isViewerOpen, viewerAsset, storeRemoveAsset, closeViewer, toast]);
+
+  // Confirm provider-only deletion: remove from the provider account but KEEP
+  // the local record, so the asset stays in the gallery (we refresh it).
+  const confirmDeleteAssetFromProvider = useCallback(async () => {
+    const assets = deleteModalAssets;
+    if (!assets.length) return;
+
+    closeDeleteModal();
+
+    const results = await Promise.allSettled(
+      assets.map((asset) => deleteAssetFromProvider(asset.id)),
+    );
+    const failures = results.filter((r) => r.status === 'rejected').length;
+
+    await Promise.allSettled(
+      assets.map(async (asset) => {
+        try {
+          const refreshed = await getAsset(asset.id);
+          assetEvents.emitAssetUpdated(refreshed);
+        } catch {
+          // best effort — card stays as-is if the refetch fails
+        }
+      }),
+    );
+
+    if (failures > 0) {
+      toast.error(`Failed to remove ${failures} asset(s) from provider`);
+    }
+  }, [deleteModalAssets, closeDeleteModal, toast]);
 
   // Panel settings (must be before any conditional returns)
   const panelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
@@ -439,6 +470,7 @@ export function AssetsRoute() {
         <DeleteAssetModal
           assets={deleteModalAssets}
           onConfirm={confirmDeleteAsset}
+          onConfirmProviderOnly={confirmDeleteAssetFromProvider}
           onCancel={closeDeleteModal}
         />
       )}
