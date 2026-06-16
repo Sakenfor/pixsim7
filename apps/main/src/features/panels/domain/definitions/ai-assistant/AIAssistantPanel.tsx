@@ -1276,6 +1276,153 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 }
 
 // =============================================================================
+// Chat search — match a tab against a query across its metadata (label /
+// subtitle / plan) and its message bodies, producing highlightable snippets.
+// Shared by the sidebar list filter and the main-pane results view.
+// =============================================================================
+
+type ChatSearchField = 'title' | 'subtitle' | 'plan';
+
+interface ChatSearchSnippet {
+  role: string;
+  text: string;
+}
+
+interface ChatSearchMatch {
+  tab: ChatTab;
+  fields: ChatSearchField[];
+  snippets: ChatSearchSnippet[];
+  /** Total hits (metadata fields + message occurrences) — used for ranking. */
+  count: number;
+}
+
+/** Build a trimmed excerpt around the first occurrence of `q` in `text`. */
+function makeSnippet(text: string, q: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  const idx = flat.toLowerCase().indexOf(q);
+  if (idx < 0) return flat.slice(0, 120);
+  const start = Math.max(0, idx - 40);
+  const end = Math.min(flat.length, idx + q.length + 80);
+  let s = flat.slice(start, end);
+  if (start > 0) s = '…' + s;
+  if (end < flat.length) s = s + '…';
+  return s;
+}
+
+/** Returns a match descriptor, or null if the query matches nothing in `tab`. */
+function matchChatTab(
+  tab: ChatTab,
+  messages: ReadonlyArray<{ role: string; text: string }>,
+  q: string,
+): ChatSearchMatch | null {
+  const fields: ChatSearchField[] = [];
+  if (tab.label.toLowerCase().includes(q)) fields.push('title');
+  if (tab.subtitle?.toLowerCase().includes(q)) fields.push('subtitle');
+  if (tabPrimaryPlanId(tab)?.toLowerCase().includes(q)) fields.push('plan');
+
+  let count = fields.length;
+  const snippets: ChatSearchSnippet[] = [];
+  for (const m of messages) {
+    if (!m.text) continue;
+    const hits = m.text.toLowerCase().split(q).length - 1;
+    if (hits <= 0) continue;
+    count += hits;
+    if (snippets.length < 3) snippets.push({ role: m.role, text: makeSnippet(m.text, q) });
+  }
+
+  if (fields.length === 0 && snippets.length === 0) return null;
+  return { tab, fields, snippets, count };
+}
+
+/** Render `text` with case-insensitive occurrences of `query` highlighted. */
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  if (!query) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const q = query.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+  while (i < text.length) {
+    const idx = lower.indexOf(q, i);
+    if (idx < 0) { parts.push(text.slice(i)); break; }
+    if (idx > i) parts.push(text.slice(i, idx));
+    parts.push(
+      <mark key={key++} className="bg-accent/30 text-th rounded-sm px-0.5">
+        {text.slice(idx, idx + q.length)}
+      </mark>,
+    );
+    i = idx + q.length;
+  }
+  return <>{parts}</>;
+}
+
+const ROLE_PREFIX: Record<string, string> = { user: 'You', assistant: 'AI', error: 'Error', system: 'System' };
+
+// Main-pane results view: lists matched chats with the matching fields + the
+// message excerpts that hit, so a search surfaces *what* was found, not just
+// *which* tabs survived a filter. Clicking a result opens that chat.
+function ChatSearchResults({ results, query, profiles, activeTabId, onOpen }: {
+  results: ChatSearchMatch[];
+  query: string;
+  profiles: UnifiedProfile[];
+  activeTabId: string | null;
+  onOpen: (tabId: string) => void;
+}) {
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <div className="shrink-0 px-3 py-2 border-b border-th text-[11px] text-th-secondary flex items-center gap-1.5">
+        <Icon name="search" size={12} className="text-th-muted" />
+        {results.length === 0
+          ? <span>No chats match “{query}”</span>
+          : <span>{results.length} chat{results.length === 1 ? '' : 's'} matching “{query}”</span>}
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+        {results.map((r) => {
+          const profile = profiles.find((p) => p.id === r.tab.profileId);
+          const icon = resolveProfileIcon(r.tab.engine, r.tab.icon || profile?.icon);
+          return (
+            <button
+              key={r.tab.id}
+              type="button"
+              onClick={() => onOpen(r.tab.id)}
+              className={`w-full text-left rounded-lg border px-2.5 py-2 transition-colors ${
+                r.tab.id === activeTabId ? 'border-accent bg-accent-subtle' : 'border-th hover:bg-surface-secondary'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <EngineProfileIcon engine={r.tab.engine} icon={icon} size={12} />
+                <span className="text-[12px] font-medium text-th truncate flex-1">
+                  <HighlightedText text={r.tab.label} query={query} />
+                </span>
+                <span className="text-[9px] text-th-muted shrink-0">{r.count} hit{r.count === 1 ? '' : 's'}</span>
+              </div>
+              {(r.fields.length > 0 || r.tab.subtitle) && (
+                <div className="flex flex-wrap items-center gap-1 mt-1">
+                  {r.fields.map((f) => (
+                    <span key={f} className="text-[8px] uppercase tracking-wide px-1 py-0.5 rounded bg-surface-secondary text-th-muted">{f}</span>
+                  ))}
+                  {r.tab.subtitle && (
+                    <span className="text-[9px] text-th-muted truncate max-w-[160px]">
+                      <HighlightedText text={r.tab.subtitle} query={query} />
+                    </span>
+                  )}
+                </div>
+              )}
+              {r.snippets.map((s, i) => (
+                <div key={i} className="text-[10px] text-th-secondary leading-snug pl-2 border-l border-th/50 mt-1">
+                  <span className="text-th-muted mr-1">{ROLE_PREFIX[s.role] ?? s.role}:</span>
+                  <HighlightedText text={s.text} query={query} />
+                </div>
+              ))}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
 // Main Component
 // =============================================================================
 
@@ -1456,6 +1603,30 @@ export function AIAssistantPanel() {
     if (searchOpen) searchInputRef.current?.focus();
   }, [searchOpen]);
 
+  // Derive the matches (and the set of surviving tab ids) from the current
+  // query. Both are null when there's no active query, which lets the sidebar
+  // show every tab (matchedTabIds) and the content area fall back to the active
+  // chat (searchResults). Matching reads a snapshot of messagesByTab via
+  // getState() rather than subscribing, so streaming tokens don't re-render the
+  // whole panel on every frame; results refresh when the query (or tab set)
+  // changes. Note: tabs whose messages haven't been lazily loaded yet only
+  // match on metadata (label / subtitle / plan), not message bodies.
+  const { searchResults, matchedTabIds } = useMemo<{
+    searchResults: ChatSearchMatch[] | null;
+    matchedTabIds: Set<string> | null;
+  }>(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return { searchResults: null, matchedTabIds: null };
+    const messagesByTab = store.getState().messagesByTab;
+    const matches: ChatSearchMatch[] = [];
+    for (const tab of tabs) {
+      const match = matchChatTab(tab, messagesByTab[tab.id] ?? EMPTY_CHAT_MESSAGES, q);
+      if (match) matches.push(match);
+    }
+    matches.sort((a, b) => b.count - a.count);
+    return { searchResults: matches, matchedTabIds: new Set(matches.map((m) => m.tab.id)) };
+  }, [tabs, searchQuery, store]);
+
   // Auto-create a tab if none exist.
   //
   // Gated on `!tabsLoading` so we don't fire during the initial poll, and on
@@ -1553,19 +1724,10 @@ export function AIAssistantPanel() {
   // membership is surfaced in the chat header, never by duplicating the
   // tab here. See plan-participant-liveness / unify-tab-plan-categorization.
   const { planGroups, ungroupedTabs } = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    const matches = (tab: ChatTab) => {
-      if (!q) return true;
-      return (
-        tab.label.toLowerCase().includes(q) ||
-        (tab.subtitle?.toLowerCase().includes(q) ?? false) ||
-        (tabPrimaryPlanId(tab)?.toLowerCase().includes(q) ?? false)
-      );
-    };
     const byPlan = new Map<string, ChatTab[]>();
     const ungrouped: ChatTab[] = [];
     for (const tab of tabs) {
-      if (!matches(tab)) continue;
+      if (matchedTabIds && !matchedTabIds.has(tab.id)) continue;
       const primaryPlanId = tabPrimaryPlanId(tab);
       if (primaryPlanId) {
         const group = byPlan.get(primaryPlanId) ?? [];
@@ -1579,7 +1741,7 @@ export function AIAssistantPanel() {
       planGroups: Array.from(byPlan.entries()).map(([planId, items]) => ({ planId, items })),
       ungroupedTabs: ungrouped,
     };
-  }, [tabs, searchQuery]);
+  }, [tabs, matchedTabIds]);
 
   const commitRename = useCallback((tabId: string, value: string) => {
     const trimmed = value.trim();
@@ -1834,9 +1996,17 @@ export function AIAssistantPanel() {
         </div>
       </SidebarPaneShell>
 
-      {/* Chat content area */}
+      {/* Chat content area — search results take over while a query is active. */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        {activeTab ? (
+        {searchResults ? (
+          <ChatSearchResults
+            results={searchResults}
+            query={searchQuery.trim()}
+            profiles={profiles}
+            activeTabId={activeTabId}
+            onOpen={(id) => { setActiveTab(id); setSearchOpen(false); setSearchQuery(''); }}
+          />
+        ) : activeTab ? (
           <TabChatView
             key={activeTab.id}
             tab={activeTab}
