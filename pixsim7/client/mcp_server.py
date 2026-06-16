@@ -868,14 +868,14 @@ _ASK_USER_TOOL = types.Tool(
             "timeout_s": {
                 "type": "integer",
                 "description": (
-                    "Seconds to wait for the user before timing out (default 120, "
-                    "range 10-3600). A timeout is NOT a refusal — set this higher "
-                    "(e.g. 600+) when the user may be away from the screen (mobile) "
+                    "Seconds to wait for the user before timing out (default 300, "
+                    "range 10-7200). A timeout is NOT a refusal — set this higher "
+                    "(e.g. 1800+) when the user may be away from the screen (mobile) "
                     "or the question can wait."
                 ),
-                "default": 120,
+                "default": 300,
                 "minimum": 10,
-                "maximum": 3600,
+                "maximum": 7200,
             },
         },
         "required": ["title"],
@@ -1541,12 +1541,15 @@ async def _handle_ask_user(arguments: dict[str, Any]) -> list[types.TextContent]
 
     # Caller-tunable wait. Clamp to a sane range; the agent sizes this to the
     # question (long for "user may be on mobile / away", short for trivial
-    # gates). 120s is the historical default for back-compat.
+    # gates). The default is generous — unlike a CLI prompt the user may not be
+    # looking at the panel, and a timeout here is not a refusal — so 5 min gives
+    # them room to notice the nudge and answer. Agents can extend up to 2h when
+    # the user is expected to be away.
     try:
-        timeout_s = int(arguments.get("timeout_s", 120) or 120)
+        timeout_s = int(arguments.get("timeout_s", 300) or 300)
     except (TypeError, ValueError):
-        timeout_s = 120
-    timeout_s = max(10, min(timeout_s, 3600))
+        timeout_s = 300
+    timeout_s = max(10, min(timeout_s, 7200))
 
     payload: dict[str, Any] = {
         "title": title,
@@ -1582,6 +1585,12 @@ async def _handle_ask_user(arguments: dict[str, Any]) -> list[types.TextContent]
             # Return the response based on interaction type
             if interaction_type == "choice":
                 choice = data.get("choice", "")
+                # Freeform escape hatch: the UI may let the user write a custom
+                # answer instead of picking an offered option (mirrors the CLI's
+                # "Other" choice). When that happens no choice id is returned —
+                # surface the free text instead of an empty selection.
+                if not choice and data.get("text"):
+                    return [types.TextContent(type="text", text=f"User responded (custom): {data['text']}")]
                 label = choice
                 if choices:
                     match = next((c for c in choices if c.get("id") == choice), None)
