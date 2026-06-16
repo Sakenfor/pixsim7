@@ -29,6 +29,12 @@ def test_upper_and_lower() -> None:
     assert apply_transform("lower", "CAT") == "cat"
 
 
+def test_flank_wraps_each_char_with_lowercase() -> None:
+    assert apply_transform("flank", "AB") == "aAa___bBb"
+    # Separator is overridable via the arg.
+    assert apply_transform("flank:-", "AB") == "aAa-bBb"
+
+
 def test_unknown_or_empty_spec_is_noop() -> None:
     assert apply_transform("nope", "cat") == "cat"
     assert apply_transform("", "cat") == "cat"
@@ -38,6 +44,7 @@ def test_unknown_or_empty_spec_is_noop() -> None:
 def test_is_known_transform() -> None:
     assert is_known_transform("spaced:__") is True
     assert is_known_transform("UPPER") is True
+    assert is_known_transform("flank") is True
     assert is_known_transform("bogus") is False
 
 

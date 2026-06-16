@@ -22,11 +22,22 @@ const spaced: TransformFn = (value, arg) => {
 const upper: TransformFn = (value) => value.toUpperCase();
 const lower: TransformFn = (value) => value.toLowerCase();
 
+// Wrap each character with its lowercase on both sides, joined by `arg`
+// (default '___'): 'AB' -> 'aAa___bBb'.
+const flank: TransformFn = (value, arg) => {
+  const separator = arg !== null && arg !== '' ? arg : '___';
+  return value
+    .split('')
+    .map((c) => `${c.toLowerCase()}${c}${c.toLowerCase()}`)
+    .join(separator);
+};
+
 /** id → fn. Seed set; extend here (and in the Python mirror) to add transforms. */
 export const TRANSFORMS: Record<string, TransformFn> = {
   spaced,
   upper,
   lower,
+  flank,
 };
 
 /** Split a spec into `[id, arg]`; arg is null when absent. */
@@ -81,6 +92,14 @@ export const TRANSFORM_OPTIONS: TransformOption[] = [
   },
   { id: 'upper', label: 'UPPER' },
   { id: 'lower', label: 'lower' },
+  {
+    id: 'flank',
+    label: 'Flank',
+    takesArg: true,
+    argLabel: 'Separator',
+    argPlaceholder: '___',
+    argDefault: '___',
+  },
 ];
 
 /** Build a spec string from a picker selection; null when no transform is chosen. */

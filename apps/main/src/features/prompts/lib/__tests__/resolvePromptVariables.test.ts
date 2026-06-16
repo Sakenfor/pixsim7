@@ -101,6 +101,10 @@ describe('resolvePromptVariables transforms', () => {
     expect(resolvePromptVariables('THEME', {}, { THEME: 'spaced:__' })).toBe('T__H__E__M__E');
   });
 
+  it('applies the flank transform (parity with backend)', () => {
+    expect(resolvePromptVariables('AB', {}, { AB: 'flank' })).toBe('aAa___bBb');
+  });
+
   it('prefers the value over the name when both could apply', () => {
     expect(resolvePromptVariables('THEME', { THEME: 'noir' }, { THEME: 'upper' })).toBe('NOIR');
   });

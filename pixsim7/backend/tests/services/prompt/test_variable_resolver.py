@@ -98,6 +98,11 @@ def test_transform_without_value_transforms_the_name() -> None:
     assert out == "T__H__E__M__E"
 
 
+def test_flank_transform_on_name() -> None:
+    out = resolve_prompt_variables("AB", {}, transforms={"AB": "flank"})
+    assert out == "aAa___bBb"
+
+
 def test_value_takes_precedence_over_name_for_transform() -> None:
     # With a value, the transform acts on the value, not the name.
     out = resolve_prompt_variables("THEME", {"THEME": "noir"}, transforms={"THEME": "upper"})

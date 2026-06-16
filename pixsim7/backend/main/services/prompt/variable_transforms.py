@@ -38,11 +38,19 @@ def _lower(value: str, _arg: Optional[str]) -> str:
     return value.lower()
 
 
+def _flank(value: str, arg: Optional[str]) -> str:
+    """Wrap each character with its lowercase on both sides, joined by ``arg``
+    (default ``___``): ``"AB"`` -> ``"aAa___bBb"``."""
+    separator = arg if arg is not None and arg != "" else "___"
+    return separator.join(f"{c.lower()}{c}{c.lower()}" for c in value)
+
+
 # id -> fn. Seed set; extend here (and in the TS mirror) to add transforms.
 TRANSFORMS: dict[str, TransformFn] = {
     "spaced": _spaced,
     "upper": _upper,
     "lower": _lower,
+    "flank": _flank,
 }
 
 
