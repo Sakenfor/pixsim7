@@ -1882,6 +1882,10 @@ async def list_chat_sessions(
                 "last_plan_id": s.last_plan_id,
                 "last_contract_id": s.last_contract_id,
                 "label": s.label,
+                # Agent-set identity mirrored from the tab — lets the resume
+                # picker show the same glyph/subtitle the tab had when live.
+                "icon": s.icon,
+                "subtitle": s.subtitle,
                 "message_count": s.message_count,
                 "source": getattr(s, "source", None),
                 "last_used_at": s.last_used_at.isoformat(),
@@ -1946,6 +1950,8 @@ async def get_chat_session(
         "profile_id": session.profile_id,
         "scope_key": session.scope_key,
         "label": session.label,
+        "icon": session.icon,
+        "subtitle": session.subtitle,
         "message_count": session.message_count,
         "messages": session.messages,
         "source": session_source,

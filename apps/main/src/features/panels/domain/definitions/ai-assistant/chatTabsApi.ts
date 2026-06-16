@@ -169,6 +169,9 @@ export interface OrphanSession {
   id: string;
   engine: string;
   label: string;
+  /** Agent-set identity mirrored from the (closed) tab — see `ServerChatTab`. */
+  icon: string | null;
+  subtitle: string | null;
   profileId: string | null;
   scopeKey: string | null;
   lastPlanId: string | null;

@@ -42,7 +42,7 @@ from fastapi import HTTPException
 from pixsim7.backend.main.api.v1 import chat_tabs as ct
 from pixsim7.backend.main.api.v1.plans import helpers as _h
 from pixsim7.backend.main.domain.docs.models import PlanParticipant
-from pixsim7.backend.main.domain.platform.agent_profile import ChatTab
+from pixsim7.backend.main.domain.platform.agent_profile import ChatSession, ChatTab
 
 
 def _principal(
@@ -84,6 +84,15 @@ def _tab(
     )
 
 
+def _session(
+    sid: str,
+    *,
+    icon: Optional[str] = None,
+    subtitle: Optional[str] = None,
+) -> ChatSession:
+    return ChatSession(id=sid, user_id=1, label="Sess", icon=icon, subtitle=subtitle)
+
+
 def _builder(user_id: int, *, meta: Optional[dict]) -> PlanParticipant:
     now = datetime.now(timezone.utc)
     return PlanParticipant(
@@ -104,14 +113,23 @@ class _FakeDB:
     """``get`` by (model, key); ``execute`` returns a fixed row set with
     both ``.scalars().first()`` and ``.scalars().all()``."""
 
-    def __init__(self, *, tabs: Optional[List[ChatTab]] = None, rows: Optional[List[Any]] = None):
+    def __init__(
+        self,
+        *,
+        tabs: Optional[List[ChatTab]] = None,
+        rows: Optional[List[Any]] = None,
+        sessions: Optional[List[ChatSession]] = None,
+    ):
         self._tabs = {t.id: t for t in (tabs or [])}
+        self._sessions = {s.id: s for s in (sessions or [])}
         self._rows = rows or []
         self.committed = False
 
     async def get(self, model: Any, key: Any) -> Optional[Any]:
         if model is ChatTab:
             return self._tabs.get(key)
+        if model is ChatSession:
+            return self._sessions.get(key)
         return None
 
     async def execute(self, _stmt: Any) -> SimpleNamespace:
@@ -268,6 +286,60 @@ async def test_set_identity_owner_scoped() -> None:
             payload=ct.TabIdentityRequest(icon="x"), user=p, db=db
         )
     assert exc.value.status_code == 403
+
+
+# ── set_self_tab_identity — session mirror (resume parity) ───────────
+
+
+@pytest.mark.asyncio
+async def test_set_identity_mirrors_onto_bound_session() -> None:
+    """Identity is mirrored onto the tab's bound ChatSession so it survives the
+    tab being closed (closing deletes the ChatTab row). The resume picker reads
+    the session copy. Plan ``agent-freeform-tab-identity`` — resume parity."""
+    sess = _session("sess-mirror")
+    tab = _tab(1, session_id="sess-mirror")
+    db = _FakeDB(tabs=[tab], sessions=[sess])
+    p = _principal(1, scope_key=f"tab:{tab.id}")
+    await ct.set_self_tab_identity(
+        payload=ct.TabIdentityRequest(icon="rocket", subtitle="shipping it"),
+        user=p,
+        db=db,
+    )
+    assert tab.icon == "rocket" and tab.subtitle == "shipping it"
+    assert sess.icon == "rocket" and sess.subtitle == "shipping it"
+
+
+@pytest.mark.asyncio
+async def test_set_identity_mirror_respects_partial_and_clear() -> None:
+    """Only the keys present in the payload mirror — icon-only leaves the
+    session subtitle untouched; an explicit null clears the session copy too."""
+    sess = _session("sess-partial", icon="old", subtitle="keep")
+    tab = _tab(1, session_id="sess-partial", icon="old", subtitle="keep")
+    db = _FakeDB(tabs=[tab], sessions=[sess])
+    p = _principal(1, scope_key=f"tab:{tab.id}")
+    await ct.set_self_tab_identity(
+        payload=ct.TabIdentityRequest(icon="bug"), user=p, db=db
+    )
+    assert sess.icon == "bug" and sess.subtitle == "keep"  # subtitle untouched
+
+    await ct.set_self_tab_identity(
+        payload=ct.TabIdentityRequest(icon=None), user=p, db=db
+    )
+    assert sess.icon is None and sess.subtitle == "keep"  # null clears icon only
+
+
+@pytest.mark.asyncio
+async def test_set_identity_unbound_tab_skips_mirror() -> None:
+    """A tab with no bound session writes its own identity and simply skips the
+    mirror (no crash, no session lookup needed)."""
+    tab = _tab(1, session_id=None)
+    db = _FakeDB(tabs=[tab])
+    p = _principal(1, scope_key=f"tab:{tab.id}")
+    resp = await ct.set_self_tab_identity(
+        payload=ct.TabIdentityRequest(icon="flask"), user=p, db=db
+    )
+    assert tab.icon == "flask"
+    assert resp.icon == "flask"
 
 
 # ── maybe_tab_identity_nudge — gating ────────────────────────────────

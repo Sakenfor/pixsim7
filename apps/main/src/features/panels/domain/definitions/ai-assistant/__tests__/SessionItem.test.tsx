@@ -30,6 +30,7 @@ function makeTab(overrides: Partial<ChatTab> = {}): ChatTab {
     profileId: 'p1',
     engine: 'claude',
     modelOverride: null,
+    reasoningEffortOverride: null,
     usePersona: true,
     customInstructions: '',
     focusAreas: [],

@@ -92,6 +92,21 @@ interface ChatTab {
   profileId: string | null;
   engine: AgentEngine;
   modelOverride: string | null;
+  /**
+   * Per-tab reasoning-effort override (low/medium/high; +max claude, +xhigh
+   * codex). Null = use the profile's effort. Sister to `modelOverride`:
+   * client-only pref, sent per-turn as `reasoning_effort`.
+   *
+   * Scope-of-effect (same as `modelOverride`): it lands when a *fresh* session
+   * is spawned — a new tab's first turn, or a not-yet-bound tab. Once a tab is
+   * bound to a live conversation (`sessionId` set), routing goes through
+   * `bridge_session_id` which reuses the running session and does NOT re-apply
+   * effort/model. For Claude this is also a hard platform limit: effort can't
+   * change on a `--resume` (the stored thinking blocks would be replayed under
+   * a changed config → API 400). So mid-conversation switching requires a new
+   * chat; the dropdown is otherwise the per-tab default for the next session.
+   */
+  reasoningEffortOverride: string | null;
   usePersona: boolean;
   customInstructions: string;
   focusAreas: string[];
@@ -212,6 +227,7 @@ interface TabPrefs {
   profileId: string | null;
   engine: AgentEngine;
   modelOverride: string | null;
+  reasoningEffortOverride: string | null;
   usePersona: boolean;
   customInstructions: string;
   focusAreas: string[];
@@ -222,6 +238,7 @@ const DEFAULT_PREFS: TabPrefs = {
   profileId: null,
   engine: 'claude',
   modelOverride: null,
+  reasoningEffortOverride: null,
   usePersona: true,
   customInstructions: '',
   focusAreas: [],
@@ -267,6 +284,7 @@ function extractPrefs(tab: Partial<ChatTab>): TabPrefs {
     profileId: normalizeProfileId(tab.profileId ?? null),
     engine: (tab.engine ?? DEFAULT_PREFS.engine) as AgentEngine,
     modelOverride: tab.modelOverride ?? null,
+    reasoningEffortOverride: tab.reasoningEffortOverride ?? null,
     usePersona: tab.usePersona ?? DEFAULT_PREFS.usePersona,
     customInstructions: tab.customInstructions ?? DEFAULT_PREFS.customInstructions,
     focusAreas: tab.focusAreas ?? DEFAULT_PREFS.focusAreas,
@@ -380,6 +398,7 @@ function deriveTab(server: ServerChatTab, prefs: TabPrefs | undefined): ChatTab 
     profileId,
     engine,
     modelOverride: p.modelOverride,
+    reasoningEffortOverride: p.reasoningEffortOverride,
     usePersona: p.usePersona,
     customInstructions: p.customInstructions,
     focusAreas: p.focusAreas,
@@ -1118,6 +1137,12 @@ export const useAssistantChatStore = hmrSingleton(
         void createTabOptimistic({
           id: tab.id,
           label: tab.label,
+          // Forward the resumed identity so the new ChatTab re-persists it
+          // (it lives on the server row, not in client prefs — the next poll
+          // would otherwise overwrite the local value to null). See
+          // `buildResumedTab` (plan `agent-freeform-tab-identity` resume parity).
+          icon: tab.icon,
+          subtitle: tab.subtitle,
           plan_id: tab.planId,
           session_id: tab.sessionId ?? undefined,
         }).catch((err) => {
@@ -1208,6 +1233,10 @@ export const useAssistantChatStore = hmrSingleton(
         const corePatch: Parameters<typeof updateTabOptimistic>[1] = {};
         if (updates.label !== undefined) corePatch.label = updates.label;
         if (updates.planId !== undefined) corePatch.plan_id = updates.planId;
+        // Agent-set identity is server-core (lives on the ChatTab row, mirrored
+        // to the session). Resume-into-current-tab routes through here.
+        if (updates.icon !== undefined) corePatch.icon = updates.icon;
+        if (updates.subtitle !== undefined) corePatch.subtitle = updates.subtitle;
 
         const currentPrefs = get().tabPrefsByTabId[tabId] ?? DEFAULT_PREFS;
         const prefPatch: Partial<TabPrefs> = {};
@@ -1216,6 +1245,7 @@ export const useAssistantChatStore = hmrSingleton(
         }
         if (updates.engine !== undefined) prefPatch.engine = updates.engine;
         if (updates.modelOverride !== undefined) prefPatch.modelOverride = updates.modelOverride;
+        if (updates.reasoningEffortOverride !== undefined) prefPatch.reasoningEffortOverride = updates.reasoningEffortOverride;
         if (updates.usePersona !== undefined) prefPatch.usePersona = updates.usePersona;
         if (updates.customInstructions !== undefined) {
           prefPatch.customInstructions = updates.customInstructions;
@@ -1516,17 +1546,23 @@ export function buildResumedTab(session: {
   label: string;
   profile_id?: string | null;
   last_plan_id?: string | null;
+  // Agent-set identity persisted on the session (survives tab close). Restored
+  // so a resumed tab looks identical to how it did when live, rather than
+  // falling back to the bare engine glyph / profile label.
+  icon?: string | null;
+  subtitle?: string | null;
 }): ChatTab {
   const profileId = normalizeProfileId(session.profile_id ?? null);
   return {
     id: createTabId(),
     label: session.label || 'Resumed',
-    icon: null,
-    subtitle: null,
+    icon: session.icon ?? null,
+    subtitle: session.subtitle ?? null,
     sessionId: session.id,
     profileId,
     engine: (session.engine || 'claude') as AgentEngine,
     modelOverride: null,
+    reasoningEffortOverride: null,
     usePersona: true,
     customInstructions: '',
     focusAreas: [],

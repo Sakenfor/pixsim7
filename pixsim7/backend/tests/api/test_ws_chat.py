@@ -711,6 +711,64 @@ class TestWsChatMessage:
             f"explicit body.model must win over profile.model_id, got {captured['model']!r}"
         )
 
+    def test_explicit_body_reasoning_effort_wins_over_profile(self):
+        """A per-turn `reasoning_effort` (composer dropdown) overrides the
+        profile's effort. The dispatched payload carries it under
+        `profile_config.reasoning_effort` (the bridge reads it from there).
+        """
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        captured: dict = {}
+
+        async def fake_stream(payload, **kwargs):
+            captured["profile_config"] = payload.get("profile_config")
+            yield {"type": "result", "ok": True, "response": "ok", "bridge_session_id": "s"}
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=7, token="tok")
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        # Profile sets effort=low; explicit body effort=high — explicit wins.
+        resolved_profile = SimpleNamespace(
+            id="profile-claude",
+            system_prompt=None,
+            model_id=None,
+            config=None,
+            reasoning_effort="low",
+        )
+        mock_resolve_profile = AsyncMock(return_value=resolved_profile)
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile", mock_resolve_profile), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", AsyncMock()):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "hello",
+                    "engine": "claude",
+                    "assistant_id": "profile-claude",
+                    "reasoning_effort": "high",  # explicit override
+                }))
+                while True:
+                    msg = json.loads(ws.receive_text())
+                    if msg.get("type") == "result":
+                        break
+
+        effort = (captured.get("profile_config") or {}).get("reasoning_effort")
+        assert effort == "high", (
+            f"explicit body.reasoning_effort must win over profile, got {effort!r}"
+        )
+
     def test_profile_model_id_used_when_body_model_missing(self):
         """Sanity: profile.model_id IS still the default — it just doesn't pin."""
         app = _app()

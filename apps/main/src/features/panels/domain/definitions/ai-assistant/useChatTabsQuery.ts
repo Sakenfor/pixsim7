@@ -90,6 +90,8 @@ export async function createTabOptimistic(
     // row matches the server's shape.
     sessionId: payload.session_id ?? null,
     label: payload.label ?? 'Untitled',
+    icon: payload.icon ?? null,
+    subtitle: payload.subtitle ?? null,
     draft: payload.draft ?? null,
     orderIndex:
       payload.order_index ??
@@ -198,6 +200,8 @@ export async function updateTabOptimistic(
   // Mirror the snake_case PATCH to the camelCase snapshot shape.
   const camelPatch: Partial<ServerChatTab> = {};
   if (payload.label !== undefined) camelPatch.label = payload.label;
+  if (payload.icon !== undefined) camelPatch.icon = payload.icon;
+  if (payload.subtitle !== undefined) camelPatch.subtitle = payload.subtitle;
   if (payload.plan_id !== undefined) camelPatch.planId = payload.plan_id;
   if (payload.scope_key !== undefined) camelPatch.scopeKey = payload.scope_key;
   if (payload.pinned !== undefined) camelPatch.pinned = payload.pinned;

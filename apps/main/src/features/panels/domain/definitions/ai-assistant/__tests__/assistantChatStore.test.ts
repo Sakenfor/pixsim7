@@ -73,6 +73,7 @@ function makeTab(overrides: Partial<ChatTab> = {}): ChatTab {
     profileId: null,
     engine: 'claude',
     modelOverride: null,
+    reasoningEffortOverride: null,
     usePersona: false,
     customInstructions: '',
     focusAreas: [],

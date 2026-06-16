@@ -650,6 +650,12 @@ async def _handle_message(
     model = model_raw.strip() if isinstance(model_raw, str) else model_raw
     if isinstance(model, str) and not model:
         model = None
+    # Per-turn reasoning-effort override (composer dropdown). Wins over the
+    # profile's effort when present — mirrors the per-message `model` override.
+    effort_raw = data.get("reasoning_effort")
+    request_effort = effort_raw.strip().lower() if isinstance(effort_raw, str) else None
+    if not request_effort:
+        request_effort = None
     assistant_id_raw = data.get("assistant_id")
     assistant_id = assistant_id_raw.strip() if isinstance(assistant_id_raw, str) else assistant_id_raw
     if isinstance(assistant_id, str) and assistant_id.lower() in {"unknown", "none", "null"}:
@@ -699,6 +705,12 @@ async def _handle_message(
                 resolved_profile_id = assistant_id
     except Exception:
         pass
+
+    # Per-turn effort override wins over the profile's effort (and applies even
+    # with no profile resolved). The bridge reads `profile_config["reasoning_effort"]`.
+    if request_effort:
+        profile_config = dict(profile_config or {})
+        profile_config["reasoning_effort"] = request_effort
 
     # Engine match: pick a bridge that actually serves the requested engine.
     # Profile agent_type wins (user's actual selection); the tab's `engine`
