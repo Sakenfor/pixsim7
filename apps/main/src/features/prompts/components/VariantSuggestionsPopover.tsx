@@ -68,7 +68,8 @@ function ValueRow({ v, recommended }: { v: VariantValueOutcome; recommended: boo
 /** The popover's inner content, sans the `<Popover>` shell — so it can be
  *  hosted standalone or as a tab inside `RelatedPromptsPopover`. */
 export function VariantSuggestionsBody({ outcomes }: { outcomes: VariantOutcomes }) {
-  const { scope, setScope, slots, totalSlots, loading, error, hasQuery, neighbourCount } = outcomes;
+  const { scope, setScope, slots, totalSlots, loading, error, hasQuery, neighbourCount, armed, triggerSearch } =
+    outcomes;
   const empty = !loading && !error && slots.length === 0;
 
   return (
@@ -81,12 +82,22 @@ export function VariantSuggestionsBody({ outcomes }: { outcomes: VariantOutcomes
               className={loading ? 'animate-spin' : undefined}
             />
             Word variations
-            {neighbourCount > 0 && (
-              <span className="text-[10px] font-normal text-neutral-400 dark:text-neutral-500">
-                · from {neighbourCount} similar
-              </span>
-            )}
-            <div className="ml-auto flex items-center rounded border border-neutral-200 dark:border-neutral-700 overflow-hidden text-[10px]">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => triggerSearch()}
+              disabled={!hasQuery || loading}
+              title="Look for proven word variations in similar prompts"
+              className="ml-auto flex items-center gap-1 rounded bg-accent px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Icon
+                name={loading ? 'refresh' : 'search'}
+                size={10}
+                className={loading ? 'animate-spin' : undefined}
+              />
+              {loading ? 'Searching…' : armed ? 'Search again' : 'Find'}
+            </button>
+            <div className="flex items-center rounded border border-neutral-200 dark:border-neutral-700 overflow-hidden text-[10px]">
               {(['clean', 'all'] as const).map((s) => (
                 <button
                   key={s}
@@ -111,6 +122,7 @@ export function VariantSuggestionsBody({ outcomes }: { outcomes: VariantOutcomes
           </div>
           <div className="mt-1 text-[10px] text-neutral-400 dark:text-neutral-500">
             Filler words ranked by generation success in prompts like this one.
+            {neighbourCount > 0 && ` · from ${neighbourCount} similar`}
           </div>
         </div>
 
@@ -118,6 +130,11 @@ export function VariantSuggestionsBody({ outcomes }: { outcomes: VariantOutcomes
           {!hasQuery && (
             <div className="px-3 py-4 text-center text-[11px] text-neutral-400 dark:text-neutral-500">
               Type a prompt to find proven word variations.
+            </div>
+          )}
+          {hasQuery && !armed && !loading && slots.length === 0 && (
+            <div className="px-3 py-4 text-center text-[11px] text-neutral-400 dark:text-neutral-500">
+              Press “Find” to look for proven word variations.
             </div>
           )}
           {hasQuery && loading && slots.length === 0 && (
@@ -128,7 +145,7 @@ export function VariantSuggestionsBody({ outcomes }: { outcomes: VariantOutcomes
           {hasQuery && !loading && error && (
             <div className="px-3 py-4 text-center text-[11px] text-red-500">{error}</div>
           )}
-          {hasQuery && empty && (
+          {hasQuery && armed && empty && (
             <div className="px-3 py-4 text-center text-[11px] text-neutral-400 dark:text-neutral-500">
               {neighbourCount < 2
                 ? 'Not enough similar prompts to compare.'

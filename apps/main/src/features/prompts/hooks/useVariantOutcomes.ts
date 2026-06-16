@@ -58,6 +58,13 @@ export interface VariantOutcomes {
   hasQuery: boolean;
   /** Neighbour versions the slots were induced from. */
   neighbourCount: number;
+  /**
+   * True once `triggerSearch` ran for the current open session (reset on close).
+   * Opening the tab no longer searches on its own — the user must press Find.
+   */
+  armed: boolean;
+  /** Run the lookup now (the "Find" action). */
+  triggerSearch: () => void;
 }
 
 const inScope = (s: VariantSlot, scope: VariantOutcomesScope): boolean =>
@@ -75,6 +82,7 @@ export function useVariantOutcomes({
   const [neighbourCount, setNeighbourCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [armed, setArmed] = useState(false);
   const reqIdRef = useRef(0);
   // Param key the current results belong to — skips redundant re-fetches when
   // reopening with the same text.
@@ -142,10 +150,18 @@ export function useVariantOutcomes({
     }
   }, [hasQuery, query]);
 
-  // Fetch when opened (debounced); skip if the same text already produced these
-  // results. Closing mid-flight lets the request finish (reqId guards staleness).
+  // Explicit "Find" action. Opening the tab does NOT search on its own — only
+  // this does. Once armed, text changes re-run live (below).
+  const triggerSearch = useCallback(() => {
+    setArmed(true);
+    void run();
+  }, [run]);
+
+  // Once armed, run + re-run (debounced) on text change while open. Skipped when
+  // the current text was already searched. Closing mid-flight lets the request
+  // finish (reqId guards staleness).
   useEffect(() => {
-    if (!open) return;
+    if (!open || !armed) return;
     if (!hasQuery) {
       void run();
       return;
@@ -153,7 +169,24 @@ export function useVariantOutcomes({
     if (fetchedKeyRef.current === query) return;
     const t = setTimeout(() => void run(), DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [open, hasQuery, query, run]);
+  }, [open, armed, hasQuery, query, run]);
+
+  // Reset armed whenever the tab/popover closes, so reopening starts inert.
+  useEffect(() => {
+    if (!open) setArmed(false);
+  }, [open]);
+
+  // On open, surface a previously-computed result instantly (cache hit) without
+  // requiring a fresh Find — mirrors the similar-search "inert but warm" UX.
+  useEffect(() => {
+    if (!open || !hasQuery || fetchedKeyRef.current === query) return;
+    const cached = outcomesCache.get(query);
+    if (cached) {
+      fetchedKeyRef.current = query;
+      setSlots(cached.slots);
+      setNeighbourCount(cached.neighbourCount);
+    }
+  }, [open, hasQuery, query]);
 
   const scoped = slots.filter((s) => inScope(s, scope));
   scoped.sort((a, b) => b.delta - a.delta);
@@ -167,5 +200,7 @@ export function useVariantOutcomes({
     error,
     hasQuery,
     neighbourCount,
+    armed,
+    triggerSearch,
   };
 }
