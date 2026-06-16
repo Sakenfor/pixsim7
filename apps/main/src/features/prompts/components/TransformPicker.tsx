@@ -3,9 +3,11 @@ import clsx from 'clsx';
 import { applyTransform, buildTransformSpec, TRANSFORM_OPTIONS } from '../lib/variableTransforms';
 
 export interface TransformPickerProps {
-  /** Current value text — drives the live preview and gates the control (a
-   *  transform is inert without a value). */
+  /** Current substitution value text — the transform's base when set. */
   previewValue: string;
+  /** Variable name — the transform's base when there is no value (so a
+   *  value-less transform previews against the name, e.g. THEME → T__H__E__M__E). */
+  fallbackText?: string;
   /** Selected transform id ('' = none). */
   transformId: string;
   /** Arg for an arg-taking transform (e.g. the separator for `spaced`). */
@@ -18,16 +20,20 @@ export interface TransformPickerProps {
  * Shared transform selector used by both the token-click VariableEditPopover and
  * the VariableEditModal. Renders the None/transform buttons, an arg input for
  * arg-taking transforms, and a live preview of the result. Seeds the default arg
- * when an arg-taking option is first picked.
+ * when an arg-taking option is first picked. The transform applies to the value
+ * when one is set, otherwise to the variable name (fallbackText).
  */
 export function TransformPicker({
   previewValue,
+  fallbackText = '',
   transformId,
   transformArg,
   onSelect,
   onArgChange,
 }: TransformPickerProps) {
-  const hasValue = previewValue.trim().length > 0;
+  // Base the transform acts on: the value, or the name when there is no value.
+  const base = previewValue.trim() || fallbackText.trim();
+  const hasBase = base.length > 0;
   const selectedOption = TRANSFORM_OPTIONS.find((o) => o.id === transformId);
   const draftSpec = buildTransformSpec(transformId, transformArg);
 
@@ -45,16 +51,16 @@ export function TransformPicker({
       active
         ? 'bg-violet-500 text-white border-violet-500'
         : 'border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
-      !hasValue && 'cursor-not-allowed',
+      !hasBase && 'cursor-not-allowed',
     );
 
   return (
     <div>
       <div className="text-[10px] uppercase tracking-wider text-neutral-400 mb-1">Transform</div>
-      <div className={clsx('flex flex-wrap gap-1', !hasValue && 'opacity-40')}>
+      <div className={clsx('flex flex-wrap gap-1', !hasBase && 'opacity-40')}>
         <button
           type="button"
-          disabled={!hasValue}
+          disabled={!hasBase}
           onClick={() => handleSelect('')}
           className={buttonClass(transformId === '')}
         >
@@ -64,7 +70,7 @@ export function TransformPicker({
           <button
             key={opt.id}
             type="button"
-            disabled={!hasValue}
+            disabled={!hasBase}
             onClick={() => handleSelect(opt.id)}
             className={buttonClass(transformId === opt.id)}
           >
@@ -73,7 +79,7 @@ export function TransformPicker({
         ))}
       </div>
 
-      {hasValue && selectedOption?.takesArg && (
+      {hasBase && selectedOption?.takesArg && (
         <div className="mt-1.5 flex items-center gap-1.5">
           <span className="text-[10px] text-neutral-400">{selectedOption.argLabel}</span>
           <input
@@ -86,12 +92,15 @@ export function TransformPicker({
         </div>
       )}
 
-      {hasValue && draftSpec && (
+      {hasBase && draftSpec && (
         <p className="mt-1.5 text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
           Preview:{' '}
           <span className="font-mono text-neutral-700 dark:text-neutral-200">
-            {applyTransform(draftSpec, previewValue.trim())}
+            {applyTransform(draftSpec, base)}
           </span>
+          {!previewValue.trim() && (
+            <span className="ml-1 not-italic text-neutral-400">(of the name)</span>
+          )}
         </p>
       )}
     </div>

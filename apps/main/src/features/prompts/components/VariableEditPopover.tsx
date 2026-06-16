@@ -56,7 +56,6 @@ export function VariableEditPopover({
   const [transformArg, setTransformArg] = useState(initialArg ?? '');
 
   const draftSpec = buildTransformSpec(transformId, transformArg);
-  const hasValue = draft.trim().length > 0;
 
   const valueDirty = draft.trim() !== (value ?? '').trim();
   const transformDirty = (draftSpec ?? '') !== (transform ?? '');
@@ -128,14 +127,15 @@ export function VariableEditPopover({
           className="w-full resize-y rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-2 py-1 text-xs text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-violet-400"
         />
         <p className="mt-1 text-[10px] text-neutral-400 italic">
-          When set, this text replaces {name} in the generated prompt.
+          When set, this text replaces {name}. Leave empty to transform the name itself.
         </p>
       </div>
 
-      {/* Transform — post-process the resolved value (inert without a value) */}
+      {/* Transform — applied to the value, or to the name when there's no value */}
       <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700">
         <TransformPicker
           previewValue={draft}
+          fallbackText={name}
           transformId={transformId}
           transformArg={transformArg}
           onSelect={setTransformId}
@@ -163,7 +163,7 @@ export function VariableEditPopover({
         )}
         <button
           type="button"
-          onClick={() => onSave(draft, hasValue ? draftSpec : null)}
+          onClick={() => onSave(draft, draftSpec)}
           disabled={saved && !dirty}
           className="flex-1 px-2 py-1 rounded text-xs bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >

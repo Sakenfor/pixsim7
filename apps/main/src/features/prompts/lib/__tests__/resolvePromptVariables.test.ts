@@ -97,20 +97,28 @@ describe('resolvePromptVariables transforms', () => {
     expect(resolvePromptVariables('ACTOR1', { ACTOR1: 'cat' }, { ACTOR1: 'nope' })).toBe('cat');
   });
 
-  it('does not apply a transform when the variable has no value', () => {
-    expect(resolvePromptVariables('ACTOR1', {}, { ACTOR1: 'upper' })).toBe('ACTOR1');
+  it('transforms the name when the variable has no value', () => {
+    expect(resolvePromptVariables('THEME', {}, { THEME: 'spaced:__' })).toBe('T__H__E__M__E');
+  });
+
+  it('prefers the value over the name when both could apply', () => {
+    expect(resolvePromptVariables('THEME', { THEME: 'noir' }, { THEME: 'upper' })).toBe('NOIR');
+  });
+
+  it('leaves a name with neither value nor transform literal', () => {
+    expect(resolvePromptVariables('THEME', {}, {})).toBe('THEME');
   });
 });
 
 describe('buildVariableTransformMap', () => {
-  it('keeps transforms only for valued entries, uppercased', () => {
+  it('keeps transforms for any entry that has one, uppercased', () => {
     expect(
       buildVariableTransformMap([
         { name: 'actor1', value: 'cat', transform: 'spaced:__' },
-        { name: 'GOAL', transform: 'upper' }, // no value → omitted
+        { name: 'GOAL', transform: 'upper' }, // no value → still kept (transforms the name)
         { name: 'SCENE', value: 'x' }, // no transform → omitted
       ]),
-    ).toEqual({ ACTOR1: 'spaced:__' });
+    ).toEqual({ ACTOR1: 'spaced:__', GOAL: 'upper' });
   });
 });
 

@@ -334,7 +334,9 @@ class ProviderService:
         # Inline VAR(value) bindings from the prompt itself win over stored values
         # (tokenizer-gated, so incidental `UPPER (text)` in prose is not a binding).
         inline_values, collapsed = extract_inline_var_values(prompt_text)
-        if not values and not inline_values:
+        # A transform alone (no value) still acts — it transforms the variable's
+        # name — so process when any of values / inline values / transforms exist.
+        if not values and not inline_values and not transforms:
             return
         merged = {**values, **inline_values}
         resolved = resolve_prompt_variables(collapsed, merged, transforms=transforms)

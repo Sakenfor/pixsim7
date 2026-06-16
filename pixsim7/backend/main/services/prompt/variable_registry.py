@@ -211,15 +211,16 @@ def read_prompt_variable_values(preferences: Any) -> dict[str, str]:
 
 
 def read_prompt_variable_transforms(preferences: Any) -> dict[str, str]:
-    """Map of name -> transform spec for valued entries that carry a transform.
+    """Map of name -> transform spec for every entry that carries a transform.
 
-    Feeds the resolver alongside ``read_prompt_variable_values``; only variables
-    with a value can expand, so a transform without a value is omitted (inert).
+    Feeds the resolver alongside ``read_prompt_variable_values``. A transform is
+    applied to the variable's value when one is set, otherwise to its own name —
+    so value-less transforms are included.
     """
     return {
         variable.name: variable.transform
         for variable in read_prompt_variable_entries(preferences)
-        if variable.value and variable.transform
+        if variable.transform
     }
 
 

@@ -92,10 +92,21 @@ def test_unknown_transform_is_a_noop() -> None:
     assert out == "cat"
 
 
-def test_transform_without_value_does_not_apply() -> None:
-    # No value => no expansion => transform never runs (token stays symbolic).
-    out = resolve_prompt_variables("ACTOR1", {}, transforms={"ACTOR1": "upper"})
-    assert out == "ACTOR1"
+def test_transform_without_value_transforms_the_name() -> None:
+    # No value => the transform applies to the variable's own name.
+    out = resolve_prompt_variables("THEME", {}, transforms={"THEME": "spaced:__"})
+    assert out == "T__H__E__M__E"
+
+
+def test_value_takes_precedence_over_name_for_transform() -> None:
+    # With a value, the transform acts on the value, not the name.
+    out = resolve_prompt_variables("THEME", {"THEME": "noir"}, transforms={"THEME": "upper"})
+    assert out == "NOIR"
+
+
+def test_name_without_value_or_transform_stays_literal() -> None:
+    out = resolve_prompt_variables("THEME", {}, transforms={})
+    assert out == "THEME"
 
 
 def test_non_ascii_adjacent_token_is_not_a_whole_token() -> None:

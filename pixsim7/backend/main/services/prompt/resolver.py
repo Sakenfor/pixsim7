@@ -3,8 +3,10 @@
 Replaces uppercase variable tokens (``ACTOR1``, ``ACTOR1_DETAILS``) with their
 bound ``value`` text. Core rules:
 
-* **Expand iff a value is set.** A variable with no value stays a literal
-  symbol (the mini-language). Only names present in the value map expand.
+* **Active iff a value or a transform is set.** A variable with neither stays a
+  literal symbol (the mini-language). A variable with a value expands to it; a
+  variable with only a transform transforms its *own name* (so ``THEME`` with
+  transform ``"spaced:__"`` and no value resolves to ``"T__H__E__M__E"``).
 * **Whole-token match.** Matches complete identifier tokens, so ``ACTOR1`` does
   not match inside ``ACTOR1_DETAILS`` or ``FOO_ACTOR1`` — only the exact token.
 * **Recursive.** A value may reference other variables; resolution recurses with
@@ -44,14 +46,16 @@ def resolve_prompt_variables(
 ) -> str:
     """Resolve variable tokens in ``text`` against ``values`` (name -> value).
 
-    Names absent from ``values`` (or with empty values) are left untouched.
+    Names absent from ``values`` (or with empty values) are left untouched unless
+    they carry a ``transform`` (see below).
 
-    ``transforms`` (name -> transform spec) optionally post-processes an expanded
-    value: the transform is applied to a variable's *fully resolved* text before
-    it is spliced back in (so ``ACTOR1`` value ``"cat"`` + transform ``"spaced:__"``
-    yields ``"c__a__t"``). A name with no transform expands verbatim.
+    ``transforms`` (name -> transform spec) post-processes a variable's resolved
+    text. With a value, the transform applies to the *fully resolved* value
+    (``ACTOR1`` value ``"cat"`` + ``"spaced:__"`` -> ``"c__a__t"``). With only a
+    transform and no value, it applies to the variable's *own name*
+    (``THEME`` + ``"spaced:__"`` -> ``"T__H__E__M__E"``).
     """
-    if not text or not values:
+    if not text:
         return text
 
     value_map = {
@@ -59,19 +63,22 @@ def resolve_prompt_variables(
         for name, value in values.items()
         if isinstance(name, str) and isinstance(value, str) and value
     }
-    if not value_map:
-        return text
-
-    # Longest names first so the alternation prefers ACTOR1_DETAILS over ACTOR1
-    # (token boundaries already prevent prefix matches, but this is defensive).
-    names = sorted(value_map.keys(), key=len, reverse=True)
-    pattern = re.compile(r"(\\)?\b(" + "|".join(re.escape(n) for n in names) + r")\b")
-
     transform_map = {
         name.strip().upper(): spec
         for name, spec in (transforms or {}).items()
         if isinstance(name, str) and isinstance(spec, str) and spec
     }
+
+    # A name is active when it has a value (expands) or a transform (transforms
+    # its own name). Names with neither are left as literal symbols.
+    active_names = set(value_map) | set(transform_map)
+    if not active_names:
+        return text
+
+    # Longest names first so the alternation prefers ACTOR1_DETAILS over ACTOR1
+    # (token boundaries already prevent prefix matches, but this is defensive).
+    names = sorted(active_names, key=len, reverse=True)
+    pattern = re.compile(r"(\\)?\b(" + "|".join(re.escape(n) for n in names) + r")\b")
 
     # Mutable budget shared across the whole (recursive) expansion tree. Once the
     # produced character count crosses the cap, further tokens stay symbolic so a
@@ -88,10 +95,14 @@ def resolve_prompt_variables(
                 return name  # cycle / too deep — leave the symbol in place
             if budget["chars"] >= max_output_chars:
                 return name  # output budget exhausted — stop amplifying
-            resolved = apply_transform(
-                transform_map.get(name),
-                expand(value_map[name], depth + 1, active | {name}),
+            # Base text: the recursively-expanded value, or the name itself for a
+            # transform-only variable (terminal — the name has nothing to expand).
+            base = (
+                expand(value_map[name], depth + 1, active | {name})
+                if name in value_map
+                else name
             )
+            resolved = apply_transform(transform_map.get(name), base)
             budget["chars"] += len(resolved)
             return resolved
 

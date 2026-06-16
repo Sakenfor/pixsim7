@@ -78,8 +78,9 @@ export function VariableEditModal({
     }
     const description = descriptionDraft.trim();
     const value = valueDraft.trim();
-    // A transform is inert without a value, so drop it when the value is empty.
-    const transform = value ? (buildTransformSpec(transformId, transformArg) ?? '') : '';
+    // Transform applies to the value when set, otherwise to the name — so it is
+    // persisted regardless of whether a value is present.
+    const transform = buildTransformSpec(transformId, transformArg) ?? '';
 
     setBusy(true);
     try {
@@ -202,6 +203,7 @@ export function VariableEditModal({
         <div>
           <TransformPicker
             previewValue={valueDraft}
+            fallbackText={nameDraft}
             transformId={transformId}
             transformArg={transformArg}
             onSelect={setTransformId}
