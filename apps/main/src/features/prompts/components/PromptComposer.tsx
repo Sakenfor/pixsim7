@@ -102,13 +102,12 @@ import {
 import { PromptGhostDiff, type GhostDiffSource } from './PromptGhostDiff';
 import { PromptHistoryPopover, type InputPromptEntry } from './PromptHistoryPopover';
 import { PromptToolsPanel, type PromptToolsApplyPayload } from './PromptToolsPanel';
+import { RelatedPromptsPopover, type RelatedPromptsTab } from './RelatedPromptsPopover';
 import { ShadowAnalysisPopover } from './ShadowAnalysisPopover';
 import { ShadowTextarea } from './ShadowTextarea';
 import { RoleBadge } from './shared/RoleBadge';
-import { SimilarPromptsPopover } from './SimilarPromptsPopover';
 import { VariableEditModal } from './VariableEditModal';
 import { VariableEditPopover } from './VariableEditPopover';
-import { VariantSuggestionsPopover } from './VariantSuggestionsPopover';
 
 type PromptComposerMode = 'text' | 'blocks';
 
@@ -433,21 +432,28 @@ export function PromptComposer({
   const showPromptTools = usePromptSettingsStore((state) => state.composerShowTools);
   const setShowPromptTools = usePromptSettingsStore((state) => state.setComposerShowTools);
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
-  const [showSimilar, setShowSimilar] = useState(false);
-  const similarTriggerRef = useRef<HTMLButtonElement>(null);
-  // Owned here (not inside the popover) so the trigger can show search status
-  // and results persist across open/close. See useSimilarPromptsSearch.
-  const similarSearch = useSimilarPromptsSearch({ promptText: value, open: showSimilar });
+  // "Related prompts" — one trigger, two tabs: semantic Similar + Word
+  // variations. Both share the neighbour vector search underneath. State is
+  // owned here (not in the popover) so the trigger reflects status and results
+  // persist across open/close; each hook's `open` is gated on its active tab so
+  // it fetches lazily only when its tab is shown.
+  const [showRelated, setShowRelated] = useState(false);
+  const [relatedTab, setRelatedTab] = useState<RelatedPromptsTab>('similar');
+  const relatedTriggerRef = useRef<HTMLButtonElement>(null);
+  const similarSearch = useSimilarPromptsSearch({
+    promptText: value,
+    open: showRelated && relatedTab === 'similar',
+  });
   const similarBusy = similarSearch.loading;
   const similarCount = !similarSearch.stale && !similarSearch.error ? similarSearch.results.length : 0;
-
-  // "Word variations" — per-word success deltas surfaced from neighbouring
-  // prompts. See useVariantOutcomes / VariantSuggestionsPopover.
-  const [showVariants, setShowVariants] = useState(false);
-  const variantsTriggerRef = useRef<HTMLButtonElement>(null);
-  const variantOutcomes = useVariantOutcomes({ promptText: value, open: showVariants });
+  const variantOutcomes = useVariantOutcomes({
+    promptText: value,
+    open: showRelated && relatedTab === 'variants',
+  });
   const variantBusy = variantOutcomes.loading;
   const variantCount = !variantOutcomes.error ? variantOutcomes.slots.length : 0;
+  const relatedBusy = relatedTab === 'similar' ? similarBusy : variantBusy;
+  const relatedCount = relatedTab === 'similar' ? similarCount : variantCount;
 
   // --- Shadow analysis click popover (CM path) ---
   const [cmShadowPopover, setCmShadowPopover] = useState<{
@@ -2309,68 +2315,32 @@ export function PromptComposer({
         </FloatingToolPanel>
 
         <button
-          ref={similarTriggerRef}
+          ref={relatedTriggerRef}
           type="button"
           disabled={disabled}
-          onClick={() => setShowSimilar((prev) => !prev)}
+          onClick={() => setShowRelated((prev) => !prev)}
           title={
-            similarBusy
-              ? 'Searching for similar prompts…'
-              : similarCount > 0
-                ? `Find similar prompts (semantic) — ${similarCount} match${similarCount === 1 ? '' : 'es'}`
-                : 'Find similar prompts (semantic)'
+            relatedBusy
+              ? 'Finding related prompts…'
+              : 'Related prompts — similar prompts & proven word variations'
           }
           className={clsx(
             'relative p-1 rounded transition-colors',
-            showSimilar
-              ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200'
-              : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
-          )}
-        >
-          <Icon name="analysis" size={14} />
-          {similarBusy ? (
-            <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center">
-              <Icon name="refresh" size={9} className="animate-spin text-accent" />
-            </span>
-          ) : (
-            similarCount > 0 &&
-            !showSimilar && (
-              <span className="absolute -top-1 -right-1 min-w-[13px] h-[13px] px-0.5 flex items-center justify-center rounded-full bg-accent text-[8px] leading-none font-semibold tabular-nums text-white">
-                {similarCount > 9 ? '9+' : similarCount}
-              </span>
-            )
-          )}
-        </button>
-
-        <button
-          ref={variantsTriggerRef}
-          type="button"
-          disabled={disabled}
-          onClick={() => setShowVariants((prev) => !prev)}
-          title={
-            variantBusy
-              ? 'Finding word variations…'
-              : variantCount > 0
-                ? `Word variations — ${variantCount} proven swap${variantCount === 1 ? '' : 's'} nearby`
-                : 'Word variations (success-ranked swaps from similar prompts)'
-          }
-          className={clsx(
-            'relative p-1 rounded transition-colors',
-            showVariants
+            showRelated
               ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200'
               : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
           )}
         >
           <Icon name="sparkles" size={14} />
-          {variantBusy ? (
+          {relatedBusy ? (
             <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center">
               <Icon name="refresh" size={9} className="animate-spin text-accent" />
             </span>
           ) : (
-            variantCount > 0 &&
-            !showVariants && (
+            relatedCount > 0 &&
+            !showRelated && (
               <span className="absolute -top-1 -right-1 min-w-[13px] h-[13px] px-0.5 flex items-center justify-center rounded-full bg-accent text-[8px] leading-none font-semibold tabular-nums text-white">
-                {variantCount > 9 ? '9+' : variantCount}
+                {relatedCount > 9 ? '9+' : relatedCount}
               </span>
             )
           )}
@@ -2968,19 +2938,22 @@ export function PromptComposer({
         defaultTab={historyDefaultTab}
       />
 
-      <SimilarPromptsPopover
-        open={showSimilar}
-        onClose={() => setShowSimilar(false)}
-        anchor={similarTriggerRef.current}
-        triggerRef={similarTriggerRef}
+      <RelatedPromptsPopover
+        open={showRelated}
+        onClose={() => setShowRelated(false)}
+        anchor={relatedTriggerRef.current}
+        triggerRef={relatedTriggerRef}
+        tab={relatedTab}
+        onTabChange={setRelatedTab}
         search={similarSearch}
+        outcomes={variantOutcomes}
         onUse={(text) => onChange(text)}
         onCompare={(otherText, label) => {
           setCompareExtraSource({ id: 'similar', label: label ?? 'Similar prompt', text: otherText });
           setLeftCompareSourceId('current');
           setRightCompareSourceId('similar');
-          setCompareSideBySideAnchor(similarTriggerRef.current);
-          setShowSimilar(false);
+          setCompareSideBySideAnchor(relatedTriggerRef.current);
+          setShowRelated(false);
         }}
         onPromote={(versionIds, title) =>
           promoteFamilyCandidate({ version_ids: versionIds, title })
@@ -2993,16 +2966,8 @@ export function PromptComposer({
             // ignore storage failures — panel just opens on its last tab
           }
           useWorkspaceStore.getState().openFloatingPanel('prompt-library-inspector');
-          setShowSimilar(false);
+          setShowRelated(false);
         }}
-      />
-
-      <VariantSuggestionsPopover
-        open={showVariants}
-        onClose={() => setShowVariants(false)}
-        anchor={variantsTriggerRef.current}
-        triggerRef={variantsTriggerRef}
-        outcomes={variantOutcomes}
       />
 
       <Popover

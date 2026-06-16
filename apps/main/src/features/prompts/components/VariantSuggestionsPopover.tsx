@@ -65,27 +65,13 @@ function ValueRow({ v, recommended }: { v: VariantValueOutcome; recommended: boo
   );
 }
 
-export function VariantSuggestionsPopover({
-  open,
-  onClose,
-  anchor,
-  triggerRef,
-  outcomes,
-}: VariantSuggestionsPopoverProps) {
+/** The popover's inner content, sans the `<Popover>` shell — so it can be
+ *  hosted standalone or as a tab inside `RelatedPromptsPopover`. */
+export function VariantSuggestionsBody({ outcomes }: { outcomes: VariantOutcomes }) {
   const { scope, setScope, slots, totalSlots, loading, error, hasQuery, neighbourCount } = outcomes;
   const empty = !loading && !error && slots.length === 0;
 
   return (
-    <Popover
-      open={open}
-      onClose={onClose}
-      anchor={anchor}
-      triggerRef={triggerRef}
-      placement="bottom"
-      align="end"
-      offset={6}
-      className="w-[360px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl"
-    >
       <div className="flex flex-col max-h-[60vh]">
         <div className="px-3 pt-2 pb-1.5 border-b border-neutral-200 dark:border-neutral-700">
           <div className="flex items-center gap-1.5 text-[11px] font-medium text-neutral-600 dark:text-neutral-300">
@@ -186,6 +172,29 @@ export function VariantSuggestionsPopover({
           ))}
         </div>
       </div>
+  );
+}
+
+/** Standalone popover: the `VariantSuggestionsBody` in its own `<Popover>` shell. */
+export function VariantSuggestionsPopover({
+  open,
+  onClose,
+  anchor,
+  triggerRef,
+  outcomes,
+}: VariantSuggestionsPopoverProps) {
+  return (
+    <Popover
+      open={open}
+      onClose={onClose}
+      anchor={anchor}
+      triggerRef={triggerRef}
+      placement="bottom"
+      align="end"
+      offset={6}
+      className="w-[360px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl"
+    >
+      <VariantSuggestionsBody outcomes={outcomes} />
     </Popover>
   );
 }
