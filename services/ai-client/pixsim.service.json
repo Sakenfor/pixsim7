@@ -34,9 +34,18 @@
       "key": "pool_size",
       "type": "number",
       "label": "Pool Size",
-      "description": "Number of parallel CLI sessions",
+      "description": "Number of parallel CLI sessions started up front (the pool grows on demand up to Max Sessions).",
       "default": 1,
       "arg_map": "--pool-size",
+      "section": "Pool"
+    },
+    {
+      "key": "max_sessions",
+      "type": "number",
+      "label": "Max Sessions",
+      "description": "Hard ceiling on concurrent CLI sessions the pool may grow to on demand. Also raises the backend's per-bridge concurrency gate — i.e. how many tasks one bridge accepts before it reports 'bridge client is busy'.",
+      "default": 10,
+      "arg_map": "--max-sessions",
       "section": "Pool"
     },
     {

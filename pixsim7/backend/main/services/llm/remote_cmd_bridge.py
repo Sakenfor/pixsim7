@@ -594,6 +594,14 @@ class RemoteCommandBridge:
             return
         agent.pool_status = status
 
+        # The bridge's reported session ceiling (driven by the ai-client "Max
+        # Sessions" pool setting) IS the real per-bridge concurrency capacity.
+        # Track it as the server-side gate so "bridge client is busy" reflects
+        # what the bridge can actually run, not a hardcoded default.
+        max_sessions = status.get("max_sessions") if isinstance(status, dict) else None
+        if isinstance(max_sessions, int) and max_sessions > 0:
+            agent.max_concurrent = max_sessions
+
         active_tasks = status.get("active_tasks") if isinstance(status, dict) else None
         if isinstance(active_tasks, list):
             for entry in active_tasks:

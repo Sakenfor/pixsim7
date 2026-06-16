@@ -50,6 +50,7 @@ def _cmd_bridge(args, extra_args: list[str]) -> None:
     print(f"  Scope:      {_scope_label}")
     print(f"  Engines:    {', '.join(detected)}")
     print(f"  Pool size:  {args.pool_size}")
+    print(f"  Max sessions: {args.max_sessions}")
     print(f"  Timeout:    {args.timeout}s")
     if resume:
         print(f"  Resume:     {resume}")
@@ -59,6 +60,7 @@ def _cmd_bridge(args, extra_args: list[str]) -> None:
 
     pool = AgentPool(
         pool_size=args.pool_size,
+        max_sessions=args.max_sessions,
         extra_args=extra_args,
         engines=engines,
         command=args.claude_command,
@@ -172,6 +174,7 @@ def main() -> None:
     parser.add_argument("--url", default="ws://localhost:8000/api/v1/ws/agent-cmd", help="Backend WebSocket URL")
     parser.add_argument("--engines", default=None, help="Comma-separated agent engines (default: auto-detect). E.g. claude,codex")
     parser.add_argument("--pool-size", type=int, default=1, help="Number of parallel sessions for the primary engine (default: 1)")
+    parser.add_argument("--max-sessions", type=int, default=10, help="Hard ceiling on concurrent CLI sessions the pool may grow to on demand. Also drives the backend's per-bridge concurrency gate (default: 10)")
     parser.add_argument("--timeout", type=int, default=120, help="Task execution timeout in seconds (default: 120)")
     parser.add_argument("--claude-command", default="claude", help="[deprecated] Use --engines instead. Claude CLI executable path.")
     parser.add_argument("--resume-session", default=None, help="Session UUID to resume")

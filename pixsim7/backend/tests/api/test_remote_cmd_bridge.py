@@ -1072,6 +1072,30 @@ class TestPoolStatusHandshakeRebuild:
 
         assert "task-done" not in bridge._active_tasks
 
+    def test_tracks_max_sessions_as_concurrency_cap(self):
+        # The bridge's reported session ceiling (driven by the ai-client "Max
+        # Sessions" setting) becomes the server-side concurrency gate, so a
+        # bridge that can run 10 sessions isn't capped at the hardcoded default.
+        bridge = RemoteCommandBridge()
+        agent = _make_agent()
+        assert agent.max_concurrent == 4  # dataclass default before any report
+        bridge._agents["test-agent"] = agent
+
+        bridge.update_bridge_pool_status("test-agent", {"max_sessions": 10, "ready": 1})
+
+        assert agent.max_concurrent == 10
+
+    def test_ignores_invalid_max_sessions(self):
+        # A missing / non-positive max_sessions leaves the existing cap intact.
+        bridge = RemoteCommandBridge()
+        agent = _make_agent()
+        bridge._agents["test-agent"] = agent
+
+        bridge.update_bridge_pool_status("test-agent", {"max_sessions": 0, "ready": 1})
+        assert agent.max_concurrent == 4
+        bridge.update_bridge_pool_status("test-agent", {"ready": 1})
+        assert agent.max_concurrent == 4
+
     def test_does_not_clobber_already_tracked_task(self):
         # A task still alive from this backend instance keeps its richer row
         # (real prompt, live heartbeat ts) — the handshake must not overwrite it.
