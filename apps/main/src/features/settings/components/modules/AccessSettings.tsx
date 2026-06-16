@@ -17,14 +17,15 @@ import {
   adminUpdateUser,
   extractErrorMessage,
   listAdminAgentProfiles,
-  listAdminUserProjects,
-  listAdminUserWorlds,
+  listAdminProjectOptions,
+  listAdminWorldOptions,
   listBridgeMachines,
   listAdminUsers,
   listScopeContractOptions,
   listScopePlanOptions,
   updateAdminUserPermissions,
   type AdminAgentProfile,
+  type AdminScopeResourceOption,
   type AdminUserPermissions,
   type BridgeMachine,
   type ScopeOption,
@@ -355,33 +356,42 @@ function AgentProfileScopes({ userId }: { userId: number }) {
     void load();
   }, [load]);
 
-  // Option sources for the pickers. Tolerant of per-source failures: a picker
-  // with no options still works (chips fall back to raw ids), so one 403/500
-  // shouldn't blank the whole panel.
+  // Option sources for the pickers. All four are owner-agnostic (a scope grant is
+  // an edge to a resource, independent of whose profile it is), so they don't
+  // depend on the selected user — worlds/projects are listed across owners and
+  // labelled with their owner. Tolerant of per-source failures: a picker with no
+  // options still works (chips fall back to raw ids), so one 403/500 shouldn't
+  // blank the whole panel.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       const [plans, worlds, projects, contracts] = await Promise.all([
         listScopePlanOptions().catch(() => [] as ScopeOption[]),
-        listAdminUserWorlds(userId).catch(() => ({ worlds: [] })),
-        listAdminUserProjects(userId).catch(() => []),
+        listAdminWorldOptions().catch(() => ({ worlds: [] as AdminScopeResourceOption[] })),
+        listAdminProjectOptions().catch(() => [] as AdminScopeResourceOption[]),
         listScopeContractOptions().catch(() => [] as ScopeOption[]),
       ]);
       if (cancelled) return;
       setPlanOptions(plans);
       setWorldOptions([
         { value: 'world:*', label: 'All worlds (world:*)' },
-        ...worlds.worlds.map((w) => ({ value: `world:${w.id}`, label: `${w.name} (#${w.id})` })),
+        ...worlds.worlds.map((w) => ({
+          value: `world:${w.id}`,
+          label: `${w.name} — ${w.owner_label} (#${w.id})`,
+        })),
       ]);
       setProjectOptions(
-        projects.map((pr) => ({ value: `project:${pr.id}`, label: `${pr.name} (#${pr.id})` })),
+        projects.map((pr) => ({
+          value: `project:${pr.id}`,
+          label: `${pr.name} — ${pr.owner_label} (#${pr.id})`,
+        })),
       );
       setContractOptions(contracts);
     })();
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, []);
 
   const setDraftField = useCallback((id: string, key: keyof ScopeDraft, val: FieldDraft) => {
     setDrafts((prev) => ({
@@ -748,6 +758,13 @@ function UserDetailPanel({
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="Leave blank to keep current"
             size="sm"
+            // Treat as a brand-new password, not a sign-in field. Otherwise the
+            // browser password manager reads the panel as a login form and
+            // autofills the saved username into the nearest text input — the
+            // "Search users…" box above the list — which then refetches and
+            // drops the selection. Mounting this field is what's tied to select.
+            name="new-password"
+            autoComplete="new-password"
           />
         </FormField>
 
@@ -924,7 +941,14 @@ export function AccessSettings() {
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  // Selection holds the resolved user object, not just an id, so the detail
+  // panel survives the list being re-filtered server-side by the search box.
+  // Resolving the object out of the search-filtered `users` array (find-by-id,
+  // the usual idiom for client-complete lists) would blank the panel the moment
+  // a search excluded the selected user. Read-side fresh-ref canon
+  // ([media-card-fresh-asset-ref] / [persisted-store-shape-canon]).
+  const [selectedUser, setSelectedUser] = useState<AdminUserPermissions | null>(null);
+  const selectedUserId = selectedUser?.id ?? null;
   const [machinesLoadingUserId, setMachinesLoadingUserId] = useState<number | null>(null);
 
   const activeSearch = search.trim();
@@ -972,10 +996,13 @@ export function AccessSettings() {
     [users],
   );
 
-  const selectedUser = useMemo(
-    () => (selectedUserId != null ? users.find((u) => u.id === selectedUserId) : undefined),
-    [users, selectedUserId],
-  );
+  // Keep the held selection fresh when the list updates (edits, bridge-machine
+  // hydration), but DON'T drop it when a search filters the user out of `users`.
+  useEffect(() => {
+    if (!selectedUser) return;
+    const fresh = users.find((u) => u.id === selectedUser.id);
+    if (fresh && fresh !== selectedUser) setSelectedUser(fresh);
+  }, [users, selectedUser]);
 
   const refreshSelectedUserMachines = useCallback(async () => {
     if (!canManageAccess || selectedUserId == null) return;
@@ -1070,7 +1097,7 @@ export function AccessSettings() {
                   key={user.id}
                   user={user}
                   isSelected={selectedUserId === user.id}
-                  onSelect={() => setSelectedUserId(user.id)}
+                  onSelect={() => setSelectedUser(user)}
                 />
               ))
             )}

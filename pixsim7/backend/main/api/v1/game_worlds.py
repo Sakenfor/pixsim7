@@ -374,71 +374,118 @@ async def create_world(
 
 
 # ── Admin scope-option listings (agent-scope-admin-ux cp1) ───────────
-# Worlds and projects are owner-scoped everywhere else; granting a
-# collaborator's profile into a world/project is a cross-owner admin act, so
-# these admin-gated routes list ANY owner's worlds/projects (id + label only)
-# to populate the scope pickers in Settings → Admin → Access. They mirror
-# /dev/agent-profiles/admin/all (scoped-agent-authorization cp5a). Multi-segment
-# "/admin/..." paths are never captured by the single-segment "/{world_id}".
+# Worlds and projects are owner-scoped everywhere else, but a scope grant is an
+# edge "this agent profile may act on this resource" that is INDEPENDENT of who
+# owns the resource or whose profile it is. So these admin-gated routes list
+# resources ACROSS owners (each labelled with its owner) to populate the scope
+# pickers in Settings → Admin → Access — direction-neutral, so it serves both
+# "I share mine with their agent" and "they share theirs with mine". `user_id`
+# is an optional filter, NOT a fallback. Read-only: granting a scope here does
+# NOT itself confer cross-owner access — that needs the deferred sharing/
+# membership layer (parent plan `scoped-agent-authorization`, Option A).
+# Multi-segment "/admin/..." paths are never captured by "/{world_id}".
 
 
-@router.get("/admin/all", response_model=PaginatedWorldsResponse)
+class AdminScopeResourceEntry(BaseModel):
+    """A grantable resource option: id + name + which user owns it."""
+
+    id: int
+    name: str
+    owner_user_id: int
+    owner_label: str
+
+
+class AdminScopeWorldsResponse(BaseModel):
+    worlds: List[AdminScopeResourceEntry]
+    total: int
+
+
+async def _resolve_owner_labels(db, owner_ids) -> Dict[int, str]:
+    """Map owner_user_id -> username for labelling resource options. Module-level
+    (not inlined) so tests can stub it without mocking a second DB round-trip."""
+    ids = {int(i) for i in owner_ids if i is not None}
+    if not ids:
+        return {}
+    from sqlalchemy import select
+    from pixsim7.backend.main.domain.user import User
+
+    rows = (await db.execute(select(User.id, User.username).where(User.id.in_(ids)))).all()
+    return {int(r[0]): r[1] for r in rows}
+
+
+@router.get("/admin/all", response_model=AdminScopeWorldsResponse)
 async def admin_list_worlds(
     game_world_service: GameWorldSvc,
     _admin: CurrentAdminUser,
-    user_id: int,
-    offset: int = 0,
+    user_id: Optional[int] = None,
     limit: int = 1000,
-) -> PaginatedWorldsResponse:
-    """Admin: list one owner's worlds (id + name) for granting collaborator scope.
-
-    Read-only option source for the world-scope picker; mirrors ``list_worlds``
-    but lists ``user_id``'s worlds instead of the caller's. agent-scope-admin-ux cp1.
-    """
+) -> AdminScopeWorldsResponse:
+    """Admin: list worlds across owners (id + name + owner) for the world-scope
+    picker. ``user_id`` optionally narrows to one owner. agent-scope-admin-ux cp1."""
     from sqlalchemy import select
     from pixsim7.backend.main.domain.game import GameWorld
 
-    limit = min(max(1, limit), 1000)
-    offset = max(0, offset)
+    limit = min(max(1, limit), 2000)
+    stmt = select(GameWorld)
+    if user_id is not None:
+        stmt = stmt.where(GameWorld.owner_user_id == user_id)
+    rows = list((await game_world_service.db.execute(stmt)).scalars().all())
 
-    result = await game_world_service.db.execute(
-        select(GameWorld)
-        .where(GameWorld.owner_user_id == user_id)
-        .order_by(GameWorld.id)
+    # Dedupe legacy seed duplicates PER OWNER (the dedupe collapses by name, which
+    # would wrongly merge same-named worlds owned by different users if applied globally).
+    by_owner: Dict[int, List[Any]] = {}
+    for w in rows:
+        by_owner.setdefault(w.owner_user_id, []).append(w)
+    deduped: List[Any] = []
+    for owner_worlds in by_owner.values():
+        deduped.extend(_dedupe_world_list_for_catalog(owner_worlds))
+    deduped.sort(key=lambda w: (int(getattr(w, "owner_user_id", 0) or 0), int(getattr(w, "id", 0) or 0)))
+    deduped = deduped[:limit]
+
+    labels = await _resolve_owner_labels(game_world_service.db, {w.owner_user_id for w in deduped})
+    return AdminScopeWorldsResponse(
+        worlds=[
+            AdminScopeResourceEntry(
+                id=w.id,
+                name=w.name,
+                owner_user_id=w.owner_user_id,
+                owner_label=labels.get(w.owner_user_id, f"user {w.owner_user_id}"),
+            )
+            for w in deduped
+        ],
+        total=len(deduped),
     )
-    worlds = _dedupe_world_list_for_catalog(list(result.scalars().all()))
-    total = len(worlds)
-    paged_worlds = worlds[offset : offset + limit]
-    return PaginatedWorldsResponse(
-        worlds=[GameWorldSummary(id=w.id, name=w.name) for w in paged_worlds],
-        total=total,
-        offset=offset,
-        limit=limit,
-    )
 
 
-@router.get("/admin/projects", response_model=List[SavedGameProjectSummary])
+@router.get("/admin/projects", response_model=List[AdminScopeResourceEntry])
 async def admin_list_projects(
     game_world_service: GameWorldSvc,
     _admin: CurrentAdminUser,
-    user_id: int,
-    offset: int = 0,
-    limit: int = 500,
-    origin_kind: Optional[ProjectOriginKind] = None,
-) -> List[SavedGameProjectSummary]:
-    """Admin: list one owner's saved project snapshots for granting collaborator scope.
+    user_id: Optional[int] = None,
+    limit: int = 1000,
+) -> List[AdminScopeResourceEntry]:
+    """Admin: list saved (non-draft) project snapshots across owners for the
+    project-scope picker. ``user_id`` optionally narrows. agent-scope-admin-ux cp1."""
+    from sqlalchemy import select
+    from pixsim7.backend.main.domain.game.core.models import GameProjectSnapshot
 
-    Read-only option source for the project-scope picker; mirrors
-    ``list_saved_projects`` but for ``user_id``. agent-scope-admin-ux cp1.
-    """
-    storage = GameProjectStorageService(game_world_service.db)
-    projects = await storage.list_projects(
-        owner_user_id=user_id,
-        offset=offset,
-        limit=limit,
-        origin_kind=origin_kind,
-    )
-    return [_to_saved_project_summary(project) for project in projects]
+    limit = min(max(1, limit), 2000)
+    stmt = select(GameProjectSnapshot).where(GameProjectSnapshot.is_draft == False)  # noqa: E712
+    if user_id is not None:
+        stmt = stmt.where(GameProjectSnapshot.owner_user_id == user_id)
+    stmt = stmt.order_by(GameProjectSnapshot.owner_user_id, GameProjectSnapshot.id).limit(limit)
+    rows = list((await game_world_service.db.execute(stmt)).scalars().all())
+
+    labels = await _resolve_owner_labels(game_world_service.db, {r.owner_user_id for r in rows})
+    return [
+        AdminScopeResourceEntry(
+            id=r.id,
+            name=r.name,
+            owner_user_id=r.owner_user_id,
+            owner_label=labels.get(r.owner_user_id, f"user {r.owner_user_id}"),
+        )
+        for r in rows
+    ]
 
 
 @router.get("/{world_id}", response_model=GameWorldDetail)

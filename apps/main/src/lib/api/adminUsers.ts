@@ -130,38 +130,36 @@ export async function adminUpdateAgentProfileScope(
 }
 
 // --- Scope-option sources for the world/project pickers (agent-scope-admin-ux cp1) ---
-// Worlds and projects are owner-scoped; granting a collaborator's profile into one
-// crosses owners, so these admin-only listings resolve another user's worlds/projects
-// (id + label) to populate the scope pickers. Mirror of listAdminAgentProfiles.
+// A scope grant is an owner-agnostic edge "this profile may act on this resource",
+// so these admin-only listings resolve grantable worlds/projects ACROSS owners,
+// each labelled with its owner, to populate the scope pickers. `userId` is an
+// optional filter, not a fallback. Read-only: granting does not itself confer
+// cross-owner access (that needs the deferred sharing layer).
 
-export interface AdminWorldOption {
+/** A grantable scope resource option: id + name + which user owns it. */
+export interface AdminScopeResourceOption {
   id: number;
   name: string;
+  owner_user_id: number;
+  owner_label: string;
 }
 
 export interface AdminWorldOptionsResponse {
-  worlds: AdminWorldOption[];
+  worlds: AdminScopeResourceOption[];
   total: number;
-  offset: number;
-  limit: number;
 }
 
-/** List a user's worlds (id + name) for the world-scope picker. Admin-only. */
-export async function listAdminUserWorlds(userId: number): Promise<AdminWorldOptionsResponse> {
+/** List grantable worlds across owners (owner-labelled). `userId` optionally narrows. Admin-only. */
+export async function listAdminWorldOptions(userId?: number): Promise<AdminWorldOptionsResponse> {
   return pixsimClient.get<AdminWorldOptionsResponse>('/game/worlds/admin/all', {
-    params: { user_id: userId },
+    params: userId != null ? { user_id: userId } : undefined,
   });
 }
 
-export interface AdminProjectOption {
-  id: number;
-  name: string;
-}
-
-/** List a user's saved project snapshots (id + name) for the project-scope picker. Admin-only. */
-export async function listAdminUserProjects(userId: number): Promise<AdminProjectOption[]> {
-  return pixsimClient.get<AdminProjectOption[]>('/game/worlds/admin/projects', {
-    params: { user_id: userId },
+/** List grantable (non-draft) project snapshots across owners (owner-labelled). Admin-only. */
+export async function listAdminProjectOptions(userId?: number): Promise<AdminScopeResourceOption[]> {
+  return pixsimClient.get<AdminScopeResourceOption[]>('/game/worlds/admin/projects', {
+    params: userId != null ? { user_id: userId } : undefined,
   });
 }
 
