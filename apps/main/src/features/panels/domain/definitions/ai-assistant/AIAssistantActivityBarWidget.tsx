@@ -17,6 +17,11 @@ import { NavIcon } from '@/components/navigation/ActivityBar';
 
 import { useAssistantChatStore } from './assistantChatStore';
 
+// Cadence of the recurring "agent is waiting on you" wiggle while the panel is
+// out of sight. Slower than the 15s unread poll so a re-nudge never stacks on a
+// poll-driven re-render, and slow enough not to read as frantic.
+const QUESTION_NUDGE_INTERVAL_MS = 12_000;
+
 export function AIAssistantActivityBarWidget() {
   const { bridge } = useBridgeStatus();
   const connected = bridge?.connected ?? 0;
@@ -37,16 +42,27 @@ export function AIAssistantActivityBarWidget() {
     collapseDelay: 0,
   });
 
-  // Shake the activity-bar icon when a new question arrives while the panel is
-  // out of sight (closed / minimized / dismissed). One-shot on increase only —
-  // the 15s unread poll re-reports the same total, which must not re-trigger.
+  // Shake the activity-bar icon when an agent is waiting on the user while the
+  // panel is out of sight (closed / minimized / dismissed). A single wiggle is
+  // easy to miss if the user looked away, so we shake immediately on a fresh
+  // question and then keep re-nudging on an interval until it's answered or the
+  // panel comes on screen. The shake is gated on `!aiPanelVisible` because a
+  // visible panel already renders the ConfirmationCard.
   const prevQuestionsRef = useRef(questionsTotal);
   useEffect(() => {
     const prev = prevQuestionsRef.current;
     prevQuestionsRef.current = questionsTotal;
-    if (questionsTotal > prev && !aiPanelVisible && buttonRef.current) {
-      runAnimation(buttonRef.current, 'shake', { amplitude: 5 });
-    }
+    if (questionsTotal <= 0 || aiPanelVisible) return;
+
+    const shake = () => {
+      if (buttonRef.current) runAnimation(buttonRef.current, 'shake', { amplitude: 5 });
+    };
+    // Immediate shake only when the count just went up (a fresh question) —
+    // the 15s unread poll re-reports the same total and must not re-fire on
+    // entry. The interval below carries the ongoing nudge regardless.
+    if (questionsTotal > prev) shake();
+    const id = setInterval(shake, QUESTION_NUDGE_INTERVAL_MS);
+    return () => clearInterval(id);
   }, [questionsTotal, aiPanelVisible]);
 
   const handleClick = useCallback(() => {

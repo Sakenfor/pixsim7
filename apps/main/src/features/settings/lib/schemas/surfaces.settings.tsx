@@ -6,8 +6,8 @@
  * stamps this tab's own `useStore`, so it uses the panel-skin adapter even
  * though Theme owns the category's default adapter.
  *
- * Scoped to the AI Assistant panel for now (the first skinnable consumer);
- * generalizes to a per-panel picker once more panels opt in.
+ * Scoped settings for the AI Assistant skin source. Prompt box/composer skins
+ * are chosen separately from the right-click Skin menu.
  */
 
 import {
@@ -16,6 +16,8 @@ import {
   listSkins,
   getSkin,
   SKINS,
+  useAssistantTintStore,
+  ASSISTANT_TINT_WINDOW_OPTIONS,
   type SkinId,
 } from '@features/appearance';
 
@@ -39,9 +41,16 @@ const skinHasVariants = (v: Record<string, any>) => {
 };
 const skinSupportsEffects = (v: Record<string, any>) => !!getSkin(v.skinId).supportsEffects;
 
+const TINT_WINDOW_OPTIONS = ASSISTANT_TINT_WINDOW_OPTIONS.map((o) => ({
+  value: String(o.value),
+  label: o.label,
+}));
+
 function useSurfacesSettingsAdapter(): SettingStoreAdapter {
   const selection = usePanelSkinStore((s) => selectPanelSkin(s, PANEL_ID));
   const setPanelSkin = usePanelSkinStore((s) => s.setPanelSkin);
+  const tintWindowMs = useAssistantTintStore((s) => s.windowMs);
+  const setTintWindowMs = useAssistantTintStore((s) => s.setWindowMs);
 
   return {
     get: (fieldId: string) => {
@@ -50,6 +59,7 @@ function useSurfacesSettingsAdapter(): SettingStoreAdapter {
         case 'variant': return selection.variant ?? 'green';
         case 'scanline': return !!selection.scanline;
         case 'glow': return !!selection.glow;
+        case 'activeTintWindow': return String(tintWindowMs);
         default: return undefined;
       }
     },
@@ -59,6 +69,7 @@ function useSurfacesSettingsAdapter(): SettingStoreAdapter {
         case 'variant': setPanelSkin(PANEL_ID, { variant: String(value || 'green') }); break;
         case 'scanline': setPanelSkin(PANEL_ID, { scanline: !!value }); break;
         case 'glow': setPanelSkin(PANEL_ID, { glow: !!value }); break;
+        case 'activeTintWindow': setTintWindowMs(Number(value) || 0); break;
       }
     },
     getAll: () => ({
@@ -66,6 +77,7 @@ function useSurfacesSettingsAdapter(): SettingStoreAdapter {
       variant: selection.variant ?? 'green',
       scanline: !!selection.scanline,
       glow: !!selection.glow,
+      activeTintWindow: String(tintWindowMs),
     }),
   };
 }
@@ -79,13 +91,13 @@ const surfacesTab: SettingTab = {
       id: 'ai-assistant-skin',
       title: 'AI Assistant panel',
       description:
-        'Give the AI Assistant panel its own look. The skin layers on top of the global theme and only affects this panel.',
+        'Give the AI Assistant panel its own look. Prompt box and composer surfaces use their own Skin menu entry when right-clicked.',
       fields: [
         {
           id: 'skinId',
           type: 'select',
           label: 'Skin',
-          description: 'Default follows the global theme. Other skins recolor (and re-font) just this panel.',
+          description: 'Default follows the global theme. Other skins recolor and re-font the AI Assistant panel.',
           defaultValue: 'default',
           options: SKIN_OPTIONS,
         },
@@ -113,6 +125,22 @@ const surfacesTab: SettingTab = {
           description: 'Text bloom in the accent tone.',
           defaultValue: false,
           showWhen: skinSupportsEffects,
+        },
+      ],
+    },
+    {
+      id: 'ai-assistant-reminders',
+      title: 'Conversation reminders',
+      description: 'Subtle cues that help you keep track of which chats are waiting on a reply.',
+      fields: [
+        {
+          id: 'activeTintWindow',
+          type: 'select',
+          label: 'Active conversation tint',
+          description:
+            "After an agent replies, its tab keeps a soft tint that fades over this window — so chats where it's your turn stay easy to spot. Set to Off to disable.",
+          defaultValue: String(10 * 60 * 1000),
+          options: TINT_WINDOW_OPTIONS,
         },
       ],
     },

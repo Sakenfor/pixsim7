@@ -40,6 +40,14 @@ function ModelBadgesSettings() {
   );
 }
 
+function SurfacesSettings() {
+  return (
+    <div className="flex-1 overflow-auto p-4">
+      <DynamicSettingsPanel categoryId="appearance" tabId="surfaces" />
+    </div>
+  );
+}
+
 /**
  * Accessibility & UI preferences (high contrast, reduced motion, density).
  * Relocated from the dissolved GameThemingPanel "User Preferences" tab — these
@@ -82,6 +90,12 @@ settingsRegistry.register({
       label: 'Model Badges',
       icon: 'tag',
       component: ModelBadgesSettings,
+    },
+    {
+      id: 'surfaces',
+      label: 'Surfaces',
+      icon: 'terminal',
+      component: SurfacesSettings,
     },
     {
       id: 'accessibility',

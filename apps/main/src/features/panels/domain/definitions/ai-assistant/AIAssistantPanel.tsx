@@ -16,6 +16,7 @@ import {
   SidebarPaneShell,
 } from '@pixsim7/shared.ui';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 
 import { useBridgeStatus } from '@lib/agent/useBridgeStatus';
 import { useConnectedEngines } from '@lib/agent/useConnectedEngines';
@@ -23,7 +24,7 @@ import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 import { useReferences, useReferenceInput, ReferencePicker, type ReferencePickerHandle } from '@lib/references';
 
-import { usePanelSkin } from '@features/appearance';
+import { usePanelSkin, useAssistantTintStore } from '@features/appearance';
 import { useChatUnread } from '@features/notifications/hooks/useChatUnread';
 import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 import { navigateToPlan } from '@features/workspace/lib/openPanel';
@@ -1297,6 +1298,42 @@ export function AIAssistantPanel() {
   const tabsLoading = useAssistantChatStore((s) => s.tabsLoading);
   const tabsError = useAssistantChatStore((s) => s.tabsError);
   const store = useAssistantChatStore;
+
+  // Per-tab timestamp of the last *substantive* assistant reply when it's the
+  // user's turn (i.e. the conversation's tail is the agent, not the user).
+  // Trailing system/error/synthetic banners are skipped — the same tail rule
+  // the unanswered-user-message detector uses. `useShallow` keeps this stable
+  // while a reply streams (the message text mutates but its timestamp doesn't),
+  // so the sidebar list doesn't re-render on every streamed token; it only
+  // changes when a fresh reply lands or the user answers (tab drops out).
+  const lastReplyTsByTab = useAssistantChatStore(
+    useShallow((s) => {
+      const out: Record<string, number> = {};
+      for (const t of s.tabs) {
+        const msgs = s.messagesByTab[t.id];
+        if (!msgs || msgs.length === 0) continue;
+        for (let i = msgs.length - 1; i >= 0; i -= 1) {
+          const m = msgs[i];
+          if (m.role === 'system' || m.role === 'error' || m.synthetic) continue;
+          if (m.role === 'assistant') out[t.id] = m.timestamp.getTime();
+          break; // first substantive message from the tail decides whose turn it is
+        }
+      }
+      return out;
+    }),
+  );
+  // User-tunable "active conversation" tint window (Appearance → Surfaces).
+  // 0 = disabled. Drives both the gating and the fade slope below.
+  const tintWindowMs = useAssistantTintStore((s) => s.windowMs);
+  // Coarse re-render so the soft tint actually decays — message timestamps
+  // don't change, so without a tick the window would never visually expire
+  // until the next unrelated re-render.
+  const [, bumpDecayTick] = useState(0);
+  useEffect(() => {
+    if (tintWindowMs <= 0) return; // tint disabled — no need to tick
+    const id = setInterval(() => bumpDecayTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, [tintWindowMs]);
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [bridgeStarting, setBridgeStarting] = useState(false);
   const [profiles, setProfiles] = useState<UnifiedProfile[]>([]);
@@ -1585,6 +1622,18 @@ export function AIAssistantPanel() {
   const renderItem = (tab: ChatTab, isActive: boolean) => {
     const bridgeReq = chatBridge.get(tab.id);
     const isSending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
+    // Soft "your turn" tint: the agent's last reply is the conversation tail
+    // and landed recently, and it isn't still working. Survives focus (unlike
+    // the bright unread ring) so live chats stay scannable, then fades out as
+    // the reply ages — `activeFade` runs 1 (just replied) → 0 (window elapsed).
+    const lastReplyTs = lastReplyTsByTab[tab.id];
+    let activeFade = 0;
+    if (tintWindowMs > 0 && !isActive && !isSending && lastReplyTs != null) {
+      const elapsed = Date.now() - lastReplyTs;
+      if (elapsed < tintWindowMs) {
+        activeFade = 1 - elapsed / tintWindowMs;
+      }
+    }
     return (
       <SessionItem
         key={tab.id}
@@ -1593,6 +1642,7 @@ export function AIAssistantPanel() {
         profiles={profiles}
         tabCount={tabs.length}
         isSending={isSending}
+        activeFade={activeFade}
         activityTick={bridgeReq?._lastActivity ?? 0}
         hasUnread={
           !isActive &&

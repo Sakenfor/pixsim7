@@ -16,6 +16,11 @@ import { EngineProfileIcon, resolveProfileIcon } from './EngineProfileIcon';
 // rate, which then eases back through these steps to a calm baseline — a flurry
 // of tool calls reads as a rapid heartbeat, a settled/thinking agent as a slow
 // one. [delayMs, animation-duration].
+// Peak opacity of the soft "your turn — active conversation" row tint, applied
+// at full `activeFade` (right after the agent's reply) and scaled down to 0 as
+// the reply ages. Kept low so it reads as a gentle wash, not an alert.
+const SOFT_TINT_PEAK_ALPHA = 0.13;
+
 const WORK_PULSE_BASELINE = '0.95s';
 const WORK_PULSE_DECAY: ReadonlyArray<readonly [number, string]> = [
   [0, '0.4s'],
@@ -38,6 +43,16 @@ export interface SessionItemProps {
    * unread pip — a blocked agent is more urgent than an unread reply.
    */
   hasPendingQuestion?: boolean;
+  /**
+   * Soft "your turn — recently active" reminder, as a fade factor in [0, 1].
+   * Non-zero for a non-active tab whose last message is a recent agent reply
+   * (ball in the user's court): `1` right after the reply, easing to `0` as it
+   * ages out of the reminder window. Drives a faint row tint that lingers past
+   * the bright unread ring (which clears on focus) so the conversations you're
+   * mid-chat on stay easy to spot. Strictly cosmetic — weaker than the
+   * unread/question signals.
+   */
+  activeFade?: number;
   /**
    * Changing value that ticks on each agent activity event for this tab — the
    * bridge request's `_lastActivity` timestamp, bumped on *every* heartbeat
@@ -72,6 +87,7 @@ export function SessionItem({
   isSending,
   hasUnread = false,
   hasPendingQuestion = false,
+  activeFade = 0,
   activityTick = 0,
   renamingTabId,
   renameValue,
@@ -147,6 +163,15 @@ export function SessionItem({
           ? 'bg-accent-subtle text-th'
           : 'text-th-secondary hover:bg-surface-secondary'
       }`}
+      // Soft "your turn" tint, faded by recency. Driven inline (not a utility
+      // class) because the alpha is continuous — `--info` is the signal-info
+      // token, the same hue as the unread ring, at a peak ~13% that eases to 0.
+      // Only on non-active tabs; the active row keeps its accent background.
+      style={
+        !isActive && activeFade > 0
+          ? { backgroundColor: `rgb(var(--info) / ${(activeFade * SOFT_TINT_PEAK_ALPHA).toFixed(3)})` }
+          : undefined
+      }
     >
       <div className="relative flex shrink-0" title={status?.title}>
         <EngineProfileIcon engine={tab.engine} icon={tabIcon} size={12} />

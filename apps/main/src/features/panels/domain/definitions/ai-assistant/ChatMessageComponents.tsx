@@ -341,6 +341,28 @@ export function ConfirmationCard({
               {c.description && <span className="text-signal-warning ml-1.5">— {c.description}</span>}
             </button>
           ))}
+          {/* Freeform escape hatch — write a custom answer instead of picking an
+              offered option (mirrors the CLI's "Other" choice). The backend
+              ask_user handler surfaces this text when no choice id is returned. */}
+          {onTextSubmit && (
+            <div className="flex items-center gap-1.5 pt-1">
+              <input
+                type="text"
+                value={textValue}
+                onChange={(e) => setTextValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && textValue.trim()) onTextSubmit(textValue.trim()); }}
+                placeholder={placeholder || 'Or write your own answer…'}
+                className="flex-1 min-w-0 px-2.5 py-1.5 rounded-md text-[11px] border border-signal-warning/30 bg-surface text-th focus:outline-none focus:ring-1 focus:ring-signal-warning"
+              />
+              <button
+                onClick={() => { if (textValue.trim()) onTextSubmit(textValue.trim()); }}
+                disabled={!textValue.trim()}
+                className="shrink-0 px-3 py-1 rounded-md text-[11px] font-medium bg-signal-success hover:opacity-90 text-white transition-colors disabled:opacity-40"
+              >
+                Send
+              </button>
+            </div>
+          )}
           <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] text-th-secondary hover:text-th transition-colors">
             Cancel
           </button>

@@ -1,5 +1,11 @@
 export { useAppearanceStore } from './stores/appearanceStore';
 export type { ColorScheme, AccentColor, IconTheme, ButtonStyle } from './stores/appearanceStore';
+export {
+  useAssistantTintStore,
+  ASSISTANT_TINT_STORE_KEY,
+  ASSISTANT_TINT_WINDOW_OPTIONS,
+  DEFAULT_ASSISTANT_TINT_WINDOW_MS,
+} from './assistantTintStore';
 export { useApplyAppearance } from './useApplyAppearance';
 export { useAccentButtonClasses } from './useAccentButtonClasses';
 export type { AccentButtonClasses } from './useAccentButtonClasses';
