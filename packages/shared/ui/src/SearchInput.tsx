@@ -112,6 +112,10 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
         placeholder={placeholder}
         disabled={disabled}
         autoFocus={autoFocus}
+        // Search boxes are never an autofill/credential target; without this the
+        // browser password manager can dump a saved username in here whenever a
+        // password field mounts elsewhere on the page.
+        autoComplete="off"
         className={clsx(
           'w-full rounded border outline-none transition-colors',
           'bg-white dark:bg-neutral-800',
