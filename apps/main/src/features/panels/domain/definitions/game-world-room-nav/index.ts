@@ -1,17 +1,18 @@
-import { GameWorldEditorTabStub } from '@/components/game/GameWorldEditorTabStub';
-
 import { definePanel } from '../../../lib/definePanel';
+
+import { RoomNavTab } from './RoomNavTab';
 
 /**
  * Game World editor → Location Tools → Room Nav tab.
  *
- * Registered to drive GameWorld's registry-derived nav. GameWorld renders the
- * real RoomNavigationEditor from its own switch; see GameWorldEditorTabStub.
+ * Drives GameWorld's registry-derived nav and is mounted generically by
+ * GameWorld. RoomNavTab reads the selected location from the
+ * CAP_GAME_WORLD_EDITOR capability.
  */
 export default definePanel({
   id: 'game-world-room-nav',
   title: 'Room Nav (Beta)',
-  component: GameWorldEditorTabStub,
+  component: RoomNavTab,
   category: 'game',
   contextLabel: 'location',
   availableIn: ['game-world-editor'],

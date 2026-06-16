@@ -1,18 +1,18 @@
-import { GameWorldEditorTabStub } from '@/components/game/GameWorldEditorTabStub';
-
 import { definePanel } from '../../../lib/definePanel';
+
+import { HotspotsTab } from './HotspotsTab';
 
 /**
  * Game World editor → Location Tools → Hotspots tab.
  *
- * Registered to drive GameWorld's registry-derived nav (label / description /
- * 'location' section via contextLabel). GameWorld renders the real
- * HotspotListEditor from its own switch; see GameWorldEditorTabStub.
+ * Drives GameWorld's registry-derived nav and is mounted generically by
+ * GameWorld. HotspotsTab reads the selected location + callbacks from the
+ * CAP_GAME_WORLD_EDITOR capability GameWorld publishes.
  */
 export default definePanel({
   id: 'game-world-hotspots',
   title: 'Hotspots',
-  component: GameWorldEditorTabStub,
+  component: HotspotsTab,
   category: 'game',
   contextLabel: 'location',
   availableIn: ['game-world-editor'],

@@ -8,24 +8,21 @@ import {
   SidebarPaneShell,
   useSidebarNav,
 } from '@pixsim7/shared.ui';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { resolveGameLocations } from '@lib/resolvers';
 
+import { useProvideCapability } from '@features/contextHub';
 import { useWorldContextStore } from '@features/scene';
 
-import { DynamicThemeRulesPanel } from '@/components/game/panels/DynamicThemeRulesPanel';
-import { InteractionPresetUsagePanel } from '@/components/game/panels/InteractionPresetUsagePanel';
-import { ThemePacksPanel } from '@/components/game/panels/ThemePacksPanel';
-import { WorldValidationPanel } from '@/components/game/panels/WorldValidationPanel';
+import {
+  CAP_GAME_WORLD_EDITOR,
+  type GameWorldEditorContextValue,
+} from '@/components/game/gameWorldEditorContext';
 import { useSharedWorldSelection } from '@/hooks';
 
 import { validateHotspots } from '../components/game/hotspotEditorModel';
-import { HotspotListEditor } from '../components/game/HotspotListEditor';
-import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
-import { RoomNavigationEditor } from '../components/game/RoomNavigationEditor';
-import { NpcSlotEditor } from '../components/NpcSlotEditor';
 import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO, GameWorldDetail } from '../lib/api/game';
 import { getGameLocation, saveGameLocationHotspots, getGameWorld } from '../lib/api/game';
 
@@ -70,6 +67,7 @@ const GAME_WORLD_EDITOR_SCOPE = 'game-world-editor';
 function useGameWorldTabSections(): {
   sections: GameWorldNavSection[];
   descriptions: Record<GameWorldTab, string>;
+  components: Partial<Record<GameWorldTab, ComponentType>>;
 } {
   const [tabDefs, setTabDefs] = useState(() => panelSelectors.getForScope(GAME_WORLD_EDITOR_SCOPE));
   useEffect(() => {
@@ -81,6 +79,7 @@ function useGameWorldTabSections(): {
   return useMemo(() => {
     const byScope = new Map<'location' | 'world', { id: GameWorldTab; label: string }[]>();
     const descriptions = {} as Record<GameWorldTab, string>;
+    const components: Partial<Record<GameWorldTab, ComponentType>> = {};
     for (const def of tabDefs) {
       const scope = def.contextLabel;
       if (scope !== 'location' && scope !== 'world') continue;
@@ -89,6 +88,7 @@ function useGameWorldTabSections(): {
       children.push({ id: tabId, label: def.title });
       byScope.set(scope, children);
       descriptions[tabId] = def.description ?? '';
+      components[tabId] = def.component as ComponentType;
     }
     const sections = (['location', 'world'] as const)
       .filter((scope) => byScope.has(scope))
@@ -97,7 +97,7 @@ function useGameWorldTabSections(): {
         label: SECTION_META[scope].label,
         children: byScope.get(scope)!,
       }));
-    return { sections, descriptions };
+    return { sections, descriptions, components };
   }, [tabDefs]);
 }
 
@@ -124,7 +124,7 @@ export function GameWorld() {
   const [error, setError] = useState<string | null>(null);
   const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
 
-  const { sections, descriptions } = useGameWorldTabSections();
+  const { sections, descriptions, components } = useGameWorldTabSections();
 
   const nav = useSidebarNav<GameWorldSection, GameWorldTab>({
     sections,
@@ -206,10 +206,10 @@ export function GameWorld() {
 
   // Other location editors (2D layout, room nav) reload the location after
   // their own saves; treat that as a fresh hotspot baseline too.
-  const handleLocationUpdate = (updatedLocation: GameLocationDetail) => {
+  const handleLocationUpdate = useCallback((updatedLocation: GameLocationDetail) => {
     setDetail(updatedLocation);
     setSavedHotspotsJson(JSON.stringify(updatedLocation.hotspots));
-  };
+  }, []);
 
   const handleSelectLocation = (nextId: number | null) => {
     if (nextId === selectedId) return;
@@ -233,10 +233,12 @@ export function GameWorld() {
     setSelectedWorldId(nextId);
   };
 
-  const handleHotspotsChange = (hotspots: GameHotspotDTO[]) => {
-    if (!detail) return;
-    setDetail({ ...detail, hotspots });
-  };
+  const handleHotspotsChange = useCallback(
+    (hotspots: GameHotspotDTO[]) => {
+      setDetail((prev) => (prev ? { ...prev, hotspots } : prev));
+    },
+    [],
+  );
 
   const hotspotIssues = detail ? validateHotspots(detail.hotspots) : [];
 
@@ -263,6 +265,45 @@ export function GameWorld() {
 
   const selectedWorldName = worlds.find((world) => world.id === selectedWorldId)?.name ?? 'None';
   const selectedLocationName = locations.find((loc) => loc.id === selectedId)?.name ?? 'None';
+
+  // Publish selection + loaded detail + callbacks so the registry-mounted tab
+  // panels read it from the capability instead of prop drilling. The hotspot
+  // Save button + dirty tracking stay in GameWorld's sidebar (it owns `detail`).
+  const editorContextValue = useMemo<GameWorldEditorContextValue>(
+    () => ({
+      selectedWorldId,
+      selectedLocationId: selectedId,
+      locations,
+      locationDetail: detail,
+      worldDetail,
+      isLoadingDetail,
+      onLocationUpdate: handleLocationUpdate,
+      onWorldUpdate: setWorldDetail,
+      onHotspotsChange: handleHotspotsChange,
+    }),
+    [
+      selectedWorldId,
+      selectedId,
+      locations,
+      detail,
+      worldDetail,
+      isLoadingDetail,
+      handleLocationUpdate,
+      handleHotspotsChange,
+    ],
+  );
+
+  useProvideCapability(
+    CAP_GAME_WORLD_EDITOR,
+    {
+      id: 'game-world-editor',
+      label: 'Game World Editor',
+      getValue: () => editorContextValue,
+    },
+    [editorContextValue],
+  );
+
+  const ActiveTabComponent = components[activeTab];
 
   return (
     <PanelShell
@@ -377,62 +418,7 @@ export function GameWorld() {
         )}
 
         <div className="flex-1 min-h-0 overflow-y-auto p-6">
-          {activeTab === 'presets' ? (
-            worldDetail ? (
-              <InteractionPresetEditor
-                world={worldDetail}
-                onWorldUpdate={(updatedWorld) => setWorldDetail(updatedWorld)}
-              />
-            ) : (
-              <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-400">
-                Select a world to manage interaction presets.
-              </div>
-            )
-          ) : activeTab === 'usage' ? (
-            <InteractionPresetUsagePanel world={worldDetail} />
-          ) : activeTab === 'validation' ? (
-            selectedWorldId != null ? (
-              <WorldValidationPanel worldId={selectedWorldId} />
-            ) : (
-              <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-400">
-                Select a world to run validation checks.
-              </div>
-            )
-          ) : activeTab === 'theme-rules' ? (
-            <DynamicThemeRulesPanel />
-          ) : activeTab === 'theme-packs' ? (
-            <ThemePacksPanel />
-          ) : !detail ? (
-            <div className="flex h-full min-h-[220px] items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-400">
-              {isLoadingDetail ? 'Loading location details...' : 'Select a world location to begin editing.'}
-            </div>
-          ) : activeTab === 'hotspots' ? (
-            <div className="space-y-4">
-              <div>
-                <h2 className="text-base font-semibold">Hotspots</h2>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                  Asset ID: {(detail as GameLocationDetail & { asset_id?: number | null }).asset_id ?? 'none'} | Default spawn: {detail.default_spawn ?? 'none'}
-                </p>
-              </div>
-              <HotspotListEditor
-                hotspots={detail.hotspots}
-                worldId={selectedWorldId}
-                locations={locations}
-                onChange={handleHotspotsChange}
-              />
-            </div>
-          ) : activeTab === '2d-layout' ? (
-            <NpcSlotEditor
-              location={detail}
-              world={worldDetail}
-              onLocationUpdate={handleLocationUpdate}
-            />
-          ) : activeTab === 'room-nav' ? (
-            <RoomNavigationEditor
-              location={detail}
-              onLocationUpdate={handleLocationUpdate}
-            />
-          ) : null}
+          {ActiveTabComponent ? <ActiveTabComponent /> : null}
         </div>
       </div>
     </PanelShell>

@@ -1,18 +1,18 @@
-import { GameWorldEditorTabStub } from '@/components/game/GameWorldEditorTabStub';
+import { ThemePacksPanel } from '@/components/game/panels/ThemePacksPanel';
 
 import { definePanel } from '../../../lib/definePanel';
 
 /**
  * Game World editor → World Tools → Theme Packs tab.
  *
- * Registered to drive GameWorld's registry-derived nav. GameWorld renders the
- * real ThemePacksPanel from its own switch; see GameWorldEditorTabStub.
+ * Drives GameWorld's registry-derived nav and is mounted generically by
+ * GameWorld. ThemePacksPanel self-sources its world context.
  * Relocated here when GameThemingPanel was dissolved.
  */
 export default definePanel({
   id: 'game-world-theme-packs',
   title: 'Theme Packs',
-  component: GameWorldEditorTabStub,
+  component: ThemePacksPanel,
   category: 'game',
   contextLabel: 'world',
   availableIn: ['game-world-editor'],

@@ -1,17 +1,18 @@
-import { GameWorldEditorTabStub } from '@/components/game/GameWorldEditorTabStub';
-
 import { definePanel } from '../../../lib/definePanel';
+
+import { ValidationTab } from './ValidationTab';
 
 /**
  * Game World editor → World Tools → Validation tab.
  *
- * Registered to drive GameWorld's registry-derived nav. GameWorld renders the
- * real WorldValidationPanel from its own switch; see GameWorldEditorTabStub.
+ * Drives GameWorld's registry-derived nav and is mounted generically by
+ * GameWorld. ValidationTab reads the selected world id from the
+ * CAP_GAME_WORLD_EDITOR capability.
  */
 export default definePanel({
   id: 'game-world-validation',
   title: 'Validation',
-  component: GameWorldEditorTabStub,
+  component: ValidationTab,
   category: 'game',
   contextLabel: 'world',
   availableIn: ['game-world-editor'],
