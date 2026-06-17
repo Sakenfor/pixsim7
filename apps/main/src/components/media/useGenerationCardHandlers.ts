@@ -5,7 +5,7 @@
  */
 
 import { useToastStore } from '@pixsim7/shared.ui';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 import { extractFrame, getAssetGenerationContext } from '@lib/api/assets';
 import { searchBlocks } from '@lib/api/blockTemplates';
@@ -159,12 +159,37 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
 
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [isExtending, setIsExtending] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [isQuickGenerating, setIsQuickGenerating] = useState(false);
+  // Regenerate + quick-generate are fire-and-forget: instead of a re-entry lock
+  // (which made the buttons un-spam-able while a submit was still in flight) we
+  // track how many submits are currently in flight. The UI can show a live
+  // count badge without ever blocking the next tap.
+  const [regenerateInFlight, setRegenerateInFlight] = useState(0);
+  const [quickGenInFlight, setQuickGenInFlight] = useState(0);
+  const isRegenerating = regenerateInFlight > 0;
+  const isQuickGenerating = quickGenInFlight > 0;
   const [isGeneratingVariations, setIsGeneratingVariations] = useState(false);
   const [isInsertingPrompt, setIsInsertingPrompt] = useState(false);
   const [isInsertingSeed, setIsInsertingSeed] = useState(false);
   const [isInsertingAssets, setIsInsertingAssets] = useState(false);
+
+  // Cache the per-asset generation-context fetch so rapid re-fires (spam) don't
+  // re-hit the network for the same immutable source generation. Concurrent
+  // callers share one in-flight promise; a rejected fetch is evicted so a later
+  // retry can re-fetch cleanly.
+  const genContextCacheRef = useRef<Map<number, ReturnType<typeof getAssetGenerationContext>>>(
+    new Map(),
+  );
+  const fetchGenContextCached = useCallback((assetId: number) => {
+    const cache = genContextCacheRef.current;
+    const cached = cache.get(assetId);
+    if (cached) return cached;
+    const p = getAssetGenerationContext(assetId).catch((err) => {
+      cache.delete(assetId);
+      throw err;
+    });
+    cache.set(assetId, p);
+    return p;
+  }, []);
 
   // Get generations store for seeding new generations
   const addOrUpdateGeneration = useGenerationsStore((s) => s.addOrUpdate);
@@ -212,8 +237,11 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
        *  toast); skip the gate's "Uploading frame to …" interim toast to
        *  avoid double-flashing for the trailing cache-hit gate call. */
       skipUploadToast?: boolean;
+      /** Suppress the per-submission success toast (e.g. a burst shows one
+       *  consolidated toast for the whole batch instead of N). */
+      silent?: boolean;
     }) => {
-      const { operationType: requestedOperationType, providerId, prompt, params, successMessage, skipUploadToast } = options;
+      const { operationType: requestedOperationType, providerId, prompt, params, successMessage, skipUploadToast, silent } = options;
       const hasAssetInput = hasAssetInputs(params);
       const effectiveOperationType = getFallbackOperation(requestedOperationType, hasAssetInput);
       const run = createGenerationRunDescriptor({
@@ -266,11 +294,13 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
 
       setWatchingGeneration(genId);
 
-      useToastStore.getState().addToast({
-        type: 'success',
-        message: successMessage,
-        duration: 3000,
-      });
+      if (!silent) {
+        useToastStore.getState().addToast({
+          type: 'success',
+          message: successMessage,
+          duration: 3000,
+        });
+      }
     },
     [addOrUpdateGeneration, setWatchingGeneration],
   );
@@ -278,10 +308,14 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   // Quick generate: delegates to the controller's pipeline directly,
   // bypassing widget state management (no flash on Go button).
   const executeQuickGenerate = useCallback(async (
-    options?: { reuseSourceSeed?: boolean },
+    options?: { reuseSourceSeed?: boolean; count?: number },
   ) => {
-    if (isQuickGenerating || !widgetContext?.executeGeneration) return;
-    setIsQuickGenerating(true);
+    if (!widgetContext?.executeGeneration) return;
+    // Route ×N through the widget's own `count` — the same path the on-card
+    // swipe gesture uses (useMediaGenerationActions.quickGenerate) — so seed
+    // handling stays identical across both surfaces instead of an external loop.
+    const count = Math.max(1, Math.floor(options?.count ?? 1));
+    setQuickGenInFlight((n) => n + count);
     try {
       let paramOverrides: GenerateOverrides['paramOverrides'] | undefined;
       if (options?.reuseSourceSeed) {
@@ -294,7 +328,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
           return;
         }
 
-        const ctx = await getAssetGenerationContext(id);
+        const ctx = await fetchGenContextCached(id);
         const { params } = parseGenerationContext(ctx, operationType);
         const sourceSeed = extractSeedFromParams(params);
 
@@ -312,6 +346,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
 
       await widgetContext.executeGeneration({
         assetOverrides: [inputAsset],
+        count,
         ...(paramOverrides ? { paramOverrides } : {}),
       });
     } catch (err) {
@@ -321,23 +356,23 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
         duration: 4000,
       });
     } finally {
-      setIsQuickGenerating(false);
+      setQuickGenInFlight((n) => Math.max(0, n - count));
     }
   }, [
-    isQuickGenerating,
     widgetContext,
     inputAsset,
     hasSourceContext,
     id,
     operationType,
+    fetchGenContextCached,
   ]);
 
-  const handleQuickGenerate = useCallback(async () => {
-    await executeQuickGenerate();
+  const handleQuickGenerate = useCallback(async (count?: number) => {
+    await executeQuickGenerate({ count });
   }, [executeQuickGenerate]);
 
-  const handleQuickGenerateReuseSeed = useCallback(async () => {
-    await executeQuickGenerate({ reuseSourceSeed: true });
+  const handleQuickGenerateReuseSeed = useCallback(async (count?: number) => {
+    await executeQuickGenerate({ reuseSourceSeed: true, count });
   }, [executeQuickGenerate]);
 
   const handleLoadToQuickGen = useCallback(async (options?: { withoutSeed?: boolean }) => {
@@ -756,15 +791,16 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
 
   // Handler for regenerating (re-run the exact same generation)
   const executeRegenerate = useCallback(async (
-    options?: { reuseSourceSeed?: boolean },
+    options?: { reuseSourceSeed?: boolean; silent?: boolean },
   ) => {
-    if (!hasSourceContext || isRegenerating) return;
+    if (!hasSourceContext) return;
 
-    setIsRegenerating(true);
+    setRegenerateInFlight((n) => n + 1);
 
     try {
-      // Fetch generation context (from record or metadata)
-      const ctx = await getAssetGenerationContext(id);
+      // Fetch generation context (from record or metadata; cached per asset so
+      // rapid re-fires share one fetch).
+      const ctx = await fetchGenContextCached(id);
       const {
         params,
         operationType: resolvedOperationType,
@@ -807,6 +843,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
         prompt,
         params: sourceParams,
         successMessage: 'Regenerating...',
+        silent: options?.silent,
       });
     } catch (error) {
       console.error('Failed to regenerate:', error);
@@ -816,14 +853,14 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
         duration: 4000,
       });
     } finally {
-      setIsRegenerating(false);
+      setRegenerateInFlight((n) => Math.max(0, n - 1));
     }
   }, [
     id,
     hasSourceContext,
-    isRegenerating,
     operationType,
     submitDirectGeneration,
+    fetchGenContextCached,
   ]);
 
   const handleRegenerate = useCallback(async () => {
@@ -832,6 +869,28 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
 
   const handleRegenerateReuseSeed = useCallback(async () => {
     await executeRegenerate({ reuseSourceSeed: true });
+  }, [executeRegenerate]);
+
+  // Burst regenerate: fire N submits but show a single consolidated toast
+  // instead of N (each submit is silenced; one summary toast covers the batch).
+  // Mirrors the style-variations "Generating N…" pattern.
+  const handleRegenerateBurst = useCallback(async (
+    count: number,
+    options: { reuseSourceSeed: boolean },
+  ) => {
+    const n = Math.max(1, Math.floor(count));
+    if (n === 1) {
+      await executeRegenerate({ reuseSourceSeed: options.reuseSourceSeed });
+      return;
+    }
+    for (let i = 0; i < n; i += 1) {
+      void executeRegenerate({ reuseSourceSeed: options.reuseSourceSeed, silent: true });
+    }
+    useToastStore.getState().addToast({
+      type: 'success',
+      message: `Regenerating ×${n}…`,
+      duration: 3000,
+    });
   }, [executeRegenerate]);
 
   /**
@@ -942,9 +1001,11 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
 
   return {
     isQuickGenerating,
+    quickGenInFlight,
     isLoadingSource,
     isExtending,
     isRegenerating,
+    regenerateInFlight,
     isGeneratingVariations,
     isInsertingPrompt,
     isInsertingSeed,
@@ -960,6 +1021,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     handleArtificialExtend,
     handleRegenerate,
     handleRegenerateReuseSeed,
+    handleRegenerateBurst,
     handleGenerateStyleVariations,
   };
 }

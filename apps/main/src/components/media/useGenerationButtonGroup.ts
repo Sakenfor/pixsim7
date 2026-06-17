@@ -32,11 +32,18 @@ import {
   CAP_CHARACTER_INGEST_ACTION,
   useCapability,
   useCapabilityAll,
+  useContextHubOverridesStore,
   usePanelContext,
   type CharacterIngestActionContext,
   type GenerationWidgetContext,
 } from '@features/contextHub';
-import { useGenerationScopeStores, getGenerationSessionStore, getGenerationSettingsStore } from '@features/generation';
+import {
+  useGenerationScopeStores,
+  getGenerationSessionStore,
+  getGenerationSettingsStore,
+  useQuickGenOpenersStore,
+  getQuickGenOpener,
+} from '@features/generation';
 import { providerCapabilityRegistry, useProviderCapabilities, useOperationSpec, useProviderIdForModel } from '@features/providers';
 
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
@@ -104,10 +111,9 @@ export type GenerationActionExpand =
     }
   | {
       kind: 'quick-generate-menu';
-      onQuickGenerateCurrent: () => void;
-      onQuickGenerateReuseSeed: () => void;
+      onQuickGenerateCurrent: (count?: number) => void;
+      onQuickGenerateReuseSeed: (count?: number) => void;
       primaryMode: GenerationSeedModePreference;
-      isQuickGenerating: boolean;
       hasSourceGenerationContext: boolean;
     }
   | {
@@ -119,7 +125,6 @@ export type GenerationActionExpand =
       isInsertingPrompt: boolean;
       isInsertingSeed: boolean;
       isInsertingAssets: boolean;
-      isRegenerating: boolean;
       primarySeedMode: GenerationSeedModePreference;
       insertPromptTitle: string;
       insertSeedTitle: string;
@@ -127,12 +132,21 @@ export type GenerationActionExpand =
       showInsertAssets: boolean;
       onRegenerateDefault: () => void;
       onRegenerateReuseSeed: () => void;
+      /** Burst (fire `count` with one consolidated toast) per seed mode. */
+      onRegenerateBurstDefault: (count: number) => void;
+      onRegenerateBurstReuseSeed: (count: number) => void;
       onLoadToQuickGen: () => void;
       onLoadToQuickGenNoSeed: () => void;
       onInsertPrompt: () => void;
       onInsertSeed: () => void;
       onInsertAssets: () => void;
       onOpenSourceAsset: (asset: AssetModel, list?: AssetModel[]) => void;
+      /** Selectable Quick Gen target surfaces (sets the active widget for all actions). */
+      targetSurfaces: { widgetId: string; label: string; isLive: boolean }[];
+      /** Current sticky target widgetId, or null for "Auto". */
+      activeTargetWidgetId: string | null;
+      /** Set the active target (null = Auto / clear override); opens it if needed. */
+      onSetTarget: (widgetId: string | null) => void;
     }
   | {
       kind: 'style-variations';
@@ -178,6 +192,12 @@ export type GenerationAction = {
    */
   badgeHint?: GenerationActionBadgeHint;
   /**
+   * Live count of in-flight submits for this action (e.g. rapid regenerate
+   * spam). When set and > 0, the skin renders a numeric corner badge instead
+   * of the semantic `badgeHint`. Non-blocking: the button stays tappable.
+   */
+  countBadge?: number | null;
+  /**
    * Skin-specific accent color (e.g. provider brand color on upload).
    * Pill skin renders as a translucent background + inner ring; other skins
    * may use it differently (e.g. a cube face color).
@@ -188,6 +208,8 @@ export type GenerationAction = {
   expand?: GenerationActionExpand;
   expandDelay?: number;
   collapseDelay?: number;
+  /** Press-and-drag-up burst: fire this action `count` times on release. */
+  burst?: { steps: number[]; onFire: (count: number) => void };
 };
 
 export type GenerationProviderMenuState = {
@@ -222,6 +244,11 @@ export type GenerationButtonGroupModel = {
 // The style-variation catalog + per-user button prefs live in
 // generationButtonPrefsStore. Re-exported here for back-compat.
 export { STYLE_VARIATION_CATEGORIES, type StyleVariationCategory };
+
+// Count stops for the press-and-drag burst gesture on the re-fire buttons
+// (regenerate, quick-generate) and their expand-menu rows. Drag through these
+// to fire N at once.
+export const BURST_STEPS = [1, 2, 3, 5, 10];
 
 const UPLOAD_PROVIDER_COLORS: Record<string, string> = {
   pixverse: '#7C3AED',
@@ -420,11 +447,67 @@ export function useGenerationButtonGroup({
     [],
   );
 
+  // ── Quick Gen target selection ────────────────────────────────────────────
+  // Every Quick Gen surface that can be made the active target, keyed by
+  // widgetId: mounted providers are live; registered openers cover surfaces
+  // openable on demand (Control Center, viewer, panel). The specialized
+  // prompt-authoring host is excluded. Selecting one sets the preferred
+  // CAP_GENERATION_WIDGET provider — so EVERY card action binds to it — and
+  // opens it so the preference resolves to an available provider.
+  const quickGenOpeners = useQuickGenOpenersStore((s) => s.openers);
+  const quickGenTargetSurfaces = useMemo(() => {
+    const EXCLUDED = new Set<string>(['prompt-authoring']);
+    const byId = new Map<string, { widgetId: string; label: string; isLive: boolean }>();
+    for (const entry of allWidgetProviders) {
+      const wid = entry.value?.widgetId;
+      if (!wid || EXCLUDED.has(wid) || byId.has(wid)) continue;
+      byId.set(wid, { widgetId: wid, label: entry.provider.label ?? wid, isLive: true });
+    }
+    for (const opener of Object.values(quickGenOpeners)) {
+      const wid = opener.widgetId;
+      if (EXCLUDED.has(wid) || byId.has(wid)) continue;
+      byId.set(wid, { widgetId: wid, label: opener.label, isLive: false });
+    }
+    return [...byId.values()];
+  }, [allWidgetProviders, quickGenOpeners]);
+
+  // The current sticky target (global preferred-provider override), or null
+  // for "Auto" (automatic open + priority resolution).
+  const preferredWidgetProviderId = useContextHubOverridesStore(
+    (s) => s.overrides[CAP_GENERATION_WIDGET]?.preferredProviderId,
+  );
+  const activeTargetWidgetId = preferredWidgetProviderId?.startsWith('generation-widget:')
+    ? preferredWidgetProviderId.slice('generation-widget:'.length)
+    : null;
+
+  const setQuickGenTarget = useCallback(
+    (targetWidgetId: string | null) => {
+      const overrides = useContextHubOverridesStore.getState();
+      if (!targetWidgetId) {
+        overrides.clearOverride(CAP_GENERATION_WIDGET);
+        return;
+      }
+      overrides.setPreferredProvider(
+        CAP_GENERATION_WIDGET,
+        `generation-widget:${targetWidgetId}`,
+      );
+      // Open the chosen surface so the preference resolves to an available
+      // provider: mounted-but-closed → setOpen; unmounted → its opener.
+      const live = allWidgetProviders.find((e) => e.value?.widgetId === targetWidgetId)?.value;
+      if (live) {
+        if (!live.isOpen) live.setOpen?.(true);
+      } else {
+        getQuickGenOpener(targetWidgetId)?.open({ asset: inputAsset });
+      }
+    },
+    [allWidgetProviders, inputAsset],
+  );
+
   const {
-    isQuickGenerating,
+    quickGenInFlight,
     isLoadingSource,
     isExtending,
-    isRegenerating,
+    regenerateInFlight,
     isGeneratingVariations,
     isInsertingPrompt,
     isInsertingSeed,
@@ -440,6 +523,7 @@ export function useGenerationButtonGroup({
     handleArtificialExtend,
     handleRegenerate,
     handleRegenerateReuseSeed,
+    handleRegenerateBurst,
     handleGenerateStyleVariations,
   } = useGenerationCardHandlers({
     inputAsset,
@@ -703,14 +787,17 @@ export function useGenerationButtonGroup({
     && assetUploadedToProvider;
   const hasSourceGenerationContext = !!hasGenContext;
 
-  const handleQuickGenerateCurrent = useCallback(() => {
+  // `count` flows through to executeGeneration({ count }) — the shared "fire N"
+  // path. Callers that bind these to a DOM onClick must not forward the event
+  // as the count (handlePrimaryQuickGenerate stays arg-less for that reason).
+  const handleQuickGenerateCurrent = useCallback((count?: number) => {
     setGenerationSeedMode('quick-generate', 'default');
-    void handleQuickGenerate();
+    void handleQuickGenerate(count);
   }, [setGenerationSeedMode, handleQuickGenerate]);
 
-  const handleQuickGenerateWithReuseSeed = useCallback(() => {
+  const handleQuickGenerateWithReuseSeed = useCallback((count?: number) => {
     setGenerationSeedMode('quick-generate', 'reuse-source-seed');
-    void handleQuickGenerateReuseSeed();
+    void handleQuickGenerateReuseSeed(count);
   }, [setGenerationSeedMode, handleQuickGenerateReuseSeed]);
 
   const handlePrimaryQuickGenerate = useCallback(() => {
@@ -743,6 +830,39 @@ export function useGenerationButtonGroup({
     }
     handleRegenerateDefault();
   }, [regenerateMode, handleRegenerateWithReuseSeed, handleRegenerateDefault]);
+
+  // Burst handlers.
+  // Quick-generate routes the count straight through executeGeneration({ count })
+  // — the same single-call "fire N" path the on-card swipe uses — so seeds and
+  // the in-flight counter behave identically across both surfaces.
+  const fireQuickGenerateBurst = useCallback((count: number) => {
+    if (quickGenerateMode === 'reuse-source-seed' && hasSourceGenerationContext) {
+      handleQuickGenerateWithReuseSeed(count);
+      return;
+    }
+    handleQuickGenerateCurrent(count);
+  }, [
+    quickGenerateMode,
+    hasSourceGenerationContext,
+    handleQuickGenerateWithReuseSeed,
+    handleQuickGenerateCurrent,
+  ]);
+
+  // Regenerate has no widget-level count path (it submits via generateAsset),
+  // so a burst loops N submits — but they're silenced and covered by a single
+  // consolidated "Regenerating ×N…" toast (see handleRegenerateBurst). Each
+  // iteration still gets its own fresh seed. The on-card swipe has no
+  // regenerate-scalable counterpart.
+  const fireRegenerateBurst = useCallback((count: number) => {
+    void handleRegenerateBurst(count, { reuseSourceSeed: regenerateMode === 'reuse-source-seed' });
+  }, [handleRegenerateBurst, regenerateMode]);
+  // Explicit per-mode variants for the expand-menu re-fire rows.
+  const fireRegenerateBurstDefault = useCallback((count: number) => {
+    void handleRegenerateBurst(count, { reuseSourceSeed: false });
+  }, [handleRegenerateBurst]);
+  const fireRegenerateBurstReuseSeed = useCallback((count: number) => {
+    void handleRegenerateBurst(count, { reuseSourceSeed: true });
+  }, [handleRegenerateBurst]);
 
   useEffect(() => {
     const isVideoWithContext = mediaType === 'video' && !!hasGenContext;
@@ -938,12 +1058,17 @@ export function useGenerationButtonGroup({
       widgetEffectiveProviderId ? `Provider: ${widgetEffectiveProviderId}` : null,
       targetLabel ? `Target: ${targetLabel}` : null,
     ].filter(Boolean).join('\n'), 'Generating...');
-    const resolved = resolveButtonState(quickGenStates, isQuickGenerating ? 'busy' : 'idle');
+    // Always render the idle (tappable) state — the action is non-blocking, so
+    // the icon must never swap to a "busy" spinner. In-flight feedback comes
+    // from the numeric count badge instead.
+    const resolved = resolveButtonState(quickGenStates, 'idle');
     actions.push({
       id: 'quick-generate',
       icon: resolved.icon,
       label: resolved.label,
-      title: withShortcut(resolved.title, quickGenAction?.shortcut),
+      title: `${withShortcut(resolved.title, quickGenAction?.shortcut)}\nDrag up to burst-fire (further = more, back down to cancel)`,
+      countBadge: quickGenInFlight > 0 ? quickGenInFlight : null,
+      burst: { steps: BURST_STEPS, onFire: fireQuickGenerateBurst },
       onClick: handlePrimaryQuickGenerate,
       onContextMenu: getActionContextMenuHandler({
         actionId: MEDIA_CARD_ACTION_IDS.quickGenerate,
@@ -954,7 +1079,6 @@ export function useGenerationButtonGroup({
         onQuickGenerateCurrent: handleQuickGenerateCurrent,
         onQuickGenerateReuseSeed: handleQuickGenerateWithReuseSeed,
         primaryMode: quickGenerateMode,
-        isQuickGenerating,
         hasSourceGenerationContext,
       },
       expandDelay: 150,
@@ -1023,12 +1147,16 @@ export function useGenerationButtonGroup({
       ['Regenerate (run same generation again)', regenerateSeedLine].join('\n'),
       'Regenerating...',
     );
-    const resolved = resolveButtonState(regenStates, isRegenerating ? 'busy' : 'idle');
+    // Non-blocking: never swap to the "busy" spinner — the count badge carries
+    // in-flight feedback so the button stays tappable for rapid re-fires.
+    const resolved = resolveButtonState(regenStates, 'idle');
     actions.push({
       id: 'regenerate',
       icon: resolved.icon,
       label: resolved.label,
-      title: withShortcut(resolved.title, regenerateAction?.shortcut),
+      title: `${withShortcut(resolved.title, regenerateAction?.shortcut)}\nDrag up to burst-fire (further = more, back down to cancel)`,
+      countBadge: regenerateInFlight > 0 ? regenerateInFlight : null,
+      burst: { steps: BURST_STEPS, onFire: fireRegenerateBurst },
       onClick: handlePrimaryRegenerate,
       onContextMenu: getActionContextMenuHandler({
         actionId: MEDIA_CARD_ACTION_IDS.regenerate,
@@ -1043,7 +1171,6 @@ export function useGenerationButtonGroup({
         isInsertingPrompt,
         isInsertingSeed,
         isInsertingAssets,
-        isRegenerating,
         primarySeedMode: regenerateMode,
         insertPromptTitle: withShortcut('Insert only the prompt', insertPromptAction?.shortcut),
         insertSeedTitle: 'Insert only the seed',
@@ -1051,12 +1178,17 @@ export function useGenerationButtonGroup({
         showInsertAssets: assetAcceptsInput,
         onRegenerateDefault: handleRegenerateDefault,
         onRegenerateReuseSeed: handleRegenerateWithReuseSeed,
+        onRegenerateBurstDefault: fireRegenerateBurstDefault,
+        onRegenerateBurstReuseSeed: fireRegenerateBurstReuseSeed,
         onLoadToQuickGen: () => { void handleLoadToQuickGen(); },
         onLoadToQuickGenNoSeed: handleLoadToQuickGenNoSeed,
         onInsertPrompt: handleInsertPromptOnly,
         onInsertSeed: handleInsertSeedOnly,
         onInsertAssets: handleInsertAssetsOnly,
         onOpenSourceAsset: handleOpenSourceAsset,
+        targetSurfaces: quickGenTargetSurfaces,
+        activeTargetWidgetId,
+        onSetTarget: setQuickGenTarget,
       },
       expandDelay: 150,
       collapseDelay: 200,

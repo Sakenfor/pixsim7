@@ -10,7 +10,17 @@
  * its own renderer bundle.
  */
 
-import { ActionHintBadge, DropdownItem, DropdownDivider, Popover, Z, type ButtonGroupItem } from '@pixsim7/shared.ui';
+import {
+  ActionHintBadge,
+  BurstTrackOverlay,
+  DropdownItem,
+  DropdownDivider,
+  Popover,
+  useBurstGesture,
+  Z,
+  type ButtonGroupItem,
+} from '@pixsim7/shared.ui';
+import clsx from 'clsx';
 import React from 'react';
 
 
@@ -23,7 +33,7 @@ import type {
   GenerationActionExpand,
   GenerationProviderMenuState,
 } from './useGenerationButtonGroup';
-import { getGenerationProviderAccent } from './useGenerationButtonGroup';
+import { getGenerationProviderAccent, BURST_STEPS } from './useGenerationButtonGroup';
 
 type SeedModeAction = {
   onClick: () => void;
@@ -165,9 +175,11 @@ function QuickGenerateMenuExpand({ expand }: { expand: Extract<GenerationActionE
     onQuickGenerateCurrent,
     onQuickGenerateReuseSeed,
     primaryMode,
-    isQuickGenerating,
     hasSourceGenerationContext,
   } = expand;
+  // Non-blocking: these rows fire-and-forget, so they stay enabled for rapid
+  // re-fires (no in-flight disable / spinner). Only "Reuse Seed" gates on the
+  // asset actually having a source generation context.
   const [firstAction, secondAction] = orderSeedModeActions(
     primaryMode,
     {
@@ -175,7 +187,7 @@ function QuickGenerateMenuExpand({ expand }: { expand: Extract<GenerationActionE
       icon: 'sparkles',
       label: 'Generate',
       title: 'Quick generate with current widget settings',
-      disabled: isQuickGenerating,
+      disabled: false,
     },
     {
       onClick: onQuickGenerateReuseSeed,
@@ -184,32 +196,30 @@ function QuickGenerateMenuExpand({ expand }: { expand: Extract<GenerationActionE
       title: hasSourceGenerationContext
         ? 'Quick generate and override seed with the source generation seed'
         : 'No source generation context available for this asset',
-      disabled: isQuickGenerating || !hasSourceGenerationContext,
+      disabled: !hasSourceGenerationContext,
     },
   );
   return (
-    <div className="flex flex-col rounded-xl bg-accent/95 backdrop-blur-sm shadow-2xl w-40">
-      <button
-        onClick={firstAction.onClick}
-        className="h-8 px-3 text-xs text-white hover:bg-white/15 rounded-t-xl transition-colors flex items-center gap-2"
+    <div className="flex flex-col rounded-xl bg-accent/95 backdrop-blur-sm shadow-2xl">
+      <MenuRow
+        icon={firstAction.icon}
+        label={firstAction.label}
         title={firstAction.title}
+        onClick={firstAction.onClick}
         disabled={firstAction.disabled}
-        type="button"
-      >
-        <Icon name={isQuickGenerating ? 'loader' : firstAction.icon} size={12} className={isQuickGenerating ? 'animate-spin' : ''} />
-        <span>{firstAction.label}</span>
-      </button>
+        rounded="top"
+        burst={{ steps: BURST_STEPS, onFire: onQuickGenerateCurrent }}
+      />
       <div className="h-px bg-white/15 mx-2" />
-      <button
-        onClick={secondAction.onClick}
-        className="h-8 px-3 text-xs text-white hover:bg-white/15 rounded-b-xl transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+      <MenuRow
+        icon={secondAction.icon}
+        label={secondAction.label}
         title={secondAction.title}
+        onClick={secondAction.onClick}
         disabled={secondAction.disabled}
-        type="button"
-      >
-        <Icon name={isQuickGenerating ? 'loader' : secondAction.icon} size={12} className={isQuickGenerating ? 'animate-spin' : ''} />
-        <span>{secondAction.label}</span>
-      </button>
+        rounded="bottom"
+        burst={{ steps: BURST_STEPS, onFire: onQuickGenerateReuseSeed }}
+      />
     </div>
   );
 }
@@ -225,6 +235,7 @@ function MenuRow({
   disabled,
   busy,
   rounded,
+  burst,
 }: {
   icon: React.ComponentProps<typeof Icon>['name'];
   label: string;
@@ -233,20 +244,98 @@ function MenuRow({
   disabled?: boolean;
   busy?: boolean;
   rounded?: 'top' | 'bottom';
+  /** When set, the row becomes a horizontal burst slider (drag right = fire N). */
+  burst?: { steps: number[]; onFire: (count: number) => void };
 }) {
+  const gesture = useBurstGesture({
+    steps: burst?.steps ?? BURST_STEPS,
+    onFire: burst?.onFire ?? (() => {}),
+    orientation: 'horizontal',
+    disabled: !burst || disabled,
+  });
   return (
     <button
-      onClick={onClick}
-      className={`w-44 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed ${
-        rounded === 'top' ? 'rounded-t-xl' : rounded === 'bottom' ? 'rounded-b-xl' : ''
-      }`}
-      title={title}
+      ref={burst ? gesture.buttonRef : undefined}
+      onClick={() => { if (!gesture.shouldSwallowClick()) onClick(); }}
+      {...(burst ? gesture.pointerHandlers : {})}
+      className={clsx(
+        'relative w-44 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed',
+        rounded === 'top' ? 'rounded-t-xl' : rounded === 'bottom' ? 'rounded-b-xl' : '',
+        burst && 'touch-none select-none',
+      )}
+      title={burst ? `${title}\nDrag → to burst-fire (further = more, ← back to cancel)` : title}
       disabled={disabled}
       type="button"
     >
       <Icon name={busy ? 'loader' : icon} size={12} className={busy ? 'animate-spin' : ''} />
       <span>{label}</span>
+      {burst && <BurstTrackOverlay state={gesture} />}
     </button>
+  );
+}
+
+/**
+ * "Target" row that expands a submenu to the side to pick the active Quick Gen
+ * surface. The trigger + submenu share one relative container so moving the
+ * pointer from row into the (flush, left-full) submenu never leaves the
+ * container — no flicker, no need for hover-bridge timers.
+ */
+function TargetSubmenuRow({
+  surfaces,
+  activeTargetWidgetId,
+  onSetTarget,
+  rounded,
+}: {
+  surfaces: { widgetId: string; label: string; isLive: boolean }[];
+  activeTargetWidgetId: string | null;
+  onSetTarget: (widgetId: string | null) => void;
+  rounded?: 'bottom';
+}) {
+  const [open, setOpen] = React.useState(false);
+  const activeLabel = activeTargetWidgetId
+    ? surfaces.find((s) => s.widgetId === activeTargetWidgetId)?.label ?? 'Custom'
+    : 'Auto';
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        className={`w-44 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 ${
+          rounded === 'bottom' ? 'rounded-b-xl' : ''
+        }`}
+        title="Choose which Quick Gen surface all actions target"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <Icon name="target" size={12} />
+        <span className="flex-1 text-left truncate">{activeLabel}</span>
+        <Icon name="chevronRight" size={12} />
+      </button>
+      {open && (
+        <div className="absolute left-full top-0 z-10 flex flex-col rounded-xl bg-accent/95 backdrop-blur-sm shadow-2xl">
+          <MenuRow
+            icon={activeTargetWidgetId === null ? 'check' : 'radio'}
+            label="Auto"
+            title="Let the app pick the active Quick Gen surface (default)"
+            onClick={() => { onSetTarget(null); setOpen(false); }}
+            rounded="top"
+          />
+          {surfaces.map((surface, i) => (
+            <MenuRow
+              key={surface.widgetId}
+              icon={activeTargetWidgetId === surface.widgetId ? 'check' : 'radio'}
+              label={surface.label}
+              title={`Send all actions to ${surface.label}${surface.isLive ? '' : ' (opens it)'}`}
+              onClick={() => { onSetTarget(surface.widgetId); setOpen(false); }}
+              rounded={i === surfaces.length - 1 ? 'bottom' : undefined}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -259,7 +348,6 @@ function RegenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpa
     isInsertingPrompt,
     isInsertingSeed,
     isInsertingAssets,
-    isRegenerating,
     primarySeedMode,
     insertPromptTitle,
     insertSeedTitle,
@@ -267,13 +355,20 @@ function RegenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpa
     showInsertAssets,
     onRegenerateDefault,
     onRegenerateReuseSeed,
+    onRegenerateBurstDefault,
+    onRegenerateBurstReuseSeed,
     onLoadToQuickGen,
     onLoadToQuickGenNoSeed,
     onInsertPrompt,
     onInsertSeed,
     onInsertAssets,
     onOpenSourceAsset,
+    targetSurfaces,
+    activeTargetWidgetId,
+    onSetTarget,
   } = expand;
+  // Non-blocking: the re-fire rows stay enabled and never show a busy spinner
+  // so they can be spammed as fast as the pill button itself.
   const [firstSeedAction, secondSeedAction] = orderSeedModeActions(
     primarySeedMode,
     {
@@ -281,14 +376,14 @@ function RegenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpa
       icon: 'rotateCcw',
       label: 'Regenerate (fresh seed)',
       title: 'Regenerate with a fresh random seed',
-      disabled: isRegenerating,
+      disabled: false,
     },
     {
       onClick: onRegenerateReuseSeed,
       icon: 'hash',
       label: 'Reuse source seed',
       title: 'Regenerate with the source generation seed',
-      disabled: isRegenerating,
+      disabled: false,
     },
   );
   return (
@@ -301,8 +396,8 @@ function RegenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpa
         title={firstSeedAction.title}
         onClick={firstSeedAction.onClick}
         disabled={firstSeedAction.disabled}
-        busy={isRegenerating}
         rounded="top"
+        burst={{ steps: BURST_STEPS, onFire: onRegenerateBurstDefault }}
       />
       <MenuRow
         icon={secondSeedAction.icon}
@@ -310,7 +405,7 @@ function RegenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpa
         title={secondSeedAction.title}
         onClick={secondSeedAction.onClick}
         disabled={secondSeedAction.disabled}
-        busy={isRegenerating}
+        burst={{ steps: BURST_STEPS, onFire: onRegenerateBurstReuseSeed }}
       />
 
       {/* Insert a single piece into the active widget — no submit */}
@@ -359,8 +454,22 @@ function RegenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpa
         onClick={onLoadToQuickGenNoSeed}
         disabled={isLoadingSource}
         busy={isLoadingSource}
-        rounded={assetAcceptsInput ? undefined : 'bottom'}
+        rounded={targetSurfaces.length === 0 && !assetAcceptsInput ? 'bottom' : undefined}
       />
+
+      {/* Target — one row that expands to the side to pick the active surface;
+          every action above binds to the selection. */}
+      {targetSurfaces.length > 0 && (
+        <>
+          <div className={MENU_SECTION_CLASS}>Target</div>
+          <TargetSubmenuRow
+            surfaces={targetSurfaces}
+            activeTargetWidgetId={activeTargetWidgetId}
+            onSetTarget={onSetTarget}
+            rounded={assetAcceptsInput ? undefined : 'bottom'}
+          />
+        </>
+      )}
 
       {assetAcceptsInput && (
         <SourceAssetsPreview
@@ -479,6 +588,21 @@ function renderPillExpand(expand: GenerationActionExpand): React.ReactNode {
 // Per-action icon/badge resolution (pill-specific visual choices)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Numeric corner badge showing how many submits for this action are currently
+ * in flight (rapid regenerate / quick-gen spam). Takes priority over the
+ * semantic badge hint when present.
+ */
+function renderCountBadge(count: number): React.ReactNode {
+  return (
+    <span
+      className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-white text-accent text-[9px] font-bold leading-[15px] text-center pointer-events-none shadow ring-1 ring-accent/30"
+    >
+      {count > 9 ? '9+' : count}
+    </span>
+  );
+}
+
 function renderPillBadge(hint: GenerationAction['badgeHint']): React.ReactNode | undefined {
   if (!hint) return undefined;
   switch (hint) {
@@ -529,7 +653,9 @@ export function toPillButtonItems(actions: GenerationAction[]): ButtonGroupItem[
     onContextMenu: action.onContextMenu,
     onMouseEnter: action.onMouseEnter,
     title: action.title,
-    badge: renderPillBadge(action.badgeHint),
+    badge: action.countBadge != null && action.countBadge > 0
+      ? renderCountBadge(action.countBadge)
+      : renderPillBadge(action.badgeHint),
     // Mark the expand submenu so card-level touch handlers (reveal-on-tap,
     // outside-tap dismiss) can tell a tap *inside* this popover apart from a
     // tap outside the card. The submenu is portaled to <body>, so its clicks
@@ -540,6 +666,7 @@ export function toPillButtonItems(actions: GenerationAction[]): ButtonGroupItem[
       : undefined,
     expandDelay: action.expandDelay,
     collapseDelay: action.collapseDelay,
+    burst: action.burst,
   }));
 }
 

@@ -2,10 +2,33 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx';
 import { useHoverExpand } from './useHoverExpand';
 import { PortalFloat, type AnchorPlacement } from './PortalFloat';
+import { useBurstGesture, BurstLadder } from './burstGesture';
+
+// Stable identities for the no-burst case so the gesture hook doesn't churn.
+const EMPTY_STEPS: number[] = [];
+const NOOP = () => {};
 
 // ============================================================================
 // Types
 // ============================================================================
+
+/**
+ * Press-and-drag "burst" gesture: press the button and drag upward to pick how
+ * many times to fire it, release to commit. A quick tap (no drag) is left to
+ * the normal `onClick`. Opt-in per item; when omitted the button behaves
+ * exactly as before. Coexists with `expandContent` — the hover/tap menu is
+ * suppressed while a burst drag is engaged.
+ */
+export interface ButtonGroupBurst {
+  /** Ascending count stops the ladder snaps through, e.g. [1, 2, 3, 5, 10]. */
+  steps: number[];
+  /** Fire `count` times. Called on release after an engaged drag. */
+  onFire: (count: number) => void;
+  /** Pixels of upward travel between ladder steps. Default 26. */
+  stepPx?: number;
+  /** Upward movement (px) before the burst engages. Default 6. */
+  threshold?: number;
+}
 
 export interface ButtonGroupItem {
   id: string;
@@ -32,6 +55,8 @@ export interface ButtonGroupItem {
   expandDelay?: number;
   /** Delay before hiding expand content (ms) - allows time to move mouse to expanded content */
   collapseDelay?: number;
+  /** Press-and-drag-up burst gesture (fire N times). Opt-in; see ButtonGroupBurst. */
+  burst?: ButtonGroupBurst;
 }
 
 // ============================================================================
@@ -102,6 +127,14 @@ export interface ButtonGroupProps {
   showLabels?: boolean;
   /** Render expand content in a portal to escape overflow/stacking-context constraints */
   portal?: boolean;
+  /**
+   * Clamp portaled expand content within the viewport so it doesn't clip at
+   * screen edges (nudges it into view — e.g. a top-placed menu near the top
+   * edge "pops lower"). Only applies when `portal` is set. Default: true.
+   */
+  expandClamp?: boolean;
+  /** Minimum margin (px) from viewport edges when clamping expand content. Default: 8. */
+  expandViewportMargin?: number;
   /**
    * Enable mouse-wheel cycling through items (useful when the group is wider
    * than compact cards). Cycles one item per wheel step.
@@ -216,6 +249,8 @@ export function ButtonGroup({
   expandOffset = 6,
   showLabels = false,
   portal = false,
+  expandClamp = true,
+  expandViewportMargin,
   wheelCycle = false,
   responsiveVisible = false,
   visibleCount,
@@ -439,6 +474,8 @@ export function ButtonGroup({
                 expandOffset={expandOffset}
                 showLabels={showLabels}
                 portal={portal}
+                expandClamp={expandClamp}
+                expandViewportMargin={expandViewportMargin}
               />
             ) : (
               <div className="relative">
@@ -509,6 +546,8 @@ interface ExpandableItemProps {
   expandOffset: number;
   showLabels: boolean;
   portal: boolean;
+  expandClamp: boolean;
+  expandViewportMargin?: number;
 }
 
 function ExpandableItem({
@@ -521,6 +560,8 @@ function ExpandableItem({
   expandOffset,
   showLabels,
   portal,
+  expandClamp,
+  expandViewportMargin,
 }: ExpandableItemProps) {
   const { isExpanded, handlers } = useHoverExpand({
     expandDelay: item.expandDelay,
@@ -534,7 +575,16 @@ function ExpandableItem({
   // button's primary action), a tap outside dismisses it.
   const isCoarse = useIsCoarsePointer();
   const [tapOpen, setTapOpen] = useState(false);
-  const open = isCoarse ? tapOpen : isExpanded;
+  const burst = useBurstGesture({
+    steps: item.burst?.steps ?? EMPTY_STEPS,
+    onFire: item.burst?.onFire ?? NOOP,
+    orientation: 'vertical',
+    stepPx: item.burst?.stepPx,
+    threshold: item.burst?.threshold,
+    disabled: !item.burst || item.disabled,
+  });
+  // The hover/tap menu must stay hidden while a burst drag is engaged.
+  const open = (isCoarse ? tapOpen : isExpanded) && !burst.active;
 
   // Dismiss the tap-opened submenu when the user taps outside it. The submenu
   // may be portaled to <body>, so test the portal content (expandRef) too.
@@ -551,6 +601,12 @@ function ExpandableItem({
   }, [isCoarse, tapOpen]);
 
   const handleButtonClick = useCallback((e: React.MouseEvent) => {
+    if (burst.shouldSwallowClick()) {
+      // This click trails a burst gesture — already handled on release.
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (isCoarse) {
       // On touch, the trigger toggles the submenu rather than firing the
       // primary action directly (the primary lives inside the submenu).
@@ -560,7 +616,7 @@ function ExpandableItem({
       return;
     }
     item.onClick?.(e);
-  }, [isCoarse, item]);
+  }, [isCoarse, item, burst]);
 
   // Inline (non-portal) expand position styles
   const INLINE_EXPAND: Record<AnchorPlacement, React.CSSProperties> = {
@@ -577,10 +633,12 @@ function ExpandableItem({
       {...(isCoarse ? {} : handlers)}
     >
       <button
+        ref={burst.buttonRef}
         onClick={handleButtonClick}
         onAuxClick={item.onAuxClick}
         onContextMenu={item.onContextMenu}
         onMouseEnter={item.onMouseEnter}
+        {...(item.burst ? burst.pointerHandlers : {})}
         disabled={item.disabled}
         className={clsx(
           sizeClass,
@@ -589,7 +647,11 @@ function ExpandableItem({
           item.buttonClassName,
           isFirst && config.firstRounding,
           isLast && config.lastRounding,
-          item.disabled && 'opacity-50 cursor-not-allowed'
+          item.disabled && 'opacity-50 cursor-not-allowed',
+          // Own the vertical drag so the page/strip doesn't scroll mid-burst.
+          item.burst && 'touch-none select-none',
+          // Visible "engaged" state while the burst slider is active.
+          burst.active && 'ring-2 ring-inset ring-white/80 bg-white/10',
         )}
         style={item.buttonStyle}
         title={item.title}
@@ -600,12 +662,23 @@ function ExpandableItem({
       </button>
       {item.badge}
 
+      {item.burst && (
+        <BurstLadder
+          state={burst}
+          orientation="vertical"
+          placement={config.expandDirection}
+          offset={expandOffset}
+        />
+      )}
+
       {open && item.expandContent && (
         portal ? (
           <PortalFloat
             anchor={containerRef.current}
             placement={config.expandDirection}
             offset={expandOffset}
+            clamp={expandClamp}
+            viewportMargin={expandViewportMargin}
             onMouseEnter={isCoarse ? undefined : handlers.onMouseEnter}
             onMouseLeave={isCoarse ? undefined : handlers.onMouseLeave}
           >
