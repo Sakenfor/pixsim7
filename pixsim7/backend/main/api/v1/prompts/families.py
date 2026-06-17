@@ -17,8 +17,12 @@ from .schemas import (
     BranchSummary,
     CreateBranchRequest,
     CreatePromptFamilyRequest,
+    AdoptPromptRequest,
+    AdoptPromptResponse,
     CreatePromptVersionRequest,
     ForkFromArtifactRequest,
+    MoveVersionToFamilyRequest,
+    MoveVersionToFamilyResponse,
     PromptFamilyResponse,
     PromptVersionResponse,
     UpdatePromptFamilyRequest,
@@ -250,6 +254,104 @@ async def get_version(
         raise HTTPException(status_code=404, detail="Version not found")
 
     return _version_response(version)
+
+
+@router.post("/families/{family_id}/adopt-prompt", response_model=AdoptPromptResponse)
+async def adopt_prompt(
+    family_id: UUID,
+    request: AdoptPromptRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """Promote a prompt into a family, adopting an existing one-off version
+    (and its generations/assets) when the text matches, instead of creating an
+    empty duplicate. Idempotent when the prompt is already in the family.
+    """
+    if isinstance(request.provider_hints, dict) and "prompt_analysis" in request.provider_hints:
+        raise HTTPException(
+            status_code=422,
+            detail="provider_hints.prompt_analysis is deprecated; use prompt_analysis field",
+        )
+
+    service = PromptVersionService(db)
+    try:
+        result = await service.adopt_prompt_into_family(
+            family_id,
+            prompt_text=request.prompt_text,
+            commit_message=request.commit_message,
+            author=request.author or user.email,
+            tags=request.tags,
+            provider_hints=request.provider_hints,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return AdoptPromptResponse(
+        version=_version_response(result["version"]),
+        adopted=result["adopted"],
+        created=result["created"],
+    )
+
+
+@router.post("/versions/{version_id}/move-to-family", response_model=MoveVersionToFamilyResponse)
+async def move_version_to_family(
+    version_id: UUID,
+    request: MoveVersionToFamilyRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """Move a version into another family, or extract it into a new family.
+
+    Use this to pull a promoted prompt out of a shared catch-all family (e.g.
+    "QuickGen History") into its own standalone family. Omit ``target_family_id``
+    and pass ``title`` to create a fresh family for the version.
+    """
+    service = PromptVersionService(db)
+
+    try:
+        result = await service.move_version_to_family(
+            version_id,
+            target_family_id=request.target_family_id,
+            title=request.title,
+            prompt_type=request.prompt_type,
+            category=request.category,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    family = result["family"]
+    version_count = len(await service.list_versions(family.id, limit=1000))
+
+    from pixsim7.backend.main.api.v1.notifications import emit_notification
+    await emit_notification(
+        db,
+        title=f"Prompt version moved to: {family.title}",
+        body=(
+            f"Created new family '{family.title}'"
+            if result["created_family"]
+            else f"Moved into '{family.title}'"
+        ),
+        category="prompt.updated",
+        severity="info",
+        source=user.source,
+        event_type="prompt.version_moved",
+        actor_name=user.actor_display_name,
+        actor_user_id=user.user_id,
+        ref_type="prompt_version",
+        ref_id=str(version_id),
+    )
+
+    return MoveVersionToFamilyResponse(
+        version=_version_response(result["version"]),
+        family=await build_family_response(family, db, version_count=version_count),
+        created_family=result["created_family"],
+        source_family_id=result["source_family_id"],
+        reparented_children=result["reparented_children"],
+    )
 
 
 @router.post("/versions/fork-from-artifact", response_model=PromptVersionResponse)

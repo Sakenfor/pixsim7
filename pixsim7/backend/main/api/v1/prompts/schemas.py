@@ -135,6 +135,56 @@ class PromptVersionResponse(BaseModel):
         from_attributes = True
 
 
+class AdoptPromptRequest(BaseModel):
+    """Promote a prompt into a family, adopting an existing one-off version
+    (with its generations/assets) when the text already matches one."""
+    prompt_text: str = Field(..., description="The prompt text to promote/adopt.")
+    commit_message: Optional[str] = None
+    author: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    provider_hints: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Provider/version metadata only. Must not contain prompt_analysis.",
+    )
+
+
+class AdoptPromptResponse(BaseModel):
+    version: PromptVersionResponse
+    adopted: bool = Field(..., description="True when an existing one-off version was moved in.")
+    created: bool = Field(..., description="True when a fresh version was created.")
+
+
+class MoveVersionToFamilyRequest(BaseModel):
+    """Move a version into another family, or extract it into a new one.
+
+    Provide ``target_family_id`` to move into an existing family, or omit it and
+    provide ``title`` to extract the version into a brand-new family.
+    """
+    target_family_id: Optional[UUID] = Field(
+        None,
+        description="Existing family to move into. Omit to create a new family.",
+    )
+    title: Optional[str] = Field(
+        None,
+        description="Title for the new family (required when target_family_id is omitted).",
+    )
+    prompt_type: Optional[str] = Field(
+        None,
+        description="prompt_type for the new family. Defaults to the source family's type, else 'visual'.",
+    )
+    category: Optional[str] = Field(None, description="Optional category for the new family.")
+
+
+class MoveVersionToFamilyResponse(BaseModel):
+    version: PromptVersionResponse
+    family: PromptFamilyResponse
+    created_family: bool = Field(..., description="True when a new family was created for this move.")
+    source_family_id: Optional[UUID] = Field(None, description="Family the version was moved out of.")
+    reparented_children: int = Field(
+        0, description="Child versions reparented in the source family to keep its history connected."
+    )
+
+
 class PromptVariantResponse(BaseModel):
     id: int
     prompt_version_id: UUID

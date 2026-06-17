@@ -18,7 +18,9 @@ import {
   getPromptVersionAssets,
   listPromptFamilies,
   listPromptVersions,
+  moveVersionToFamily,
   updatePromptFamily,
+  type MoveVersionToFamilyResult,
   type PromptFamilySummary,
   type PromptAuthoringModeContract,
   type PromptVersionSummary,
@@ -99,6 +101,15 @@ export interface PromptAuthoringState {
   handleUpdateFamily: (familyId: string, data: { title?: string; description?: string; category?: string; tags?: string[]; is_active?: boolean; primary_character_id?: string | null }) => Promise<void>;
   handleCreateVersion: () => Promise<void>;
   handleApplyEdit: () => Promise<void>;
+  /**
+   * Move a version into another family, or extract it into a new family (omit
+   * targetFamilyId, pass title). Selects the target family + moved version on
+   * success. Returns the move result, or null on failure.
+   */
+  handleMoveVersion: (
+    versionId: string,
+    opts: { targetFamilyId?: string; title?: string; category?: string },
+  ) => Promise<MoveVersionToFamilyResult | null>;
   /** Hydrate all editor fields from a version object. */
   hydrateFromVersion: (version: PromptVersionSummary) => void;
 }
@@ -541,6 +552,40 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
     }
   }, [commitMessageInput, editorText, instructionInput, refreshVersions, selectedFamilyId, selectedVersionId, versionTagsInput]);
 
+  const handleMoveVersion = useCallback(
+    async (
+      versionId: string,
+      opts: { targetFamilyId?: string; title?: string; category?: string },
+    ): Promise<MoveVersionToFamilyResult | null> => {
+      setBusyAction('version');
+      setStatusMessage(null);
+      try {
+        const result = await moveVersionToFamily(versionId, {
+          target_family_id: opts.targetFamilyId,
+          title: opts.title,
+          category: opts.category,
+        });
+        // refreshFamilies selects the target family; refreshVersions then lands
+        // on the moved version in its new home.
+        await refreshFamilies(result.family.id);
+        await refreshVersions(result.family.id, result.version.id);
+        setSelectedVersionId(result.version.id);
+        setStatusMessage(
+          result.created_family
+            ? `Extracted to new family "${result.family.title}" (v${result.version.version_number})`
+            : `Moved into "${result.family.title}" (v${result.version.version_number})`,
+        );
+        return result;
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : 'Failed to move version');
+        return null;
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [refreshFamilies, refreshVersions],
+  );
+
   // ── Assemble context value ──
 
   const value = useMemo<PromptAuthoringState>(
@@ -557,6 +602,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
       authoringModes, selectedFamily, selectedVersion, targetVersionIds, truncatedVersionCount,
       refreshFamilies, refreshVersions, refreshScopeAssets,
       handleCreateFamily, handleUpdateFamily, handleCreateVersion, handleApplyEdit,
+      handleMoveVersion,
       hydrateFromVersion,
     }),
     [
@@ -570,6 +616,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
       authoringModes, selectedFamily, selectedVersion, targetVersionIds, truncatedVersionCount,
       refreshFamilies, refreshVersions, refreshScopeAssets,
       handleCreateFamily, handleUpdateFamily, handleCreateVersion, handleApplyEdit,
+      handleMoveVersion,
       hydrateFromVersion,
     ],
   );

@@ -318,6 +318,224 @@ class PromptFamilyService:
 
         return version
 
+    async def adopt_prompt_into_family(
+        self,
+        family_id: UUID,
+        *,
+        prompt_text: str,
+        commit_message: Optional[str] = None,
+        author: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        provider_hints: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Promote a prompt into a family, *adopting* an existing one-off version
+        (and its linked generations/assets) when the text matches — instead of
+        creating an empty duplicate.
+
+        QuickGen records a one-off ``PromptVersion`` (``family_id IS NULL``) per
+        generation and links its assets there. The old "promote from history"
+        path created a fresh, asset-less duplicate; this adopts the real one so
+        the promoted version actually carries its generations.
+
+        Resolution by normalized ``prompt_hash``:
+          1. a version with this text is already in the family -> return it
+             (idempotent; ``adopted=created=False``).
+          2. an existing one-off version -> move it into the family. adopted=True.
+          3. otherwise -> create a fresh version. created=True.
+
+        Returns ``{"version", "adopted", "created"}``.
+        """
+        from pixsim7.backend.main.services.prompt.git.versioning_adapter import (
+            PromptVersioningService,
+        )
+
+        family = await self.get_family(family_id)
+        if family is None:
+            raise LookupError(f"Prompt family {family_id} not found")
+
+        prompt_hash = PromptVersion.compute_hash(prompt_text)
+
+        existing = (
+            await self.db.execute(
+                select(PromptVersion).where(
+                    PromptVersion.family_id == family_id,
+                    PromptVersion.prompt_hash == prompt_hash,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return {"version": existing, "adopted": False, "created": False}
+
+        oneoff = (
+            await self.db.execute(
+                select(PromptVersion)
+                .where(
+                    PromptVersion.family_id.is_(None),
+                    PromptVersion.prompt_hash == prompt_hash,
+                )
+                .order_by(PromptVersion.created_at)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+        if oneoff is not None:
+            next_number = await PromptVersioningService(self.db).get_next_version_number(
+                family_id, lock=True
+            )
+            oneoff.family_id = family_id
+            oneoff.version_number = next_number
+            oneoff.parent_version_id = None
+            oneoff.diff_from_parent = None
+            if commit_message:
+                oneoff.commit_message = commit_message
+            if tags:
+                oneoff.tags = list(dict.fromkeys([*(oneoff.tags or []), *tags]))
+            if provider_hints:
+                merged = dict(oneoff.provider_hints or {})
+                merged.update(provider_hints)
+                merged.pop("prompt_analysis", None)
+                oneoff.provider_hints = merged
+            if author and not oneoff.author:
+                oneoff.author = author
+            await self.db.commit()
+            await self.db.refresh(oneoff)
+            return {"version": oneoff, "adopted": True, "created": False}
+
+        version = await self.create_version(
+            family_id=family_id,
+            prompt_text=prompt_text,
+            commit_message=commit_message,
+            author=author,
+            tags=tags or [],
+            provider_hints=provider_hints or {},
+        )
+        return {"version": version, "adopted": False, "created": True}
+
+    async def move_version_to_family(
+        self,
+        version_id: UUID,
+        *,
+        target_family_id: Optional[UUID] = None,
+        title: Optional[str] = None,
+        prompt_type: Optional[str] = None,
+        category: Optional[str] = None,
+        reparent_children: bool = True,
+    ) -> Dict[str, Any]:
+        """Move a single prompt version into another family, or extract it into
+        a brand-new family.
+
+        The escape hatch for pulling a promoted prompt out of a shared catch-all
+        family (e.g. "QuickGen History") into a standalone family of its own.
+
+        - ``target_family_id`` None  -> create a new family (``title`` required)
+          and move the version into it.
+        - ``target_family_id`` given -> move the version into that family.
+
+        The moved version becomes a root (``parent_version_id=None``) in the
+        target and is assigned the next sequential ``version_number`` there. Any
+        children that referenced it as a parent are reparented to the moved
+        version's former parent, so the source family's history stays connected
+        and a parent link never crosses a family boundary.
+
+        Raises:
+            LookupError: version or target family not found.
+            ValueError:  title missing for new-family extract, the version is
+                already in the target family, or an identical prompt
+                (prompt_hash) already lives in the target family.
+        """
+        from pixsim7.backend.main.services.prompt.git.versioning_adapter import (
+            PromptVersioningService,
+        )
+
+        version = await self.get_version(version_id)
+        if version is None:
+            raise LookupError(f"Prompt version {version_id} not found")
+
+        source_family_id = version.family_id
+
+        created = False
+        if target_family_id is None:
+            if not title or not title.strip():
+                raise ValueError("title is required when creating a new family")
+            resolved_type = prompt_type
+            if not resolved_type and source_family_id is not None:
+                source_family = await self.get_family(source_family_id)
+                resolved_type = source_family.prompt_type if source_family else None
+            target_family = await self.create_family(
+                title=title.strip(),
+                prompt_type=resolved_type or "visual",
+                category=category,
+            )
+            target_family_id = target_family.id
+            created = True
+        else:
+            target_family = await self.get_family(target_family_id)
+            if target_family is None:
+                raise LookupError(f"Prompt family {target_family_id} not found")
+
+        if source_family_id is not None and source_family_id == target_family_id:
+            raise ValueError("Version already belongs to the target family")
+
+        # Respect the (prompt_hash, family_id) uniqueness constraint.
+        collision = (
+            await self.db.execute(
+                select(PromptVersion.id).where(
+                    PromptVersion.family_id == target_family_id,
+                    PromptVersion.prompt_hash == version.prompt_hash,
+                )
+            )
+        ).first()
+        if collision is not None:
+            raise ValueError("An identical prompt already exists in the target family")
+
+        former_parent_id = version.parent_version_id
+
+        # Keep the source family's history connected: children that pointed at
+        # the moved version are reparented to its former parent (never left
+        # dangling across the family boundary). Recompute their cached diff.
+        reparented = 0
+        if reparent_children and source_family_id is not None:
+            former_parent_text: Optional[str] = None
+            if former_parent_id is not None:
+                fp = await self.get_version(former_parent_id)
+                former_parent_text = fp.prompt_text if fp else None
+            children = (
+                await self.db.execute(
+                    select(PromptVersion).where(
+                        PromptVersion.parent_version_id == version_id,
+                        PromptVersion.family_id == source_family_id,
+                    )
+                )
+            ).scalars().all()
+            for child in children:
+                child.parent_version_id = former_parent_id
+                child.diff_from_parent = (
+                    generate_inline_diff(former_parent_text or "", child.prompt_text)
+                    if former_parent_id is not None
+                    else None
+                )
+                reparented += 1
+
+        # Re-home the version as a root in the target family.
+        next_number = await PromptVersioningService(self.db).get_next_version_number(
+            target_family_id, lock=True
+        )
+        version.family_id = target_family_id
+        version.version_number = next_number
+        version.parent_version_id = None
+        version.diff_from_parent = None
+
+        await self.db.commit()
+        await self.db.refresh(version)
+
+        return {
+            "version": version,
+            "family": target_family,
+            "created_family": created,
+            "source_family_id": str(source_family_id) if source_family_id else None,
+            "reparented_children": reparented,
+        }
+
     async def get_version(self, version_id: UUID) -> Optional[PromptVersion]:
         """Get version by ID"""
         result = await self.db.execute(

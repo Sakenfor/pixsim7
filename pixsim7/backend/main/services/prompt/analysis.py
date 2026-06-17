@@ -214,6 +214,14 @@ class PromptAnalysisService:
                 prompt_hash, family_hint
             )
 
+        # One-off (family_hint=None) attaches whose prompt text already lives in
+        # exactly one family link to that canonical version instead of minting a
+        # divergent one-off. This keeps a promoted/adopted prompt's family version
+        # accruing new generations/assets rather than orphaning them on a fresh
+        # one-off. Ambiguous (text in >1 family) falls back to a one-off below.
+        if existing is None and family_hint is None:
+            existing = await self._find_in_family_by_hash(prompt_hash)
+
         if existing:
             # Check if we need to (re)analyze
             # Skip if we have precomputed analysis and existing has any analysis
@@ -334,6 +342,30 @@ class PromptAnalysisService:
             )
         result = await self.db.execute(stmt)
         return result.scalars().first()
+
+    async def _find_in_family_by_hash(
+        self,
+        prompt_hash: str,
+    ) -> Optional[PromptVersion]:
+        """Find the canonical in-family version for a prompt by hash.
+
+        For one-off (family_hint=None) attaches: when the prompt text already
+        belongs to exactly one family (e.g. it was promoted/adopted there),
+        return that version so the generation links to it instead of creating a
+        divergent one-off. Returns None when no in-family version exists or the
+        text spans multiple families (ambiguous — caller mints a one-off).
+        """
+        stmt = select(PromptVersion).where(
+            PromptVersion.prompt_hash == prompt_hash,
+            PromptVersion.family_id.isnot(None),
+        )
+        rows = (await self.db.execute(stmt)).scalars().all()
+        if not rows:
+            return None
+        if len({r.family_id for r in rows}) != 1:
+            return None  # ambiguous across families — don't guess
+        # Unique (prompt_hash, family_id) → exactly one row for a single family.
+        return rows[0]
 
     async def _acquire_lock_and_recheck(
         self,

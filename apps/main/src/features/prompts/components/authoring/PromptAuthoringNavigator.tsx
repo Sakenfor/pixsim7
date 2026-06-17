@@ -358,6 +358,124 @@ function FamilyCreatePopover({
   );
 }
 
+/** Per-version popover: extract the version into a new family, or move it into an existing one. */
+function VersionMovePopover({
+  versionId,
+  defaultTitle,
+  currentFamilyId,
+  families,
+  busy,
+  onMove,
+  onClose,
+  triggerRef,
+}: {
+  versionId: string;
+  defaultTitle: string;
+  currentFamilyId: string | null;
+  families: PromptFamilySummary[];
+  busy: boolean;
+  onMove: (versionId: string, opts: { targetFamilyId?: string; title?: string }) => Promise<unknown>;
+  onClose: () => void;
+  triggerRef: React.RefObject<HTMLElement | null>;
+}) {
+  const [mode, setMode] = useState<'new' | 'existing'>('new');
+  const [title, setTitle] = useState(defaultTitle);
+  const otherFamilies = useMemo(
+    () => families.filter((f) => f.id !== currentFamilyId),
+    [families, currentFamilyId],
+  );
+  const [targetFamilyId, setTargetFamilyId] = useState<string>(otherFamilies[0]?.id ?? '');
+
+  const canSubmit = mode === 'new' ? title.trim().length > 0 : targetFamilyId.length > 0;
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    const ok = await onMove(
+      versionId,
+      mode === 'new' ? { title: title.trim() } : { targetFamilyId },
+    );
+    if (ok) onClose();
+  };
+
+  return (
+    <Popover
+      anchor={triggerRef.current}
+      placement="bottom"
+      align="end"
+      offset={4}
+      open
+      onClose={onClose}
+      triggerRef={triggerRef}
+      className="w-64 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2"
+    >
+      <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200">
+        Move version to family
+      </div>
+      <div className="flex items-center gap-1">
+        {(['new', 'existing'] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setMode(key)}
+            disabled={key === 'existing' && otherFamilies.length === 0}
+            className={clsx(
+              'px-2 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-40',
+              mode === key
+                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300'
+                : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
+            )}
+          >
+            {key === 'new' ? 'New family' : 'Existing family'}
+          </button>
+        ))}
+      </div>
+      {mode === 'new' ? (
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="New family title"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void handleSubmit();
+            }
+          }}
+          className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+        />
+      ) : (
+        <select
+          value={targetFamilyId}
+          onChange={(e) => setTargetFamilyId(e.target.value)}
+          className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+        >
+          {otherFamilies.map((f) => (
+            <option key={f.id} value={f.id}>{f.title}</option>
+          ))}
+        </select>
+      )}
+      <div className="flex items-center gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={() => void handleSubmit()}
+          disabled={busy || !canSubmit}
+          className="text-xs px-2 py-1 rounded border border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300 disabled:opacity-60"
+        >
+          {busy ? 'Moving...' : mode === 'new' ? 'Extract' : 'Move'}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300"
+        >
+          Cancel
+        </button>
+      </div>
+    </Popover>
+  );
+}
+
 export function PromptAuthoringNavigator() {
   const {
     families,
@@ -374,6 +492,8 @@ export function PromptAuthoringNavigator() {
     setSelectedVersionId,
     hydrateFromVersion,
     authoringModes,
+    handleMoveVersion,
+    busyAction,
   } = usePromptAuthoring();
 
   const categoryOptions = useMemo(
@@ -386,6 +506,8 @@ export function PromptAuthoringNavigator() {
   const createBtnRef = useRef<HTMLButtonElement>(null);
   const [editingFamilyId, setEditingFamilyId] = useState<string | null>(null);
   const editBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const [movingVersionId, setMovingVersionId] = useState<string | null>(null);
+  const moveBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   // Branch state
   const [branches, setBranches] = useState<BranchSummary[]>([]);
@@ -506,6 +628,26 @@ export function PromptAuthoringNavigator() {
         );
       })()}
 
+      {/* Version move/extract popover */}
+      {movingVersionId && (() => {
+        const ver = versions.find((v) => v.id === movingVersionId);
+        const btnEl = moveBtnRefs.current.get(movingVersionId);
+        if (!ver || !btnEl) return null;
+        const defaultTitle = (ver.commit_message || `Prompt v${ver.version_number}`).slice(0, 60);
+        return (
+          <VersionMovePopover
+            versionId={movingVersionId}
+            defaultTitle={defaultTitle}
+            currentFamilyId={selectedFamilyId}
+            families={families}
+            busy={busyAction === 'version'}
+            onMove={(versionId, opts) => handleMoveVersion(versionId, opts)}
+            onClose={() => setMovingVersionId(null)}
+            triggerRef={{ current: btnEl }}
+          />
+        );
+      })()}
+
       {/* ── Branch + version history ── */}
       <div className="flex-1 min-h-0 flex flex-col">
         {/* Branch selector */}
@@ -542,8 +684,8 @@ export function PromptAuthoringNavigator() {
                 const isLast = idx === filteredByBranch.length - 1;
 
                 return (
+                  <div key={version.id} className="group relative">
                   <button
-                    key={version.id}
                     type="button"
                     onClick={() => {
                       setSelectedVersionId(version.id);
@@ -598,6 +740,26 @@ export function PromptAuthoringNavigator() {
                       )}
                     </div>
                   </button>
+                  {/* Move/extract action — overlaid sibling (can't nest buttons) */}
+                  <button
+                    ref={(el) => { if (el) moveBtnRefs.current.set(version.id, el); }}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMovingVersionId((v) => (v === version.id ? null : version.id));
+                    }}
+                    title="Move / extract to another family"
+                    className={clsx(
+                      'absolute top-1.5 right-2 p-1 rounded border bg-white dark:bg-neutral-900 transition-opacity',
+                      'border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200',
+                      movingVersionId === version.id
+                        ? 'opacity-100'
+                        : 'opacity-0 group-hover:opacity-100 focus:opacity-100',
+                    )}
+                  >
+                    <Icon name="gitBranch" size={11} />
+                  </button>
+                  </div>
                 );
               })}
             </div>

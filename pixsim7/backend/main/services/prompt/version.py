@@ -65,6 +65,12 @@ class PromptVersionService:
     async def list_versions(self, *args, **kwargs):
         return await self._family.list_versions(*args, **kwargs)
 
+    async def move_version_to_family(self, *args, **kwargs):
+        return await self._family.move_version_to_family(*args, **kwargs)
+
+    async def adopt_prompt_into_family(self, *args, **kwargs):
+        return await self._family.adopt_prompt_into_family(*args, **kwargs)
+
     # ===== Variant Management (delegate to PromptVariantService) =====
 
     async def fork_from_artifact(self, *args, **kwargs):

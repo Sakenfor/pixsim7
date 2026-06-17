@@ -45,6 +45,59 @@ export const promoteFamilyCandidate = (body: {
 }): Promise<PromoteFamilyCandidateResult> =>
   pixsimClient.post<PromoteFamilyCandidateResult>('/prompts/family-candidates/promote', body);
 
+export interface AdoptPromptResult {
+  version: PromptVersionSummary;
+  adopted: boolean;
+  created: boolean;
+}
+
+/**
+ * Promote a prompt into a family, adopting an existing one-off version (with its
+ * generations/assets) when the text matches — instead of creating an empty
+ * duplicate. Idempotent when the prompt is already in the family.
+ */
+export const adoptPromptIntoFamily = (
+  familyId: string,
+  body: {
+    prompt_text: string;
+    commit_message?: string;
+    author?: string;
+    tags?: string[];
+    provider_hints?: Record<string, unknown>;
+  },
+): Promise<AdoptPromptResult> =>
+  pixsimClient.post<AdoptPromptResult>(
+    `/prompts/families/${encodeURIComponent(familyId)}/adopt-prompt`,
+    body,
+  );
+
+export interface MoveVersionToFamilyResult {
+  version: PromptVersionSummary;
+  family: PromptFamilySummary;
+  created_family: boolean;
+  source_family_id?: string | null;
+  reparented_children: number;
+}
+
+/**
+ * Move a prompt version into another family, or extract it into a brand-new one
+ * (omit `target_family_id` and pass `title`). The escape hatch for pulling a
+ * promoted prompt out of the shared "QuickGen History" bucket into its own family.
+ */
+export const moveVersionToFamily = (
+  versionId: string,
+  body: {
+    target_family_id?: string;
+    title?: string;
+    prompt_type?: string;
+    category?: string;
+  },
+): Promise<MoveVersionToFamilyResult> =>
+  pixsimClient.post<MoveVersionToFamilyResult>(
+    `/prompts/versions/${encodeURIComponent(versionId)}/move-to-family`,
+    body,
+  );
+
 // ── Variant slot outcomes (per-word success deltas) ──────────────────────────
 
 export type VariantSlotKind = 'word' | 'dsl' | 'mixed';

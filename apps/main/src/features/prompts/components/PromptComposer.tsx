@@ -1377,8 +1377,14 @@ export function PromptComposer({
         setHistoryPromotionNotice(null);
 
         const familyId = await ensureQuickGenHistoryFamilyId(api);
-        const createdVersion = await api.post<PromptVersionRecord>(
-          `/prompts/families/${encodeURIComponent(familyId)}/versions`,
+        // Adopt the existing one-off version for this prompt (carrying its
+        // generations/assets) instead of creating an empty duplicate.
+        const result = await api.post<{
+          version: PromptVersionRecord;
+          adopted: boolean;
+          created: boolean;
+        }>(
+          `/prompts/families/${encodeURIComponent(familyId)}/adopt-prompt`,
           {
             prompt_text: promptText,
             commit_message: `Promoted from QuickGen history step ${index + 1}`,
@@ -1389,8 +1395,13 @@ export function PromptComposer({
             },
           },
         );
+        const createdVersion = result.version;
 
-        setHistoryPromotionNotice(`Promoted as v${createdVersion.version_number}.`);
+        setHistoryPromotionNotice(
+          result.adopted
+            ? `Adopted as v${createdVersion.version_number} (kept its generations).`
+            : `Promoted as v${createdVersion.version_number}.`,
+        );
         setHistoryPromotionError(null);
         logEvent('INFO', 'prompt_history_promoted', {
           step: index + 1,
