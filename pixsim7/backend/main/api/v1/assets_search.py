@@ -71,6 +71,7 @@ def _build_search_filters(request: AssetSearchRequest) -> AssetSearchFilters:
         tag=request.tag,
         q=request.q,
         include_archived=request.include_archived,
+        archived_only=request.archived_only,
         searchable=request.searchable,
         asset_kind=(request.filters or {}).get('asset_kind', getattr(request, 'asset_kind', 'content')),
         created_from=request.created_from,
@@ -342,7 +343,13 @@ async def get_filter_options(
                 continue
             include_keys.extend([key for key in entry.split(",") if key])
 
-    context = request.context or None
+    context = request.context
+    # Filter *definitions* are listed ungated (context=None) so context-dependent
+    # filters — e.g. the Folder filter, which requires Source=Local — still render
+    # their chip up front instead of vanishing until the prerequisite is selected.
+    # Their *options*, however, stay gated: build_options() below re-applies the
+    # live context, so the heavy per-source option queries (folder-path scan,
+    # source-video scan, ...) don't run on the initial gallery load.
     filters = [
         FilterDefinition(
             key=spec.key,
@@ -353,7 +360,7 @@ async def get_filter_options(
             multi=spec.multi,
             match_modes=sorted(spec.match_modes) if spec.match_modes else None,
         )
-        for spec in asset_filter_registry.list_filters(include=include_keys, context=context)
+        for spec in asset_filter_registry.list_filters(include=include_keys, context=None)
     ]
 
     try:

@@ -483,13 +483,15 @@ export function DynamicFilters({
               onMouseEnter={() => openHover(filter.key)}
               onMouseLeave={() => closeHover(filter.key)}
             >
-              <FilterControl
-                definition={filter}
-                options={
+              <FilterControlSlot
+                filter={filter}
+                baseOptions={
                   filter.key === 'effective_provider_id'
                     ? (metadata.options.effective_provider_id || metadata.options.provider_id || [])
                     : (metadata.options[filter.key] || [])
                 }
+                visible={isVisible}
+                includeCounts={showCounts}
                 value={readFilterValue(filter.key)}
                 onChange={(value) => handleFilterChange(filter.key, value)}
                 matchModes={filter.match_modes}
@@ -959,9 +961,17 @@ function OverflowMenu({ filters, metadata, values, onChange, hasSelection }: Ove
                           e.stopPropagation();
                           e.preventDefault();
                           const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          // "Show archived" (include_archived) is additive — opening it as
+                          // a filter would show everything. Restrict the mini-gallery to
+                          // ONLY archived assets instead.
+                          const initialFilters = (
+                            filter.key === 'include_archived'
+                              ? { archived_only: true }
+                              : { [filter.key]: true }
+                          ) as AssetFilters;
                           useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
                             context: {
-                              initialFilters: { [filter.key]: true } as AssetFilters,
+                              initialFilters,
                               sourceLabel: displayLabel,
                               suppressHoverActions: true,
                             },
@@ -1135,6 +1145,8 @@ interface FilterControlProps {
   mode?: string;
   onModeChange?: (mode: string) => void;
   compact?: boolean;
+  /** True while a dependent filter is lazily fetching its options. */
+  loading?: boolean;
 }
 
 function FilterControl({
@@ -1146,6 +1158,7 @@ function FilterControl({
   mode,
   onModeChange,
   compact,
+  loading,
 }: FilterControlProps) {
   const { key, type, label } = definition;
   const uiConfig = FILTER_UI_CONFIG[key] || {};
@@ -1213,6 +1226,20 @@ function FilterControl({
     }
 
     case 'enum': {
+      if (options.length === 0) {
+        return (
+          <div className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400 inline-flex items-center gap-1.5">
+            {loading ? (
+              <>
+                <Icon name="loader" className="animate-spin w-3 h-3" />
+                Loading options…
+              </>
+            ) : (
+              'No options available.'
+            )}
+          </div>
+        );
+      }
       const groupCfg = GROUPED_FILTER_CONFIG[key];
       const shouldGroup = !!groupCfg && options.length > 0;
       const groupSeparator = groupCfg?.separator ?? ':';
@@ -1376,6 +1403,89 @@ function FilterControl({
     default:
       return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// FilterControlSlot — feeds options into FilterControl, lazily fetching them
+// for context-dependent filters (e.g. Folder, which requires Source=Local).
+// ---------------------------------------------------------------------------
+
+type FilterControlSlotProps = Omit<FilterControlProps, 'definition' | 'options' | 'loading'> & {
+  filter: FilterDefinition;
+  baseOptions: FilterOptionValue[];
+  visible: boolean;
+  includeCounts: boolean;
+};
+
+/** Build a metadata context that satisfies a filter's declared dependencies. */
+function dependsOnContext(
+  dependsOn: FilterDefinition['depends_on'],
+): Record<string, string[]> | undefined {
+  if (!dependsOn) return undefined;
+  const ctx: Record<string, string[]> = {};
+  for (const [key, values] of Object.entries(dependsOn)) {
+    if (Array.isArray(values) && values.length > 0) ctx[key] = values;
+  }
+  return Object.keys(ctx).length > 0 ? ctx : undefined;
+}
+
+function FilterControlSlot({
+  filter,
+  baseOptions,
+  visible,
+  includeCounts,
+  ...control
+}: FilterControlSlotProps) {
+  const lazyContext = useMemo(() => dependsOnContext(filter.depends_on), [filter.depends_on]);
+
+  // A dependent filter whose prerequisite isn't in the active gallery context
+  // carries no options in the base metadata blob (they're gated server-side to
+  // keep the initial load cheap). Fetch just this filter's options on demand —
+  // synthesizing the dependency into the context — once its dropdown is shown.
+  const needsLazy = !!lazyContext && baseOptions.length === 0;
+
+  if (needsLazy && visible) {
+    return (
+      <LazyDependentFilterControl
+        filter={filter}
+        context={lazyContext!}
+        includeCounts={includeCounts}
+        fallbackOptions={baseOptions}
+        {...control}
+      />
+    );
+  }
+
+  return <FilterControl definition={filter} options={baseOptions} {...control} />;
+}
+
+function LazyDependentFilterControl({
+  filter,
+  context,
+  includeCounts,
+  fallbackOptions,
+  ...control
+}: Omit<FilterControlProps, 'definition' | 'options' | 'loading'> & {
+  filter: FilterDefinition;
+  context: Record<string, string[]>;
+  includeCounts: boolean;
+  fallbackOptions: FilterOptionValue[];
+}) {
+  const { metadata, loading } = useFilterMetadata({
+    includeCounts,
+    include: [filter.key],
+    context,
+    limit: 150,
+  });
+  const options = metadata?.options?.[filter.key] ?? fallbackOptions;
+  return (
+    <FilterControl
+      definition={filter}
+      options={options}
+      loading={loading && options.length === 0}
+      {...control}
+    />
+  );
 }
 
 // ---------------------------------------------------------------------------
