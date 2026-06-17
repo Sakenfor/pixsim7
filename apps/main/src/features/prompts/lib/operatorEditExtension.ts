@@ -242,6 +242,16 @@ const operatorMark = Decoration.mark({
   },
 });
 
+// The intra-token access `_` (the `_` in `ACTOR1_HIP`) is a peer operator but
+// lives INSIDE a word, so it can't read as a standalone pill without fracturing
+// the token. It gets its own class: a subtle inline-coloured separator, no pill
+// chrome.
+const accessMark = Decoration.mark({
+  attributes: {
+    class: 'cm-prompt-op cm-prompt-op-access',
+  },
+});
+
 function buildDecorations(
   tokenLines: PromptTokenLine[] | undefined,
   doc: Text,
@@ -255,7 +265,7 @@ function buildDecorations(
       // Skip zero-length or out-of-bounds ranges defensively — RangeSetBuilder
       // throws on invalid input which would tear down the whole editor.
       if (r.from >= r.to || r.from < 0 || r.to > docLength) continue;
-      builder.add(r.from, r.to, operatorMark);
+      builder.add(r.from, r.to, r.context === 'access' ? accessMark : operatorMark);
     }
     return builder.finish();
   } catch (err) {
@@ -316,24 +326,42 @@ function operatorClickHandler(callbacks: OperatorEditCallbacks) {
 }
 
 const operatorTheme = EditorView.baseTheme({
-  // ── Resting style: persistent indication ──────────────────────────────────
-  // Without a rest style, operators look identical to surrounding text and
-  // structure only becomes visible on hover — which makes the chain layer
-  // feel "missing" until you happen to mouse over an operator. A subtle
-  // purple bg + colored glyph keeps `<`, `=`, `===>`, `:` discoverable at a
-  // glance while staying out of the way of prose text.
+  // ── Resting style: compact pill ───────────────────────────────────────────
+  // Relation operators read as small rounded chips — a purple pill with a
+  // coloured glyph keeps `<`, `=`, `===>`, `:` discoverable at a glance and
+  // visually groups them as relation tokens, without the underline noise of the
+  // old scheme. (The intra-token access `_` opts out of the pill below.)
   '.cm-prompt-op': {
     cursor: 'pointer',
-    borderRadius: '2px',
-    padding: '0 1px',
-    backgroundColor: 'rgba(168, 85, 247, 0.08)',
+    borderRadius: '5px',
+    padding: '0 4px',
+    margin: '0 1px',
+    backgroundColor: 'rgba(168, 85, 247, 0.10)',
+    border: '1px solid rgba(168, 85, 247, 0.28)',
     color: 'rgba(126, 34, 206, 0.95)',
     fontWeight: '600',
-    transition: 'background-color 100ms ease, outline-color 100ms ease',
+    fontSize: '0.9em',
+    transition: 'background-color 100ms ease, border-color 100ms ease',
   },
   '.cm-prompt-op:hover': {
-    backgroundColor: 'rgba(168, 85, 247, 0.22)',
-    outline: '1px solid rgba(168, 85, 247, 0.55)',
+    backgroundColor: 'rgba(168, 85, 247, 0.20)',
+    borderColor: 'rgba(168, 85, 247, 0.55)',
+  },
+  // Access `_` inside a token (`ACTOR1_HIP`): strip the pill chrome so the word
+  // stays whole — just a faint coloured separator that's still clickable for the
+  // facet popover.
+  '.cm-prompt-op-access': {
+    borderRadius: '0',
+    padding: '0',
+    margin: '0',
+    border: 'none',
+    backgroundColor: 'transparent',
+    fontSize: '1em',
+    color: 'rgba(126, 34, 206, 0.7)',
+  },
+  '.cm-prompt-op-access:hover': {
+    backgroundColor: 'rgba(168, 85, 247, 0.18)',
+    borderColor: 'transparent',
   },
 });
 

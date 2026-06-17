@@ -45,6 +45,10 @@ export interface PromptCodeMirrorViewerProps {
   emphasizedRole?: string | null;
   /** Opt in to the clickable VAR-token save/unsave popover. */
   enableVariableSave?: boolean;
+  /** Show the structure layer (operator + variable + facet marks). Default
+   *  true. The candidate role layer + chain/header decorations stay on
+   *  regardless — they belong to the analysis layer, gated elsewhere. */
+  showStructure?: boolean;
   className?: string;
 }
 
@@ -54,6 +58,7 @@ export function PromptCodeMirrorViewer({
   tokenLines,
   emphasizedRole = null,
   enableVariableSave = false,
+  showStructure = true,
   className,
 }: PromptCodeMirrorViewerProps) {
   const promptRoleColors = usePromptSettingsStore((s) => s.promptRoleColors);
@@ -79,22 +84,28 @@ export function PromptCodeMirrorViewer({
 
   const extensions = useMemo<Extension[]>(() => {
     const exts: Extension[] = [];
-    // Operator marks (clickable on hover for editing, but no callback here
-    // means clicks fall through harmlessly — we still get the visual mark).
-    exts.push(operatorEditExtension(tokenLines));
-    // VAR-token save/unsave popover — opt-in, non-mutating, so allowed on
-    // this read-only surface. Positions come from the (unshifted) token lines.
-    if (enableVariableSave) {
-      exts.push(
-        variableTokenExtension(
-          { tokenLines, savedNames: savedVariableNames },
-          {
-            onVariableClick: (variable, anchor) => {
-              setVarPopover({ variable, anchor });
+    // Structure layer (operator + variable + facet marks) — gated by
+    // showStructure so the inspector can hide the mini-language overlay and
+    // read the prompt as plain text. The candidate/chain analysis layer below
+    // stays on regardless.
+    if (showStructure) {
+      // Operator marks (clickable on hover for editing, but no callback here
+      // means clicks fall through harmlessly — we still get the visual mark).
+      exts.push(operatorEditExtension(tokenLines));
+      // VAR-token save/unsave popover — opt-in, non-mutating, so allowed on
+      // this read-only surface. Positions come from the (unshifted) token lines.
+      if (enableVariableSave) {
+        exts.push(
+          variableTokenExtension(
+            { tokenLines, savedNames: savedVariableNames },
+            {
+              onVariableClick: (variable, anchor) => {
+                setVarPopover({ variable, anchor });
+              },
             },
-          },
-        ),
-      );
+          ),
+        );
+      }
     }
     // Candidate role layer + structural chain/header decorations. Click /
     // hover callbacks omitted — read-only inspector, the text-edit affordance
@@ -117,6 +128,7 @@ export function PromptCodeMirrorViewer({
     emphasizedRole,
     enableVariableSave,
     savedVariableNames,
+    showStructure,
   ]);
 
   return (

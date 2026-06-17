@@ -170,17 +170,21 @@ export function collectVariableRangesFromString(
   });
 }
 
-// Token styling combines two signals:
-//   colour  = the variable's class hue (role taxonomy) when it has one;
-//             else emerald for a plain saved var, grey for an unknown one.
-//   underline = saved -> solid, default-recognised -> dotted, unknown -> dashed.
+// Token styling combines two signals, both underline-free so structure tokens
+// don't fight the analysis layer (which owns underlines + line tints):
+//   dot    = a leading ● marker (rendered via ::before, coloured per-token by
+//            the --var-dot custom property) announces "this is a variable" —
+//            class hue when it has one, else emerald for a plain saved var,
+//            grey for an unknown one.
+//   colour = the same hue faintly tints the token text (saved/class only;
+//            unknown tokens stay in the editor's default colour so prose reads
+//            cleanly).
 const _SAVED_HEX = 'rgba(16, 185, 129, 0.85)'; // emerald, for saved non-class vars
 const _UNKNOWN_HEX = 'rgba(120, 120, 120, 0.55)';
 
 function variableStyle(range: VariableRange): string {
-  const underline = range.saved ? 'solid' : range.defaultClass ? 'dotted' : 'dashed';
-  const lineColor = range.colorHex ?? (range.saved ? _SAVED_HEX : _UNKNOWN_HEX);
-  const parts = [`border-bottom:1px ${underline} ${lineColor}`];
+  const dotColor = range.colorHex ?? (range.saved ? _SAVED_HEX : _UNKNOWN_HEX);
+  const parts = [`--var-dot:${dotColor}`];
   // Tint the text only when there's a class hue or it's saved — keep unknown
   // tokens in the editor's default text colour so they read as plain prose.
   const textColor = range.colorHex ?? (range.saved ? _SAVED_HEX : undefined);
@@ -200,20 +204,20 @@ function markFor(range: VariableRange): Decoration {
   return mark;
 }
 
-// Facet sub-mark — nested inside the var mark over the facet portion. Underline
-// only (no background wash): the base var mark already underlines the whole
-// token, so the facet sub-mark just recolours that segment's underline to type
-// it — violet solid for a known (typed) facet, amber dashed for one that isn't
-// recognised within the class. Avoids the highlight+underline doubling over the
-// facet. Two cached marks (known/unknown).
+// Facet sub-mark — nested inside the var mark over the facet portion. The var
+// already carries the dot + hue; the facet just recolours its own text segment
+// to type it — violet for a known (typed) facet, amber for one that isn't
+// recognised within the class. No underline (the structure layer is
+// underline-free), so it reads as a subtle colour shift rather than a second
+// line stacked under the token. Two cached marks (known/unknown).
 const _facetMarkCache = new Map<boolean, Decoration>();
 
 function facetMarkFor(known: boolean): Decoration {
   let mark = _facetMarkCache.get(known);
   if (!mark) {
     const style = known
-      ? 'border-bottom:1px solid rgba(168,85,247,0.9)'
-      : 'border-bottom:1px dashed rgba(217,119,6,0.9)';
+      ? 'color:rgba(168,85,247,0.95)'
+      : 'color:rgba(217,119,6,0.95)';
     mark = Decoration.mark({
       attributes: {
         class: known ? 'cm-prompt-facet cm-prompt-facet-known' : 'cm-prompt-facet cm-prompt-facet-unknown',
@@ -363,22 +367,34 @@ function variableClickHandler(callbacks: VariableTokenCallbacks) {
 }
 
 const variableTheme = EditorView.baseTheme({
-  // Layout/affordance only; the colour + underline style are applied per-token
-  // as an inline style (class hue × saved/default/unknown state) by markFor().
+  // A variable reads as "<dot> token": a small leading ● (coloured per-token via
+  // the --var-dot custom property set by variableStyle) plus an optional faint
+  // hue tint on the text. No underline — the analysis layer owns underlines, so
+  // keeping structure marker-based stops the two from stacking lines on the same
+  // characters.
   '.cm-prompt-var': {
     cursor: 'pointer',
     borderRadius: '2px',
     padding: '0 1px',
-    transition: 'background-color 100ms ease, border-color 100ms ease',
+    transition: 'background-color 100ms ease',
+  },
+  '.cm-prompt-var::before': {
+    content: '"\\25CF"',
+    display: 'inline-block',
+    marginRight: '3px',
+    fontSize: '0.6em',
+    verticalAlign: 'middle',
+    lineHeight: '1',
+    color: 'var(--var-dot, currentColor)',
+    opacity: '0.9',
   },
   '.cm-prompt-var:hover': {
     backgroundColor: 'rgba(168, 85, 247, 0.18)',
   },
-  // Facet portion (nested) — layout/transition only; the known/unknown colour
-  // is an inline style applied per-token by facetMarkFor().
+  // Facet portion (nested) — a colour shift only (violet known / amber unknown),
+  // applied per-token by facetMarkFor(); no underline.
   '.cm-prompt-facet': {
-    borderRadius: '2px',
-    transition: 'background-color 100ms ease, border-color 100ms ease',
+    transition: 'color 100ms ease',
   },
   // Value-literal operand `( … )` — faint violet wash so an explicit value/body
   // reads distinctly from incidental prose.

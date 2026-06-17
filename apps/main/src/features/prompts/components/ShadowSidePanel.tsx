@@ -375,7 +375,18 @@ export function ShadowSidePanel({
     return groups;
   }, [candidates]);
 
-  const hasContent = loading || candidates.length > 0;
+  // The panel shows several independent sections (role candidates, primitive
+  // matches, detected variables, structure lines, resolved preview, sequence
+  // role) — any one of them is "content". Keying the empty state on candidates
+  // alone wrongly showed "Type to analyze" whenever a prompt had structure but
+  // no role matches, contradicting the structure list rendered right below it.
+  const hasAnyContent =
+    candidates.length > 0 ||
+    primitiveMatches.length > 0 ||
+    detectedVariables.length > 0 ||
+    structureLines.length > 0 ||
+    resolvedPreview != null ||
+    hasSequenceRole;
 
   // ── Collapsed strip ──
   if (collapsed) {
@@ -494,9 +505,9 @@ export function ShadowSidePanel({
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto thin-scrollbar p-1.5 space-y-1"
       >
-        {!hasContent && (
+        {!loading && !hasAnyContent && (
           <div className="text-[10px] text-neutral-400 dark:text-neutral-500 px-1 py-4 text-center">
-            Type to analyze
+            {result ? 'No structure or blocks detected.' : 'Type to analyze'}
           </div>
         )}
 
