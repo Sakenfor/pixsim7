@@ -192,6 +192,34 @@ export function PortalFloat({
     clampToViewport(ref.current, viewportMargin);
   });
 
+  // Re-place when the content's own box changes size — e.g. an inner section
+  // expands or collapses while the popover is open. That growth re-renders a
+  // descendant, not this component, so the effect above wouldn't fire and the
+  // popover would spill off-screen (grow) or stay stuck at a stale offset
+  // (shrink). We reset to the anchored base position first — mirroring what a
+  // React re-render does via the style prop — then clamp the new size into view.
+  // Position-only changes don't alter the box size, so this can't loop.
+  // (Observer fires once on observe, covering mount.)
+  useLayoutEffect(() => {
+    if (!clamp || !ref.current || typeof ResizeObserver === 'undefined') return;
+    const el = ref.current;
+    const replace = () => {
+      const pos = getAnchoredPosition({ anchor, placement, align, offset });
+      el.style.top = '';
+      el.style.bottom = '';
+      el.style.left = '';
+      el.style.right = '';
+      el.style.transform = '';
+      for (const [key, val] of Object.entries(pos)) {
+        el.style.setProperty(key, typeof val === 'number' ? `${val}px` : String(val));
+      }
+      clampToViewport(el, viewportMargin);
+    };
+    const observer = new ResizeObserver(replace);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [clamp, viewportMargin, anchor, placement, align, offset]);
+
   if (!anchor) return null;
 
   const positionStyle = getAnchoredPosition({ anchor, placement, align, offset });
