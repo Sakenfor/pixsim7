@@ -101,6 +101,14 @@ def _make_session_obj(
         last_contract_id=last_contract_id,
         label=label,
         message_count=message_count,
+        # Fields the GET endpoint reads directly on its return path — default
+        # them so callers that don't care about identity/transcript recovery
+        # don't have to set each one.
+        cli_session_id=None,
+        icon=None,
+        subtitle=None,
+        source=None,
+        messages=None,
         last_used_at=SimpleNamespace(isoformat=lambda: "2026-03-20T10:00:00"),
         created_at=SimpleNamespace(isoformat=lambda: "2026-03-20T09:00:00"),
         status="active",
@@ -265,6 +273,79 @@ class TestGetChatSession:
         assert r.status_code == 200
         data = r.json()
         assert data["messages"] is None
+
+    @pytest.mark.asyncio
+    async def test_get_recovers_lost_reply_from_cli_transcript(self, monkeypatch):
+        """A snapshot frozen on an unanswered user turn is self-healed from
+        the CLI transcript: the recovered assistant tail is merged in,
+        persisted back, and returned — so the frontend's "check again" works.
+        """
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1", engine="claude")
+        session_obj.cli_session_id = "cli-1"
+        session_obj.icon = None
+        session_obj.subtitle = None
+        session_obj.source = "chat"
+        session_obj.messages = [
+            {"role": "user", "text": "q1", "timestamp": "2026-06-16T23:20:00+00:00"},
+            {"role": "assistant", "text": "a1", "timestamp": "2026-06-16T23:20:05+00:00"},
+            {"role": "user", "text": "lost q", "timestamp": "2026-06-16T23:21:00+00:00"},
+        ]
+        db.get_values["sess-1"] = session_obj
+
+        monkeypatch.setattr(
+            meta_contracts,
+            "_load_recovered_tail",
+            lambda cli_id, snap: [
+                {"role": "assistant", "text": "recovered reply",
+                 "timestamp": "2026-06-16T23:21:12+00:00"},
+            ],
+        )
+
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.get("/api/v1/meta/agents/chat-sessions/sess-1")
+
+        assert r.status_code == 200
+        data = r.json()
+        texts = [m["text"] for m in data["messages"]]
+        assert texts == ["q1", "a1", "lost q", "recovered reply"]
+        assert data["message_count"] == 4
+        # Reconciled snapshot was persisted back.
+        assert db.commit_count == 1
+        assert session_obj.messages[-1]["text"] == "recovered reply"
+
+    @pytest.mark.asyncio
+    async def test_get_healthy_session_skips_transcript_read(self, monkeypatch):
+        """A snapshot already ending on an assistant reply must never touch
+        the filesystem — the gate short-circuits before recovery runs."""
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1", engine="claude")
+        session_obj.cli_session_id = "cli-1"
+        session_obj.icon = None
+        session_obj.subtitle = None
+        session_obj.source = "chat"
+        session_obj.messages = [
+            {"role": "user", "text": "q", "timestamp": "2026-06-16T23:20:00+00:00"},
+            {"role": "assistant", "text": "a", "timestamp": "2026-06-16T23:20:05+00:00"},
+        ]
+        db.get_values["sess-1"] = session_obj
+
+        called = {"n": 0}
+
+        def _boom(cli_id, snap):
+            called["n"] += 1
+            raise AssertionError("recovery should not run for a healthy snapshot")
+
+        monkeypatch.setattr(meta_contracts, "_load_recovered_tail", _boom)
+
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.get("/api/v1/meta/agents/chat-sessions/sess-1")
+
+        assert r.status_code == 200
+        assert called["n"] == 0
+        assert db.commit_count == 0
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_session_returns_404(self):

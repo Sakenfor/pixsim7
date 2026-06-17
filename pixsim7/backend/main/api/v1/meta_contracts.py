@@ -40,6 +40,11 @@ from pixsim7.backend.main.services.meta.contract_registry import (
 from pixsim7.backend.main.services.meta.agent_sessions import (
     agent_session_registry,
 )
+from pixsim7.backend.main.services.meta.cli_transcript import (
+    CLAUDE_ENGINES as _CLAUDE_ENGINES,
+    has_unanswered_user_tail as _has_unanswered_user_tail,
+    load_recovered_tail as _load_recovered_tail,
+)
 from pixsim7.backend.main.services.docs.plan_authoring_policy import (
     evaluate_work_summary_policy,
 )
@@ -1943,6 +1948,35 @@ async def get_chat_session(
     ]
     session_source = getattr(session, "source", None)
 
+    # Self-heal "response lost": when the snapshot ends on an unanswered user
+    # turn, the assistant reply may exist only in the Claude CLI transcript
+    # (the snapshot is lossy on interrupted turns / bridge restarts). Recover
+    # it from the transcript so the frontend's "check again" actually works
+    # instead of re-confirming the loss against a snapshot that will never
+    # gain the reply. Gated cheaply on the unanswered-tail shape so healthy
+    # sessions never touch the filesystem. See `services/meta/cli_transcript`.
+    messages = session.messages
+    cli_session_id = getattr(session, "cli_session_id", None)
+    if (
+        getattr(session, "engine", None) in _CLAUDE_ENGINES
+        and cli_session_id
+        and _has_unanswered_user_tail(messages)
+    ):
+        try:
+            tail = await run_in_threadpool(
+                _load_recovered_tail, cli_session_id, messages
+            )
+        except Exception:  # noqa: BLE001 - recovery is strictly best-effort
+            tail = []
+        if tail:
+            merged = _merge_chat_messages(messages, tail)
+            if len(merged) != len(messages or []):
+                session.messages = merged
+                session.message_count = len(merged)
+                db.add(session)
+                await db.commit()
+                messages = merged
+
     return {
         "id": session.id,
         "cli_session_id": session.cli_session_id,
@@ -1953,7 +1987,7 @@ async def get_chat_session(
         "icon": session.icon,
         "subtitle": session.subtitle,
         "message_count": session.message_count,
-        "messages": session.messages,
+        "messages": messages,
         "source": session_source,
         "activity": activity,
         "last_used_at": session.last_used_at.isoformat(),
