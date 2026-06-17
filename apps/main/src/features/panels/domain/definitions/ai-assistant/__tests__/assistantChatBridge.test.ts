@@ -1188,6 +1188,35 @@ describe('AssistantChatBridge', () => {
       expect(bridge.get('tab-1')!.status).toBe('completed');
     });
 
+    it('holds (does not error) past 90s while the WS is down — backend unreachable', async () => {
+      // The backend restart / mobile-wifi case: the agent may still be running
+      // and its reply buffered for replay, so a dropped socket must NOT error
+      // the turn at the 90s connected-stall threshold.
+      const ws = await connectAndSend('tab-1');
+      ws.simulateMessage({ type: 'heartbeat', tab_id: 'tab-1', action: 'w', detail: 'Working', task_id: 't1' });
+
+      // Socket drops (backend down) — reconnect attempts can't reach it.
+      ws.simulateClose();
+
+      // Past the 90s connected-stall window but under the disconnected grace.
+      await vi.advanceTimersByTimeAsync(120_000);
+      const req = bridge.get('tab-1')!;
+      expect(req.status).toBe('streaming');
+      expect(req.activity).toMatch(/unreachable|reconnect/i);
+    });
+
+    it('gives up after the disconnected grace (~3 min) with a recoverable message', async () => {
+      const ws = await connectAndSend('tab-1');
+      ws.simulateMessage({ type: 'heartbeat', tab_id: 'tab-1', action: 'w', detail: 'Working', task_id: 't1' });
+      ws.simulateClose();
+
+      // Past the 180s grace + one 15s check interval so _checkStale fires.
+      await vi.advanceTimersByTimeAsync(200_000);
+      const req = bridge.get('tab-1')!;
+      expect(req.status).toBe('error');
+      expect(req.result?.error).toMatch(/unreachable|reload/i);
+    });
+
     it('persists stale-timeout result so it survives reload before consume', async () => {
       await connectAndSend('tab-1');
 

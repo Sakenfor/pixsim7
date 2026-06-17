@@ -204,6 +204,18 @@ function applyManagedProc(request: BridgeRequest, action: string, detail: string
 const STALE_TIMEOUT_S = 90;
 
 /**
+ * Longer grace applied when the WebSocket is *disconnected* (backend restart,
+ * mobile wifi drop). Heartbeat silence then means "can't reach the backend",
+ * not "the agent stalled" — the turn may well be running on, or already
+ * buffered by, the bridge for replay on reconnect. So we hold it in a
+ * reconnecting state rather than erroring the moment an outage exceeds the 90s
+ * connected-stall window, and only give up after this bound. Plan:
+ * launcher-health-probe-stability / ws-drop-root-cause.
+ */
+const DISCONNECTED_TIMEOUT_S = 180;
+const DISCONNECTED_ACTIVITY = 'Backend unreachable — reconnecting…';
+
+/**
  * Backend can answer 'task_not_found' before the bridge has reconnected and
  * reported its in-flight task_ids. Retry a few times before surfacing the
  * error so the user doesn't see a spurious failure during a backend restart.
@@ -364,22 +376,48 @@ class AssistantChatBridge {
       }
 
       const elapsed = (now - req._lastActivity) / 1000;
+
+      // Heartbeat silence means different things depending on the socket.
+      // WS DOWN (backend restart / mobile wifi drop): the agent may still be
+      // running and its reply buffered for replay on reconnect, so hold the
+      // turn in a reconnecting state and only give up after a generous outage
+      // grace — erroring at 90s here produces a false "timed out" over work
+      // that actually completed. WS UP but silent: a genuine stall → 90s.
+      const wsDown = !this._wsConnected || this._ws?.readyState !== WebSocket.OPEN;
+      if (wsDown) {
+        if (elapsed > DISCONNECTED_TIMEOUT_S) {
+          this._markTimedOut(
+            req,
+            'Backend unreachable — gave up after a few minutes. The reply may have '
+              + 'completed; reload the tab to check.',
+          );
+          inflightChanged = true;
+        } else if (req.activity !== DISCONNECTED_ACTIVITY) {
+          req.activity = DISCONNECTED_ACTIVITY;
+          this._notify();
+        }
+        continue;
+      }
+
       if (elapsed > STALE_TIMEOUT_S) {
-        req.status = 'error';
-        req.activity = null;
-        req.result = {
-          ok: false,
-          error: 'Request timed out — no response from agent. Try sending again.',
-          thinkingLog: req.thinkingLog,
-        };
-        // Persist so the timeout error survives a reload before the panel
-        // has a chance to consume it.
-        saveCompletedResult(req.tabId, req.result);
+        this._markTimedOut(
+          req,
+          'Request timed out — no response from agent. Try sending again.',
+        );
         inflightChanged = true;
-        this._notify();
       }
     }
     if (inflightChanged) this._persistInflight();
+  }
+
+  /** Transition a request to a terminal timeout/error, persisting the result
+   *  so it survives a reload before the panel consumes it. */
+  private _markTimedOut(req: BridgeRequest, message: string): void {
+    req.status = 'error';
+    req.activity = null;
+    req.result = { ok: false, error: message, thinkingLog: req.thinkingLog };
+    saveCompletedResult(req.tabId, req.result);
+    this._notify();
   }
 
   // ── Inflight persistence ──
