@@ -202,3 +202,16 @@ export function resetMediaInstrumentationCounters(): void {
   videoChurn.liveMax =
     typeof document !== 'undefined' ? document.getElementsByTagName('video').length : 0;
 }
+
+// Dev-only console handle so a repro can watch the churn live and zero the
+// deltas between controlled runs without a full page reload. In DevTools:
+//   __mediaInstr.reset()                                   // zero before a run
+//   __mediaInstr.stats().videoChurn                        // {added, removed, liveMax}
+//   const t = setInterval(() => console.log(__mediaInstr.stats().videoChurn.added), 1000)
+//   clearInterval(t)                                       // stop the live log
+if (import.meta.env?.DEV && typeof window !== 'undefined') {
+  (window as unknown as { __mediaInstr?: unknown }).__mediaInstr = {
+    stats: getMediaInstrumentationStats,
+    reset: resetMediaInstrumentationCounters,
+  };
+}

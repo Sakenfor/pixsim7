@@ -181,6 +181,18 @@ export function AssetViewerPanel() {
   const fullscreenVideoSrc = mediaSuspended ? undefined : streamedVideoUrl;
   const attachFullscreenVideo = useManagedVideoSource(fullscreenVideoSrc, videoRef);
 
+  // Reuse the fullscreen <video> across clips (no per-asset key) so navigating
+  // doesn't mint a fresh element per clip — each leaks ~30MB of un-reclaimed GPU
+  // memory. The clean-reload (pause()+load() on src change) handles the
+  // in-flight-load abort the old per-asset remount worked around. See MediaDisplay.
+  useEffect(() => {
+    if (mode !== 'fullscreen' || currentAsset?.type !== 'video') return;
+    const el = videoRef.current;
+    if (!el || !fullscreenVideoSrc) return;
+    el.pause();
+    el.load();
+  }, [mode, currentAsset?.type, fullscreenVideoSrc]);
+
   if (!currentAsset || mode === 'closed') {
     return null;
   }
@@ -278,7 +290,6 @@ export function AssetViewerPanel() {
       return (
         !mediaSuspended && (
           <video
-            key={currentAsset.id}
             ref={attachFullscreenVideo}
             src={fullscreenVideoSrc}
             className="max-w-full max-h-full object-contain rounded-lg"
