@@ -810,7 +810,13 @@ class PromptTokenHeaderLine(BaseModel):
 
 
 class PromptTokenChainElement(BaseModel):
-    kind: Literal["var", "prose"] = Field(..., description="`var` if exactly one UPPER_IDENT after WS-trim, else `prose`")
+    kind: Literal["var", "prose", "value"] = Field(
+        ...,
+        description=(
+            "`var` if exactly one UPPER_IDENT after WS-trim; `value` for a bare "
+            "`( ... )` value-literal operand; else `prose`"
+        ),
+    )
     text: str = Field(..., description="Element text after WS-trim; empty string when this slot is empty")
     start: int
     end: int
