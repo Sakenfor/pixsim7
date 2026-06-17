@@ -35,6 +35,20 @@ def test_flank_wraps_each_char_with_lowercase() -> None:
     assert apply_transform("flank:-", "AB") == "aAa-bBb"
 
 
+def test_template_renders_per_char_pattern() -> None:
+    # Pattern | separator. {} = char, {lower}/{upper} = cased char.
+    assert apply_transform("template:{lower}{}{lower}|___", "AB") == "aAa___bBb"
+    assert apply_transform("template:[{}]| ", "AB") == "[A] [B]"
+    # No '|' => no separator; empty pattern falls back to '{}'.
+    assert apply_transform("template:{upper}", "ab") == "AB"
+    assert apply_transform("template:|-", "AB") == "A-B"
+
+
+def test_template_literal_dollar_is_safe() -> None:
+    # A '$' in the char must stay literal (regex/replacement-pattern safety).
+    assert apply_transform("template:{}", "$x") == "$x"
+
+
 def test_unknown_or_empty_spec_is_noop() -> None:
     assert apply_transform("nope", "cat") == "cat"
     assert apply_transform("", "cat") == "cat"

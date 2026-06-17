@@ -105,6 +105,14 @@ describe('resolvePromptVariables transforms', () => {
     expect(resolvePromptVariables('AB', {}, { AB: 'flank' })).toBe('aAa___bBb');
   });
 
+  it('applies a custom template transform (parity with backend)', () => {
+    expect(
+      resolvePromptVariables('ACTOR1', { ACTOR1: 'AB' }, { ACTOR1: 'template:{lower}{}{lower}|___' }),
+    ).toBe('aAa___bBb');
+    // '$' in the value stays literal (no JS replacement-pattern surprises).
+    expect(resolvePromptVariables('X', { X: '$y' }, { X: 'template:{}' })).toBe('$y');
+  });
+
   it('prefers the value over the name when both could apply', () => {
     expect(resolvePromptVariables('THEME', { THEME: 'noir' }, { THEME: 'upper' })).toBe('NOIR');
   });

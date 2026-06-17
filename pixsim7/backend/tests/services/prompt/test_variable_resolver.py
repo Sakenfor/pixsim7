@@ -103,6 +103,13 @@ def test_flank_transform_on_name() -> None:
     assert out == "aAa___bBb"
 
 
+def test_template_transform_on_value() -> None:
+    out = resolve_prompt_variables(
+        "ACTOR1", {"ACTOR1": "AB"}, transforms={"ACTOR1": "template:{lower}{}{lower}|___"}
+    )
+    assert out == "aAa___bBb"
+
+
 def test_value_takes_precedence_over_name_for_transform() -> None:
     # With a value, the transform acts on the value, not the name.
     out = resolve_prompt_variables("THEME", {"THEME": "noir"}, transforms={"THEME": "upper"})

@@ -32,12 +32,31 @@ const flank: TransformFn = (value, arg) => {
     .join(separator);
 };
 
+// Render each char through a custom per-char pattern, joined by a separator.
+// `arg` is '<pattern>|<separator>' (first '|' splits). Placeholders: {} = char,
+// {lower}/{upper} = cased char; other text literal. '{lower}{}{lower}|___' on
+// 'AB' -> 'aAa___bBb'. Function-form replacers keep byte-parity with Python
+// (a '$' in the char must not trigger JS's special replacement patterns).
+const template: TransformFn = (value, arg) => {
+  const spec = arg ?? '';
+  const idx = spec.indexOf('|');
+  const pattern = (idx === -1 ? spec : spec.slice(0, idx)) || '{}';
+  const separator = idx === -1 ? '' : spec.slice(idx + 1);
+  const render = (ch: string) =>
+    pattern
+      .replace(/\{lower\}/g, () => ch.toLowerCase())
+      .replace(/\{upper\}/g, () => ch.toUpperCase())
+      .replace(/\{\}/g, () => ch);
+  return value.split('').map(render).join(separator);
+};
+
 /** id → fn. Seed set; extend here (and in the Python mirror) to add transforms. */
 export const TRANSFORMS: Record<string, TransformFn> = {
   spaced,
   upper,
   lower,
   flank,
+  template,
 };
 
 /** Split a spec into `[id, arg]`; arg is null when absent. */
@@ -79,6 +98,10 @@ export interface TransformOption {
   argPlaceholder?: string;
   /** Pre-filled arg when the option is first selected. */
   argDefault?: string;
+  /** Render a full-width arg input (for longer specs like a custom pattern). */
+  argWide?: boolean;
+  /** One-line hint shown under the arg input. */
+  argHelp?: string;
 }
 
 export const TRANSFORM_OPTIONS: TransformOption[] = [
@@ -99,6 +122,16 @@ export const TRANSFORM_OPTIONS: TransformOption[] = [
     argLabel: 'Separator',
     argPlaceholder: '___',
     argDefault: '___',
+  },
+  {
+    id: 'template',
+    label: 'Custom',
+    takesArg: true,
+    argLabel: 'Pattern',
+    argPlaceholder: '{lower}{}{lower}|___',
+    argDefault: '{lower}{}{lower}|___',
+    argWide: true,
+    argHelp: '{} = char · {lower}/{upper} = cased · pattern | separator',
   },
 ];
 

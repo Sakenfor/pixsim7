@@ -80,15 +80,23 @@ export function TransformPicker({
       </div>
 
       {hasBase && selectedOption?.takesArg && (
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <span className="text-[10px] text-neutral-400">{selectedOption.argLabel}</span>
-          <input
-            type="text"
-            value={transformArg}
-            onChange={(e) => onArgChange(e.target.value)}
-            placeholder={selectedOption.argPlaceholder}
-            className="w-20 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-1.5 py-0.5 text-[11px] font-mono text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-violet-400"
-          />
+        <div className="mt-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-neutral-400">{selectedOption.argLabel}</span>
+            <input
+              type="text"
+              value={transformArg}
+              onChange={(e) => onArgChange(e.target.value)}
+              placeholder={selectedOption.argPlaceholder}
+              className={clsx(
+                'rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-1.5 py-0.5 text-[11px] font-mono text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-violet-400',
+                selectedOption.argWide ? 'min-w-0 flex-1' : 'w-20',
+              )}
+            />
+          </div>
+          {selectedOption.argHelp && (
+            <p className="mt-1 text-[9px] text-neutral-400">{selectedOption.argHelp}</p>
+          )}
         </div>
       )}
 

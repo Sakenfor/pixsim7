@@ -45,12 +45,38 @@ def _flank(value: str, arg: Optional[str]) -> str:
     return separator.join(f"{c.lower()}{c}{c.lower()}" for c in value)
 
 
+def _template(value: str, arg: Optional[str]) -> str:
+    """Render each character through a custom per-character pattern, joined by a
+    separator.
+
+    ``arg`` is ``"<pattern>|<separator>"`` (the first ``|`` splits the two;
+    omitting it means no separator). Pattern placeholders: ``{}`` = the char,
+    ``{lower}`` / ``{upper}`` = the cased char; any other text is literal. So
+    ``"{lower}{}{lower}|___"`` maps ``"AB"`` -> ``"aAa___bBb"`` and ``"[{}]| "``
+    maps ``"AB"`` -> ``"[A] [B]"``.
+    """
+    spec = arg or ""
+    pattern, _, separator = spec.partition("|")
+    if not pattern:
+        pattern = "{}"
+
+    def render(ch: str) -> str:
+        return (
+            pattern.replace("{lower}", ch.lower())
+            .replace("{upper}", ch.upper())
+            .replace("{}", ch)
+        )
+
+    return separator.join(render(ch) for ch in value)
+
+
 # id -> fn. Seed set; extend here (and in the TS mirror) to add transforms.
 TRANSFORMS: dict[str, TransformFn] = {
     "spaced": _spaced,
     "upper": _upper,
     "lower": _lower,
     "flank": _flank,
+    "template": _template,
 }
 
 
