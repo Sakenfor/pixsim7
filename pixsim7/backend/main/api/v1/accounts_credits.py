@@ -17,6 +17,9 @@ from pixsim7.backend.main.services.provider import registry, RateLimitError
 from pixsim7.backend.main.services.provider.adapters.pixverse_promotions import (
     apply_promotions_to_metadata,
 )
+from pixsim7.backend.main.services.account.credit_sync import (
+    apply_provider_credit_snapshot,
+)
 from pixsim7.backend.main.services.provider.blocked_detection import detect_account_blocked
 
 router = APIRouter()
@@ -166,6 +169,7 @@ class SyncPlanResponse(BaseModel):
     plan_gen_simultaneously: Optional[int] = None
     plan_max_concurrent_jobs_raw: Optional[Any] = None
     plan_max_concurrent_jobs_parsed: Optional[int] = None
+    credits: Dict[str, int] = Field(default_factory=dict)
 
 
 # ===== ENDPOINTS =====
@@ -831,8 +835,13 @@ async def sync_account_plan(
         # Apply plan to account
         result = provider.apply_plan_to_account(account, plan_details)
 
-        # Also refresh promotions from credits in the same user action.
-        # This keeps plan + promo state aligned for the providers UI.
+        # Also refresh promotions AND persist credits in the same user action.
+        # The "refresh plan limits" button already pays for a live get_credits
+        # call here (for promotions), so persist the freshly-fetched balances
+        # too — otherwise the user has to click "sync credits" separately to
+        # see updated web/openapi pools. Keeps plan + credits + promo state
+        # aligned for the providers UI.
+        synced_credits: Dict[str, int] = {}
         try:
             if hasattr(provider, "get_credits"):
                 credits_data = await provider.get_credits(
@@ -841,9 +850,21 @@ async def sync_account_plan(
                     force_refresh=True,
                 )
                 apply_promotions_to_metadata(account, credits_data)
+                synced_credits = await apply_provider_credit_snapshot(
+                    account_service=account_service,
+                    account=account,
+                    provider=provider,
+                    credits_data=credits_data,
+                    on_set_credit_error=lambda ct, amt, exc: logger.warning(
+                        "sync_account_plan_set_credit_failed account_id=%s credit_type=%s error=%s",
+                        account.id,
+                        ct,
+                        str(exc),
+                    ),
+                )
         except Exception as promo_exc:
             logger.warning(
-                "sync_account_plan_promotions_failed account_id=%s email=%s error=%s",
+                "sync_account_plan_credits_failed account_id=%s email=%s error=%s",
                 account.id,
                 account.email,
                 str(promo_exc),
@@ -875,6 +896,7 @@ async def sync_account_plan(
             plan_gen_simultaneously=result.get("plan_gen_simultaneously"),
             plan_max_concurrent_jobs_raw=result.get("plan_max_concurrent_jobs_raw"),
             plan_max_concurrent_jobs_parsed=result.get("plan_max_concurrent_jobs_parsed"),
+            credits=synced_credits,
         )
 
     except ResourceNotFoundError:

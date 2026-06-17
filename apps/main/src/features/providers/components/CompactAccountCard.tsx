@@ -207,8 +207,8 @@ export function CompactAccountCard({
               type="button"
               onClick={onUpdateAccountPlan}
               className="p-1 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded transition-colors"
-              title="Refresh Pixverse plan limits (max jobs)"
-              aria-label="Refresh Pixverse plan limits"
+              title="Refresh Pixverse plan limits (max jobs) & credits"
+              aria-label="Refresh Pixverse plan limits and credits"
             >
               <Icon name="refresh" size={14} />
             </button>

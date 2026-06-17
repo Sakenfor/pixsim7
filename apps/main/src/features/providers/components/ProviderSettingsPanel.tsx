@@ -469,6 +469,7 @@ export function ProviderSettingsPanel() {
         concurrency_source?: string | null;
         plan_gen_simultaneously?: number | null;
         plan_max_concurrent_jobs_raw?: unknown;
+        credits?: Record<string, number>;
       }>(
         `/accounts/${account.id}/sync-plan`
       );
@@ -498,12 +499,18 @@ export function ProviderSettingsPanel() {
         });
         return;
       }
+      const creditsSummary =
+        res.credits && Object.keys(res.credits).length > 0
+          ? ` · credits: ${Object.entries(res.credits)
+              .map(([type, amount]) => `${type} ${amount}`)
+              .join(', ')}`
+          : '';
       toast?.({
         title: 'Account updated',
         description:
-          typeof res.max_concurrent_jobs === 'number'
+          (typeof res.max_concurrent_jobs === 'number'
             ? `Max jobs updated to ${res.max_concurrent_jobs}${sourceDetails}`
-            : (res.message || 'Plan limits refreshed'),
+            : (res.message || 'Plan limits refreshed')) + creditsSummary,
         variant: 'success',
       });
       setRefreshKey(prev => prev + 1);
