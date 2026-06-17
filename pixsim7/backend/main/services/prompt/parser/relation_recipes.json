@@ -1,5 +1,5 @@
 {
-  "version": "2.4.0",
+  "version": "2.5.0",
   "recipes": [
     {
       "id": "chain_var_to_prose",
@@ -13,6 +13,7 @@
         {
           "op": "=",
           "meaning": "definition / identity assignment",
+          "template": "{lhs}: {rhs}",
           "swap_targets": [
             "=",
             ":",
@@ -21,8 +22,20 @@
           ]
         },
         {
+          "op": ":",
+          "meaning": "labelled body (inline colon)",
+          "template": "{lhs}: {rhs}",
+          "swap_targets": [
+            ":",
+            "=",
+            ">",
+            "<"
+          ]
+        },
+        {
           "op": ">",
           "meaning": "directional / scoped assignment",
+          "template": "{lhs} toward {rhs}",
           "swap_targets": [
             ">",
             "<",
@@ -33,6 +46,7 @@
         {
           "op": "<",
           "meaning": "reverse-directional / scoped assignment",
+          "template": "{lhs} from {rhs}",
           "swap_targets": [
             "<",
             ">",
@@ -54,6 +68,7 @@
         {
           "op": "=",
           "meaning": "body bound to / identified as the var",
+          "template": "{lhs} as {rhs}",
           "swap_targets": [
             "=",
             ":",
@@ -64,6 +79,7 @@
         {
           "op": ">",
           "meaning": "body directed toward the var",
+          "template": "{lhs} toward {rhs}",
           "swap_targets": [
             ">",
             "<",
@@ -74,6 +90,7 @@
         {
           "op": "<",
           "meaning": "body shaped by / receives from the var",
+          "template": "{lhs} shaped by {rhs}",
           "swap_targets": [
             "<",
             ">",
@@ -95,6 +112,7 @@
         {
           "op": ">",
           "meaning": "directed action toward",
+          "template": "{lhs} acting on {rhs}",
           "run_semantics": {
             "1": "default",
             "2": "firm",
@@ -114,6 +132,7 @@
         {
           "op": "<",
           "meaning": "receives from / influenced by",
+          "template": "{lhs} influenced by {rhs}",
           "run_semantics": {
             "1": "default",
             "2": "stronger receive",
@@ -129,6 +148,7 @@
         {
           "op": "=",
           "meaning": "identification / role binding",
+          "template": "{lhs} as {rhs}",
           "run_semantics": {
             "1": "binding",
             "2": "firm binding",

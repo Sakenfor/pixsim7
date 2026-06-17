@@ -7,7 +7,7 @@ package recipes
 // label recognised shapes and seed the type-swap UI.
 
 relation_recipes: #RelationRecipes & {
-    version: "2.4.0"
+    version: "2.5.0"
 
     recipes: [
         // ── var = body | var > body | var < body ──────────────────────
@@ -33,16 +33,25 @@ relation_recipes: #RelationRecipes & {
                 {
                     op:           "="
                     meaning:      "definition / identity assignment"
+                    template:     "{lhs}: {rhs}"
                     swap_targets: ["=", ":", ">", "<"]
+                },
+                {
+                    op:           ":"
+                    meaning:      "labelled body (inline colon)"
+                    template:     "{lhs}: {rhs}"
+                    swap_targets: [":", "=", ">", "<"]
                 },
                 {
                     op:           ">"
                     meaning:      "directional / scoped assignment"
+                    template:     "{lhs} toward {rhs}"
                     swap_targets: [">", "<", "=", ":"]
                 },
                 {
                     op:           "<"
                     meaning:      "reverse-directional / scoped assignment"
+                    template:     "{lhs} from {rhs}"
                     swap_targets: ["<", ">", "=", ":"]
                 },
             ]
@@ -66,16 +75,19 @@ relation_recipes: #RelationRecipes & {
                 {
                     op:           "="
                     meaning:      "body bound to / identified as the var"
+                    template:     "{lhs} as {rhs}"
                     swap_targets: ["=", ":", ">", "<"]
                 },
                 {
                     op:           ">"
                     meaning:      "body directed toward the var"
+                    template:     "{lhs} toward {rhs}"
                     swap_targets: [">", "<", "=", ":"]
                 },
                 {
                     op:           "<"
                     meaning:      "body shaped by / receives from the var"
+                    template:     "{lhs} shaped by {rhs}"
                     swap_targets: ["<", ">", "=", ":"]
                 },
             ]
@@ -95,8 +107,9 @@ relation_recipes: #RelationRecipes & {
             }
             operators: [
                 {
-                    op:      ">"
-                    meaning: "directed action toward"
+                    op:       ">"
+                    meaning:  "directed action toward"
+                    template: "{lhs} acting on {rhs}"
                     run_semantics: {
                         "1": "default"
                         "2": "firm"
@@ -109,8 +122,9 @@ relation_recipes: #RelationRecipes & {
                     swap_targets: [">", "<", "=", "?"]
                 },
                 {
-                    op:      "<"
-                    meaning: "receives from / influenced by"
+                    op:       "<"
+                    meaning:  "receives from / influenced by"
+                    template: "{lhs} influenced by {rhs}"
                     run_semantics: {
                         "1": "default"
                         "2": "stronger receive"
@@ -119,8 +133,9 @@ relation_recipes: #RelationRecipes & {
                     swap_targets: ["<", ">", "=", "?"]
                 },
                 {
-                    op:      "="
-                    meaning: "identification / role binding"
+                    op:       "="
+                    meaning:  "identification / role binding"
+                    template: "{lhs} as {rhs}"
                     run_semantics: {
                         "1": "binding"
                         "2": "firm binding"

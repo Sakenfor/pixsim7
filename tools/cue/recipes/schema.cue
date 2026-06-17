@@ -28,6 +28,10 @@ package recipes
 #OperatorEntry: {
     op:             string                   // base operator char(s), e.g. "<", ">", "=", "<>"
     meaning?:       string                   // human description of what this op signals
+    // Prose fragment for rule-based projection (B1). `{lhs}`/`{rhs}` placeholders
+    // are filled with the operands' text to compile `A <op> B` into generation
+    // prose. Absent → projection keeps the operator literal for this context.
+    template?:      string
     run_semantics?: {[string]: string}       // run length (string key) → semantic label
     swap_targets:   [...string]              // recommended swaps in this context
     notes?:         [...#RecipeNote]
