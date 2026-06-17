@@ -584,6 +584,7 @@ export function GenerationSettingsPanel({
     currentInputAsset,
     currentInputMaskUrl,
     currentInputMaskLayers,
+    currentInputParamOverrides,
   } = useInputStore(
     useShallow((s) => {
       const inputs = s.inputsByOperation[operationType];
@@ -593,6 +594,7 @@ export function GenerationSettingsPanel({
           currentInputAsset: null,
           currentInputMaskUrl: undefined,
           currentInputMaskLayers: undefined,
+          currentInputParamOverrides: undefined,
         };
       }
       const idx = Math.max(0, Math.min(inputs.currentIndex - 1, inputs.items.length - 1));
@@ -602,6 +604,7 @@ export function GenerationSettingsPanel({
         currentInputAsset: item?.asset ?? null,
         currentInputMaskUrl: item?.maskUrl,
         currentInputMaskLayers: item?.maskLayers,
+        currentInputParamOverrides: item?.paramOverrides,
       };
     }),
   );
@@ -614,6 +617,79 @@ export function GenerationSettingsPanel({
   const removeMaskLayer = useInputStore((s) => s.removeMaskLayer);
   const updateMaskLayer = useInputStore((s) => s.updateMaskLayer);
   const setMaskLayers = useInputStore((s) => s.setMaskLayers);
+  const setInputParamOverride = useInputStore((s) => s.setInputParamOverride);
+
+  // ── Per-input param binding (the prompt pin, generalized) ──
+  // A param "bound" to the current input overrides the shared operation default
+  // for that input only; middle-clicking a control toggles the binding. Plan:
+  // per-input-param-override.
+  const bindingEnabled = !!currentInputId;
+
+  // WYSIWYG: show the bound value for any param this input pins, so the control
+  // reflects what this input will actually generate with.
+  const paramControlValues = useMemo(
+    () => (currentInputParamOverrides
+      ? { ...workbench.dynamicParams, ...currentInputParamOverrides }
+      : workbench.dynamicParams),
+    [workbench.dynamicParams, currentInputParamOverrides],
+  );
+
+  // Bound params win over probe at submit time, so suppress the amber probe ring
+  // on any control that's already indigo-bound (no two competing override hints).
+  const probeOverridesForControls = useMemo(() => {
+    if (!probeOverrides || !currentInputParamOverrides) return probeOverrides;
+    const filtered: Record<string, unknown> = {};
+    let changed = false;
+    for (const [k, v] of Object.entries(probeOverrides)) {
+      if (Object.prototype.hasOwnProperty.call(currentInputParamOverrides, k)) {
+        changed = true;
+        continue;
+      }
+      filtered[k] = v;
+    }
+    if (!changed) return probeOverrides;
+    return Object.keys(filtered).length > 0 ? filtered : null;
+  }, [probeOverrides, currentInputParamOverrides]);
+
+  // Editing a bound param writes to this input's override (not the shared
+  // default), mirroring how the prompt pin routes edits. Un-bound params fall
+  // through to the normal (probe-aware) shared handler.
+  const handleBindingAwareParamChange = useCallback(
+    (name: string, value: any) => {
+      if (
+        bindingEnabled && currentInputId && currentInputParamOverrides &&
+        Object.prototype.hasOwnProperty.call(currentInputParamOverrides, name)
+      ) {
+        setInputParamOverride(operationType, currentInputId, name, value);
+        return;
+      }
+      handleProbeAwareParamChange(name, value);
+    },
+    [bindingEnabled, currentInputId, currentInputParamOverrides, setInputParamOverride, operationType, handleProbeAwareParamChange],
+  );
+
+  // Toggle a binding: ON snapshots the current shared value onto this input; OFF
+  // clears it so the param falls back to the shared default.
+  const handleToggleParamBinding = useCallback(
+    (name: string) => {
+      if (!currentInputId) return;
+      const isBound =
+        !!currentInputParamOverrides &&
+        Object.prototype.hasOwnProperty.call(currentInputParamOverrides, name);
+      if (isBound) {
+        setInputParamOverride(operationType, currentInputId, name, undefined);
+      } else {
+        // Snapshot the effective shared value. Fall back to the spec default so
+        // binding a param that's still on its default (never edited, so absent
+        // from dynamicParams) doesn't resolve to undefined → silent un-bind.
+        const spec = workbench.allParamSpecs?.find((p) => p.name === name);
+        const snapshot = (workbench.dynamicParams ?? {})[name] ?? spec?.default;
+        if (snapshot === undefined) return; // nothing concrete to bind
+        setInputParamOverride(operationType, currentInputId, name, snapshot);
+      }
+    },
+    [currentInputId, currentInputParamOverrides, setInputParamOverride, operationType, workbench.dynamicParams, workbench.allParamSpecs],
+  );
 
   // Stable mask handlers so <MaskPicker> can React.memo and skip re-renders
   // when unrelated params (duration, quality, etc.) change.
@@ -797,13 +873,16 @@ export function GenerationSettingsPanel({
         <div className="gen-panel-params flex flex-col gap-1">
           <GenerationParamControls
             paramSpecs={filteredParamSpecs}
-            values={workbench.dynamicParams}
-            onChange={handleProbeAwareParamChange}
+            values={paramControlValues}
+            onChange={handleBindingAwareParamChange}
             generating={generating}
             unlimitedModels={unlimitedModels}
             promotedModels={promotedModels}
             showApiMethodToggle={showApiMethodToggle}
-            probeOverrides={probeOverrides}
+            probeOverrides={probeOverridesForControls}
+            boundParams={currentInputParamOverrides ?? null}
+            onToggleParamBinding={handleToggleParamBinding}
+            bindingEnabled={bindingEnabled}
           />
         </div>
 

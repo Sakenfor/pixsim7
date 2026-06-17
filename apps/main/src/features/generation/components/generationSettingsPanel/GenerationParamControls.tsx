@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 
 import {
   COMMON_ASPECT_RATIOS,
@@ -37,6 +37,58 @@ function isModelInPromotionSet(promotedModels: Set<string>, value: unknown): boo
   return getModelMatchKeys(value).some((key) => promotedModels.has(key));
 }
 
+interface BindingDecoration {
+  /** True when this param is bound to the current input (shows the indigo ring). */
+  isBound: boolean;
+  /** clsx fragment for the indigo bound-ring ('' when not bound). */
+  ring: string;
+  /** Tooltip suffix describing the bind/unbind affordance ('' when binding off). */
+  hint: string;
+  /** Spread onto a control root: middle-click toggles the binding; the mousedown
+   *  guard suppresses the browser's middle-click autoscroll. */
+  auxProps: {
+    onAuxClick: (e: ReactMouseEvent) => void;
+    onMouseDown: (e: ReactMouseEvent) => void;
+  } | Record<string, never>;
+}
+
+/**
+ * Single source of truth for per-input binding decoration (the prompt pin,
+ * generalized). Used by every param branch AND the nested boolean toggles
+ * (audio, api_method) so the middle-click + indigo-ring logic isn't copy-pasted
+ * per control. Probe-amber lives in the branches; the parent strips bound keys
+ * from probeOverrides so the two never compete. Plan: per-input-param-override.
+ */
+function getBindingDecoration(
+  name: string,
+  boundParams: Record<string, unknown> | null,
+  bindingEnabled: boolean,
+  onToggleParamBinding?: (name: string) => void,
+): BindingDecoration {
+  const isBound =
+    !!bindingEnabled && !!boundParams &&
+    Object.prototype.hasOwnProperty.call(boundParams, name);
+  const ring = isBound ? 'ring-2 ring-indigo-400 dark:ring-indigo-500' : '';
+  const hint = bindingEnabled
+    ? (isBound
+        ? ' · bound to this asset (middle-click to unbind)'
+        : ' · middle-click to bind to this asset')
+    : '';
+  const auxProps = (bindingEnabled && onToggleParamBinding)
+    ? {
+        onAuxClick: (e: ReactMouseEvent) => {
+          if (e.button !== 1) return;
+          e.preventDefault();
+          onToggleParamBinding(name);
+        },
+        onMouseDown: (e: ReactMouseEvent) => {
+          if (e.button === 1) e.preventDefault();
+        },
+      }
+    : {};
+  return { isBound, ring, hint, auxProps };
+}
+
 interface GenerationParamControlsProps {
   paramSpecs: ParamSpec[];
   values: Record<string, any>;
@@ -51,6 +103,16 @@ interface GenerationParamControlsProps {
    *  next to the relevant control so the user sees the swap without losing
    *  their normal-mode setting. */
   probeOverrides?: Record<string, unknown> | null;
+  /** Current input's per-input param bindings (`paramOverrides`). Bound params
+   *  get an indigo ring + tooltip; `values` should already reflect the bound
+   *  value for WYSIWYG display. The prompt pin, generalized to any param.
+   *  Plan: per-input-param-override. */
+  boundParams?: Record<string, unknown> | null;
+  /** Middle-click a control to bind/un-bind that param to the current input.
+   *  No-op when undefined (no current input). */
+  onToggleParamBinding?: (name: string) => void;
+  /** Whether per-input binding is currently available (a current input exists). */
+  bindingEnabled?: boolean;
 }
 
 export function GenerationParamControls({
@@ -62,6 +124,9 @@ export function GenerationParamControls({
   promotedModels = new Set<string>(),
   showApiMethodToggle = false,
   probeOverrides = null,
+  boundParams = null,
+  onToggleParamBinding,
+  bindingEnabled = false,
 }: GenerationParamControlsProps) {
   const durationOptions = useMemo(
     () => getDurationOptions(paramSpecs, values?.model)?.options ?? null,
@@ -165,6 +230,12 @@ export function GenerationParamControls({
             })()
           : undefined;
 
+        // Per-input binding (prompt pin, generalized). The parent strips bound
+        // keys from probeOverrides, so amber (probe) and indigo (bound) never
+        // compete on the same control. Plan: per-input-param-override.
+        const { isBound, ring: bindRing, hint: bindHint, auxProps } =
+          getBindingDecoration(param.name, boundParams, bindingEnabled, onToggleParamBinding);
+
         if (param.name === 'duration' && param.type === 'number' && durationOptions) {
           const currentDuration = Number(values[param.name]) || durationOptions[0];
           // Audio toggle: find the audio boolean param and check if applicable to current model
@@ -195,13 +266,15 @@ export function GenerationParamControls({
               )}
               <div
                 ref={durationWheelCallbackRef}
+                {...auxProps}
                 className={clsx(
                   'flex items-center flex-shrink-0 rounded-lg bg-white dark:bg-neutral-800 shadow-sm',
                   probeOverrides?.duration !== undefined && 'ring-2 ring-amber-400 dark:ring-amber-500',
+                  bindRing,
                 )}
-                title={probeOverrides?.duration !== undefined
+                title={(probeOverrides?.duration !== undefined
                   ? `Probe override — runs at ${String(probeOverrides.duration)}s instead of your saved ${currentDuration}s.`
-                  : 'Duration — scroll to adjust'}
+                  : 'Duration — scroll to adjust') + bindHint}
               >
                 <span className="flex items-center justify-center pl-1.5 pr-0 py-1.5 text-neutral-400 dark:text-neutral-500" aria-hidden="true">
                   <Icon name="clock" size={12} />
@@ -216,9 +289,15 @@ export function GenerationParamControls({
               {showAudio && (() => {
                 const probeAudioOverride = probeOverrides?.audio;
                 const isProbeAudioOverridden = probeAudioOverride !== undefined;
+                // 'audio' is a boolean sub-control of the duration row, not its own
+                // renderParam branch — so it pulls binding decoration for its own
+                // key via the shared helper. Plan: per-input-param-override.
+                const { isBound: audioBound, hint: audioBindHint, auxProps: audioAux } =
+                  getBindingDecoration('audio', boundParams, bindingEnabled, onToggleParamBinding);
                 return (
                   <button
                     type="button"
+                    {...audioAux}
                     onClick={() => onChange('audio', !audioOn)}
                     disabled={generating}
                     className={clsx(
@@ -227,11 +306,12 @@ export function GenerationParamControls({
                         ? 'bg-accent text-accent-text shadow-sm'
                         : 'bg-white dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300',
                       isProbeAudioOverridden && 'ring-2 ring-amber-400 dark:ring-amber-500',
+                      audioBound && 'ring-2 ring-indigo-400 dark:ring-indigo-500',
                       generating && 'opacity-50 cursor-not-allowed',
                     )}
-                    title={isProbeAudioOverridden
+                    title={(isProbeAudioOverridden
                       ? `Probe override — audio will be ${probeAudioOverride ? 'on' : 'off'} (your saved value: ${audioOn ? 'on' : 'off'}).`
-                      : audioOn ? 'Audio generation on' : 'Audio generation off'}
+                      : audioOn ? 'Audio generation on' : 'Audio generation off') + audioBindHint}
                   >
                     <Icon name="audio" size={14} />
                   </button>
@@ -252,6 +332,7 @@ export function GenerationParamControls({
             <input
               key={param.name}
               type="number"
+              {...auxProps}
               value={values[param.name] ?? param.default ?? ''}
               onChange={(e) => onChange(param.name, e.target.value === '' ? undefined : Number(e.target.value))}
               disabled={generating}
@@ -259,8 +340,9 @@ export function GenerationParamControls({
               className={clsx(
                 'w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm',
                 isProbeOverridden && 'ring-2 ring-amber-400 dark:ring-amber-500',
+                bindRing,
               )}
-              title={probeOverrideTooltip ?? param.name}
+              title={(probeOverrideTooltip ?? param.name) + bindHint}
             />
           );
         }
@@ -279,25 +361,35 @@ export function GenerationParamControls({
               disabled={generating}
             />
           );
-          if (isProbeOverridden) {
+          if (isProbeOverridden || isBound) {
             return (
               <div
                 key={param.name}
-                className="flex-shrink-0 rounded-lg ring-2 ring-amber-400 dark:ring-amber-500"
-                title={probeOverrideTooltip}
+                {...auxProps}
+                className={clsx(
+                  'flex-shrink-0 rounded-lg',
+                  isProbeOverridden && 'ring-2 ring-amber-400 dark:ring-amber-500',
+                  bindRing,
+                )}
+                title={isProbeOverridden ? probeOverrideTooltip : `aspect_ratio${bindHint}`}
               >
                 {inner}
               </div>
             );
           }
-          return <div key={param.name}>{inner}</div>;
+          return <div key={param.name} {...auxProps}>{inner}</div>;
         }
 
         const isIconOnly = param.name === 'quality';
         const gridLimit = isIconOnly ? 14 : 8;
         if (showAsVisualGrid && options.length <= gridLimit) {
           return (
-            <div key={param.name} className="gen-param-full flex flex-wrap gap-1">
+            <div
+              key={param.name}
+              {...auxProps}
+              className={clsx('gen-param-full flex flex-wrap gap-1', isBound && 'rounded-lg', bindRing)}
+              title={bindHint ? `${param.name}${bindHint}` : undefined}
+            >
               {options.map((opt: string) => {
                 const icon = getParamIcon(param.name, opt);
                 const isSelected = currentValue === opt;
@@ -377,31 +469,38 @@ export function GenerationParamControls({
               promotedModels={promotedModels}
             />
           );
-          if (isProbeOverridden) {
+          if (isProbeOverridden || isBound) {
             return (
               <div
                 key={param.name}
-                className="rounded-lg ring-2 ring-amber-400 dark:ring-amber-500"
-                title={probeOverrideTooltip}
+                {...auxProps}
+                className={clsx(
+                  'rounded-lg',
+                  isProbeOverridden && 'ring-2 ring-amber-400 dark:ring-amber-500',
+                  bindRing,
+                )}
+                title={isProbeOverridden ? probeOverrideTooltip : `model${bindHint}`}
               >
                 {inner}
               </div>
             );
           }
-          return <div key={param.name}>{inner}</div>;
+          return <div key={param.name} {...auxProps}>{inner}</div>;
         }
 
         return (
           <select
             key={param.name}
+            {...auxProps}
             value={currentValue}
             onChange={(e) => onChange(param.name, e.target.value)}
             disabled={generating}
             className={clsx(
               'w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm',
               isProbeOverridden && 'ring-2 ring-amber-400 dark:ring-amber-500',
+              bindRing,
             )}
-            title={probeOverrideTooltip ?? param.name}
+            title={(probeOverrideTooltip ?? param.name) + bindHint}
           >
             {options.map((opt: string) => {
               const baseLabel = param.name === 'aspect_ratio' ? getAspectRatioLabel(opt) : opt;

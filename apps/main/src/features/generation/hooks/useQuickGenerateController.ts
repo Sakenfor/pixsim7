@@ -1090,6 +1090,9 @@ function useQuickGenerateControllerImpl() {
     total: number;
     run: any;
     strategy: CombinationStrategy;
+    /** Probe-mode cheap defaults (e.g. { duration: 5 }); lower precedence than per-input bindings. */
+    probeParams?: Record<string, any>;
+    /** Explicit caller param overrides; highest precedence. */
     overrideParams: Record<string, any>;
     rolledOnce: string | null;
     onError: 'continue' | 'stop';
@@ -1101,6 +1104,7 @@ function useQuickGenerateControllerImpl() {
       total,
       run,
       strategy,
+      probeParams,
       overrideParams,
       rolledOnce,
       onError,
@@ -1127,14 +1131,30 @@ function useQuickGenerateControllerImpl() {
         } = latestStateRef.current;
         const resolvedGroup = prePickSetRefs(group, setCache, transientPickStateByInputId);
         const resolvedPrimary = resolvedGroup[0] ?? primaryInput;
-        const dynamicParams = { ...activeBindings.dynamicParams, ...overrideParams };
+        // Precedence (low→high): shared defaults < probe cheap defaults <
+        // per-input bindings < explicit caller overrides. A per-input duration
+        // binding therefore beats probe's duration:5 but still yields to an
+        // explicit caller override. Plan: per-input-param-override.
+        const dynamicParams = {
+          ...activeBindings.dynamicParams,
+          ...(probeParams || {}),
+          ...resolvedPrimary?.paramOverrides,
+          ...overrideParams,
+        };
         await applyFrameExtraction(dynamicParams, resolvedPrimary, []);
+        // Per-input pinned prompt wins verbatim over the (shared) rolled prompt
+        // so each queued asset can carry its own prompt while un-pinned inputs
+        // fall back to the operation default. Plan: per-asset-prompt-pin.
+        const pinnedGroupPrompt =
+          typeof resolvedPrimary?.promptOverride === 'string' && resolvedPrimary.promptOverride.length > 0
+            ? resolvedPrimary.promptOverride
+            : undefined;
         const request = await buildRequest(
           activeOperationType,
           dynamicParams,
           resolvedGroup,
           resolvedPrimary,
-          { promptOverride: rolledOnce },
+          { promptOverride: pinnedGroupPrompt ?? rolledOnce },
         );
         if ('error' in request) {
           return { kind: 'skip', reason: request.error };
@@ -1277,9 +1297,13 @@ function useQuickGenerateControllerImpl() {
 
     const { currentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
     const probeDefaults = overrides?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
+    // Precedence (low→high): shared < probe < per-input binding < caller override.
+    // Per-input params ride the current input alongside its promptOverride (resolved
+    // below). Plan: per-input-param-override.
     const dynamicParams = {
       ...activeBindings.dynamicParams,
       ...(probeDefaults || {}),
+      ...currentInput?.paramOverrides,
       ...overrides?.paramOverrides,
     };
 
@@ -1360,14 +1384,22 @@ function useQuickGenerateControllerImpl() {
 
     // Template handling:
     // - Caller-provided promptOverride skips template rolling entirely
+    // - A per-input pinned prompt (promptOverride on the current input) also
+    //   wins verbatim and skips the roll. Precedence: explicit caller override >
+    //   per-input pin > template roll > live operation prompt. Plan: per-asset-prompt-pin.
     // - 'each' mode: backend rolls per request using run_context
     // - 'once' mode: roll once client-side and pass prompt override
+    const pinnedCurrentPrompt =
+      typeof effectiveCurrentInput?.promptOverride === 'string' && effectiveCurrentInput.promptOverride.length > 0
+        ? effectiveCurrentInput.promptOverride
+        : undefined;
+    const explicitOrPinnedPrompt = overrides?.promptOverride ?? pinnedCurrentPrompt;
     const useServerRolling = activeTemplateId && activeRollMode === 'each';
-    const rolledOnce = overrides?.promptOverride
-      ? null  // skip template roll when caller provides explicit prompt
+    const rolledOnce = explicitOrPinnedPrompt
+      ? null  // skip template roll when an explicit or per-input pinned prompt applies
       : (!useServerRolling ? await maybeRollTemplate() : null);
     const requestOverrides: { activeAsset?: ReturnType<typeof toSelectedAsset> | null; promptOverride?: string | null } = {
-      promptOverride: overrides?.promptOverride ?? rolledOnce,
+      promptOverride: explicitOrPinnedPrompt ?? rolledOnce,
     };
     if (activeAssetOverride) {
       requestOverrides.activeAsset = activeAssetOverride;
@@ -1582,16 +1614,29 @@ function useQuickGenerateControllerImpl() {
     try {
       const { currentInputs: rawCurrentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
       const probeDefaults = options?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
+      // Per-input bindings on the source input carry through the whole chained
+      // sequence (like the pinned prompt below). Precedence: shared < probe <
+      // per-input < caller override. Plan: per-input-param-override.
       const baseDynamicParams = {
         ...activeBindings.dynamicParams,
         ...(probeDefaults || {}),
+        ...currentInput?.paramOverrides,
         ...options?.overrideDynamicParams,
       };
 
       await applyFrameExtraction(baseDynamicParams, currentInput, transitionInputs);
 
+      // A pin on the source input carries through the whole chained sequence
+      // (steps 2+ reuse the previous output but keep the source's prompt).
+      // Plan: per-asset-prompt-pin.
+      const pinnedSeqPrompt =
+        typeof currentInput?.promptOverride === 'string' && currentInput.promptOverride.length > 0
+          ? currentInput.promptOverride
+          : undefined;
       const useServerRolling = activeTemplateId && activeRollMode === 'each';
-      const rollOnce = !useServerRolling ? await maybeRollTemplate() : null;
+      const rollOnce = pinnedSeqPrompt
+        ? null
+        : (!useServerRolling ? await maybeRollTemplate() : null);
 
       // No per-step buildRequest to derive from (steps 2+ use previous output),
       // so clamp+record manually here. This is the one entry point that can't
@@ -1647,7 +1692,7 @@ function useQuickGenerateControllerImpl() {
             dynamicParams,
             operationInputsForStep,
             currentInputForStep,
-            { promptOverride: rollOnce },
+            { promptOverride: pinnedSeqPrompt ?? rollOnce },
           );
           if ('error' in request) {
             throw new Error(request.error);
@@ -1785,10 +1830,6 @@ function useQuickGenerateControllerImpl() {
         setQueueProgress({ queued: 0, total });
 
         const probeDefaults = options?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
-        const overrideParams = {
-          ...(probeDefaults || {}),
-          ...(options?.overrideDynamicParams || {}),
-        };
         const useServerRolling = activeTemplateId && activeRollMode === 'each';
         const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
         await submitEachViaBackendExecution({
@@ -1796,7 +1837,8 @@ function useQuickGenerateControllerImpl() {
           total,
           run,
           strategy,
-          overrideParams,
+          probeParams: probeDefaults || {},
+          overrideParams: options?.overrideDynamicParams || {},
           rolledOnce,
           onError: fanout.onError,
           executionMode: fanout.executionMode,
@@ -1827,10 +1869,6 @@ function useQuickGenerateControllerImpl() {
 
     try {
       const probeDefaults = options?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
-      const overrideParams = {
-        ...(probeDefaults || {}),
-        ...(options?.overrideDynamicParams || {}),
-      };
 
       // Template handling:
       // - 'each' mode: backend rolls per request using run_context
@@ -1842,7 +1880,8 @@ function useQuickGenerateControllerImpl() {
         total,
         run,
         strategy,
-        overrideParams,
+        probeParams: probeDefaults || {},
+        overrideParams: options?.overrideDynamicParams || {},
         rolledOnce,
         onError: fanout.onError,
         executionMode: fanout.executionMode,
