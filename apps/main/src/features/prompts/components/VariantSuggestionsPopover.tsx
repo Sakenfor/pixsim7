@@ -33,6 +33,31 @@ function rateClass(rate: number): string {
   return 'text-amber-600 dark:text-amber-400';
 }
 
+/** Words of context to keep on each side of the slot. */
+const CONTEXT_WORDS = 3;
+/** Max chars for a filler value before it's clipped (keeps caps/DSL values tidy). */
+const VALUE_MAX = 48;
+
+/** Last N words (with a leading … when clipped) — the context right before the slot. */
+function tailWords(text: string, n: number): string {
+  const parts = text.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  const slice = parts.slice(-n).join(' ');
+  return parts.length > n ? `…${slice}` : slice;
+}
+
+/** First N words (with a trailing … when clipped) — the context right after the slot. */
+function headWords(text: string, n: number): string {
+  const parts = text.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  const slice = parts.slice(0, n).join(' ');
+  return parts.length > n ? `${slice}…` : slice;
+}
+
+function clip(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
 function ValueRow({ v, recommended }: { v: VariantValueOutcome; recommended: boolean }) {
   return (
     <div className="flex items-baseline gap-1.5 text-[11px]">
@@ -47,8 +72,9 @@ function ValueRow({ v, recommended }: { v: VariantValueOutcome; recommended: boo
             ? 'font-medium text-neutral-800 dark:text-neutral-100'
             : 'text-neutral-600 dark:text-neutral-400'
         }
+        title={v.value}
       >
-        “{v.value}”
+        “{clip(v.value, VALUE_MAX)}”
       </span>
       <span className={`ml-auto shrink-0 tabular-nums font-medium ${rateClass(v.completion_rate)}`}>
         {Math.round(v.completion_rate * 100)}%
@@ -164,9 +190,13 @@ export function VariantSuggestionsBody({ outcomes }: { outcomes: VariantOutcomes
               className="px-3 py-1.5 border-b border-neutral-100 dark:border-neutral-800 last:border-0"
             >
               <div className="flex items-center gap-1 text-[10px] text-neutral-400 dark:text-neutral-500 mb-0.5">
-                <span className="truncate">
-                  …{slot.prefix} <span className="text-neutral-300 dark:text-neutral-600">▢</span>{' '}
-                  {slot.suffix}…
+                <span
+                  className="truncate"
+                  title={`…${slot.prefix} ▢ ${slot.suffix}…`}
+                >
+                  {tailWords(slot.prefix, CONTEXT_WORDS)}{' '}
+                  <span className="text-accent font-semibold">▢</span>{' '}
+                  {headWords(slot.suffix, CONTEXT_WORDS)}
                 </span>
                 <span
                   className="ml-auto shrink-0 tabular-nums px-1 rounded bg-accent/10 text-accent font-medium"
