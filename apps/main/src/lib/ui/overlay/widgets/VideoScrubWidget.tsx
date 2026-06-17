@@ -23,7 +23,12 @@ import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
 import { useManagedVideoSource } from '@lib/media/videoDecoder';
 import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 
-import { claimAudio, registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
+import {
+  claimAudio,
+  isAnyVideoPlaybackActiveExcept,
+  registerActiveVideo,
+  subscribeActiveVideoRegistry,
+} from '@features/assets/lib/activeVideoRegistry';
 
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 import { BACKEND_BASE } from '@/lib/api/client';
@@ -197,6 +202,12 @@ export interface VideoScrubWidgetRendererProps {
 
 const DRAG_THRESHOLD = 5; // pixels before considered a drag
 const SCRUB_HOVER_START_EVENT = 'pixsim:video-scrub-hover-start';
+// Dwell time before a hover actually mounts/decodes the preview <video>. A quick
+// mouse sweep across a gallery shouldn't mint an element per card it crosses —
+// each minted <video> leaks ~30MB of un-reclaimed GPU memory (Chrome), so
+// sweeping was the prime hover-churn source. Touch scroll-focus (forcePlay)
+// bypasses this — it's already an intentful selection.
+const VIDEO_HOVER_INTENT_MS = 180;
 /**
  * Keep the <video> element loaded for this long after mouse-leave so the
  * user sees the paused-at-last-frame state for a moment.  After this the
@@ -267,10 +278,28 @@ export function VideoScrubWidgetRenderer({
   // timestamp / active-card chrome (those stay gated on the real `isHovering`).
   const playWanted = isHovering || forcePlay;
 
+  // Hover-intent gate for actually mounting/decoding the <video>: a quick sweep
+  // (hover < VIDEO_HOVER_INTENT_MS) never mints the leak-prone element. The scrub
+  // chrome still reveals on the real `isHovering`; only the video element waits.
+  // forcePlay (touch scroll-focus) is already intentful, so it bypasses.
+  const [decodeIntent, setDecodeIntent] = useState(false);
+  useEffect(() => {
+    if (forcePlay) {
+      setDecodeIntent(true);
+      return;
+    }
+    if (!playWanted) {
+      setDecodeIntent(false);
+      return;
+    }
+    const t = setTimeout(() => setDecodeIntent(true), VIDEO_HOVER_INTENT_MS);
+    return () => clearTimeout(t);
+  }, [playWanted, forcePlay]);
+
   // Drop the decoder while the tab is backgrounded even if a recent hover left
   // the src warm (keepSrcWhilePaused) — no point holding GPU memory unseen.
   const suspended = useMediaSuspended();
-  const mediaActive = (playWanted || keepSrcWhilePaused) && !suspended;
+  const mediaActive = (decodeIntent || keepSrcWhilePaused) && !suspended;
   const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: mediaActive, mediaType: 'video' });
   const isBackendMediaUrl = Boolean(url && isBackendUrl(url, BACKEND_BASE));
   const resolvedUrl = useMemo(() => {
@@ -297,6 +326,20 @@ export function VideoScrubWidgetRenderer({
   const claimKeyRef = useRef<string>(
     `scrub-${(data as { id?: string | number } | undefined)?.id ?? Math.random().toString(36).slice(2, 8)}`,
   );
+  const activeVideoKeyRef = useRef(`video-scrub:${claimKeyRef.current}`);
+  const activeVideoKey = activeVideoKeyRef.current;
+  const [isOtherVideoPlaying, setIsOtherVideoPlaying] = useState(() =>
+    isAnyVideoPlaybackActiveExcept(activeVideoKey),
+  );
+
+  useEffect(() => {
+    const update = () => {
+      const next = isAnyVideoPlaybackActiveExcept(activeVideoKey);
+      setIsOtherVideoPlaying((prev) => (prev === next ? prev : next));
+    };
+    update();
+    return subscribeActiveVideoRegistry(update);
+  }, [activeVideoKey]);
 
   // Register the scrubber's <video> so the global audio claim sees it and
   // mutes/unmutes alongside other registered players.
@@ -304,8 +347,8 @@ export function VideoScrubWidgetRenderer({
     const el = videoRef.current;
     if (!el) return;
     const assetId = (data as { id?: string | number } | undefined)?.id ?? claimKeyRef.current;
-    return registerActiveVideo(`video-scrub:${claimKeyRef.current}`, el, assetId);
-  }, [data]);
+    return registerActiveVideo(activeVideoKey, el, assetId);
+  }, [activeVideoKey, data]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [loopRange, setLoopRange] = useState<{ start: number; end: number } | null>(null);
@@ -1082,10 +1125,12 @@ export function VideoScrubWidgetRenderer({
   // Audio coordination: claim the global audio slot while hovered with sound on.
   // The actual mute state is driven by the JSX prop (see <video muted=...>);
   // claimAudio handles muting *other* registered <video> elements.
+  const hoverSoundAllowed = hoverSound && isHovering && !isOtherVideoPlaying;
+  const scrubVideoMuted = isOtherVideoPlaying ? true : (hoverSoundAllowed ? false : muted);
   useEffect(() => {
-    if (!isHovering || !hoverSound) return;
-    return claimAudio(`video-scrub:${claimKeyRef.current}`);
-  }, [isHovering, hoverSound]);
+    if (!hoverSoundAllowed) return;
+    return claimAudio(activeVideoKey);
+  }, [activeVideoKey, hoverSoundAllowed]);
 
   // Calculate progress percentage
   // Use hoverPercent for immediate feedback when scrubbing, progressPercentage when playing
@@ -1223,7 +1268,7 @@ export function VideoScrubWidgetRenderer({
           src={effectiveUrl}
           preload="metadata"
           playsInline
-          muted={hoverSound && isHovering ? false : muted}
+          muted={scrubVideoMuted}
           crossOrigin={effectiveUrl?.startsWith('http') ? 'anonymous' : undefined}
           onLoadedMetadata={handleLoadedMetadata}
           onTimeUpdate={handleTimeUpdate}
