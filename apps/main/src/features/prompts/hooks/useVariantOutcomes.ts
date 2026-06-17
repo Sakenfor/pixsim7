@@ -23,6 +23,7 @@ import { fetchVariantOutcomes, type VariantSlot } from '@lib/api/prompts';
 import { createKeyedAsyncCache } from '@lib/utils';
 
 import { searchSimilarPromptsCached } from '../lib/similarPromptsSearchCache';
+import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 
 /**
  * Persist the full two-step pipeline result across unmount/remount + HMR, keyed
@@ -77,7 +78,9 @@ export function useVariantOutcomes({
   promptText: string;
   open: boolean;
 }): VariantOutcomes {
-  const [scope, setScope] = useState<VariantOutcomesScope>('clean');
+  // Scope persists across reload (usePromptSettingsStore).
+  const scope = usePromptSettingsStore((s) => s.variantScope);
+  const setScope = usePromptSettingsStore((s) => s.setVariantScope);
   const [slots, setSlots] = useState<VariantSlot[]>([]);
   const [neighbourCount, setNeighbourCount] = useState(0);
   const [loading, setLoading] = useState(false);

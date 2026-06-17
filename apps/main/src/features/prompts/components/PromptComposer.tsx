@@ -102,7 +102,7 @@ import {
 import { PromptGhostDiff, type GhostDiffSource } from './PromptGhostDiff';
 import { PromptHistoryPopover, type InputPromptEntry } from './PromptHistoryPopover';
 import { PromptToolsPanel, type PromptToolsApplyPayload } from './PromptToolsPanel';
-import { RelatedPromptsPopover, type RelatedPromptsTab } from './RelatedPromptsPopover';
+import { RelatedPromptsPopover } from './RelatedPromptsPopover';
 import { ShadowAnalysisPopover } from './ShadowAnalysisPopover';
 import { ShadowTextarea } from './ShadowTextarea';
 import { RoleBadge } from './shared/RoleBadge';
@@ -438,7 +438,9 @@ export function PromptComposer({
   // persist across open/close; each hook's `open` is gated on its active tab so
   // it fetches lazily only when its tab is shown.
   const [showRelated, setShowRelated] = useState(false);
-  const [relatedTab, setRelatedTab] = useState<RelatedPromptsTab>('similar');
+  // Default tab persists across reload (usePromptSettingsStore).
+  const relatedTab = usePromptSettingsStore((s) => s.relatedTab);
+  const setRelatedTab = usePromptSettingsStore((s) => s.setRelatedTab);
   const relatedTriggerRef = useRef<HTMLButtonElement>(null);
   const similarSearch = useSimilarPromptsSearch({
     promptText: value,

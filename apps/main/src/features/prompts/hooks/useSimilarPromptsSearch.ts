@@ -28,9 +28,10 @@ import {
   searchSimilarPromptsCached,
   type SimilarPromptsQuery,
 } from '../lib/similarPromptsSearchCache';
+import { usePromptSettingsStore } from '../stores/promptSettingsStore';
+
 
 const DEBOUNCE_MS = 300;
-const DEFAULT_LIMIT = 10;
 /** Selectable result counts. Backend caps at 50. */
 export const SIMILAR_LIMIT_OPTIONS = [10, 25, 50] as const;
 
@@ -92,10 +93,15 @@ export function useSimilarPromptsSearch({
   promptText: string;
   open: boolean;
 }): SimilarPromptsSearch {
-  const [threshold, setThreshold] = useState(0.5);
-  const [limit, setLimit] = useState<number>(DEFAULT_LIMIT);
+  // Tuning persists across reload (usePromptSettingsStore); family scope stays
+  // session-only so results aren't silently restricted to a forgotten family.
+  const threshold = usePromptSettingsStore((s) => s.similarThreshold);
+  const setThreshold = usePromptSettingsStore((s) => s.setSimilarThreshold);
+  const limit = usePromptSettingsStore((s) => s.similarLimit);
+  const setLimit = usePromptSettingsStore((s) => s.setSimilarLimit);
+  const hybrid = usePromptSettingsStore((s) => s.similarHybrid);
+  const setHybrid = usePromptSettingsStore((s) => s.setSimilarHybrid);
   const [familyId, setFamilyId] = useState<string | null>(null);
-  const [hybrid, setHybrid] = useState(true);
   const [armed, setArmed] = useState(false);
   const [results, setResults] = useState<SimilarPromptMatch[]>([]);
   const [loading, setLoading] = useState(false);
