@@ -13,7 +13,6 @@ import { EdgeInsetsScope } from '@lib/layout/edgeInsets';
 import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 import { OverlayContainer } from '@lib/ui/overlay';
 
-import { useAssetViewerStore } from '@features/assets';
 import { toggleFavoriteById } from '@features/assets/lib/favoriteTag';
 import { useAssetRegionStore, useCaptureRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
 
@@ -224,31 +223,9 @@ function MediaPanelInner({ context }: MediaPanelProps) {
     providerId: 'media-panel',
   });
 
-  // Scope state for navigation scope switcher
-  const scopes = useAssetViewerStore((s) => s.scopes);
-  const activeScopeId = useAssetViewerStore((s) => s.activeScopeId);
-  const switchScope = useAssetViewerStore((s) => s.switchScope);
-
-  const scopeItems = useMemo(() =>
-    Object.entries(scopes).map(([id, scope]) => ({
-      id,
-      label: scope.label,
-      count: scope.assets.length,
-      active: id === activeScopeId,
-    })),
-    [scopes, activeScopeId],
-  );
-
-  // Follow latest setting
-  const followLatest = useAssetViewerStore((s) => s.settings.followLatest);
-  const scopeLocked = useAssetViewerStore((s) => s.settings.scopeLocked);
-  const updateSettings = useAssetViewerStore((s) => s.updateSettings);
-  const handleToggleFollowLatest = useCallback(() => {
-    updateSettings({ followLatest: !followLatest });
-  }, [followLatest, updateSettings]);
-  const handleToggleScopeLock = useCallback(() => {
-    updateSettings({ scopeLocked: !scopeLocked });
-  }, [scopeLocked, updateSettings]);
+  // The navigation-scope switcher subscribes to the viewer store itself (see
+  // `ScopeSwitcher` in MediaControlBar) so per-arrival scope-count changes
+  // don't re-render this whole panel during a generation burst.
 
   // Reset pan on asset change — image/video dimensions differ, so a pixel
   // offset that made sense for the previous asset doesn't translate. Zoom and
@@ -656,13 +633,6 @@ function MediaPanelInner({ context }: MediaPanelProps) {
         showCapture={asset?.type === 'video' && activeOverlayId !== 'capture'}
         captureDisabled={isCapturing}
         onCaptureFrame={captureFrame}
-        scopeLabel={activeScopeId ? scopes[activeScopeId]?.label : undefined}
-        scopes={scopeItems.length > 0 ? scopeItems : undefined}
-        onSwitchScope={switchScope}
-        followLatest={followLatest}
-        onToggleFollowLatest={handleToggleFollowLatest}
-        scopeLocked={scopeLocked}
-        onToggleScopeLock={handleToggleScopeLock}
       />
     </div>
   );

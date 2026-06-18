@@ -191,7 +191,13 @@ export function useCardGestures({
     ? computeGestureCount(Math.abs(activeGesture.dx), effectiveGestureThreshold)
     : undefined;
 
-  const secondaryState = useGestureSecondaryStore();
+  // Non-reactive read: only the actively-gesturing (committed) card consumes
+  // these values, and it already re-renders on every pointer-move frame via
+  // `activeGesture` — so a fresh snapshot here stays current without
+  // subscribing. Subscribing reactively (the old `useGestureSecondaryStore()`)
+  // re-rendered EVERY mounted card whenever the secondary store was set/cleared
+  // at a gesture's start/end — pure overhead for every non-gesturing card.
+  const secondaryState = useGestureSecondaryStore.getState();
   const activeChainAction = isCommitted
     ? getChainActionForDirection(chainDirections, activeGesture.direction)
     : 'none';

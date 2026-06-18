@@ -77,6 +77,14 @@ interface ViewerQuickGenerateProps {
   asset: ViewerAsset;
   /** When true, always show expanded state (no collapse button) */
   alwaysExpanded?: boolean;
+  /**
+   * Distinguishes this Quick Gen surface from sibling mounts (the in-viewer one
+   * vs. a placeable Quick Gen panel) for CAP_GENERATION_WIDGET resolution, scope
+   * sync, and "Open With" targeting. Defaults to the in-viewer identity.
+   */
+  widgetId?: string;
+  /** Human label for this surface (capability label + "Open With" picker). */
+  label?: string;
 }
 
 /**
@@ -128,10 +136,23 @@ function ViewerQuickGenerateChrome({
   useEffect(() => {
     if (!asset.id) return;
     ctx.setDynamicParams((prev: Record<string, unknown>) => {
+      const backendAssetId = getViewerBackendAssetId(asset);
+      const desiredSourceId = backendAssetId != null ? backendAssetId : undefined;
+      // Referential no-op when the params already reflect this asset: no input
+      // URLs to strip and source_asset_id already matches. Returning `prev`
+      // keeps the store's `params` ref stable, so the QuickGen controller
+      // doesn't re-render → this effect doesn't re-fire → no setDynamicParams
+      // write→render→write feedback loop (which amplified every burst arrival).
+      if (
+        !('video_url' in prev) &&
+        !('image_url' in prev) &&
+        prev.source_asset_id === desiredSourceId
+      ) {
+        return prev;
+      }
       const next = { ...prev };
       delete next.video_url;
       delete next.image_url;
-      const backendAssetId = getViewerBackendAssetId(asset);
       if (backendAssetId != null) {
         next.source_asset_id = backendAssetId;
       } else {
@@ -177,7 +198,12 @@ function ViewerQuickGenerateChrome({
   );
 }
 
-export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQuickGenerateProps) {
+export function ViewerQuickGenerate({
+  asset,
+  alwaysExpanded = false,
+  widgetId = 'viewerQuickGenerate',
+  label = 'Viewer Quick Generate',
+}: ViewerQuickGenerateProps) {
   const controlCenterOpen = useDockState(DOCK_IDS.controlCenter, (dock) => dock.open);
   const openViewer = useAssetViewerStore((s) => s.openViewer);
   const setViewerMode = useAssetViewerStore((s) => s.setMode);
@@ -190,7 +216,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
       alwaysExpanded ||
       useQuickGenStagingStore
         .getState()
-        .pending.some((i) => !i.targetWidgetId || i.targetWidgetId === 'viewerQuickGenerate'),
+        .pending.some((i) => !i.targetWidgetId || i.targetWidgetId === widgetId),
   );
   // Mode is managed at top level to determine scope before rendering the toggle
   const [mode, setMode] = useState<GenerationSourceMode>('user');
@@ -218,8 +244,8 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     alwaysExpanded
       ? null
       : {
-          widgetId: 'viewerQuickGenerate',
-          label: 'Viewer Quick Generate',
+          widgetId,
+          label,
           open: expandViewerQuickGen,
           order: 20,
         },
@@ -260,9 +286,9 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
   // Expanded state — QuickGenWidget handles scope sync, scope provider, widget provision, layout
   return (
     <QuickGenWidget
-      widgetId="viewerQuickGenerate"
-      label="Viewer Quick Generate"
-      panelManagerId="viewerQuickGenerate"
+      widgetId={widgetId}
+      label={label}
+      panelManagerId={widgetId}
       panelIds={VIEWER_PANEL_IDS}
       priority={45}
       isOpen={true}

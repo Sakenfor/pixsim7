@@ -6,9 +6,11 @@
  */
 
 import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
-import { useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { Icon, type IconName } from '@lib/icons';
+
+import { useAssetViewerStore } from '@features/assets';
 
 import type { FitMode } from './MediaDisplay';
 
@@ -43,6 +45,123 @@ export interface ScopeItem {
   icon?: IconName;
 }
 
+/**
+ * Self-subscribing navigation-scope switcher.
+ *
+ * Subscribes to the viewer store directly rather than receiving scope data as
+ * props, so the (legitimately per-arrival changing) scope counts re-render only
+ * this small toolbar fragment — NOT the whole `MediaPanel` subtree
+ * (MediaDisplay, overlays, etc.). During a generation burst the active scope's
+ * asset count ticks up on every arrival; routing that through MediaPanel
+ * defeated the store's careful "don't swap currentAsset while parked" coalescing.
+ */
+function ScopeSwitcher() {
+  const scopes = useAssetViewerStore((s) => s.scopes);
+  const activeScopeId = useAssetViewerStore((s) => s.activeScopeId);
+  const switchScope = useAssetViewerStore((s) => s.switchScope);
+  const followLatest = useAssetViewerStore((s) => s.settings.followLatest);
+  const scopeLocked = useAssetViewerStore((s) => s.settings.scopeLocked);
+  const updateSettings = useAssetViewerStore((s) => s.updateSettings);
+
+  const [scopeDropdownOpen, setScopeDropdownOpen] = useState(false);
+  const scopeTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const scopeItems = useMemo<ScopeItem[]>(
+    () =>
+      Object.entries(scopes).map(([id, scope]) => ({
+        id,
+        label: scope.label,
+        count: scope.assets.length,
+        active: id === activeScopeId,
+      })),
+    [scopes, activeScopeId],
+  );
+
+  const scopeLabel = activeScopeId ? scopes[activeScopeId]?.label : undefined;
+  const toggleFollowLatest = useCallback(
+    () => updateSettings({ followLatest: !followLatest }),
+    [followLatest, updateSettings],
+  );
+  const toggleScopeLock = useCallback(
+    () => updateSettings({ scopeLocked: !scopeLocked }),
+    [scopeLocked, updateSettings],
+  );
+
+  if (!scopeLabel) return null;
+
+  return (
+    <>
+      <div className="h-3.5 w-px bg-neutral-200 dark:bg-neutral-700 mx-0.5" />
+      <div className="relative">
+        <button
+          ref={scopeTriggerRef}
+          onClick={() => setScopeDropdownOpen((prev) => !prev)}
+          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400 transition-colors"
+          title={scopeLocked ? 'Navigation scope (locked)' : 'Navigation scope'}
+        >
+          {scopeLocked && <Icon name="lock" size={10} />}
+          {(() => {
+            const active = scopeItems.find((s) => s.active);
+            const icon = active ? scopeIconFor(active) : undefined;
+            return icon ? <Icon name={icon} size={11} /> : null;
+          })()}
+          <span className="truncate max-w-[140px]">{scopeLabel}</span>
+          <Icon name="chevronDown" size={10} />
+        </button>
+        {scopeItems.length > 0 && (
+          <Dropdown
+            isOpen={scopeDropdownOpen}
+            onClose={() => setScopeDropdownOpen(false)}
+            position="top-left"
+            minWidth="160px"
+            triggerRef={scopeTriggerRef}
+          >
+            {scopeItems.map((scope) => {
+              const scopeIcon = scopeIconFor(scope);
+              return (
+                <DropdownItem
+                  key={scope.id}
+                  onClick={() => {
+                    switchScope(scope.id);
+                    setScopeDropdownOpen(false);
+                  }}
+                  // Active row shows a check; inactive rows show the
+                  // scope's own icon (the active scope's icon still
+                  // shows in the trigger above).
+                  icon={
+                    scope.active ? (
+                      <Icon name="check" size={10} />
+                    ) : scopeIcon ? (
+                      <Icon name={scopeIcon} size={10} />
+                    ) : (
+                      <span className="w-[10px]" />
+                    )
+                  }
+                >
+                  {scope.label}
+                </DropdownItem>
+              );
+            })}
+            <DropdownDivider />
+            <DropdownItem
+              onClick={toggleFollowLatest}
+              icon={followLatest ? <Icon name="check" size={10} /> : <span className="w-[10px]" />}
+            >
+              Follow latest
+            </DropdownItem>
+            <DropdownItem
+              onClick={toggleScopeLock}
+              icon={scopeLocked ? <Icon name="check" size={10} /> : <span className="w-[10px]" />}
+            >
+              Lock scope
+            </DropdownItem>
+          </Dropdown>
+        )}
+      </div>
+    </>
+  );
+}
+
 interface MediaControlBarProps {
   // Navigation
   currentIndex: number;
@@ -73,20 +192,6 @@ interface MediaControlBarProps {
   showCapture?: boolean;
   captureDisabled?: boolean;
   onCaptureFrame?: () => void;
-
-  // Scope switcher
-  scopeLabel?: string;
-  scopes?: ScopeItem[];
-  onSwitchScope?: (id: string) => void;
-
-  // Follow latest
-  followLatest?: boolean;
-  onToggleFollowLatest?: () => void;
-
-  // Scope lock — when locked, opening assets from other sources won't
-  // change the active scope
-  scopeLocked?: boolean;
-  onToggleScopeLock?: () => void;
 }
 
 export function MediaControlBar({
@@ -108,17 +213,7 @@ export function MediaControlBar({
   showCapture,
   captureDisabled,
   onCaptureFrame,
-  scopeLabel,
-  scopes,
-  onSwitchScope,
-  followLatest,
-  onToggleFollowLatest,
-  scopeLocked,
-  onToggleScopeLock,
 }: MediaControlBarProps) {
-  const [scopeDropdownOpen, setScopeDropdownOpen] = useState(false);
-  const scopeTriggerRef = useRef<HTMLButtonElement>(null);
-
   return (
     <div className="flex-shrink-0 border-t border-neutral-200 dark:border-neutral-700">
       <div className="flex items-center justify-between px-3 py-1.5">
@@ -144,82 +239,9 @@ export function MediaControlBar({
             <Icon name="chevronRight" size={16} />
           </button>
 
-          {/* Scope switcher — always a dropdown for discoverability */}
-          {scopeLabel && (
-            <>
-              <div className="h-3.5 w-px bg-neutral-200 dark:bg-neutral-700 mx-0.5" />
-              <div className="relative">
-                <button
-                  ref={scopeTriggerRef}
-                  onClick={() => setScopeDropdownOpen((prev) => !prev)}
-                  className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400 transition-colors"
-                  title={scopeLocked ? 'Navigation scope (locked)' : 'Navigation scope'}
-                >
-                  {scopeLocked && <Icon name="lock" size={10} />}
-                  {(() => {
-                    const active = scopes?.find((s) => s.active);
-                    const icon = active ? scopeIconFor(active) : undefined;
-                    return icon ? <Icon name={icon} size={11} /> : null;
-                  })()}
-                  <span className="truncate max-w-[140px]">{scopeLabel}</span>
-                  <Icon name="chevronDown" size={10} />
-                </button>
-                {scopes && scopes.length > 0 && (
-                  <Dropdown
-                    isOpen={scopeDropdownOpen}
-                    onClose={() => setScopeDropdownOpen(false)}
-                    position="top-left"
-                    minWidth="160px"
-                    triggerRef={scopeTriggerRef}
-                  >
-                    {scopes.map((scope) => {
-                      const scopeIcon = scopeIconFor(scope);
-                      return (
-                        <DropdownItem
-                          key={scope.id}
-                          onClick={() => {
-                            onSwitchScope?.(scope.id);
-                            setScopeDropdownOpen(false);
-                          }}
-                          // Active row shows a check; inactive rows show the
-                          // scope's own icon (the active scope's icon still
-                          // shows in the trigger above).
-                          icon={
-                            scope.active ? (
-                              <Icon name="check" size={10} />
-                            ) : scopeIcon ? (
-                              <Icon name={scopeIcon} size={10} />
-                            ) : (
-                              <span className="w-[10px]" />
-                            )
-                          }
-                        >
-                          {scope.label}
-                        </DropdownItem>
-                      );
-                    })}
-                    {(onToggleFollowLatest || onToggleScopeLock) && <DropdownDivider />}
-                    {onToggleFollowLatest && (
-                      <DropdownItem
-                        onClick={onToggleFollowLatest}
-                        icon={followLatest ? <Icon name="check" size={10} /> : <span className="w-[10px]" />}
-                      >
-                        Follow latest
-                      </DropdownItem>
-                    )}
-                    {onToggleScopeLock && (
-                      <DropdownItem
-                        onClick={onToggleScopeLock}
-                        icon={scopeLocked ? <Icon name="check" size={10} /> : <span className="w-[10px]" />}
-                      >
-                        Lock scope
-                      </DropdownItem>
-                    )}
-                  </Dropdown>
-                )}
-              </div>
-            </>
-          )}
+          {/* Scope switcher — self-subscribing so per-arrival count changes
+              don't re-render the parent MediaPanel. */}
+          <ScopeSwitcher />
         </div>
 
         {/* Center: Zoom controls */}
