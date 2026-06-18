@@ -13,6 +13,8 @@ const apiSingleton = {
     pixsimClient.get<T>(url, config),
   post: <T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> =>
     pixsimClient.post<T>(url, data, config),
+  put: <T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> =>
+    pixsimClient.put<T>(url, data, config),
   patch: <T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> =>
     pixsimClient.patch<T>(url, data, config),
   delete: <T = any>(url: string, config?: AxiosRequestConfig): Promise<T> =>

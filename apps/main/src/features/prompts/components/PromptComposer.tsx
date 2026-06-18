@@ -56,6 +56,7 @@ import { useCmFacetInput } from '../hooks/useCmFacetInput';
 import { useCmReferenceInput } from '../hooks/useCmReferenceInput';
 import { resolveOperatorContract, useOperatorVocabulary } from '../hooks/useOperatorVocabulary';
 import { usePromptHistory } from '../hooks/usePromptHistory';
+import { usePromptProjection } from '../hooks/usePromptProjection';
 import { usePromptVariables } from '../hooks/usePromptVariables';
 import { matchOperator, matchRecipe, useRelationRecipes } from '../hooks/useRelationRecipes';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
@@ -73,6 +74,7 @@ import {
   type AnalysisResult,
   type SequenceContext,
 } from '../lib/promptAnalysisCache';
+import { PROMPT_BOX_SKIN_PANEL_ID } from '../lib/promptBoxSkin';
 import { allFacetVocabCategories } from '../lib/promptVariableName';
 import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
 import { shiftCandidates } from '../lib/shiftAnalysisPositions';
@@ -409,6 +411,7 @@ export function PromptComposer({
     renameVariable,
     deleteVariable,
   } = usePromptVariables();
+  const { mode: projectionMode, setProjectionMode } = usePromptProjection();
   const savedVariableNames = useMemo(
     () => new Set(savedVariableEntries.map((entry) => entry.name)),
     [savedVariableEntries],
@@ -1247,6 +1250,7 @@ export function PromptComposer({
   const promptContextAttrs = contextMenuAttrs('prompt-text', composerId, 'Prompt');
   useRegisterContextData('prompt-text', composerId, {
     prompt: value,
+    skinPanelId: PROMPT_BOX_SKIN_PANEL_ID,
     setPrompt: onChange,
     insertTextAtSelection: insertTextAtPromptSelection,
     getSelectedText: getSelectedPromptText,
@@ -2293,6 +2297,27 @@ export function PromptComposer({
             )}
           >
             <Icon name="sparkles" size={14} />
+          </button>
+        )}
+
+        {mode === 'text' && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setProjectionMode(projectionMode === 'off' ? 'rule_template' : 'off')}
+            title={
+              projectionMode === 'off'
+                ? 'Projection off — operators stay literal in the prompt'
+                : 'Projection on (rule templates) — compile relations to prose at generation'
+            }
+            className={clsx(
+              'p-1 rounded transition-colors',
+              projectionMode !== 'off'
+                ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400'
+                : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+            )}
+          >
+            <Icon name="arrowRightLeft" size={14} />
           </button>
         )}
 
