@@ -449,6 +449,15 @@ export function LocalFoldersContent({
   const { pageItems, currentPage, totalPages, setCurrentPage, showPagination } =
     usePagedItems(itemsForPaging, GROUP_PAGE_SIZE, { initialPage: persistedPage });
 
+  // Report the on-screen assets to the controller so the library "in library"
+  // check scopes to / prioritizes what you're actually viewing — covers tree
+  // nav, gallery drill-down, and pagination uniformly (not just tree selection).
+  const setActiveAssetScope = controller.setActiveAssetScope;
+  const pageItemKeys = useMemo(() => pageItems.map((a) => a.key), [pageItems]);
+  useEffect(() => {
+    setActiveAssetScope?.(pageItemKeys);
+  }, [setActiveAssetScope, pageItemKeys]);
+
   // Wrap filter callbacks to reset pagination on user-initiated filter changes
   const handleFilterChange = useCallback(
     (key: string, value: ClientFilterValue) => {
@@ -550,19 +559,16 @@ export function LocalFoldersContent({
   }, [visibleItems, controller.uploadStatus]);
 
   const handleHashUnhashed = useCallback(() => {
-    if (showDrilledView) {
-      // When drilled into a group, only hash the visible unhashed items
-      const unhashedKeys = drilledItems.filter(isHashableUnhashed).map((a) => a.key);
-      controller.hashAssets(unhashedKeys);
-    } else {
-      const folders = filterState.folder;
-      if (!Array.isArray(folders)) return;
-      for (const folderId of folders) {
-        controller.hashFolder(folderId);
-      }
-    }
+    // Hash exactly the items the "Hash unhashed (N)" count was computed over.
+    // visibleItems spans the full folder scope (incl. nested subfolders), so we
+    // must hash by key — delegating to hashFolder() would silently drop every
+    // asset that lives in a subfolder (isAssetDirectlyInFolderPath excludes them)
+    // and would only ever process one of several selected root folders.
+    const unhashedKeys = visibleItems.filter(isHashableUnhashed).map((a) => a.key);
+    if (unhashedKeys.length === 0) return;
+    controller.hashAssets(unhashedKeys);
     setToolsOpen(false);
-  }, [controller, filterState.folder, showDrilledView, drilledItems, isHashableUnhashed]);
+  }, [controller, visibleItems, isHashableUnhashed]);
 
   const handleHashCurrentPage = useCallback(() => {
     if (pageUnhashedKeys.length === 0) return;

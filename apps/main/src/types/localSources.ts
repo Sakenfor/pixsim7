@@ -81,6 +81,11 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
   hashAssets: (keys: string[]) => void;
   /** Re-check all hashed assets against backend (clears check cache, re-queries) */
   recheckBackend: () => void;
+  /**
+   * Report the asset keys currently on screen so the library check scopes to /
+   * prioritizes them. Opening or paging into a folder updates this scope.
+   */
+  setActiveAssetScope?: (assetKeys: string[]) => void;
 
   // Missing folders (exist in backend but IndexedDB was cleared)
   foldersWithMissing: FolderWithMissing[];

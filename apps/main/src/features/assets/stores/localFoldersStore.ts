@@ -85,7 +85,13 @@ type LocalFoldersState = {
   error?: string;
   /** Folder names that exist in backend but are missing locally (IndexedDB was cleared) */
   missingFolderNames: string[];
-  addFolder: () => Promise<void>;
+  /**
+   * Add (or reconnect) a local folder via the directory picker.
+   * @param options.reclaimFolderId - reuse this previously-synced folder id (so
+   *   the backend hash manifest restores) instead of minting a new one. When
+   *   omitted, a missing backend folder is auto-reclaimed by matching its name.
+   */
+  addFolder: (options?: { reclaimFolderId?: string }) => Promise<void>;
   removeFolder: (id: string) => Promise<void>;
   refreshFolder: (id: string, silent?: boolean) => Promise<void>;
   loadPersisted: () => Promise<void>;
@@ -508,6 +514,37 @@ async function scanFolder(id: string, handle: DirHandle, depth = 5, prefix = '')
   return scanFolderChunked(id, handle, undefined, depth, prefix);
 }
 
+/**
+ * Apply a backend hash manifest to freshly-scanned folder items, restoring the
+ * sha256 for any file whose relativePath + size + lastModified still match what
+ * was hashed before a storage clear. Mutates `items` in place; returns the
+ * number of items that now carry a hash.
+ */
+function applyBackendManifestToItems(
+  items: LocalFolderMeta[],
+  manifest: HashManifestEntry[] | null | undefined,
+): number {
+  if (manifest?.length) {
+    const hashLookup = new Map(manifest.map((e) => [e.relativePath, e]));
+    for (const item of items) {
+      const entry = hashLookup.get(item.relativePath);
+      if (
+        entry &&
+        typeof item.size === 'number' &&
+        typeof item.lastModified === 'number' &&
+        entry.fileSize === item.size &&
+        entry.lastModified === item.lastModified
+      ) {
+        item.sha256 = entry.sha256;
+        item.sha256_file_size = entry.fileSize ?? undefined;
+        item.sha256_last_modified = entry.lastModified ?? undefined;
+        item.sha256_computed_at = Date.now(); // mark as restored
+      }
+    }
+  }
+  return items.filter((a) => a.sha256).length;
+}
+
 // Get file handle by walking the path from root
 async function getFileHandle(root: DirHandle, relativePath: string): Promise<FileHandle | undefined> {
   try {
@@ -882,29 +919,9 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
               ]);
 
               // Apply backend hashes to scanned items by matching relativePath + size + lastModified
-              if (backendManifest?.manifest?.length) {
-                const hashLookup = new Map(
-                  backendManifest.manifest.map((e) => [e.relativePath, e]),
-                );
-                for (const item of items) {
-                  const entry = hashLookup.get(item.relativePath);
-                  if (
-                    entry &&
-                    typeof item.size === 'number' &&
-                    typeof item.lastModified === 'number' &&
-                    entry.fileSize === item.size &&
-                    entry.lastModified === item.lastModified
-                  ) {
-                    item.sha256 = entry.sha256;
-                    item.sha256_file_size = entry.fileSize ?? undefined;
-                    item.sha256_last_modified = entry.lastModified ?? undefined;
-                    item.sha256_computed_at = Date.now(); // mark as restored
-                  }
-                }
-                const restored = items.filter((a) => a.sha256).length;
-                if (restored > 0) {
-                  debugFlags.debug('localFolders', `Restored ${restored} hashes from backend for folder "${f.name}"`);
-                }
+              const restored = applyBackendManifestToItems(items, backendManifest?.manifest);
+              if (restored > 0) {
+                debugFlags.debug('localFolders', `Restored ${restored} hashes from backend for folder "${f.name}"`);
               }
 
               void cacheLocalMeta(f.id, items);
@@ -953,7 +970,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     }
   },
 
-  addFolder: async () => {
+  addFolder: async (options) => {
     if (!isFSASupported()) {
       set({ error: 'Your browser does not support local folder access. Use Chrome/Edge.' });
       return;
@@ -969,7 +986,27 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       const pickerWindow = window as Window & { showDirectoryPicker: () => Promise<DirHandle> };
       const dir: DirHandle = await pickerWindow.showDirectoryPicker();
       const namespace = getUserNamespace();
-      const id = `${dir.name}-${Date.now()}-${namespace}`;
+
+      // Reclaim a previously-synced folder id when reconnecting after a storage
+      // clear, so the backend hash manifest (keyed by folder id) restores instead
+      // of re-hashing every file. Prefer an explicit id from the caller; otherwise
+      // match a still-missing backend folder by name.
+      const localIds = new Set(get().folders.map((f) => f.id));
+      let id: string | undefined;
+      if (options?.reclaimFolderId && !localIds.has(options.reclaimFolderId)) {
+        id = options.reclaimFolderId;
+      } else {
+        try {
+          const backendFolders = await getFoldersFromBackend();
+          const reclaim = backendFolders.find(
+            (bf) => bf.name === dir.name && !localIds.has(bf.id),
+          );
+          if (reclaim) id = reclaim.id;
+        } catch { /* best-effort reclaim — fall back to a fresh id */ }
+      }
+      const reclaimed = !!id;
+      if (!id) id = `${dir.name}-${Date.now()}-${namespace}`;
+
       const entry: FolderEntry = { id, name: dir.name, handle: dir };
       const folders = [...get().folders, entry];
       set({ folders });
@@ -981,6 +1018,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         key: foldersKey,
         totalFolders: folders.length,
         storagePersisted: persistenceGranted,
+        reclaimed,
       });
       await idbSet(foldersKey, folders);
 
@@ -990,14 +1028,26 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         set({ scanning: { folderId: id, ...progress } });
       }, 5);
 
+      // Restore hashes from the backend manifest so a reconnected folder doesn't
+      // re-hash. New folders have no manifest and simply skip this.
+      try {
+        const backendManifest = await getHashManifest(id).catch(() => null);
+        const restored = applyBackendManifestToItems(items, backendManifest?.manifest);
+        if (restored > 0) {
+          debugFlags.debug('localFolders', `Restored ${restored} hashes from backend for folder "${dir.name}"`);
+        }
+      } catch { /* best-effort hash restore */ }
+
       const dual = buildDualMaps(items);
       set(s => ({
         assets: { ...s.assets, ...dual.assets },
         localMeta: { ...s.localMeta, ...dual.localMeta },
+        // This folder is reconnected now — drop it from the "missing" banner.
+        missingFolderNames: s.missingFolderNames.filter((n) => n !== dir.name),
       }));
       await cacheLocalMeta(id, items);
 
-      // Sync folder list to backend for recovery
+      // Sync folder list to backend for recovery (preserves the reclaimed id).
       void syncFoldersToBackend(folders);
     } catch (e: unknown) {
       if (!(e instanceof DOMException && e.name === 'AbortError')) {
@@ -1110,6 +1160,20 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         last_upload_asset_id: existing.last_upload_asset_id,
       };
     });
+
+    // Restore hashes from the backend manifest for any files still unhashed in
+    // memory. Recovers folders whose hashes were computed before a storage clear
+    // (and re-added under a fresh id) without forcing a full re-hash — the
+    // on-add restore only runs for uncached folders, so this is the on-demand path.
+    if (merged.some((m) => !m.sha256)) {
+      try {
+        const backendManifest = await getHashManifest(f.id).catch(() => null);
+        const restored = applyBackendManifestToItems(merged, backendManifest?.manifest);
+        if (restored > 0) {
+          debugFlags.debug('localFolders', `Restored ${restored} hashes from backend on refresh for folder "${f.name}"`);
+        }
+      } catch { /* best-effort hash restore */ }
+    }
 
     // Replace entries belonging to this folder
     const prefix = id + ':';

@@ -221,10 +221,25 @@ export function useLocalFoldersController(): LocalFoldersController {
   const backendHashCheckInProgressRef = useRef<Set<string>>(new Set());
   const backendSyncInFlightRef = useRef(false);
   const backendCheckDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Last folder/subfolder scope we ran a library check for, so navigating into a
+  // folder triggers a scoped check of just those assets (even when the global
+  // auto-check sweep is disabled).
+  const backendCheckedScopeRef = useRef<string | null>(null);
 
   // Force re-check trigger (bumped by recheckBackend)
   const [backendCheckTrigger, setBackendCheckTrigger] = useState(0);
   const [backendCheckContinuationTick, setBackendCheckContinuationTick] = useState(0);
+
+  // Asset keys currently on screen (reported by the gallery). Opening / paging
+  // into a folder changes this scope, which triggers a library check of just
+  // those assets and prioritizes them within the global sweep.
+  const [activeScopeSig, setActiveScopeSig] = useState('');
+  const activeScopeKeysRef = useRef<Set<string>>(new Set());
+  const setActiveAssetScope = useCallback((assetKeys: string[]) => {
+    activeScopeKeysRef.current = new Set(assetKeys);
+    const sig = assetKeys.length ? assetKeys.slice().sort().join('|') : '';
+    setActiveScopeSig((prev) => (prev === sig ? prev : sig));
+  }, []);
 
   // Background hashing progress & controls
   const [hashingProgress, setHashingProgress] = useState<HashingProgressState | null>(null);
@@ -589,9 +604,14 @@ export function useLocalFoldersController(): LocalFoldersController {
 
   useEffect(() => {
     // backendCheckTrigger > 0 means user clicked "Check library" manually - always run.
-    // Otherwise respect the autoCheckBackend setting.
     const isManualTrigger = backendCheckTrigger > 0;
-    if (!autoCheckBackend && !isManualTrigger) return;
+    // Opening / paging into a folder changes the on-screen asset scope and
+    // triggers a library check of just those assets, so the view you're looking
+    // at reflects "in library" promptly — even when the global auto-check sweep
+    // is turned off.
+    const scopeSig = activeScopeSig;
+    const isScopeEntry = scopeSig !== '' && scopeSig !== backendCheckedScopeRef.current;
+    if (!autoCheckBackend && !isManualTrigger && !isScopeEntry) return;
     if (hashingProgress && hashingProgress.done < hashingProgress.total) {
       // Hashing mutates many assets rapidly; defer backend checks until hash run settles.
       return;
@@ -633,11 +653,28 @@ export function useLocalFoldersController(): LocalFoldersController {
         alreadySuccess: withHash.filter((a) => a.last_upload_status === 'success').length,
       });
       if (candidates.length === 0) return;
+
+      // Order/scope candidates relative to what's on screen. A scope-only run
+      // (global sweep disabled, triggered by opening a folder) checks just the
+      // visible assets; otherwise check everything but query the visible ones first.
+      const scopeOnlyRun = !autoCheckBackend && !isManualTrigger && isScopeEntry;
+      backendCheckedScopeRef.current = scopeSig || backendCheckedScopeRef.current;
+      const scopeKeys = activeScopeKeysRef.current;
+      let orderedCandidates = candidates;
+      if (scopeKeys.size > 0) {
+        const inScope: typeof candidates = [];
+        const rest: typeof candidates = [];
+        for (const asset of candidates) {
+          (scopeKeys.has(asset.key) ? inScope : rest).push(asset);
+        }
+        orderedCandidates = scopeOnlyRun ? inScope : inScope.concat(rest);
+      }
+      if (orderedCandidates.length === 0) return;
       if (backendSyncInFlightRef.current) return;
       backendSyncInFlightRef.current = true;
 
       const hashToAssetKeys = new Map<string, string[]>();
-      for (const asset of candidates) {
+      for (const asset of orderedCandidates) {
         const sha256 = asset.sha256!;
         const keys = hashToAssetKeys.get(sha256) || [];
         keys.push(asset.key);
@@ -763,6 +800,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     setInMemoryUploadState,
     backendCheckTrigger,
     backendCheckContinuationTick,
+    activeScopeSig,
   ]);
 
   const recheckBackend = useCallback(() => {
@@ -1349,6 +1387,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     hashFolder,
     hashAssets,
     recheckBackend,
+    setActiveAssetScope,
     getLocalMeta,
     cancelPendingPreviews,
   };
