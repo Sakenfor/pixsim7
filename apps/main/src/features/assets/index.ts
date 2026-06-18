@@ -105,6 +105,12 @@ export type {
 
 export { createLocalFolderSource, localFolderSource } from './sources/localFolderSource';
 export { createRemoteAssetSource, remoteAssetSource } from './sources/remoteAssetSource';
+export {
+  registerAssetSourceAdapter,
+  getAssetSourceAdapter,
+  getAllAssetSourceAdapters,
+} from './sources/assetSourceRegistry';
+export { useClientLoadedAssets } from './sources/useClientLoadedAssets';
 
 // ============================================================================
 // Context - Source Controller
