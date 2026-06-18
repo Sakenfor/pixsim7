@@ -47,9 +47,22 @@ function getIdValue(value: unknown): number | string | undefined {
 // arrive via a separate backend job after asset:created. The backend already
 // publishes asset:updated when derivatives complete, but this fallback covers
 // brief WS reconnect windows where an update event might be dropped.
-const THUMBNAIL_POLL_DELAYS_MS = [600, 1500, 3000, 5000, 8000, 12000, 18000];
+//
+// The tail is deliberately long: when many generations land at once the
+// backend derivative worker is saturated, so a video's local thumbnail can
+// land well after the early attempts. The widely-spaced final attempts (only
+// the genuine stragglers ever reach them, since the poll stops as soon as a
+// derivative appears) keep catching it instead of giving up at ~48s.
+const THUMBNAIL_POLL_DELAYS_MS = [
+  600, 1500, 3000, 5000, 8000, 12000, 18000, 30000, 60000,
+];
 const pendingThumbnailPolls = new Map<number, ReturnType<typeof setTimeout>>();
 const lastThumbnailSignatures = new Map<number, string>();
+// Assets that exhausted the poll cycle still missing a derivative. Retained so
+// a WS reconnect (which may have dropped the authoritative asset:updated while
+// the socket was down) can kick off a fresh poll instead of leaving the card
+// permanently thumbless.
+const deficientThumbnails = new Set<number>();
 
 function isNonImageUrl(url: string): boolean {
   const lowered = url.toLowerCase();
@@ -93,6 +106,9 @@ async function scheduleThumbnailRefresh(assetId: number, attempt = 0): Promise<v
   if (attempt >= THUMBNAIL_POLL_DELAYS_MS.length) {
     pendingThumbnailPolls.delete(assetId);
     lastThumbnailSignatures.delete(assetId);
+    // Out of attempts but the derivative still hasn't shown — remember it so a
+    // later reconnect can re-poll rather than leaving the card thumbless.
+    deficientThumbnails.add(assetId);
     return;
   }
 
@@ -114,6 +130,7 @@ async function scheduleThumbnailRefresh(assetId: number, attempt = 0): Promise<v
       if (!shouldContinueThumbnailPolling(refreshed)) {
         pendingThumbnailPolls.delete(assetId);
         lastThumbnailSignatures.delete(assetId);
+        deficientThumbnails.delete(assetId);
         return;
       }
     } catch (err) {
@@ -125,6 +142,23 @@ async function scheduleThumbnailRefresh(assetId: number, attempt = 0): Promise<v
   }, delay);
 
   pendingThumbnailPolls.set(assetId, timeout);
+}
+
+/**
+ * Restart polling for assets that exhausted their poll cycle still missing a
+ * derivative. Called on WS reconnect: the socket gap may have swallowed the
+ * authoritative asset:updated event, and by reconnect time the backend has
+ * usually finished the derivative — so a fresh poll picks it up. Cleared
+ * signature forces the next usable thumbnail to re-emit even if unchanged.
+ */
+function repollDeficientThumbnails(): void {
+  if (deficientThumbnails.size === 0) return;
+  const ids = [...deficientThumbnails];
+  deficientThumbnails.clear();
+  for (const id of ids) {
+    lastThumbnailSignatures.delete(id);
+    void scheduleThumbnailRefresh(id, 0);
+  }
 }
 
 function extractAssetId(message: WebSocketRecord): number | null {
@@ -343,6 +377,9 @@ function handleConnected(message: WebSocketRecord): void {
   if (connectionState.hasConnectedBefore) {
     debugFlags.log('websocket', 'Reconnected — requesting asset resync');
     assetEvents.emitResync();
+    // Re-poll any asset whose derivative never showed before its poll cycle
+    // expired — the dropped asset:updated may have fired during the gap.
+    repollDeficientThumbnails();
   } else {
     connectionState.hasConnectedBefore = true;
   }
