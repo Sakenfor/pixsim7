@@ -121,6 +121,13 @@ class CohortRow(BaseModel):
     suggested_threshold_sec: Optional[float] = None
     separation: Optional[float] = None
     n_total: int
+    # The baseline the scorer actually uses for this cohort (persisted
+    # render-time median + sample size), plus the effective "flag if faster
+    # than" duration = weak render-ratio cutoff x median. None if the cohort
+    # has no trusted baseline yet.
+    baseline_p50_sec: Optional[float] = None
+    baseline_n: Optional[int] = None
+    flag_under_sec: Optional[float] = None
 
 
 class SignalScanCohortsResponse(BaseModel):
@@ -1887,14 +1894,20 @@ async def get_signal_scan_cohorts(
     extraction + percentile aggregation stays fast even on large libraries.
     Sparse cohorts (both buckets below their min thresholds) are dropped.
     """
-    from sqlalchemy import select, func, case, Integer
-    from sqlalchemy.dialects.postgresql import JSONB
-    from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.domain.generation.models import Generation
     from pixsim7.backend.main.services.asset.signal_analysis import (
+        RENDER_RATIO_WEAK,
         SCANNER_VERSION,
         SUSPICIOUS_THRESHOLD,
     )
+    from pixsim7.backend.main.services.asset.cohort_baselines import (
+        cohort_key,
+        load_cohort_baselines,
+    )
+
+    # The render-time baselines the scorer actually divides by (persisted),
+    # so the table can show each cohort's real reference + effective cutoff.
+    baselines = await load_cohort_baselines(db)
 
     sm = func.cast(Asset.media_metadata, JSONB).op("->")("signal_metrics")
     score_text = sm.op("->>")("score")
@@ -2020,6 +2033,13 @@ async def get_signal_scan_cohorts(
         except (TypeError, ValueError):
             req_len = None
 
+        # Scorer's actual baseline for this cohort (persisted median over all
+        # completed gens), and the effective flag threshold = weak cutoff x p50.
+        bl = baselines.get(cohort_key(provider, op_str, model, quality, req_duration))
+        bl_p50 = bl.get("p50") if bl else None
+        bl_n = bl.get("n") if bl else None
+        flag_under = round(RENDER_RATIO_WEAK * bl_p50, 1) if bl_p50 else None
+
         out.append(CohortRow(
             provider=provider,
             operation_type=op_str,
@@ -2030,6 +2050,9 @@ async def get_signal_scan_cohorts(
             suggested_threshold_sec=suggested,
             separation=separation,
             n_total=int(data["n_total"]),
+            baseline_p50_sec=bl_p50,
+            baseline_n=bl_n,
+            flag_under_sec=flag_under,
         ))
 
     # Best signal first; cohorts without a separation score sink to the bottom,
