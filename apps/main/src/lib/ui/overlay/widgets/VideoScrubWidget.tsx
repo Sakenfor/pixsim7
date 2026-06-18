@@ -20,7 +20,7 @@ import {
 } from '@lib/media/capturedFrameStore';
 import { useMediaSuspended } from '@lib/media/mediaSuspendStore';
 import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
-import { useManagedVideoSource } from '@lib/media/videoDecoder';
+import { acquirePooledVideo, releasePooledVideo } from '@lib/media/videoElementPool';
 import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 
 import {
@@ -201,21 +201,20 @@ export interface VideoScrubWidgetRendererProps {
 }
 
 const DRAG_THRESHOLD = 5; // pixels before considered a drag
-const SCRUB_HOVER_START_EVENT = 'pixsim:video-scrub-hover-start';
-// Dwell time before a hover actually mounts/decodes the preview <video>. A quick
-// mouse sweep across a gallery shouldn't mint an element per card it crosses —
-// each minted <video> leaks ~30MB of un-reclaimed GPU memory (Chrome), so
-// sweeping was the prime hover-churn source. Touch scroll-focus (forcePlay)
+// Dwell time before a hover actually borrows/decodes the preview <video>. A
+// quick mouse sweep across a gallery shouldn't activate an element per card it
+// crosses — each decoder load leaks ~30MB of un-reclaimed GPU memory (Chrome),
+// so sweeping was the prime hover-churn source. Touch scroll-focus (forcePlay)
 // bypasses this — it's already an intentful selection.
 const VIDEO_HOVER_INTENT_MS = 180;
 /**
- * Keep the <video> element loaded for this long after mouse-leave so the
- * user sees the paused-at-last-frame state for a moment.  After this the
- * src is cleared so the GPU decoder can be released.  Tuning: too long =
- * decoders pile up across many hovered cards; too short = re-hover feels
- * laggy from re-load.
+ * On hover-out the pooled <video> is released IMMEDIATELY (decoder freed) — but
+ * the last frame was captured to capturedFrameStore and MediaCard keeps showing
+ * it as an <img>. This is how long that captured frame lingers before it's
+ * cleared and the card reverts to its thumbnail. Decoupled from the decoder
+ * lifecycle now (the element is already gone): purely a display window.
  */
-const SRC_RELEASE_IDLE_MS = 4000;
+const CAPTURED_FRAME_LINGER_MS = 4000;
 export const STEP_COARSE = 0.5; // seconds per arrow key press
 export const STEP_FRAME = 1 / 30; // ~1 frame at 30fps (Ctrl+arrow)
 const MARK_HIT_THRESHOLD = 8; // pixels - how close click must be to mark to count as "on mark"
@@ -263,10 +262,9 @@ export function VideoScrubWidgetRenderer({
   onDurationChange,
   onRegisterSeekFn,
 }: VideoScrubWidgetRendererProps) {
-  // Keep <video> mounted (and paused at last frame) for a short window after
-  // mouse-leave, then release src to free the GPU decoder.
-  const [keepSrcWhilePaused, setKeepSrcWhilePaused] = useState(false);
-  const srcReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // After mouse-leave the pooled <video> is released immediately; this timer
+  // only clears the captured still-frame that MediaCard shows in its place.
+  const frameClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [videoError, setVideoError] = useState(false);
   const [cacheBustToken, setCacheBustToken] = useState<number | null>(null);
   const [timestampPosition, setTimestampPosition] = useState<{ top: number; left: number } | null>(null);
@@ -296,10 +294,11 @@ export function VideoScrubWidgetRenderer({
     return () => clearTimeout(t);
   }, [playWanted, forcePlay]);
 
-  // Drop the decoder while the tab is backgrounded even if a recent hover left
-  // the src warm (keepSrcWhilePaused) — no point holding GPU memory unseen.
+  // Drop the decoder the moment the hover ends (decodeIntent → false) or the
+  // tab is backgrounded — no keep-warm hold, so the pooled element is returned
+  // immediately and the captured still-frame covers the visual gap.
   const suspended = useMediaSuspended();
-  const mediaActive = (decodeIntent || keepSrcWhilePaused) && !suspended;
+  const mediaActive = decodeIntent && !suspended;
   const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: mediaActive, mediaType: 'video' });
   const isBackendMediaUrl = Boolean(url && isBackendUrl(url, BACKEND_BASE));
   const resolvedUrl = useMemo(() => {
@@ -317,7 +316,13 @@ export function VideoScrubWidgetRenderer({
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  // The pooled <video> is appended imperatively into this slot div (it is NOT
+  // a JSX child) so the same element can be reused across hovers.
+  const videoSlotRef = useRef<HTMLDivElement>(null);
+  // The currently-borrowed pooled element, as state so dependent effects (src
+  // load, audio registration, imperative prop sync) re-run when it changes.
+  const [borrowedEl, setBorrowedEl] = useState<HTMLVideoElement | null>(null);
   const lastUpdateRef = useRef(0);
   const stillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Stable per-instance key for audio claim + active-video registry. The
@@ -342,13 +347,13 @@ export function VideoScrubWidgetRenderer({
   }, [activeVideoKey]);
 
   // Register the scrubber's <video> so the global audio claim sees it and
-  // mutes/unmutes alongside other registered players.
+  // mutes/unmutes alongside other registered players. Re-runs when the borrowed
+  // pooled element changes (the element identity is no longer stable per mount).
   useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
+    if (!borrowedEl) return;
     const assetId = (data as { id?: string | number } | undefined)?.id ?? claimKeyRef.current;
-    return registerActiveVideo(activeVideoKey, el, assetId);
-  }, [activeVideoKey, data]);
+    return registerActiveVideo(activeVideoKey, borrowedEl, assetId);
+  }, [activeVideoKey, data, borrowedEl]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [loopRange, setLoopRange] = useState<{ start: number; end: number } | null>(null);
@@ -380,38 +385,28 @@ export function VideoScrubWidgetRenderer({
   const hasVideoDecoderSlot = useVideoActivationSlot(wantsVideoDecoder);
   const shouldAttachVideoSrc = mediaActive && hasVideoDecoderSlot;
 
-  // Callback ref for the scrub <video>. The element is conditionally mounted
-  // (`{shouldAttachVideoSrc && <video/>}`), so on hover-out it UNMOUNTS — and
-  // the decoder must be released right then, while the element still exists.
-  // (An effect keyed on `shouldAttachVideoSrc` can't: by the time it runs the
-  // element is gone and `videoRef.current` is already null.) The hook releases
-  // the decoder on detach and keeps `videoRef` in sync for the scrub controls.
-  const attachVideo = useManagedVideoSource(effectiveUrl, videoRef);
-
-  // Force video to load when hovering starts — but skip the reload if the
-  // video is already loaded (from a recent hover whose src was kept warm).
-  // Re-calling load() would wipe the decoded frame buffer, making re-hover
-  // flash blank/thumbnail.
+  // (Re)load the borrowed pooled element whenever it changes or the resolved
+  // URL changes (auth resolves, cache-bust retry). A pooled element always
+  // arrives cold — its decoder was torn down on its previous release — so the
+  // only no-op case is the same URL already loaded within this borrow.
   useEffect(() => {
-    if (!playWanted || !shouldAttachVideoSrc || !videoRef.current || !effectiveUrl) return;
-    const current = videoRef.current;
-    // If the element already has this URL loaded and ready, don't reload.
-    // current.src is browser-normalized (absolute), so compare against a
-    // normalized effectiveUrl.  currentSrc is the resolved URL actually
-    // used, which is what we want to match against.
+    const el = borrowedEl;
+    if (!playWanted || !el || !effectiveUrl) return;
+    // If the element already has this URL loaded and ready, don't reload —
+    // re-calling load() wipes the decoded frame buffer (re-hover would flash).
     try {
       const want = new URL(effectiveUrl, window.location.origin).href;
-      if (current.currentSrc === want && current.readyState >= 2) {
+      if (el.currentSrc === want && el.readyState >= 2) {
         return;
       }
     } catch { /* fall through to reload */ }
     setVideoError(false);
     setIsVideoLoaded(false);
     retryCountRef.current = 0;
-    setCacheBustToken(null);
-    current.src = effectiveUrl;
-    current.load();
-  }, [playWanted, effectiveUrl, shouldAttachVideoSrc]);
+    el.crossOrigin = effectiveUrl.startsWith('http') ? 'anonymous' : null;
+    el.src = effectiveUrl;
+    el.load();
+  }, [playWanted, effectiveUrl, borrowedEl]);
 
   // Use provided duration or detected duration
   const videoDuration = duration || configDuration || 0;
@@ -467,6 +462,12 @@ export function VideoScrubWidgetRenderer({
     }, RETRY_DELAY_MS);
   }, [isHovering, resolvedUrl, buildCacheBustedUrl]);
 
+  // Latest handler identities, read by the stable listeners attached once per
+  // borrow in the activate effect — so a handler's deps changing (e.g.
+  // isPlaying) doesn't force a listener re-attach / element churn.
+  const handlersRef = useRef({ handleLoadedMetadata, handleTimeUpdate, handleError });
+  handlersRef.current = { handleLoadedMetadata, handleTimeUpdate, handleError };
+
   useEffect(() => {
     return () => {
       if (retryTimeoutRef.current) {
@@ -476,15 +477,68 @@ export function VideoScrubWidgetRenderer({
     };
   }, []);
 
-  // Reset readiness when the decoder slot drops (hover-out / suspend). Decoder
-  // release itself is handled by `attachVideo` on the <video>'s unmount.
+  // Borrow a pooled <video> while a decoder slot is held; release it back to
+  // the pool on hover-out / suspend / unmount. Pooling caps the CUMULATIVE
+  // number of <video> elements (hence GPU decoder contexts) ever created — the
+  // confirmed remaining leak was a fresh element minted per hover. The element
+  // is appended imperatively into `videoSlotRef`, NOT rendered as a JSX child.
   useEffect(() => {
-    if (shouldAttachVideoSrc) return;
-    // The <video> unmounts here and its decoder is released by `attachVideo`
-    // (the callback ref) at detach. Just reset readiness so the next mount
-    // fades in cleanly instead of flashing a stale "loaded" frame.
-    setIsVideoLoaded(false);
-  }, [shouldAttachVideoSrc]);
+    const slot = videoSlotRef.current;
+    if (!shouldAttachVideoSrc || !slot) return;
+
+    const el = acquirePooledVideo();
+    // Stable listeners forward to the latest handler identities (handlersRef).
+    const onMeta = () => handlersRef.current.handleLoadedMetadata();
+    const onTime = () => handlersRef.current.handleTimeUpdate();
+    const onErr = () => handlersRef.current.handleError();
+    el.addEventListener('loadedmetadata', onMeta);
+    el.addEventListener('timeupdate', onTime);
+    el.addEventListener('error', onErr);
+    // Apply any custom videoProps (rarely used) imperatively, skipping
+    // React-only / reserved keys we control ourselves.
+    for (const [k, v] of Object.entries(videoProps)) {
+      if (k === 'className' || k === 'style' || k === 'ref' || k === 'children' || k.startsWith('on')) {
+        continue;
+      }
+      try {
+        (el as unknown as Record<string, unknown>)[k] = v as unknown;
+      } catch {
+        /* ignore non-assignable custom prop */
+      }
+    }
+    slot.appendChild(el);
+    videoRef.current = el;
+    setBorrowedEl(el);
+
+    return () => {
+      el.removeEventListener('loadedmetadata', onMeta);
+      el.removeEventListener('timeupdate', onTime);
+      el.removeEventListener('error', onErr);
+      releasePooledVideo(el);
+      if (videoRef.current === el) videoRef.current = null;
+      setBorrowedEl((prev) => (prev === el ? null : prev));
+      // Reset readiness + any per-borrow cache-bust so the next borrow loads
+      // clean instead of fading in a stale "loaded" state.
+      setIsVideoLoaded(false);
+      setCacheBustToken(null);
+    };
+  }, [shouldAttachVideoSrc, videoProps]);
+
+  // Imperative prop sync for the pooled element (not a JSX node, so these can't
+  // be declarative attributes). Opacity here; muted is synced near the audio
+  // coordination block below where `scrubVideoMuted` is computed.
+  useEffect(() => {
+    if (borrowedEl) borrowedEl.style.opacity = isVideoLoaded ? '1' : '0';
+  }, [borrowedEl, isVideoLoaded]);
+
+  useEffect(() => {
+    const el = borrowedEl;
+    if (!el) return;
+    el.dataset.hovering = String(isHovering);
+    el.dataset.videoLoaded = String(isVideoLoaded);
+    el.dataset.duration = String(videoDuration);
+    el.dataset.showTimeline = showTimeline ? 'true' : 'false';
+  }, [borrowedEl, isHovering, isVideoLoaded, videoDuration, showTimeline]);
 
   // Start playing video (loop from current position)
   const startPlaying = useCallback(() => {
@@ -1006,37 +1060,6 @@ export function VideoScrubWidgetRenderer({
     return () => { onActiveChange?.(false); };
   }, [isHovering, onActiveChange]);
 
-  // Hover-priority handoff: when a new scrub widget is hovered, ask other
-  // widgets to drop their keep-paused hold immediately so slot acquisition
-  // does not wait for idle timers.
-  useEffect(() => {
-    if (!isHovering || typeof window === 'undefined') return;
-    window.dispatchEvent(
-      new CustomEvent<{ key: string }>(SCRUB_HOVER_START_EVENT, {
-        detail: { key: claimKeyRef.current },
-      }),
-    );
-  }, [isHovering]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const onOtherHoverStart = (event: Event) => {
-      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
-      if (!key || key === claimKeyRef.current) return;
-      if (isHovering || !keepSrcWhilePaused) return;
-      if (srcReleaseTimerRef.current) {
-        clearTimeout(srcReleaseTimerRef.current);
-        srcReleaseTimerRef.current = null;
-      }
-      setKeepSrcWhilePaused(false);
-      if (url) clearCapturedFrame(url);
-    };
-    window.addEventListener(SCRUB_HOVER_START_EVENT, onOtherHoverStart as EventListener);
-    return () => {
-      window.removeEventListener(SCRUB_HOVER_START_EVENT, onOtherHoverStart as EventListener);
-    };
-  }, [isHovering, keepSrcWhilePaused, url]);
-
   // Report live scrub time so capability actions can drive extract/upload
   // without needing direct access to the widget's internal state.
   useEffect(() => {
@@ -1055,15 +1078,17 @@ export function VideoScrubWidgetRenderer({
     return () => { onRegisterSeekFn(null); };
   }, [seekTo, onRegisterSeekFn]);
 
-  // Reset video when playback intent ends (hover-out OR scroll-focus lost)
+  // Reset video when playback intent ends (hover-out OR scroll-focus lost).
+  // The pooled <video> is released by the activate effect (decodeIntent →
+  // false → shouldAttachVideoSrc false); here we just capture the last frame
+  // FIRST (so MediaCard can keep showing it) and reset transient scrub state.
   useEffect(() => {
     if (playWanted) {
-      // Re-entering: cancel any pending src release from previous leave.
-      if (srcReleaseTimerRef.current) {
-        clearTimeout(srcReleaseTimerRef.current);
-        srcReleaseTimerRef.current = null;
+      // Re-entering: cancel any pending captured-frame clear from the last leave.
+      if (frameClearTimerRef.current) {
+        clearTimeout(frameClearTimerRef.current);
+        frameClearTimerRef.current = null;
       }
-      setKeepSrcWhilePaused(true);
       return;
     }
     // Leaving: clear still timer
@@ -1071,17 +1096,12 @@ export function VideoScrubWidgetRenderer({
       clearTimeout(stillTimerRef.current);
       stillTimerRef.current = null;
     }
-    // Pause; only rewind when pauseOnLeave=false so the next hover resumes
-    // from the frame the user left.
+    // Capture the current frame BEFORE the element is released — drawImage runs
+    // synchronously here, on a frame the decoder still holds, even though the
+    // pooled element is torn down on the next commit. MediaCard renders the
+    // captured frame as an <img> (outside the overlay) in its place.
     if (videoRef.current) {
-      // Capture current frame BEFORE pausing — the overlay container is
-      // about to be torn down by visibility:'hover', so the <video>
-      // element itself won't be visible.  The captured frame is shown
-      // by MediaCard (outside the overlay) until the release timer fires.
       if (url && pauseOnLeave) {
-        // Fire-and-forget: toBlob is async; we don't gate the pause on it.
-        // The capture still completes on a frame the video had decoded
-        // before pause(), since drawImage runs synchronously above.
         void captureVideoFrame(videoRef.current).then((res) => {
           if (res) setCapturedFrame(url, res.url, res.bytes);
         });
@@ -1100,23 +1120,22 @@ export function VideoScrubWidgetRenderer({
     dragStartTimeRef.current = null;
     holdScrubUntilNearRef.current = false;
     heldHoverPercentRef.current = null;
-    // Schedule src release after an idle window.  Keeps the "paused at
-    // last frame" UX for a moment, then frees the GPU decoder.
-    if (srcReleaseTimerRef.current) clearTimeout(srcReleaseTimerRef.current);
-    srcReleaseTimerRef.current = setTimeout(() => {
-      srcReleaseTimerRef.current = null;
-      setKeepSrcWhilePaused(false);
-      // Also drop the captured frame — card reverts to thumbnail.
+    // Linger the captured still-frame for a moment, then clear it so the card
+    // reverts to its thumbnail. The decoder is already freed (element released),
+    // so this is a pure display timer — not a memory hold.
+    if (frameClearTimerRef.current) clearTimeout(frameClearTimerRef.current);
+    frameClearTimerRef.current = setTimeout(() => {
+      frameClearTimerRef.current = null;
       if (url) clearCapturedFrame(url);
-    }, SRC_RELEASE_IDLE_MS);
+    }, CAPTURED_FRAME_LINGER_MS);
   }, [playWanted, pauseOnLeave]);
 
-  // Cleanup src-release timer on unmount.  Also clear captured frame.
+  // Cleanup captured-frame timer on unmount. Also clear the captured frame.
   useEffect(() => {
     return () => {
-      if (srcReleaseTimerRef.current) {
-        clearTimeout(srcReleaseTimerRef.current);
-        srcReleaseTimerRef.current = null;
+      if (frameClearTimerRef.current) {
+        clearTimeout(frameClearTimerRef.current);
+        frameClearTimerRef.current = null;
       }
       if (url) clearCapturedFrame(url);
     };
@@ -1131,6 +1150,10 @@ export function VideoScrubWidgetRenderer({
     if (!hoverSoundAllowed) return;
     return claimAudio(activeVideoKey);
   }, [activeVideoKey, hoverSoundAllowed]);
+  // Imperative mute sync for the pooled element (replaces the JSX `muted` prop).
+  useEffect(() => {
+    if (borrowedEl) borrowedEl.muted = scrubVideoMuted;
+  }, [borrowedEl, scrubVideoMuted]);
 
   // Calculate progress percentage
   // Use hoverPercent for immediate feedback when scrubbing, progressPercentage when playing
@@ -1251,34 +1274,14 @@ export function VideoScrubWidgetRenderer({
       className={`absolute inset-0 cursor-pointer ${className}`}
       style={gestureActive ? { pointerEvents: 'none' } : undefined}
     >
-      {/* Video element for scrubbing - only mounted when a decoder slot is
-          attached, so Chrome can fully release per-element native buffers
-          (decoder state, audio pipeline, metadata) on unmount. Setting
-          src=undefined on a persistent <video> doesn't free those. */}
-      {/* Use crossOrigin="anonymous" for external URLs (CDN), omit for local paths */}
-      {shouldAttachVideoSrc && (
-        <video
-          ref={attachVideo}
-          data-hovering={isHovering}
-          data-video-loaded={isVideoLoaded}
-          data-keep-paused={keepSrcWhilePaused}
-          data-video-slot={hasVideoDecoderSlot ? 'granted' : 'waiting'}
-          data-duration={videoDuration}
-          data-show-timeline={showTimeline ? 'true' : 'false'}
-          src={effectiveUrl}
-          preload="metadata"
-          playsInline
-          muted={scrubVideoMuted}
-          crossOrigin={effectiveUrl?.startsWith('http') ? 'anonymous' : undefined}
-          onLoadedMetadata={handleLoadedMetadata}
-          onTimeUpdate={handleTimeUpdate}
-          onError={handleError}
-          className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-150 ${
-            isVideoLoaded ? 'opacity-100' : 'opacity-0'
-          }`}
-          {...videoProps}
-        />
-      )}
+      {/* Slot for the scrub <video>. The element itself is borrowed from a
+          shared pool (videoElementPool) and appended here imperatively by the
+          activate effect — NOT rendered as a JSX child — so the same element
+          (and its GPU decoder context) is recycled across hovers instead of a
+          fresh one being minted (and leaked) each time. src / load / listeners
+          / reactive props (opacity, muted, data-*) are all driven imperatively
+          off `borrowedEl`. */}
+      <div ref={videoSlotRef} className="absolute inset-0 pointer-events-none" />
 
       {/* Timeline scrubber */}
       {showTimeline && isHovering && videoDuration > 0 && (

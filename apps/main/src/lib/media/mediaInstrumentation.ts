@@ -23,6 +23,8 @@
  */
 import { hmrSingleton } from '@lib/utils';
 
+import { getVideoElementPoolStats } from './videoElementPool';
+
 // ── Object URLs ──────────────────────────────────────────────────────────
 interface ObjectUrlState {
   live: Map<string, { bytes: number; type: string }>;
@@ -158,6 +160,13 @@ export interface MediaInstrumentationStats {
   };
   audio: { created: number; closed: number; live: number };
   videoChurn: { added: number; removed: number; liveMax: number };
+  /**
+   * Hover-preview <video> pool (videoElementPool). `created` is the headline
+   * leak metric: it should PLATEAU at ~POOL_MAX no matter how many cards are
+   * dwell-hovered. `reused` climbing while `created` stays flat == pooling
+   * working (elements recycled instead of minted).
+   */
+  videoPool: { idle: number; live: number; created: number; reused: number; max: number };
 }
 
 export function getMediaInstrumentationStats(): MediaInstrumentationStats {
@@ -188,6 +197,7 @@ export function getMediaInstrumentationStats(): MediaInstrumentationStats {
       removed: videoChurn.removed,
       liveMax: videoChurn.liveMax,
     },
+    videoPool: getVideoElementPoolStats(),
   };
 }
 

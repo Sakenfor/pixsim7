@@ -769,6 +769,10 @@ export function PerformancePanel() {
     lines.push(
       `  <video> churn:    live peak ${instr.videoChurn.liveMax}  (added ${instr.videoChurn.added}, removed ${instr.videoChurn.removed})`,
     );
+    lines.push(
+      `  scrub <video> pool: ${instr.videoPool.live} live / ${instr.videoPool.idle} idle  ` +
+        `(created ${instr.videoPool.created}/${instr.videoPool.max} cap, reused ${instr.videoPool.reused})`,
+    );
     lines.push('');
 
     const stores = getExposedStores();
