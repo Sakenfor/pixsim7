@@ -75,6 +75,10 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = React.memo(({
   const widgetRef = useRef<HTMLDivElement>(null);
   const [isWidgetHovered, setIsWidgetHovered] = useState(false);
   const [isWidgetFocused, setIsWidgetFocused] = useState(false);
+  // Lazy-mount latch: a widget that has never been revealed renders no content
+  // at all (see below). Once shown, it stays mounted so the fade-OUT transition
+  // still has content to animate.
+  const [hasBeenVisible, setHasBeenVisible] = useState(false);
   // TODO: wire up sibling hover detection via OverlayContainer
   const isSiblingHovered = false;
 
@@ -105,6 +109,10 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = React.memo(({
     !!visibility.alsoVisibleWhen &&
     !!context.customState?.[visibility.alsoVisibleWhen];
   const isVisible = triggerVisible || extraVisible;
+
+  // Latch the first reveal (safe set-state-during-render: the guard makes it
+  // fire at most once). Keeps content mounted afterwards for fade-out.
+  if (isVisible && !hasBeenVisible) setHasBeenVisible(true);
 
   // Calculate position styles (skipped when inside a stack group flex container)
   const positionStyles = useMemo(
@@ -151,8 +159,11 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = React.memo(({
   // Calculate spacing offset (if in a group)
   const spacingValue = SPACING_VALUES[spacing];
 
-  // Render widget content (done early so inStack can detect null renders)
-  const content = widget.render(data, context);
+  // Render widget content (done early so inStack can detect null renders).
+  // Skipped until the widget has been revealed at least once: at rest, the
+  // hover-gated widgets (the bulk of a card's ~15) never build/mount their
+  // subtrees — each otherwise mounts its own hooks/effects per visible card.
+  const content = isVisible || hasBeenVisible ? widget.render(data, context) : null;
 
   // For stacked widgets: determine if this item should be collapsed.
   // Collapsed when the visibility system hides it OR the render returns null.
