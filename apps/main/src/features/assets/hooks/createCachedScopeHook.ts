@@ -139,8 +139,23 @@ export function createCachedScopeHook(opts: CachedScopeOptions): () => void {
 
     useEffect(() => {
       let cancelled = false;
-      const bump = () => {
+      // Coalesce snapshot rebuilds to one per animation frame. Each asset
+      // event resolves from its own `GET /assets/{id}` on a separate task, so
+      // React can't auto-batch them — without this, a rapid generation burst
+      // (10+ assets, each firing a create plus several update/poll events)
+      // triggers a re-render storm: every event rebuilds the snapshot array,
+      // re-runs the scope-equivalence scans, and re-renders the strip. The
+      // cache itself stays updated synchronously (mutators bump `cache.version`
+      // immediately); we only defer the React `setState` that reads it, so the
+      // flush picks up every mutation accumulated within the frame at once.
+      let rafId: number | null = null;
+      const flush = () => {
+        rafId = null;
         if (!cancelled) setCacheVersion(cache.version);
+      };
+      const bump = () => {
+        if (cancelled || rafId != null) return;
+        rafId = requestAnimationFrame(flush);
       };
       const wrapped: CachedScopeMutators = {
         prepend: (a) => { mutators.prepend(a); bump(); },
@@ -157,6 +172,7 @@ export function createCachedScopeHook(opts: CachedScopeOptions): () => void {
 
       return () => {
         cancelled = true;
+        if (rafId != null) cancelAnimationFrame(rafId);
         unsubscribe();
       };
     }, []);
