@@ -86,6 +86,27 @@ export { useFilterMetadata } from './hooks/useFilterMetadata';
 export { useLocalFoldersController } from './hooks/useLocalFoldersController';
 
 // ============================================================================
+// Sources - AssetSource data-layer seam
+// ============================================================================
+
+export type {
+  AssetSource,
+  AssetSourceIdentity,
+  AssetSourceCapabilities,
+  AssetSourceFetchMode,
+  AssetListQuery,
+  AssetPage,
+  AssetLibraryStatus,
+  AssetIngestOptions,
+  AssetIngestResult,
+  AssetSourceFolders,
+  AssetSourceLifecycle,
+} from './sources/assetSource';
+
+export { createLocalFolderSource, localFolderSource } from './sources/localFolderSource';
+export { createRemoteAssetSource, remoteAssetSource } from './sources/remoteAssetSource';
+
+// ============================================================================
 // Context - Source Controller
 // ============================================================================
 
