@@ -1725,75 +1725,15 @@ async def get_signal_scan_stats(
     likewise count only current-version entries; overridden is version-agnostic
     (user labels persist across re-scans).
     """
-    from sqlalchemy import select, func, case
-    from sqlalchemy.dialects.postgresql import JSONB
-    from pixsim7.backend.main.domain.assets.models import Asset
-    from pixsim7.backend.main.services.asset.signal_analysis import (
-        SCANNER_VERSION,
-        SUSPICIOUS_THRESHOLD,
+    # Counts come from the denormalized signal_* columns (not the TOASTed
+    # media_metadata blob) via a short-TTL cached snapshot — see
+    # services/asset/signal_stats_cache.py. Writes (backfill, override) bust it.
+    from pixsim7.backend.main.services.asset.signal_stats_cache import (
+        get_signal_stats_cached,
     )
 
-    # JSON path expressions — media_metadata is JSON, cast then -> / ->>.
-    sm = func.cast(Asset.media_metadata, JSONB).op("->")("signal_metrics")
-    score_text = sm.op("->>")("score")
-    version_text = sm.op("->>")("scanner_version")
-    override_text = sm.op("->>")("user_override")
-    score = score_text.cast(__import__("sqlalchemy").Integer)
-
-    # "Scanned" = stamped by the active scanner version (stale entries re-scan).
-    current_ver = version_text == SCANNER_VERSION
-
-    base_filter = [
-        Asset.user_id == admin.id,
-        Asset.media_type == "VIDEO",
-        Asset.is_archived == False,  # noqa: E712
-    ]
-
-    # Single aggregating query — one round trip.
-    stmt = select(
-        func.count(Asset.id).label("total"),
-        func.count(case((current_ver, 1))).label("scanned"),
-        func.count(
-            case((
-                current_ver
-                & (score >= SUSPICIOUS_THRESHOLD)
-                & (func.coalesce(override_text, "") != "clean"),
-                1,
-            ))
-        ).label("broken"),
-        func.count(
-            case((
-                current_ver
-                & (score == 0)
-                & (func.coalesce(override_text, "") != "broken"),
-                1,
-            ))
-        ).label("clean"),
-        func.count(
-            case((
-                current_ver
-                & (score >= 1)
-                & (score < SUSPICIOUS_THRESHOLD),
-                1,
-            ))
-        ).label("borderline"),
-        func.count(case((override_text.isnot(None), 1))).label("overridden"),
-    ).where(*base_filter)
-
-    row = (await db.execute(stmt)).one()
-    total = int(row.total or 0)
-    scanned = int(row.scanned or 0)
-    return SignalScanStatsResponse(
-        total_videos=total,
-        scanned=scanned,
-        unscanned=total - scanned,
-        broken=int(row.broken or 0),
-        clean=int(row.clean or 0),
-        borderline=int(row.borderline or 0),
-        overridden=int(row.overridden or 0),
-        scanner_version=SCANNER_VERSION,
-        percentage=round((scanned / total * 100) if total > 0 else 0, 2),
-    )
+    stats = await get_signal_stats_cached(db, admin.id)
+    return SignalScanStatsResponse(**stats)
 
 
 @router.post("/backfill-signal-scan", response_model=BackfillSignalScanResponse)
@@ -1801,19 +1741,30 @@ async def backfill_signal_scan(
     admin: CurrentAdminUser,
     db: DatabaseSession,
     limit: int = Query(default=100, ge=1, le=500, description="Max videos to scan"),
+    reprobe: bool = Query(
+        default=False,
+        description=(
+            "Re-run ffmpeg probes (slow, ~1s/clip, needs local file). Default "
+            "False re-scores from already-stored metrics with no ffmpeg — the "
+            "right mode for a scoring-model (SCANNER_VERSION) bump."
+        ),
+    ),
 ) -> BackfillSignalScanResponse:
-    """Scan up to `limit` unscanned (or stale-version) video assets.
+    """Bring up to `limit` stale-version video assets to the current scanner.
 
-    Uses SignalAnalysisService — same logic as the ingest hook and the
-    one-shot rescan endpoint. Skips assets without a local file.
+    A SCANNER_VERSION bump changes only the SCORING, not the probes, so the
+    default path (`reprobe=False`) recomputes scores from the audio/visual
+    metrics already stored on each asset — no ffmpeg, no local file — folding
+    in the cohort-relative render signal. This makes a full-library re-score a
+    cheap DB pass instead of hours of decoding (and avoids the request
+    timeouts the probe path hit on large batches).
 
-    Hybrid baseline path: refreshes the per-cohort render-time baselines once
-    up front, then feeds the cached map into every scan so the render-relative
-    primary signal is available during this batch re-score.
+    `reprobe=True` re-runs ffmpeg (for assets that were never probed, or to
+    refresh the underlying metrics); it requires a local file and is slow.
+
+    Either way the per-cohort render-time baselines are refreshed once up front
+    and fed into the scorer.
     """
-    from sqlalchemy import select, or_
-    from sqlalchemy.dialects.postgresql import JSONB
-    from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.services.asset.signal_analysis import (
         SCANNER_VERSION,
         SignalAnalysisService,
@@ -1826,17 +1777,21 @@ async def backfill_signal_scan(
     await refresh_cohort_baselines(db, user_id=admin.id)
     baselines = await load_cohort_baselines(db)
 
-    sm = __import__("sqlalchemy").func.cast(Asset.media_metadata, JSONB).op("->")("signal_metrics")
-    version_text = sm.op("->>")("scanner_version")
-
+    # Select stale rows via the fast denormalized column (no media_metadata
+    # de-TOAST). Default mode needs a prior score to re-score from; reprobe
+    # mode needs a local file to decode.
+    stale = Asset.signal_scanner_version.is_distinct_from(SCANNER_VERSION)
+    mode_filter = (
+        Asset.local_path.isnot(None) if reprobe else Asset.signal_score.isnot(None)
+    )
     stmt = (
         select(Asset)
         .where(
             Asset.user_id == admin.id,
             Asset.media_type == "VIDEO",
             Asset.is_archived == False,  # noqa: E712
-            Asset.local_path.isnot(None),
-            or_(version_text.is_(None), version_text != SCANNER_VERSION),
+            stale,
+            mode_filter,
         )
         .order_by(Asset.id.desc())
         .limit(limit)
@@ -1852,9 +1807,14 @@ async def backfill_signal_scan(
     for asset in assets:
         processed += 1
         try:
-            payload = await service.probe_and_stamp(
-                asset, force=True, commit=False, cohort_baselines=baselines
-            )
+            if reprobe:
+                payload = await service.probe_and_stamp(
+                    asset, force=True, commit=False, cohort_baselines=baselines
+                )
+            else:
+                payload = await service.rescore_from_stored(
+                    asset, commit=False, cohort_baselines=baselines
+                )
         except Exception as e:  # noqa: BLE001 — surface but don't fail the batch
             logger.warning("signal_scan_backfill_failed", asset_id=asset.id, error=str(e))
             errors += 1
@@ -1868,6 +1828,13 @@ async def backfill_signal_scan(
 
     if scanned > 0 or skipped > 0:
         await db.commit()
+
+    if scanned > 0:
+        # Scores changed — drop the cached coverage snapshot.
+        from pixsim7.backend.main.services.asset.signal_stats_cache import (
+            invalidate_signal_stats_cache,
+        )
+        await invalidate_signal_stats_cache(db, admin.id)
 
     return BackfillSignalScanResponse(
         success=True,
