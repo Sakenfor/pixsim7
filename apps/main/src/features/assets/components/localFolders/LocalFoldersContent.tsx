@@ -623,6 +623,9 @@ export function LocalFoldersContent({
   const hashedCount = visibleItems.length - unhashedCount;
   const hasToolActions = unhashedCount > 0 || uploadActionCount > 0 || hashedCount > 0;
   const toolsBadgeCount = unhashedCount + uploadActionCount;
+  const hashRun = controller.hashingProgress;
+  const hashRunPaused = !!hashRun && controller.hashingPaused;
+  const hashRunActive = !!hashRun && !controller.hashingPaused;
 
   // --- Gallery onOpen wrapper ---
   const handleOpen = useCallback(
@@ -828,10 +831,24 @@ export function LocalFoldersContent({
                   ref={toolsBtnRef}
                   type="button"
                   className="h-7 w-7 inline-flex items-center justify-center rounded-md text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-200/60 dark:hover:bg-neutral-700/60 transition-colors relative"
-                  title="Batch tools"
+                  title={hashRun
+                    ? `Batch tools • Hash ${hashRun.done}/${hashRun.total}${hashRunPaused ? ' (paused)' : ''}`
+                    : 'Batch tools'}
                   onClick={() => setToolsOpen((v) => !v)}
                 >
                   <Icons.wrench size={14} />
+                  {hashRun && (
+                    <span className="absolute -top-0.5 -left-0.5 h-2.5 w-2.5">
+                      {hashRunActive && (
+                        <span className="absolute inset-0 rounded-full bg-emerald-500/60 animate-ping" />
+                      )}
+                      <span
+                        className={`absolute inset-0 rounded-full ring-2 ring-neutral-50 dark:ring-neutral-950 ${
+                          hashRunPaused ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`}
+                      />
+                    </span>
+                  )}
                   <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] rounded-full bg-amber-500 text-[9px] font-medium text-white flex items-center justify-center px-0.5 leading-none">
                     {toolsBadgeCount > 99 ? '99+' : toolsBadgeCount}
                   </span>
@@ -844,6 +861,19 @@ export function LocalFoldersContent({
                   minWidth="200px"
                   className="z-50"
                 >
+                  {hashRun && (
+                    <>
+                      <DropdownItem
+                        icon={<Icons.loader size={12} className={hashRunActive ? 'animate-spin' : undefined} />}
+                        disabled
+                      >
+                        {hashRunPaused
+                          ? `Hash paused (${hashRun.done}/${hashRun.total})`
+                          : `Hashing (${hashRun.done}/${hashRun.total})`}
+                      </DropdownItem>
+                      <DropdownDivider />
+                    </>
+                  )}
                   {unhashedCount > 0 && !controller.hashingProgress && (
                     <DropdownItem
                       icon={<Icons.hash size={12} />}

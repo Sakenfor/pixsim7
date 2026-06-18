@@ -179,8 +179,6 @@ export {
   getLocalThumbnailBlob,
   setLocalThumbnailBlob,
   generateThumbnail,
-  /** @deprecated Use LocalAssetModel instead */
-  type LocalAsset,
 } from './stores/localFoldersStore';
 
 export {

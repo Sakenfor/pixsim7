@@ -12,7 +12,7 @@ import { createIdbKvStore, getUserNamespace } from '@lib/storage/idbKvCache';
 import { debugFlags } from '@lib/utils/debugFlags';
 
 import { generateThumbnailOffThread } from '../lib/thumbnailWorker';
-import type { FolderCandidate, FolderSourceMetadata } from '../types/assetCandidate';
+import type { FolderSourceMetadata } from '../types/assetCandidate';
 import {
   type LocalAssetModel,
   type LocalFolderMeta,
@@ -48,17 +48,6 @@ declare global {
  * @deprecated Use AssetCandidate with source.type === 'folder' instead.
  * Kept for backward compatibility during migration.
  */
-export type LocalAsset = FolderCandidate & {
-  /** Legacy key field (maps to id) */
-  key: string;
-  /** Legacy handle field (transient, not persisted) */
-  fileHandle?: FileHandle;
-  /** Legacy folder ID field (maps to source.folderId) */
-  folderId: string;
-  /** Legacy relative path field (maps to source.relativePath) */
-  relativePath: string;
-};
-
 type FolderEntry = {
   id: string; // stable id
   name: string;
@@ -330,7 +319,7 @@ function isFSASupported() {
   return 'showDirectoryPicker' in window;
 }
 
-function extKind(name: string): LocalAsset['kind'] {
+function extKind(name: string): LocalAssetModel['kind'] {
   const n = name.toLowerCase();
   if (/(\.png|\.jpg|\.jpeg|\.webp|\.gif)$/.test(n)) return 'image';
   if (/(\.mp4|\.webm|\.mov|\.m4v)$/.test(n)) return 'video';
@@ -1302,7 +1291,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
  * asset key and lastModified timestamp so updated files naturally invalidate
  * old thumbnails.
  */
-export async function getLocalThumbnailBlob(asset: LocalAsset | LocalAssetModel): Promise<Blob | undefined> {
+export async function getLocalThumbnailBlob(asset: LocalAssetModel): Promise<Blob | undefined> {
   const key = getThumbnailKey(asset);
   try {
     return await idbGet<Blob>(key);
@@ -1311,7 +1300,7 @@ export async function getLocalThumbnailBlob(asset: LocalAsset | LocalAssetModel)
   }
 }
 
-export async function setLocalThumbnailBlob(asset: LocalAsset | LocalAssetModel, blob: Blob): Promise<void> {
+export async function setLocalThumbnailBlob(asset: LocalAssetModel, blob: Blob): Promise<void> {
   const key = getThumbnailKey(asset);
   try {
     await idbSet<Blob>(key, blob);

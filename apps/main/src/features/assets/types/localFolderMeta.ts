@@ -8,8 +8,9 @@
  * LocalFolderMeta for local-only operations (hashing, uploading, file access).
  */
 
-import type { AssetModel } from '../models/asset';
 import { LocalAssetId } from '@pixsim7/shared.types';
+
+import type { AssetModel } from '../models/asset';
 
 // ── LocalAssetModel ─────────────────────────────────────────────────
 // Extends AssetModel with local-folder identity fields.
@@ -32,6 +33,8 @@ export interface LocalAssetModel extends AssetModel {
   folderId: string;
   /** Path within the folder (matches legacy LocalAsset.relativePath) */
   relativePath: string;
+  /** Display name (filename) — matches legacy LocalAsset.name; also mirrored to `description` */
+  name: string;
   /** File kind */
   kind: 'image' | 'video' | 'audio' | 'other';
   /** Raw file size in bytes */
@@ -168,6 +171,7 @@ export function buildLocalAssetModel(
     key: meta.key,
     folderId: meta.folderId,
     relativePath: meta.relativePath,
+    name: meta.name,
     kind: meta.kind,
     size: meta.size,
     lastModified: meta.lastModified,

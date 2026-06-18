@@ -27,13 +27,13 @@ import {
   scheduleAssetsForHashing,
 } from '../lib/localHashing';
 import { extractUploadError } from '../lib/uploadActions';
+import { useAssetViewerStore } from '../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../stores/localFolderSettingsStore';
 import {
   useLocalFolders,
   getLocalThumbnailBlob,
   setLocalThumbnailBlob,
   generateThumbnail,
-  type LocalAsset,
 } from '../stores/localFoldersStore';
 import type { LocalAssetModel, LocalFolderMeta } from '../types/localFolderMeta';
 
@@ -112,7 +112,7 @@ function areStringRecordValuesEqual<T extends string | undefined>(
   return true;
 }
 
-function isAssetDirectlyInFolderPath(asset: LocalAsset | LocalAssetModel, folderPath: string): boolean {
+function isAssetDirectlyInFolderPath(asset: LocalAssetModel, folderPath: string): boolean {
   // Root folder selected: path is just folderId
   if (folderPath === asset.folderId) {
     // Only show files directly under the root folder here.
@@ -172,7 +172,9 @@ export function useLocalFoldersController(): LocalFoldersController {
   const hashChunkSize = useLocalFolderSettingsStore((s) => s.hashChunkSize);
   const providerId = useLocalFolderSettingsStore((s) => s.providerId);
   const setProviderId = useLocalFolderSettingsStore((s) => s.setProviderId);
-  const previewMode = useLocalFolderSettingsStore((s) => s.previewMode);
+  // Unified with gallery — one toggle controls whether cards load original
+  // source bytes (`preferOriginal=true`) or generated/cached thumbnails.
+  const preferOriginal = useAssetViewerStore((s) => s.settings.preferOriginal);
 
   // View state (persisted)
   const [viewMode, setViewMode] = usePersistentState<ViewMode>(
@@ -192,7 +194,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   // preview setting so a mode switch doesn't flash stale images on mount.
   const [previews, setPreviews] = useState<Record<string, string>>(
     () => {
-      const wantOriginal = previewMode === 'original';
+      const wantOriginal = preferOriginal;
       const entries: [string, string][] = [];
       globalBlobUrlCache.forEach((entry, key) => {
         if (entry.original === wantOriginal) {
@@ -955,14 +957,14 @@ export function useLocalFoldersController(): LocalFoldersController {
   const assetsRecordRef = useRef(assetsRecord);
   assetsRecordRef.current = assetsRecord;
 
-  // Ref for previewMode so loadPreview callback stays stable
-  const previewModeRef = useRef(previewMode);
-  previewModeRef.current = previewMode;
+  // Ref for preferOriginal so loadPreview callback stays stable
+  const preferOriginalRef = useRef(preferOriginal);
+  preferOriginalRef.current = preferOriginal;
 
   // Resolve whether to use original file directly (skip thumbnail generation).
   // For images only — videos always need a generated thumbnail frame.
-  const shouldUseOriginal = useCallback((asset: LocalAsset): boolean => {
-    return previewModeRef.current === 'original' && asset.kind === 'image';
+  const shouldUseOriginal = useCallback((asset: LocalAssetModel): boolean => {
+    return preferOriginalRef.current && asset.kind === 'image';
   }, []);
 
   // Drain pending preview waiters so stale loads don't monopolise I/O.
@@ -980,7 +982,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Uses refs for guards instead of `previews` state so the callback identity stays stable.
   // This prevents O(n²) IntersectionObserver churn (every preview load was changing the
   // callback identity, causing every card's observer to disconnect and reconnect).
-  const loadPreview = useCallback(async (keyOrAsset: string | LocalAsset) => {
+  const loadPreview = useCallback(async (keyOrAsset: string | LocalAssetModel) => {
     const asset = typeof keyOrAsset === 'string' ? assetsRecordRef.current[keyOrAsset] : keyOrAsset;
     if (!asset) return;
 
@@ -1139,14 +1141,14 @@ export function useLocalFoldersController(): LocalFoldersController {
     openViewer: openViewerBase,
     closeViewer,
     navigateViewer: navigateViewerBase,
-  } = useViewer<LocalAsset>({
+  } = useViewer<LocalAssetModel>({
     items: viewerItems,
     getKey: (asset) => asset.key,
     onOpen: loadPreview,
   });
 
   // Wrap openViewer to ensure preview is loaded
-  const openViewer = useCallback(async (asset: LocalAsset) => {
+  const openViewer = useCallback(async (asset: LocalAssetModel) => {
     await loadPreview(asset);
     await openViewerBase(asset);
   }, [loadPreview, openViewerBase]);
@@ -1158,7 +1160,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   }, [navigateViewerBase]);
 
   const uploadOneInternal = useCallback(async (
-    keyOrAsset: string | LocalAsset,
+    keyOrAsset: string | LocalAssetModel,
     options?: { saveTarget?: 'provider' | 'library'; providerId?: string },
   ): Promise<UploadAssetResponse | null> => {
     const asset = typeof keyOrAsset === 'string' ? assetsRecord[keyOrAsset] : keyOrAsset;
@@ -1267,21 +1269,21 @@ export function useLocalFoldersController(): LocalFoldersController {
   ]);
 
   // Upload one asset
-  const uploadOne = useCallback(async (keyOrAsset: string | LocalAsset) => {
+  const uploadOne = useCallback(async (keyOrAsset: string | LocalAssetModel) => {
     await uploadOneInternal(keyOrAsset);
   }, [uploadOneInternal]);
 
   // Upload one asset to a specific provider
-  const uploadOneToProvider = useCallback(async (keyOrAsset: string | LocalAsset, targetProviderId: string) => {
+  const uploadOneToProvider = useCallback(async (keyOrAsset: string | LocalAssetModel, targetProviderId: string) => {
     return uploadOneInternal(keyOrAsset, { saveTarget: 'provider', providerId: targetProviderId });
   }, [uploadOneInternal]);
 
   // Upload one asset explicitly to library (ignore default provider setting)
-  const uploadOneToLibrary = useCallback(async (keyOrAsset: string | LocalAsset) => {
+  const uploadOneToLibrary = useCallback(async (keyOrAsset: string | LocalAssetModel) => {
     await uploadOneInternal(keyOrAsset, { saveTarget: 'library' });
   }, [uploadOneInternal]);
 
-  const toggleFavoriteOne = useCallback(async (keyOrAsset: string | LocalAsset) => {
+  const toggleFavoriteOne = useCallback(async (keyOrAsset: string | LocalAssetModel) => {
     const asset = typeof keyOrAsset === 'string' ? assetsRecord[keyOrAsset] : keyOrAsset;
     if (!asset) return;
 
@@ -1314,7 +1316,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   const busy = adding || loading || scanning !== null;
 
   // Get unique key for an asset
-  const getAssetKey = useCallback((asset: LocalAsset) => asset.key, []);
+  const getAssetKey = useCallback((asset: LocalAssetModel) => asset.key, []);
 
   // Restore a missing folder - opens folder picker with guidance
   // The user needs to navigate to the same folder to restore it
