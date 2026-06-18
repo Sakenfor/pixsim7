@@ -21,6 +21,11 @@ interface CohortRow {
   suggested_threshold_sec: number | null;
   separation: number | null;
   n_total: number;
+  // Baseline the scorer actually uses + the duration below which a clip gets
+  // flagged (weak render-ratio cutoff × cohort median). Null = no baseline yet.
+  baseline_p50_sec: number | null;
+  baseline_n: number | null;
+  flag_under_sec: number | null;
 }
 
 interface CohortsResponse {
@@ -80,7 +85,7 @@ export function DurationCohortTable() {
           )}
         </h3>
         <span className="text-[10px] text-muted-foreground">
-          separation = (clean.p10 − susp.p90) / clean.p50
+          scorer flags render &lt; <span className="font-medium">flag</span> (0.85 × cohort median); sep = (clean.p10 − susp.p90) / clean.p50
         </span>
       </header>
 
@@ -113,7 +118,8 @@ export function DurationCohortTable() {
                 <th className="font-medium px-2 py-1 text-right">n susp</th>
                 <th className="font-medium px-2 py-1 text-right">clean p50</th>
                 <th className="font-medium px-2 py-1 text-right">susp p50</th>
-                <th className="font-medium px-2 py-1 text-right">suggest</th>
+                <th className="font-medium px-2 py-1 text-right" title="Cohort median render the scorer divides by">scorer p50</th>
+                <th className="font-medium px-2 py-1 text-right" title="Clips rendering faster than this get flagged (0.85 × scorer p50)">flag &lt;</th>
                 <th className="font-medium pl-2 py-1 text-right">sep</th>
               </tr>
             </thead>
@@ -132,7 +138,8 @@ export function DurationCohortTable() {
                     </td>
                     <td className="px-2 py-1.5 text-right">{fmtSec(clean?.p50 ?? null)}</td>
                     <td className="px-2 py-1.5 text-right">{fmtSec(susp?.p50 ?? null)}</td>
-                    <td className="px-2 py-1.5 text-right">{fmtSec(c.suggested_threshold_sec)}</td>
+                    <td className="px-2 py-1.5 text-right">{fmtSec(c.baseline_p50_sec)}</td>
+                    <td className="px-2 py-1.5 text-right font-medium">{fmtSec(c.flag_under_sec)}</td>
                     <td className={`pl-2 pr-2 py-1.5 text-right rounded-r-sm font-medium ${separationTone(c.separation)}`}>
                       {c.separation === null ? '–' : c.separation.toFixed(2)}
                     </td>
