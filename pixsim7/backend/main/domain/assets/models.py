@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from uuid import UUID
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import BigInteger, ForeignKey, JSON, String, Text
+from sqlalchemy import BigInteger, ForeignKey, JSON, SmallInteger, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDomain
@@ -130,6 +130,29 @@ class Asset(SQLModel, table=True):
         default=None,
         sa_column=Column(BigInteger, index=True),
         description="Numeric phash for fast similarity"
+    )
+
+    # ===== VIDEO-HEALTH / SIGNAL SCAN (denormalized) =====
+    # Flat mirror of media_metadata.signal_metrics {score, scanner_version,
+    # user_override}, kept in sync by SignalAnalysisService + the override
+    # endpoint. The JSON blob stays the source of truth; these small indexed
+    # columns exist so the maintenance dashboard's coverage aggregate doesn't
+    # de-TOAST every video's metadata blob (was an ~18s full scan). See plan
+    # `signal-scan-recalibration`.
+    signal_score: Optional[int] = Field(
+        default=None,
+        sa_column=Column(SmallInteger),
+        description="Broken-video heuristic score 0-6 (mirror of signal_metrics.score)",
+    )
+    signal_scanner_version: Optional[str] = Field(
+        default=None,
+        max_length=16,
+        description="Scanner version that stamped signal_score (mirror of signal_metrics.scanner_version)",
+    )
+    signal_override: Optional[str] = Field(
+        default=None,
+        max_length=16,
+        description="User override: 'clean' | 'broken' | null (mirror of signal_metrics.user_override)",
     )
 
     # ===== SEMANTIC UNDERSTANDING =====

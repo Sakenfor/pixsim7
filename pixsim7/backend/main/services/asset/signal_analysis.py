@@ -366,6 +366,70 @@ class SignalAnalysisService:
         meta["signal_metrics"] = payload
         asset.media_metadata = meta  # reassignment triggers SQLAlchemy SET on JSON column
 
+        # Mirror into the flat denormalized columns the maintenance dashboard
+        # aggregates over (avoids de-TOASTing media_metadata per video).
+        asset.signal_score = payload.get("score")
+        asset.signal_scanner_version = payload.get("scanner_version")
+        asset.signal_override = payload.get("user_override")
+
+        self.db.add(asset)
+        if commit:
+            await self.db.commit()
+        return payload
+
+    # Probe metric keys that must already be present to re-score without ffmpeg.
+    _STORED_PROBE_KEYS = (
+        "audio_rms_db", "audio_peak_db",
+        "phash_first_to_last", "phash_mean_div_from_first",
+    )
+
+    async def rescore_from_stored(
+        self,
+        asset: Asset,
+        *,
+        cohort_baselines: Optional[dict[str, Any]] = None,
+        commit: bool = True,
+    ) -> Optional[dict[str, Any]]:
+        """Recompute the score from ALREADY-STORED ffmpeg metrics — no probing.
+
+        Use when only the scoring model changed (a SCANNER_VERSION bump), not
+        the probes themselves: the audio/visual metrics from the prior scan are
+        reused as-is and merely re-scored, now folding in the cohort-relative
+        render signal. No ffmpeg, no local file required — so a full-library
+        re-score is a cheap DB pass instead of hours of decoding.
+
+        Returns the new payload, or None if the asset has no stored probe
+        metrics to score from (it would need a real ``probe_and_stamp``).
+        """
+        existing = (asset.media_metadata or {}).get("signal_metrics") or {}
+        if not any(existing.get(k) is not None for k in self._STORED_PROBE_KEYS):
+            return None
+
+        render_context = None
+        if cohort_baselines:
+            try:
+                from pixsim7.backend.main.services.asset.cohort_baselines import (
+                    render_context_for_asset,
+                )
+                render_context = await render_context_for_asset(
+                    self.db, asset, cohort_baselines
+                )
+            except Exception as e:  # noqa: BLE001 — render signal is best-effort
+                logger.warning("signal_rescore_render_ctx_failed", asset_id=asset.id, error=str(e))
+
+        # build_signal_metrics_payload reads the same metric keys the stored
+        # dict already carries, so the prior probe values flow straight through.
+        payload = build_signal_metrics_payload(existing, render_context)
+        if existing.get("user_override") is not None:
+            payload["user_override"] = existing["user_override"]
+
+        meta = dict(asset.media_metadata or {})
+        meta["signal_metrics"] = payload
+        asset.media_metadata = meta
+        asset.signal_score = payload.get("score")
+        asset.signal_scanner_version = payload.get("scanner_version")
+        asset.signal_override = payload.get("user_override")
+
         self.db.add(asset)
         if commit:
             await self.db.commit()
