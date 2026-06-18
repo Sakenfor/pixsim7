@@ -34,8 +34,10 @@ from pixsim7.backend.main.shared.operation_mapping import (
 )
 from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
 from pixsim7.backend.main.services.prompt.inline_values import extract_inline_var_values
+from pixsim7.backend.main.services.prompt.projection import project_prompt
 from pixsim7.backend.main.services.prompt.resolver import resolve_prompt_variables
 from pixsim7.backend.main.services.prompt.variable_registry import (
+    read_prompt_projection_mode,
     read_prompt_variable_transforms,
     read_prompt_variable_values,
 )
@@ -302,24 +304,28 @@ class ProviderService:
 
     async def _load_prompt_variable_resolution(
         self, user_id: Optional[int]
-    ) -> tuple[Dict[str, str], Dict[str, str]]:
-        """Owner's saved variable values and transforms for outbound resolution.
+    ) -> tuple[Dict[str, str], Dict[str, str], str]:
+        """Owner's saved variable values, transforms, and projection mode.
 
-        Returns ``(values, transforms)`` — both name-keyed. Empty maps (a no-op)
-        when there's no owner, no user, or no variable carries a value.
+        Returns ``(values, transforms, projection_mode)``. Empty maps + ``off``
+        when there's no owner, no user, or no prefs.
         """
         if not user_id:
-            return {}, {}
+            return {}, {}, "off"
         try:
             from pixsim7.backend.main.domain import User
 
             user = await self.db.get(User, user_id)
         except Exception:
-            return {}, {}
+            return {}, {}, "off"
         prefs = getattr(user, "preferences", None) if user else None
         if not isinstance(prefs, dict):
-            return {}, {}
-        return read_prompt_variable_values(prefs), read_prompt_variable_transforms(prefs)
+            return {}, {}, "off"
+        return (
+            read_prompt_variable_values(prefs),
+            read_prompt_variable_transforms(prefs),
+            read_prompt_projection_mode(prefs),
+        )
 
     async def _resolve_prompt_variables_inplace(
         self, generation: Generation, params: Dict[str, Any]
@@ -328,18 +334,27 @@ class ProviderService:
         prompt_text = params.get("prompt")
         if not isinstance(prompt_text, str) or not prompt_text:
             return
-        values, transforms = await self._load_prompt_variable_resolution(
+        values, transforms, projection_mode = await self._load_prompt_variable_resolution(
             getattr(generation, "user_id", None)
         )
-        # Inline VAR(value) bindings from the prompt itself win over stored values
-        # (tokenizer-gated, so incidental `UPPER (text)` in prose is not a binding).
+        # Pipeline: inline-collapse -> project -> resolve. Inline VAR(value)
+        # bindings win over stored values (tokenizer-gated, so incidental
+        # `UPPER (text)` in prose is not a binding). Projection (opt-in) runs on
+        # the structured text so recipe templates match var/prose kinds before
+        # variable substitution.
         inline_values, collapsed = extract_inline_var_values(prompt_text)
+        projected = (
+            project_prompt(collapsed, engine=projection_mode)
+            if projection_mode != "off"
+            else collapsed
+        )
         # A transform alone (no value) still acts — it transforms the variable's
-        # name — so process when any of values / inline values / transforms exist.
-        if not values and not inline_values and not transforms:
+        # name. Process when any value / inline value / transform exists, or when
+        # projection rewrote the text.
+        if not values and not inline_values and not transforms and projected == prompt_text:
             return
         merged = {**values, **inline_values}
-        resolved = resolve_prompt_variables(collapsed, merged, transforms=transforms)
+        resolved = resolve_prompt_variables(projected, merged, transforms=transforms)
         if resolved != prompt_text:
             params["prompt"] = resolved
             logger.info(
@@ -348,6 +363,7 @@ class ProviderService:
                 variable_count=len(merged),
                 inline_count=len(inline_values),
                 transform_count=len(transforms),
+                projection_mode=projection_mode,
             )
 
     # ===== PROVIDER EXECUTION =====

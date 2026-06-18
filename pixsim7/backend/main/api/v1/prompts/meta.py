@@ -41,10 +41,13 @@ from pixsim7.backend.main.shared.ontology.vocabularies import (
 from pixsim7.backend.main.services.prompt.variable_registry import (
     PromptVariable,
     normalize_prompt_variable_description,
+    normalize_prompt_projection_mode,
     normalize_prompt_variable_name,
     normalize_prompt_variable_transform,
     normalize_prompt_variable_value,
+    read_prompt_projection_mode,
     read_prompt_variable_entries,
+    write_prompt_projection_mode,
     write_prompt_variables,
 )
 from pixsim7.backend.main.shared.actor import resolve_effective_user_id
@@ -373,6 +376,14 @@ class PromptVariablesResponse(BaseModel):
     variables: List[PromptVariableEntry] = Field(default_factory=list)
 
 
+class ProjectionModeResponse(BaseModel):
+    mode: str = Field("off", description="Structured-prompt projection mode: off | rule_template | llm.")
+
+
+class ProjectionModeRequest(BaseModel):
+    mode: str = Field(..., description="off | rule_template | llm. Invalid values coerce to off.")
+
+
 class UpsertPromptVariableRequest(BaseModel):
     name: str = Field(..., description="Variable name to save.")
     description: Optional[str] = Field(
@@ -534,6 +545,29 @@ async def delete_prompt_variable(
     updated_preferences = write_prompt_variables(preferences, next_entries)
     updated_user = await user_service.update_user(owner_user_id, preferences=updated_preferences)
     return _variables_response(read_prompt_variable_entries(updated_user.preferences))
+
+
+@router.get("/meta/projection", response_model=ProjectionModeResponse)
+async def get_prompt_projection_mode(
+    principal: CurrentUser,
+    user_service: UserSvc,
+):
+    """Owner's structured-prompt projection mode (opt-in; default off)."""
+    _, preferences = await _load_preferences_for_prompt_variables(principal, user_service)
+    return ProjectionModeResponse(mode=read_prompt_projection_mode(preferences))
+
+
+@router.put("/meta/projection", response_model=ProjectionModeResponse)
+async def set_prompt_projection_mode(
+    request: ProjectionModeRequest,
+    principal: CurrentUser,
+    user_service: UserSvc,
+):
+    """Set the projection mode (off | rule_template | llm); invalid coerces to off."""
+    owner_user_id, preferences = await _load_preferences_for_prompt_variables(principal, user_service)
+    updated_preferences = write_prompt_projection_mode(preferences, normalize_prompt_projection_mode(request.mode))
+    updated_user = await user_service.update_user(owner_user_id, preferences=updated_preferences)
+    return ProjectionModeResponse(mode=read_prompt_projection_mode(updated_user.preferences))
 
 
 @router.get("/meta/operator-vocabulary", response_model=OperatorVocabularyResponse)

@@ -224,6 +224,35 @@ def read_prompt_variable_transforms(preferences: Any) -> dict[str, str]:
     }
 
 
+PROMPT_PROJECTION_PREF_KEY = "prompt_projection"
+_PROJECTION_MODES = {"off", "rule_template", "llm"}
+
+
+def normalize_prompt_projection_mode(raw: Any) -> str:
+    """Coerce a projection-mode value to one of off | rule_template | llm."""
+    if isinstance(raw, str) and raw.strip().lower() in _PROJECTION_MODES:
+        return raw.strip().lower()
+    return "off"
+
+
+def read_prompt_projection_mode(preferences: Any) -> str:
+    """Owner's structured-prompt projection mode (default ``off`` — opt-in)."""
+    if not isinstance(preferences, dict):
+        return "off"
+    return normalize_prompt_projection_mode(preferences.get(PROMPT_PROJECTION_PREF_KEY))
+
+
+def write_prompt_projection_mode(preferences: Any, mode: str) -> dict[str, Any]:
+    """Write the projection mode into a preferences payload (``off`` omits the key)."""
+    out = dict(preferences) if isinstance(preferences, dict) else {}
+    normalized = normalize_prompt_projection_mode(mode)
+    if normalized == "off":
+        out.pop(PROMPT_PROJECTION_PREF_KEY, None)
+    else:
+        out[PROMPT_PROJECTION_PREF_KEY] = normalized
+    return out
+
+
 def write_prompt_variables(preferences: Any, entries: Iterable[Any]) -> dict[str, Any]:
     """Write canonical prompt variable entries into a preferences payload."""
     current = dict(preferences) if isinstance(preferences, dict) else {}
