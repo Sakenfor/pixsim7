@@ -21,6 +21,7 @@ function ensureUtcTimestamp(ts: string): string {
 
 import { BACKEND_BASE } from '@lib/api/client';
 import { ensureBackendAbsolute } from '@lib/media/backendUrl';
+import { isVideoOrAudioUrl } from '@lib/media/mediaUrl';
 
 import { resolveAssetUrl, resolvePreviewUrl, resolveThumbnailUrl } from '../lib/assetUrlResolver';
 import type { SelectedAsset } from '../stores/assetSelectionStore';
@@ -129,13 +130,6 @@ export interface AssetModel {
   versionMessage?: string | null;
 }
 
-/** Video/audio extensions that cannot serve as image thumbnails */
-const NON_IMAGE_MEDIA_RE = /\.(mp4|webm|mov|m4v|mkv|avi|mp3|wav|ogg|m4a|aac|flac)(?:$|[?#])/i;
-
-function isVideoOrAudioUrl(url: string | null | undefined): boolean {
-  if (!url) return false;
-  return NON_IMAGE_MEDIA_RE.test(url);
-}
 
 export function getAssetDisplayUrls(asset: AssetModel): {
   mainUrl: string | undefined;

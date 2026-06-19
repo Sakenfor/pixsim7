@@ -14,6 +14,7 @@
 import { pixsimClient, type GenerationResponse } from '@lib/api';
 import type { AssetResponse } from '@lib/api/assets';
 import { useWebSocketConnection, wsManager, type WebSocketRecord } from '@lib/api/wsManager';
+import { isVideoOrAudioUrl } from '@lib/media/mediaUrl';
 import { debugFlags, hmrSingleton } from '@lib/utils';
 
 import { assetEvents, fromAssetResponse, getAssetDisplayUrls, useMediaSettingsStore } from '@features/assets';
@@ -64,17 +65,11 @@ const lastThumbnailSignatures = new Map<number, string>();
 // permanently thumbless.
 const deficientThumbnails = new Set<number>();
 
-function isNonImageUrl(url: string): boolean {
-  const lowered = url.toLowerCase();
-  if (lowered.startsWith('data:video') || lowered.startsWith('data:audio')) return true;
-  return /\.(mp4|webm|mov|m4v|mkv|avi|mp3|wav|ogg|m4a|aac|flac)(?:$|[?#])/.test(lowered);
-}
-
 function hasUsableThumbnail(asset: AssetResponse): boolean {
   if (asset.thumbnail_key || asset.preview_key) return true;
   const url = asset.thumbnail_url || asset.preview_url;
   if (!url) return false;
-  return !isNonImageUrl(url);
+  return !isVideoOrAudioUrl(url);
 }
 
 function hasLocalThumbnailDerivative(asset: AssetResponse): boolean {

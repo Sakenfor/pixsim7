@@ -4,6 +4,7 @@ import { authService } from '@lib/auth';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
 import { createBlobCache } from '@lib/media/blobCache';
 import { fetchAuthBlob, FetchAuthBlobHttpError } from '@lib/media/fetchAuthBlob';
+import { isVideoOrAudioUrl } from '@lib/media/mediaUrl';
 
 import { useMediaSettingsStore } from '@features/assets';
 import { assetEvents, useAssetViewerStore } from '@features/assets';
@@ -57,13 +58,6 @@ const REGEN_RETRY_DELAY_MS = 2000;
 const FETCH_TIMEOUT_MS = 15_000;
 const EXHAUSTION_RETRY_MS = 30_000;
 
-const NON_IMAGE_RE = /\.(mp4|webm|mov|m4v|mkv|avi|mp3|wav|ogg|m4a|aac|flac)(?:$|[?#])/;
-
-function isNonImageMediaUrl(url: string): boolean {
-  const lowered = url.toLowerCase();
-  if (lowered.startsWith('data:video') || lowered.startsWith('data:audio')) return true;
-  return NON_IMAGE_RE.test(lowered);
-}
 
 /**
  * Hook to load and manage media thumbnails/previews with authentication support.
@@ -149,7 +143,7 @@ export function useMediaThumbnailFull(
       return;
     }
 
-    if (isNonImageMediaUrl(selectedUrl)) {
+    if (isVideoOrAudioUrl(selectedUrl)) {
       setThumbSrc(undefined);
       setLoading(false);
       return;
