@@ -434,3 +434,52 @@ class SignalAnalysisService:
         if commit:
             await self.db.commit()
         return payload
+
+    async def score_render_only(
+        self,
+        asset: Asset,
+        *,
+        cohort_baselines: dict[str, Any],
+        commit: bool = True,
+    ) -> Optional[dict[str, Any]]:
+        """Score a never-probed video from its render signal ALONE — no file.
+
+        Render time is the primary signal and comes from the generation's
+        timing vs the cohort baseline (DB only), so a clip with no stored
+        audio/visual metrics — including archive-tiered files with no local
+        copy — can still be scored without ffmpeg or a fetch. The payload is
+        tagged ``scan_mode='render_only'`` (audio/visual fields null) so it's
+        an honest partial that a later full probe can upgrade.
+
+        Under the conservative model only a strong fast render (ratio < 0.5)
+        flags broken without corroboration; everything else lands clean/
+        borderline. Returns the payload, or None if there's no usable render
+        context (no generation timing / cold cohort).
+        """
+        from pixsim7.backend.main.services.asset.cohort_baselines import (
+            render_context_for_asset,
+        )
+
+        render_context = await render_context_for_asset(self.db, asset, cohort_baselines)
+        if render_context is None or render_context.get("render_ratio") is None:
+            return None
+
+        # Empty probe metrics → audio/visual axes don't fire; score is the
+        # render signal only. Tag it so full scans (no scan_mode) stay distinct.
+        payload = build_signal_metrics_payload({}, render_context)
+        payload["scan_mode"] = "render_only"
+        existing = (asset.media_metadata or {}).get("signal_metrics") or {}
+        if existing.get("user_override") is not None:
+            payload["user_override"] = existing["user_override"]
+
+        meta = dict(asset.media_metadata or {})
+        meta["signal_metrics"] = payload
+        asset.media_metadata = meta
+        asset.signal_score = payload.get("score")
+        asset.signal_scanner_version = payload.get("scanner_version")
+        asset.signal_override = payload.get("user_override")
+
+        self.db.add(asset)
+        if commit:
+            await self.db.commit()
+        return payload
