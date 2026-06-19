@@ -34,8 +34,12 @@ _sql_logging_enabled = (
 async_engine = create_async_engine(
     settings.async_database_url,
     echo=_sql_logging_enabled,  # Controlled by SQL_LOGGING_ENABLED env var
-    pool_size=16,
-    max_overflow=24,
+    # Pool sizing is settings-driven so it can be tuned (env / .env) to match the
+    # ARQ worker's arq_max_jobs without a code change. See plan
+    # worker-db-pool-exhaustion.
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    pool_timeout=settings.db_pool_timeout,
     pool_pre_ping=True,  # Test connections before using
     pool_recycle=3600,   # Recycle connections after 1 hour
 )

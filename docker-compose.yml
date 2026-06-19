@@ -5,6 +5,10 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: pixsim7-db
+    # max_connections raised from the default 100: the primary async pool is
+    # instantiated per process (api + main worker + retry worker), each up to
+    # db_pool_size + db_max_overflow (50). See plan worker-db-pool-exhaustion.
+    command: ["postgres", "-c", "max_connections=200"]
     environment:
       POSTGRES_DB: pixsim7
       POSTGRES_USER: pixsim

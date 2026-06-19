@@ -56,6 +56,24 @@ class Settings(BaseSettings):
         description="Separate database URL for automation (devices, executions, loops, presets). Falls back to database_url if not set."
     )
 
+    # ===== DATABASE POOL (primary async engine) =====
+    # The primary async engine pool is shared by the ARQ worker process running up
+    # to ``arq_max_jobs`` concurrent jobs. Keep ``db_pool_size + db_max_overflow``
+    # comfortably >= arq_max_jobs (+ headroom for crons) or jobs time out waiting
+    # for a connection (QueuePool limit reached). See plan worker-db-pool-exhaustion.
+    db_pool_size: int = Field(
+        default=30,
+        description="Primary async engine: persistent connections kept in the pool"
+    )
+    db_max_overflow: int = Field(
+        default=20,
+        description="Primary async engine: extra connections allowed beyond pool_size under load"
+    )
+    db_pool_timeout: int = Field(
+        default=30,
+        description="Primary async engine: seconds to wait for a free connection before timing out"
+    )
+
     # ===== REDIS =====
     redis_url: str = Field(
         default=DEFAULT_REDIS_URL,

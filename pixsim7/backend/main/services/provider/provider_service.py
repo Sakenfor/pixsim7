@@ -553,6 +553,19 @@ class ProviderService:
                 operation_type=generation.operation_type.value,
             )
 
+            # Release the DB connection back to the pool for the duration of the
+            # (often multi-second) provider HTTP submit. The submission row and
+            # generation.resolved_params are already committed above; the trailing
+            # refresh() left an open read-transaction that would otherwise pin this
+            # connection across the network round-trip. With arq_max_jobs concurrent
+            # jobs sharing one pool, holding a connection across the submit is what
+            # exhausts the pool (QueuePool limit reached). commit() closes the read
+            # txn and returns the connection; expire_on_commit=False keeps
+            # generation/account/submission usable, and the post-submit writes below
+            # transparently check out a fresh connection. See plan
+            # ``worker-db-pool-exhaustion``.
+            await self.db.commit()
+
             # Execute provider operation
             result: GenerationResult = await provider.execute(
                 operation_type=generation.operation_type,
@@ -733,6 +746,13 @@ class ProviderService:
                 operation_type=generation.operation_type.value,
                 cached_payload=True,
             )
+
+            # Release the DB connection during the provider HTTP submit — same
+            # rationale as the primary execute path: the submission row is already
+            # committed, and holding the connection across the network round-trip
+            # under concurrency exhausts the shared pool. See plan
+            # ``worker-db-pool-exhaustion``.
+            await self.db.commit()
 
             # Execute provider operation
             result: GenerationResult = await provider.execute(
