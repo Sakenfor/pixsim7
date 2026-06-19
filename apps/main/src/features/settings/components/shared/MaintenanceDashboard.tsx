@@ -34,6 +34,7 @@ import { Icon, type IconName } from '@lib/icons';
 
 import { useAssetSets } from '@features/assets';
 
+import { CalibrationPanel } from './CalibrationPanel';
 import { DuplicatesRow } from './DuplicatesRow';
 import { DurationCohortTable } from './DurationCohortTable';
 import { ErrorCatalogRow } from './ErrorCatalogRow';
@@ -595,7 +596,12 @@ const signalScanConfig: RowConfig<SignalScanStats> = {
     if (d.errors > 0)  parts.push(`${d.errors} errors`);
     return parts.length > 0 ? parts.join(', ') : null;
   },
-  renderExtra: () => <DurationCohortTable />,
+  renderExtra: () => (
+    <div className="space-y-2">
+      <CalibrationPanel />
+      <DurationCohortTable />
+    </div>
+  ),
 };
 
 const previewBackfillConfig: RowConfig<PreviewBackfillStats> = {
