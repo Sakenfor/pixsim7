@@ -87,6 +87,10 @@ def main() -> None:
         _handle_ask_user_question(tool_input, cli_session_id=cli_session_id)
         return
 
+    if tool_name == "EnterPlanMode":
+        _handle_enter_plan_mode(cli_session_id=cli_session_id)
+        return
+
     if tool_name == "ExitPlanMode":
         _handle_exit_plan_mode(tool_input, cli_session_id=cli_session_id)
         return
@@ -237,6 +241,53 @@ def _emit_deny(reason: str) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# EnterPlanMode — confirm before Claude switches into plan mode
+# ──────────────────────────────────────────────────────────────────────────
+
+def _handle_enter_plan_mode(*, cli_session_id: Optional[str] = None) -> None:
+    """Surface an approve/reject card before Claude enters plan mode.
+
+    EnterPlanMode is otherwise allow-listed (auto-approved), so Claude can slip
+    into plan mode unprompted. Hooking it lets the user decline an unsolicited
+    planning detour from the chat panel.
+
+    Approve → ``exit 0`` lets Claude enter plan mode and start planning.
+    Reject  → deny so Claude proceeds with the work directly instead of planning
+              (a bare denial could leave it re-trying EnterPlanMode).
+    """
+    payload = {
+        "tool_name": "EnterPlanMode",
+        "title": "Enter plan mode?",
+        "description": (
+            "Claude wants to plan this out before making changes. Approve to let "
+            "it research and draft a plan for your review, or reject to have it "
+            "proceed directly."
+        ),
+        "interaction_type": "approve_deny",
+        "timeout_s": TIMEOUT_S,
+    }
+    if cli_session_id:
+        payload["cli_session_id"] = cli_session_id
+
+    result = _post_confirm(payload)
+    if result is None:
+        # Bridge offline — fail-open so Claude isn't blocked; matches the
+        # native default of proceeding when no UI is mounted.
+        sys.exit(0)
+
+    if result.get("approved", False):
+        sys.exit(0)  # allow — enter plan mode and begin planning
+
+    note = (result.get("note") or result.get("reason") or "").strip()
+    reason = (
+        f"User declined plan mode: {note}"
+        if note
+        else "User declined plan mode — proceed directly with the task instead of planning."
+    )
+    _emit_deny(reason)
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # ExitPlanMode — render the proposed plan as an approve/deny card
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -257,6 +308,7 @@ def _handle_exit_plan_mode(tool_input: dict, *, cli_session_id: Optional[str] = 
     plan = (tool_input.get("plan") or "").strip()
 
     payload = {
+        "tool_name": "ExitPlanMode",
         "title": "Ready to code?",
         "description": plan or "Claude has finished planning and is ready to start.",
         "interaction_type": "approve_deny",
