@@ -2,7 +2,7 @@ import { DropdownDivider, DropdownItem, Popover } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent } from 'react';
 
 
-import { CompositeIcon, Icons } from '@lib/icons';
+import { Icons } from '@lib/icons';
 
 import type { ClientFilterState } from '@features/gallery/lib/useClientFilters';
 
@@ -19,13 +19,13 @@ import {
 } from './localFolders/constants';
 import { buildLocalFilterDefs } from './localFolders/filterDefs';
 import { LocalFoldersContent } from './localFolders/LocalFoldersContent';
+import { LocalIngestionToolbar } from './localFolders/LocalIngestionToolbar';
 import {
   readStoredContentScrollByScope,
   writeStoredContentScrollByScope,
 } from './localFolders/persistence';
 import { useLocalFolderCallbacks } from './localFolders/useLocalFolderCallbacks';
 import {
-  formatBytes,
   getDirectoryFromRelativePath,
   makeSubfolderValue,
   parseSubfolderValue,
@@ -142,23 +142,6 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
     controller,
     openLocalAssetModel,
   });
-
-  // --- Hashing labels ---
-  const hashingBytesLabel = useMemo(() => {
-    const progress = controller.hashingProgress;
-    if (!progress?.bytesTotal || progress.bytesTotal <= 0) return null;
-
-    const bytesDone = Math.max(0, progress.bytesDone ?? 0);
-    const bytesTotal = Math.max(1, progress.bytesTotal);
-    const percent = Math.min(100, Math.round((bytesDone / bytesTotal) * 100));
-    return `${formatBytes(bytesDone)} / ${formatBytes(bytesTotal)} (${percent}%)`;
-  }, [controller.hashingProgress]);
-
-  const hashingPhaseLabel = useMemo(() => {
-    const phase = controller.hashingProgress?.phase;
-    if (phase === 'digesting') return 'digesting';
-    return 'reading';
-  }, [controller.hashingProgress?.phase]);
 
   const closeManageFolderMenu = useCallback(() => {
     setManagedFolderId(null);
@@ -344,27 +327,9 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Top bar */}
-      <div className="flex-shrink-0 mb-3 px-6 space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-lg font-semibold truncate">Local Folders</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Add Folder button */}
-            <button
-              type="button"
-              className="px-3 py-1.5 border rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:bg-neutral-400 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center justify-center gap-2"
-              onClick={controller.addFolder}
-              disabled={controller.adding || controller.scanning !== null || !controller.supported}
-            >
-              <Icons.folderOpen size={14} />
-              {controller.adding ? 'Adding...' : 'Add Folder'}
-            </button>
-          </div>
-        </div>
+      <LocalIngestionToolbar controller={controller} />
 
-        {managedFolderId && (
+      {managedFolderId && (
           <Popover
             open={!!managedFolderId}
             onClose={closeManageFolderMenu}
@@ -427,105 +392,6 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
             </DropdownItem>
           </Popover>
         )}
-
-        {/* Scanning progress */}
-        {controller.scanning && (
-          <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-              <span className="font-medium">Scanning folder...</span>
-              <span className="text-[10px] text-blue-600 dark:text-blue-400">
-                {controller.scanning.scanned.toLocaleString()} scanned, {controller.scanning.found.toLocaleString()} media found
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Hashing progress */}
-        {controller.hashingProgress && (
-          <div className="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-lg text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
-            {!controller.hashingPaused && (
-              <div className="w-2.5 h-2.5 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            )}
-            <span className="flex-1 min-w-0">
-              <span className="block truncate">
-                {controller.hashingPaused
-                  ? 'Paused'
-                  : `Hashing ${controller.hashingProgress.done}/${controller.hashingProgress.total} (${hashingPhaseLabel})`}
-              </span>
-              {hashingBytesLabel && (
-                <span className="block truncate opacity-80">
-                  {hashingBytesLabel}
-                  {controller.hashingProgress.activeAssetName
-                    ? ` - ${controller.hashingProgress.activeAssetName}`
-                    : ''}
-                </span>
-              )}
-            </span>
-            <button
-              onClick={controller.hashingPaused ? controller.resumeHashing : controller.pauseHashing}
-              className="hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
-              title={controller.hashingPaused ? 'Resume' : 'Pause'}
-            >
-              {controller.hashingPaused ? <Icons.play size={12} /> : <Icons.pause size={12} />}
-            </button>
-            <button
-              onClick={controller.cancelHashing}
-              className="hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
-              title="Cancel"
-            >
-              <Icons.x size={12} />
-            </button>
-          </div>
-        )}
-
-        {/* Browser unsupported / error banners */}
-        {!controller.supported && (
-          <div className="px-3 py-2 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-xs text-red-700 dark:text-red-400 flex items-center gap-2">
-            <Icons.alertTriangle size={16} />
-            <span>Your browser does not support local folder access. Use Chrome/Edge.</span>
-          </div>
-        )}
-        {controller.error && (
-          <div className="px-3 py-2 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-xs text-red-700 dark:text-red-400">
-            {controller.error}
-          </div>
-        )}
-
-        {/* Missing folders warning */}
-        {controller.missingFolderNames.length > 0 && (
-          <div className="px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs">
-            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 mb-1">
-              <Icons.alertTriangle size={14} />
-              <span className="font-medium">Some folders need to be re-added</span>
-              <button
-                className="ml-auto text-[10px] text-amber-500 hover:text-amber-700 dark:hover:text-amber-200 underline"
-                onClick={controller.dismissMissingFolders}
-              >
-                Dismiss
-              </button>
-            </div>
-            <p className="text-amber-600 dark:text-amber-400 text-[10px] mb-1.5">
-              Browser storage was cleared. Click a missing folder below to restore it.
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {controller.missingFolderNames.map((name) => (
-                <button
-                  key={`missing:${name}`}
-                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-amber-200 dark:border-amber-700 bg-white dark:bg-neutral-900 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors"
-                  onClick={() => controller.restoreMissingFolder(name)}
-                  title={`Click to re-add "${name}" folder`}
-                >
-                  <CompositeIcon name="folder" size={12} className="flex-shrink-0 text-amber-500/50" sub={{ name: 'plus', position: 'br', bg: 'amber' }} />
-                  <span className="text-[10px] text-amber-600 dark:text-amber-400 truncate max-w-[140px]">
-                    {name}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
 
       <div className="flex-1 min-h-0 flex flex-col px-6">
         {/* Main content */}
