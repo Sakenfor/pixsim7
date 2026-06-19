@@ -32,6 +32,11 @@ import { openWorkspacePanel } from '@features/workspace';
 import { resolveMaxSlotsFromSpecs, resolveMaxSlotsForModel } from '@/components/media/SlotPicker';
 import { OPERATION_METADATA, OPERATION_TYPES, type OperationType } from '@/types/operations';
 
+import {
+  PROBE_AS_SET,
+  PROBE_CHEAP,
+  isProbePresetSource,
+} from '../hooks/useQuickGenerateController';
 import type { FanoutRunOptions } from '../lib/fanoutPresets';
 
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
@@ -299,13 +304,13 @@ export function GenerationSettingsPanel({
   // history). Sticky toggle per (scope × operation): probing video doesn't flip
   // image generation into probe mode, since cost/intent differ by op.
   const [probeMode, setProbeMode] = usePersistedScopeState(`probeMode:${operationType}`, false);
-  // Optional preset id: when probe mode is on AND a preset is selected, the
-  // preset's params merge as paramOverrides on top of the hardcoded probe
-  // defaults (duration=5 for video). null = use hardcoded defaults only.
-  // Persisted per (scope × operation) so each op type can have its own probe preset.
-  const [probePresetId, setProbePresetId] = usePersistedScopeState<string | null>(
-    `probePresetId:${operationType}`,
-    null,
+  // Probe param-source: how probe runs treat params. Default 'asSet' = run the
+  // user's current settings verbatim (no override). 'cheap' = clamp video to
+  // duration=5. Any other value is a bound preset id whose params merge on top
+  // of the cheap clamp. Persisted per (scope × operation) so each op can differ.
+  const [probeParamSource, setProbeParamSource] = usePersistedScopeState<string>(
+    `probeParamSource:${operationType}`,
+    PROBE_AS_SET,
   );
   const [probePopoverOpen, setProbePopoverOpen] = useState(false);
   const probeChevronRef = useRef<HTMLButtonElement>(null);
@@ -313,10 +318,14 @@ export function GenerationSettingsPanel({
   // Resolve preset.params at render time so changes to the underlying preset
   // (rename / edit) are picked up automatically without a manual re-bind.
   const probePresetParams = useGenerationPresetStore((s) =>
-    probePresetId ? s.presets.find((p) => p.id === probePresetId)?.params : undefined,
+    isProbePresetSource(probeParamSource)
+      ? s.presets.find((p) => p.id === probeParamSource)?.params
+      : undefined,
   );
   const probePresetName = useGenerationPresetStore((s) =>
-    probePresetId ? s.presets.find((p) => p.id === probePresetId)?.name : undefined,
+    isProbePresetSource(probeParamSource)
+      ? s.presets.find((p) => p.id === probeParamSource)?.name
+      : undefined,
   );
   const probePresetsForOperation = useGenerationPresetStore(
     useShallow((s) => s.presets.filter((p) => p.operationType === operationType)),
@@ -325,12 +334,12 @@ export function GenerationSettingsPanel({
   const unseenProbesCount = useUnseenProbesStore((s) => s.unseen);
   const markProbesOpened = useUnseenProbesStore((s) => s.markOpened);
 
-  // If the bound preset disappears (e.g. user deleted it) clear the binding.
+  // If the bound preset disappears (e.g. user deleted it) fall back to 'asSet'.
   useEffect(() => {
-    if (probePresetId && !probePresetParams) {
-      setProbePresetId(null);
+    if (isProbePresetSource(probeParamSource) && !probePresetParams) {
+      setProbeParamSource(PROBE_AS_SET);
     }
-  }, [probePresetId, probePresetParams, setProbePresetId]);
+  }, [probeParamSource, probePresetParams, setProbeParamSource]);
 
   // Non-passive wheel listener for burst count stepper (React onWheel is passive)
   const burstWheelRef = useRef<HTMLDivElement>(null);
@@ -402,6 +411,8 @@ export function GenerationSettingsPanel({
   // Declared after `workbench` to avoid a TDZ error.
   const probeOverrides = useMemo<Record<string, unknown> | null>(() => {
     if (!probeMode) return null;
+    // 'asSet' runs the user's current settings verbatim — no overrides, no ring.
+    if (probeParamSource === PROBE_AS_SET) return null;
     const meta = OPERATION_METADATA[operationType];
     const probeDefaults: Record<string, unknown> = (meta?.outputType === 'video' && !meta.hiddenParams?.includes('duration'))
       ? { duration: 5 }
@@ -416,7 +427,7 @@ export function GenerationSettingsPanel({
       hasAny = true;
     }
     return hasAny ? out : null;
-  }, [probeMode, operationType, probePresetParams, workbench.dynamicParams]);
+  }, [probeMode, probeParamSource, operationType, probePresetParams, workbench.dynamicParams]);
 
   // Editing a probe-overridden param drops probe mode and applies the edit to
   // the user's real saved value. Rationale: with WYSIWYG override display the
@@ -1080,11 +1091,12 @@ export function GenerationSettingsPanel({
           </div>
 
           {/* Probe-mode split-button — pill toggles probeMode; chevron opens a
-              popover that binds an optional preset whose params merge as
-              paramOverrides on probe runs. When the toggle is on, Go / Burst /
-              Each / Current fire with ephemeral=true so resulting assets land
-              as asset_kind='probe' (excluded from gallery + QuickGen history).
-              Hardcoded fallback when no preset is bound: duration=5 for video. */}
+              popover that picks the param source for probe runs. When the toggle
+              is on, Go / Burst / Each / Current fire with ephemeral=true so
+              resulting assets land as asset_kind='probe' (excluded from gallery +
+              QuickGen history). Param source: 'asSet' (default) runs current
+              settings verbatim; 'cheap' clamps video to duration=5; a bound
+              preset merges its params on top of the cheap clamp. */}
           <div
             className={clsx(
               'gen-panel-probe-pack flex-shrink-0 flex rounded-lg',
@@ -1105,8 +1117,8 @@ export function GenerationSettingsPanel({
               )}
               style={{ transition: 'none', animation: 'none' }}
               title={probeMode
-                ? `Probe mode ON — Go/Each/Current fire as throwaway runs (asset_kind='probe', excluded from gallery + QuickGen history).${probePresetName ? `\n\nPreset bound: "${probePresetName}" — its params override current settings.` : '\n\nNo preset bound; video ops clamp to duration=5.'}\n\nClick pill to disable. Click ▾ to bind/change preset.`
-                : `Probe mode OFF — click to flip Go/Each into throwaway-probe mode.${probePresetName ? `\nWill apply preset "${probePresetName}".` : '\nWill use cheap defaults (video duration=5) until you bind a preset via ▾.'}\n\nReview/cleanup via Library → Maintenance → Probes.`}
+                ? `Probe mode ON — Go/Each/Current fire as throwaway runs (asset_kind='probe', excluded from gallery + QuickGen history).\n\n${probePresetName ? `Params: preset "${probePresetName}" (on top of cheap clamp).` : probeParamSource === PROBE_CHEAP ? 'Params: cheap defaults (video duration=5).' : 'Params: your current settings, as set.'}\n\nClick pill to disable. Click ▾ to change param source.`
+                : `Probe mode OFF — click to flip Go/Each into throwaway-probe mode.\n${probePresetName ? `Will apply preset "${probePresetName}".` : probeParamSource === PROBE_CHEAP ? 'Will clamp video to duration=5.' : 'Will run your current settings, as set.'}\n\nReview/cleanup via Library → Maintenance → Probes.`}
             >
               <Icon name="flask" size={11} color={probeMode ? '#fff' : undefined} />
               <span>Probe</span>
@@ -1175,32 +1187,49 @@ export function GenerationSettingsPanel({
               className="w-[280px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl"
             >
               <div className="flex flex-col">
-                <DropdownSectionHeader first>Apply preset on probe</DropdownSectionHeader>
+                <DropdownSectionHeader first>Probe param source</DropdownSectionHeader>
                 <DropdownItem
                   onClick={() => {
-                    setProbePresetId(null);
+                    setProbeParamSource(PROBE_AS_SET);
                     setProbePopoverOpen(false);
                   }}
-                  className={clsx('text-[11px]', probePresetId === null && 'font-semibold bg-accent/10')}
+                  className={clsx('text-[11px]', probeParamSource === PROBE_AS_SET && 'font-semibold bg-accent/10')}
                   icon={
-                    probePresetId === null
+                    probeParamSource === PROBE_AS_SET
                       ? <Icon name="check" size={10} />
-                      : <Icon name="x" size={10} />
+                      : <Icon name="sliders" size={10} />
                   }
                 >
                   <div className="flex flex-col items-start">
-                    <span>None — use defaults</span>
+                    <span>As set — run my current settings</span>
+                    <span className="text-[9px] text-neutral-400">no overrides; what you see is what runs</span>
+                  </div>
+                </DropdownItem>
+                <DropdownItem
+                  onClick={() => {
+                    setProbeParamSource(PROBE_CHEAP);
+                    setProbePopoverOpen(false);
+                  }}
+                  className={clsx('text-[11px]', probeParamSource === PROBE_CHEAP && 'font-semibold bg-accent/10')}
+                  icon={
+                    probeParamSource === PROBE_CHEAP
+                      ? <Icon name="check" size={10} />
+                      : <Icon name="zap" size={10} />
+                  }
+                >
+                  <div className="flex flex-col items-start">
+                    <span>Cheap defaults</span>
                     <span className="text-[9px] text-neutral-400">video → duration 5; other params untouched</span>
                   </div>
                 </DropdownItem>
                 {probePresetsForOperation.length > 0 ? (
                   probePresetsForOperation.map((preset) => {
-                    const isActive = probePresetId === preset.id;
+                    const isActive = probeParamSource === preset.id;
                     return (
                       <DropdownItem
                         key={preset.id}
                         onClick={() => {
-                          setProbePresetId(preset.id);
+                          setProbeParamSource(preset.id);
                           setProbePopoverOpen(false);
                         }}
                         className={clsx('text-[11px]', isActive && 'font-semibold bg-accent/10')}
@@ -1234,7 +1263,7 @@ export function GenerationSettingsPanel({
                         inputs: [],
                         params: { ...(workbench.dynamicParams || {}) },
                       }, 'Saved from probe popover');
-                      setProbePresetId(created.id);
+                      setProbeParamSource(created.id);
                       setProbePopoverOpen(false);
                     }}
                     className="w-full text-left text-[10px] px-1.5 py-1 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700"

@@ -94,15 +94,37 @@ function recordInputHistory(operationType: string, assets: HistoryAsset[]) {
   }
 }
 
-/** Probe-mode param overrides applied when ephemeral=true. Keeps probes cheap
- *  and fast: video ops are clamped to duration=5. video_transition is skipped
- *  because its top-level `duration` is hidden (per-segment durations drive the
- *  total). Image ops get no override. */
+/** Probe param-source modes (persisted per scope×op as `probeParamSource:<op>`).
+ *  - 'asSet'  → run the user's current settings as-is, no overrides (default).
+ *  - 'cheap'  → apply cheap clamp (video duration=5) so probes stay fast.
+ *  - <preset id> → cheap clamp + that preset's params on top. */
+export const PROBE_AS_SET = 'asSet';
+export const PROBE_CHEAP = 'cheap';
+/** True when the source string is a bound preset id (not a built-in mode). */
+export function isProbePresetSource(src: string | null | undefined): boolean {
+  return !!src && src !== PROBE_AS_SET && src !== PROBE_CHEAP;
+}
+
+/** Cheap param clamp for probe runs. Keeps probes cheap and fast: video ops are
+ *  clamped to duration=5. video_transition is skipped because its top-level
+ *  `duration` is hidden (per-segment durations drive the total). Image ops get
+ *  no override. */
 function getProbeParamOverrides(operationType: OperationType): Record<string, any> {
   const meta = OPERATION_METADATA[operationType];
   if (!meta || meta.outputType !== 'video') return {};
   if (meta.hiddenParams?.includes('duration')) return {};
   return { duration: 5 };
+}
+
+/** Resolve the cheap-default clamp honoring the probe param-source mode. In
+ *  'asSet' mode there is NO clamp — the user's current settings run verbatim.
+ *  'cheap' and bound-preset modes still get the duration=5 base. */
+export function resolveProbeCheapDefaults(
+  operationType: OperationType,
+  source: string | null | undefined,
+): Record<string, any> {
+  if (source === PROBE_AS_SET) return {};
+  return getProbeParamOverrides(operationType);
 }
 
 /** Clamp inputs to the operation's max slot limit so request + tracking agree. */
@@ -431,18 +453,21 @@ function useQuickGenerateControllerImpl() {
   // Held in a ref so useCallback-wrapped paths (generateEach,
   // generateSequentialBurst) don't capture stale state.
   const [probeMode] = usePersistedScopeState(`probeMode:${operationType}`, false);
-  const [probePresetId] = usePersistedScopeState<string | null>(
-    `probePresetId:${operationType}`,
-    null,
+  const [probeParamSource] = usePersistedScopeState<string>(
+    `probeParamSource:${operationType}`,
+    PROBE_AS_SET,
   );
   const probePresetParams = useGenerationPresetStore((s) =>
-    probePresetId ? s.presets.find((p) => p.id === probePresetId)?.params : undefined,
+    isProbePresetSource(probeParamSource)
+      ? s.presets.find((p) => p.id === probeParamSource)?.params
+      : undefined,
   );
-  const probeStateRef = useRef<{ probeMode: boolean; probePresetParams: Record<string, any> | undefined }>({
+  const probeStateRef = useRef<{ probeMode: boolean; probeParamSource: string; probePresetParams: Record<string, any> | undefined }>({
     probeMode,
+    probeParamSource,
     probePresetParams,
   });
-  probeStateRef.current = { probeMode, probePresetParams };
+  probeStateRef.current = { probeMode, probeParamSource, probePresetParams };
 
   // Template pinning state (global, from blockTemplateStore)
   // Sync pinned template per-operation (same pattern as promptPerOperation in session store)
@@ -1296,7 +1321,9 @@ function useQuickGenerateControllerImpl() {
     const hasAssetOverrides = Array.isArray(overrides?.assetOverrides);
 
     const { currentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
-    const probeDefaults = overrides?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
+    const probeDefaults = overrides?.ephemeral
+      ? resolveProbeCheapDefaults(activeOperationType, probeStateRef.current.probeParamSource)
+      : null;
     // Precedence (low→high): shared < probe < per-input binding < caller override.
     // Per-input params ride the current input alongside its promptOverride (resolved
     // below). Plan: per-input-param-override.
@@ -1613,7 +1640,9 @@ function useQuickGenerateControllerImpl() {
 
     try {
       const { currentInputs: rawCurrentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
-      const probeDefaults = options?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
+      const probeDefaults = options?.ephemeral
+        ? resolveProbeCheapDefaults(activeOperationType, probeStateRef.current.probeParamSource)
+        : null;
       // Per-input bindings on the source input carry through the whole chained
       // sequence (like the pinned prompt below). Precedence: shared < probe <
       // per-input < caller override. Plan: per-input-param-override.
@@ -1829,7 +1858,9 @@ function useQuickGenerateControllerImpl() {
         }
         setQueueProgress({ queued: 0, total });
 
-        const probeDefaults = options?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
+        const probeDefaults = options?.ephemeral
+          ? resolveProbeCheapDefaults(activeOperationType, probeStateRef.current.probeParamSource)
+          : null;
         const useServerRolling = activeTemplateId && activeRollMode === 'each';
         const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
         await submitEachViaBackendExecution({
