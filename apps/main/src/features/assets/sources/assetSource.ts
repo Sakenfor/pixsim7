@@ -5,7 +5,20 @@
  * filter/group/paginate pipeline:
  *   - backend library  (server-paged, today's default)        → RemoteAssetSource
  *   - local folders    (client-loaded, browser FSA handles)   → LocalFolderSource
- *   - object-store / remote roots (MinIO direction)           → future
+ *   - object-store / remote roots (MinIO direction)           → see below
+ *
+ * --- Remote roots / storage tiering (plan `media-storage-tiering`) ---
+ *
+ * That plan offloads heavy originals to a secondary/remote root (self-hosted
+ * MinIO over ZeroTier) via a per-asset `storage_root_id` + presigned-URL serve
+ * redirects. Crucially that is a BACKEND storage concern: tiered assets are
+ * still ordinary backend library rows whose bytes merely live elsewhere, so
+ * `RemoteAssetSource` already browses them with zero changes — the gallery never
+ * sees where the bytes are. The only *new* source this seam would need is
+ * "browse a remote root directly" (objects not yet in the library); that plugs
+ * in exactly like the two adapters here — implement `AssetSource` (server-paged
+ * `list()` or client-loaded `getAll()`/`subscribe()`), gate optional
+ * capabilities, and register via `registerAssetSourceAdapter`. No seam change.
  *
  * This is deliberately a DATA abstraction, distinct from the existing
  * `SourceController` (in @pixsim7/shared.sources.core), which is a *React
