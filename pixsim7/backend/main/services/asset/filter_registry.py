@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Iterable, Optional
 
-from sqlalchemy import select, func, distinct, true, cast, case, literal, or_, exists, String, Integer
+from sqlalchemy import select, func, distinct, true, cast, case, literal, or_, and_, exists, tuple_, text, String, Integer, Float
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import JSONB  # still used by provider_uploads cast
 
@@ -119,6 +119,10 @@ class FilterSpec:
     condition_builder: Callable[[Any], Any] | None = None
     multi: bool = False
     match_modes: set[str] | None = None
+    # Loose-index-scan recipe for the default (no-context) option load:
+    # (key_sql, value_sql, where_sql). key_sql must be a btree-indexed expression
+    # so the recursive skip scan does ~O(distinct) seeks instead of a full scan.
+    loose_scan: tuple[str, str, str] | None = None
 
 
 class AssetFilterRegistry(SimpleRegistry[str, FilterSpec]):
@@ -190,6 +194,7 @@ class AssetFilterRegistry(SimpleRegistry[str, FilterSpec]):
                     extra_filters=self.build_filter_conditions(context or {}, exclude_key=spec.key),
                     exclude_empty=spec.jsonb_path is not None,
                     limit=limit,
+                    loose_scan=spec.loose_scan,
                 )
             else:
                 continue
@@ -349,6 +354,47 @@ def _sanitize_option_rows(
     return sanitized
 
 
+async def _loose_distinct(
+    db: AsyncSession,
+    *,
+    key_sql: str,
+    where_sql: str,
+    value_sql: str | None = None,
+) -> list[str]:
+    """Loose index scan (recursive skip scan) over a low-cardinality key.
+
+    Returns the distinct ``value_sql`` outputs (defaulting to ``key_sql``) among
+    ``assets`` rows matching ``where_sql``, navigating by ``key_sql`` — ~O(distinct)
+    index seeks instead of a full DISTINCT/GROUP scan. ``key_sql`` MUST be backed
+    by a btree index (else each seek degrades to a seq scan and this is slower
+    than a plain scan). Navigation uses ``key_sql`` so the index drives it while
+    ``value_sql`` can reshape the output (e.g. lowercase an enum) without losing
+    the index. All fragments are trusted, code-defined SQL — never interpolate
+    user input here.
+    """
+    value_sql = value_sql or key_sql
+    stmt = text(
+        f"""
+        WITH RECURSIVE loose AS (
+            (SELECT ({key_sql}) AS k, ({value_sql}) AS v
+               FROM assets WHERE {where_sql} ORDER BY 1 LIMIT 1)
+            UNION ALL
+            SELECT nxt.k, nxt.v
+              FROM loose
+              CROSS JOIN LATERAL (
+                  SELECT ({key_sql}) AS k, ({value_sql}) AS v
+                    FROM assets
+                   WHERE {where_sql} AND ({key_sql}) > loose.k
+                   ORDER BY 1 LIMIT 1
+              ) nxt
+        )
+        SELECT v FROM loose
+        """
+    )
+    result = await db.execute(stmt)
+    return [row[0] for row in result.all()]
+
+
 async def _load_distinct_options(
     db: AsyncSession,
     *,
@@ -359,6 +405,7 @@ async def _load_distinct_options(
     extra_filters: Iterable[Any] | None = None,
     exclude_empty: bool = False,
     limit: Optional[int] = None,
+    loose_scan: tuple[str, str, str] | None = None,
 ) -> list[tuple[str, Optional[str], Optional[int]]]:
     owner_user_id = resolve_effective_user_id(user) or 0
     filters = [
@@ -370,6 +417,26 @@ async def _load_distinct_options(
         filters.extend(extra_filters)
     if exclude_empty:
         filters.append(column != "")
+
+    # Default load (no active context, no counts): enumerate distinct values with
+    # a loose index scan instead of a full DISTINCT scan over every asset row.
+    # The owner/archived predicate is dropped here (single-user library — it
+    # removes nothing) so the scan rides the column's own btree index; it stays
+    # in force on the counts / active-context paths below. See the tag loaders
+    # for the same default-load trade-off.
+    if loose_scan is not None and not include_counts and not extra_filters:
+        key_sql, value_sql, where_sql = loose_scan
+        out: list[tuple[str, Optional[str], Optional[int]]] = []
+        for raw in await _loose_distinct(db, key_sql=key_sql, value_sql=value_sql, where_sql=where_sql):
+            value = _normalize_option_value(raw)
+            if value is None:
+                continue
+            label = (label_map or {}).get(value, value.title())
+            out.append((value, label, None))
+        if limit:
+            out = out[:limit]
+        return out
+
     if include_counts:
         stmt = (
             select(column, func.count(Asset.id).label("count"))
@@ -446,12 +513,27 @@ async def _load_tag_options(
             if row.slug
         ]
 
+    # Distinct slugs via correlated EXISTS — avoids DISTINCT-ing a full
+    # Asset×AssetTag×Tag join just to surface the tag set (see the namespace
+    # loader for the same optimization and why the join shape is pathological).
+    # Default load (no context) tests bare existence in asset_tag (index-only,
+    # ~ms); a narrowed gallery (context) keeps the owner/archived-scoped join.
+    if context:
+        asset_filters = [Asset.user_id == owner_user_id, Asset.is_archived == False]
+        asset_filters.extend(asset_filter_registry.build_filter_conditions(context, exclude_key="tag"))
+        tag_has_asset = exists(
+            select(AssetTag.asset_id)
+            .select_from(AssetTag)
+            .join(Asset, Asset.id == AssetTag.asset_id)
+            .where(AssetTag.tag_id == Tag.id, *asset_filters)
+        )
+    else:
+        tag_has_asset = exists(
+            select(AssetTag.asset_id).where(AssetTag.tag_id == Tag.id)
+        )
     stmt = (
-        select(distinct(Tag.slug), Tag.display_name)
-        .select_from(Asset)
-        .join(AssetTag, AssetTag.asset_id == Asset.id)
-        .join(Tag, Tag.id == AssetTag.tag_id)
-        .where(*filters)
+        select(Tag.slug, Tag.display_name)
+        .where(Tag.namespace.notin_(excluded_ns), tag_has_asset)
         .order_by(Tag.slug.asc())
     )
     if limit:
@@ -504,13 +586,16 @@ def _make_namespace_tag_loader(
         option_limit = max(1, min(option_limit, 500))
 
         ns_filter = Tag.namespace.notin_(namespaces) if exclude else Tag.namespace.in_(namespaces)
-        filters = [
+        # Asset-scoped conditions (owner, archive, live context) live separately
+        # from the Tag-scoped namespace filter so the no-counts path can push them
+        # into a correlated EXISTS instead of a DISTINCT-over-join. See below.
+        asset_filters = [
             Asset.user_id == owner_user_id,
             Asset.is_archived == False,
-            ns_filter,
         ]
         if context:
-            filters.extend(asset_filter_registry.build_filter_conditions(context, exclude_key=filter_key))
+            asset_filters.extend(asset_filter_registry.build_filter_conditions(context, exclude_key=filter_key))
+        filters = [*asset_filters, ns_filter]
 
         if include_counts:
             count_expr = func.count(distinct(Asset.id))
@@ -548,12 +633,36 @@ def _make_namespace_tag_loader(
                 .limit(option_limit)
             )
         else:
+            # Enumerate distinct slugs via a correlated EXISTS rather than
+            # DISTINCT-ing a full Asset×AssetTag×Tag join. The join shape scanned
+            # every asset_tag row in the namespace (e.g. ~341k for `has:`) just to
+            # surface ~7 slugs — 22s on the gallery's default load.
+            #
+            # On the default load (no active context) we drop the owner/archived
+            # join entirely and test bare existence in asset_tag — an index-only
+            # scan that short-circuits per tag (~12ms even for the 9-namespace
+            # style_tags set). The join is only inherently cheap for small
+            # namespaces; for ones whose tags span many rows the planner flips to
+            # a 1.1M×141k hash join (~4s), yet in a single-user library the
+            # owner/archived predicate removes nothing. When the user HAS narrowed
+            # the gallery (context present) we keep the scoped join so options
+            # reflect the active filter set.
+            # NOTE: scoping the default path per-user cheaply (multi-user) would
+            # need a tag-usage index/denormalization carrying user_id on asset_tag.
+            if context:
+                tag_has_asset = exists(
+                    select(AssetTag.asset_id)
+                    .select_from(AssetTag)
+                    .join(Asset, Asset.id == AssetTag.asset_id)
+                    .where(AssetTag.tag_id == Tag.id, *asset_filters)
+                )
+            else:
+                tag_has_asset = exists(
+                    select(AssetTag.asset_id).where(AssetTag.tag_id == Tag.id)
+                )
             stmt = (
-                select(distinct(Tag.slug), Tag.display_name)
-                .select_from(Asset)
-                .join(AssetTag, AssetTag.asset_id == Asset.id)
-                .join(Tag, Tag.id == AssetTag.tag_id)
-                .where(*filters)
+                select(Tag.slug, Tag.display_name)
+                .where(ns_filter, tag_has_asset)
                 .order_by(Tag.slug.asc())
                 .limit(option_limit)
             )
@@ -811,6 +920,184 @@ async def _load_source_video_options(
     ]
 
 
+async def _load_provider_model_options(
+    db: AsyncSession,
+    user: Any,
+    include_counts: bool,
+    context: dict[str, Any] | None,
+    limit: Optional[int],
+) -> list[tuple[str, Optional[str], Optional[int]]]:
+    """Options for the model filter as ``<provider>:<model>`` (e.g. ``pixverse:v6``).
+
+    Values carry the provider so the frontend can namespace-group them and so two
+    providers exposing the same model name (e.g. a shared ``gemini`` image model)
+    stay distinct. The label is the bare model id (the provider is the group header).
+    """
+    provider_expr = _build_effective_provider_expr()
+    owner_user_id = resolve_effective_user_id(user) or 0
+    filters = [
+        Asset.user_id == owner_user_id,
+        Asset.is_archived == False,
+        Asset.model.isnot(None),
+        Asset.model != "",
+        provider_expr.isnot(None),
+    ]
+    if context:
+        filters.extend(asset_filter_registry.build_filter_conditions(context, exclude_key="model"))
+
+    value_expr = provider_expr + literal(":") + Asset.model
+
+    if include_counts:
+        stmt = (
+            select(
+                value_expr.label("value"),
+                Asset.model.label("model"),
+                func.count(Asset.id).label("count"),
+            )
+            .where(*filters)
+            .group_by(value_expr, Asset.model)
+            .order_by(func.count(Asset.id).desc())
+        )
+        if limit:
+            stmt = stmt.limit(limit)
+        result = await db.execute(stmt)
+        return [
+            (row.value, row.model, row.count)
+            for row in result.all()
+            if row.value
+        ]
+
+    # Default load (no context): loose index scan over the indexed
+    # `<provider>:<model>` value (idx_asset_provider_model_value) — ~12 seeks vs
+    # a 140k-row GROUP BY. Only rows with a real provider_id are indexed; no row
+    # in the data lacks one, so the upload_method→provider fallback (kept in the
+    # counts / context paths via value_expr) never matters here.
+    if not context:
+        out: list[tuple[str, Optional[str], Optional[int]]] = []
+        for raw in await _loose_distinct(
+            db,
+            key_sql="lower(btrim(provider_id)) || ':' || model",
+            where_sql="provider_id IS NOT NULL AND btrim(provider_id) <> '' "
+            "AND model IS NOT NULL AND model <> ''",
+        ):
+            value = _normalize_option_value(raw)
+            if value is None:
+                continue
+            model = value.split(":", 1)[1] if ":" in value else value
+            out.append((value, model, None))
+        if limit:
+            out = out[:limit]
+        return out
+
+    stmt = (
+        select(value_expr.label("value"), Asset.model.label("model"))
+        .where(*filters)
+        .group_by(value_expr, Asset.model)
+        .order_by(value_expr.asc())
+    )
+    if limit:
+        stmt = stmt.limit(limit)
+    result = await db.execute(stmt)
+    return [
+        (row.value, row.model, None)
+        for row in result.all()
+        if row.value
+    ]
+
+
+def _build_model_condition(value: Any) -> Any | None:
+    """Translate selected ``<provider>:<model>`` tokens into a query condition.
+
+    Each token becomes ``effective_provider == provider AND model == model``;
+    multiple selections are OR'd. A bare ``model`` token (no provider prefix)
+    matches on model alone for resilience to hand-built filters.
+    """
+    entries = value if isinstance(value, (list, tuple, set)) else [value]
+    provider_expr = _build_effective_provider_expr()
+    clauses: list[Any] = []
+    for entry in entries:
+        if entry is None:
+            continue
+        token = str(entry).strip()
+        if not token:
+            continue
+        if ":" in token:
+            raw_provider, _, raw_model = token.partition(":")
+            provider = raw_provider.strip().lower()
+            model = raw_model.strip()
+            if not model:
+                continue
+            if provider:
+                clauses.append(and_(provider_expr == provider, Asset.model == model))
+            else:
+                clauses.append(Asset.model == model)
+        else:
+            clauses.append(Asset.model == token)
+    if not clauses:
+        return None
+    return or_(*clauses)
+
+
+def _build_prompt_success_rate_condition(value: Any) -> Any | None:
+    """Keep only assets whose prompt cleared a success-rate threshold.
+
+    "Success rate" is computed over the asset's source-generation prompt
+    (grouped by the indexed ``prompt_text_hash``) using the SAME definition as
+    the prompt-box moderation chip (``/generations/prompt-stats``):
+    ``passed`` = COMPLETED, ``filtered`` = ``FILTERED_OUTCOME_ERROR_CODES``,
+    ``rate = passed / (passed + filtered)`` — all OTHER outcomes (quota, timeout,
+    param errors) are excluded from the denominator. ``value`` is a minimum
+    percentage (0-100); 0/blank is a no-op. Assets without a source generation
+    (uploads) have no rate and drop out once the filter is on.
+
+    The rate is scoped per-owner: it groups generations by
+    ``(prompt_text_hash, user_id)`` and matches an asset on its source
+    generation's own pair, so one user's attempts never dilute another's even
+    when two users run the identical prompt text. (The prompt-box chip still
+    aggregates by hash alone — harmless while single-user, but it'll want the
+    same ``user_id`` scoping when multi-user lands.)
+    """
+    try:
+        threshold_pct = float(value)
+    except (TypeError, ValueError):
+        return None
+    if threshold_pct <= 0:
+        return None
+    threshold = max(0.0, min(1.0, threshold_pct / 100.0))
+
+    from pixsim7.backend.main.domain.generation.models import Generation
+    from pixsim7.backend.main.domain.enums import (
+        GenerationStatus,
+        FILTERED_OUTCOME_ERROR_CODES,
+    )
+
+    filtered_values = [code.value for code in FILTERED_OUTCOME_ERROR_CODES]
+    passed = func.count().filter(Generation.status == GenerationStatus.COMPLETED)
+    filtered = func.count().filter(Generation.error_code.in_(filtered_values))
+    denom = passed + filtered
+
+    # (prompt_text_hash, user_id) pairs whose pass-rate clears the threshold.
+    # The rate lives in the generations table (which spans all users) and is
+    # computed independently of the outer asset-visibility filter, so ownership
+    # has to enter HERE — grouping by user_id keeps each owner's rate separate.
+    # An asset's source generation carries its own owner's user_id, so matching
+    # on the pair self-scopes the rate to that asset's owner (no current-user
+    # param needed). nullif guards divide-by-zero for groups with no
+    # passed/filtered attempts (→ NULL → excluded, since NULL >= threshold is
+    # not true).
+    qualifying = (
+        select(Generation.prompt_text_hash, Generation.user_id)
+        .where(Generation.prompt_text_hash.isnot(None))
+        .group_by(Generation.prompt_text_hash, Generation.user_id)
+        .having(cast(passed, Float) / func.nullif(denom, 0) >= threshold)
+    )
+    source_generation_ids = (
+        select(Generation.id)
+        .where(tuple_(Generation.prompt_text_hash, Generation.user_id).in_(qualifying))
+    )
+    return Asset.source_generation_id.in_(source_generation_ids)
+
+
 asset_filter_registry = AssetFilterRegistry()
 
 
@@ -823,6 +1110,13 @@ def register_default_asset_filters() -> None:
             option_source="distinct",
             column=Asset.media_type,
             multi=True,
+            # Navigate by the enum (idx_asset_media_type); output lowercased to
+            # match the ORM enum value form ('VIDEO' → 'video').
+            loose_scan=(
+                "media_type",
+                "lower(media_type::text)",
+                "media_type IS NOT NULL",
+            ),
         )
     )
     _provider_tag_loader = _make_namespace_tag_loader({"provider"}, filter_key="provider_id")
@@ -859,6 +1153,27 @@ def register_default_asset_filters() -> None:
     )
     asset_filter_registry.register(
         FilterSpec(
+            key="model",
+            type="enum",
+            label="Model",
+            description="Generation model, grouped by provider (e.g. pixverse:v6)",
+            option_source="custom",
+            option_loader=_load_provider_model_options,
+            condition_builder=_build_model_condition,
+            multi=True,
+        )
+    )
+    asset_filter_registry.register(
+        FilterSpec(
+            key="prompt_success_rate",
+            type="range",
+            label="Prompt success",
+            description="Keep assets whose prompt lands ≥ N% of attempts (completed vs fast-filtered / content-filtered). Same rate as the prompt-box chip.",
+            condition_builder=_build_prompt_success_rate_condition,
+        )
+    )
+    asset_filter_registry.register(
+        FilterSpec(
             key="upload_method",
             type="enum",
             label="Source",
@@ -866,6 +1181,11 @@ def register_default_asset_filters() -> None:
             column=Asset.upload_method,
             label_map=UPLOAD_METHOD_LABELS,
             multi=True,
+            loose_scan=(  # idx_asset_upload_method
+                "upload_method",
+                "upload_method",
+                "upload_method IS NOT NULL",
+            ),
         )
     )
     for spec in get_upload_context_filter_specs():
