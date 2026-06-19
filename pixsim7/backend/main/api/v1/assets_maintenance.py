@@ -2076,3 +2076,24 @@ async def get_signal_scan_cohorts(
         sample_size=sample_size,
         sample_limit=sample_limit,
     )
+
+
+@router.get("/signal-calibration")
+async def get_signal_calibration(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+) -> dict:
+    """Calibration report — the current model measured against your broken/clean
+    flags (``signal_metrics.user_override``).
+
+    Read-only and cheap (reads only the labelled rows' stored metrics, no
+    probing). Returns confusion matrix + precision/recall vs labels, render-ratio
+    distributions for broken vs clean and the F1-optimal cohort-relative cutoff,
+    a signal-presence breakdown of broken labels, and a sufficiency gate. See
+    services/asset/signal_calibration.py.
+    """
+    from pixsim7.backend.main.services.asset.signal_calibration import (
+        compute_calibration,
+    )
+
+    return await compute_calibration(db, admin.id)
