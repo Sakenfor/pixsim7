@@ -611,6 +611,56 @@ class ProcessManager:
         time.sleep(0.5)  # Brief pause between stop and start
         return self.start(service_key)
 
+    def recreate(self, service_key: str) -> bool:
+        """
+        Recreate a service in place via its custom_recreate handler.
+
+        For docker-compose services this runs ``compose up -d`` (no preceding
+        ``down``), so only containers whose definition changed are rebuilt and
+        the rest keep running — applying a compose edit without the full-stack
+        outage a stop→start would cause. Services without a custom_recreate
+        handler fall back to a normal restart.
+
+        Args:
+            service_key: Key of the service to recreate
+
+        Returns:
+            True if recreated successfully
+        """
+        state = self.states.get(service_key)
+        if not state:
+            return False
+
+        definition = state.definition
+        if not definition.custom_recreate:
+            # No in-place recreate for this service — fall back to restart.
+            return self.restart(service_key)
+
+        state.requested_running = True  # commit intent before the rebuild
+        try:
+            success = definition.custom_recreate(state)
+            if success:
+                state.status = ServiceStatus.STARTING
+                state.health = HealthStatus.STARTING
+                state.last_error = ''
+                self._emit_event(ProcessEvent(
+                    service_key=service_key,
+                    event_type="started",
+                    data={"recreate": True}
+                ))
+            else:
+                state.status = ServiceStatus.FAILED
+            return success
+        except Exception as e:
+            state.status = ServiceStatus.FAILED
+            state.last_error = f"Recreate failed: {str(e)}"
+            self._emit_event(ProcessEvent(
+                service_key=service_key,
+                event_type="failed",
+                data={"error": str(e)}
+            ))
+            return False
+
     def get_state(self, service_key: str) -> Optional[ServiceState]:
         """Get the current state of a service."""
         return self.states.get(service_key)

@@ -72,6 +72,9 @@ class ServiceStateResponse(BaseModel):
     extras: Optional[Dict[str, Any]] = None
     # pnpm workspace package to build for this card (drives the manual Build button).
     build_before_start_package: Optional[str] = None
+    # True when the service supports in-place recreate (e.g. docker-compose
+    # `up -d`), which drives the "Recreate container" action in the UI.
+    supports_recreate: bool = False
 
 
 class SettingFieldResponse(BaseModel):

@@ -231,6 +231,7 @@ async def list_services(
             category=getattr(state.definition, 'category', None) or _infer_category(key),
             extras=extras,
             build_before_start_package=getattr(state.definition, 'build_before_start_package', None),
+            supports_recreate=bool(getattr(state.definition, 'custom_recreate', None)),
         ))
 
     return ServicesListResponse(
@@ -283,6 +284,7 @@ async def get_service_status(
         category=getattr(state.definition, 'category', None) or _infer_category(service_key),
         extras=extras,
         build_before_start_package=getattr(state.definition, 'build_before_start_package', None),
+        supports_recreate=bool(getattr(state.definition, 'custom_recreate', None)),
     )
 
 
@@ -487,6 +489,49 @@ async def restart_service(
         raise HTTPException(
             status_code=500,
             detail=state.last_error if state.last_error else "Failed to restart service"
+        )
+
+
+@router.post("/{service_key}/recreate", response_model=ServiceActionResponse)
+async def recreate_service(
+    service_key: str = Path(..., description="Service key"),
+    process_mgr: ProcessManager = Depends(get_process_manager)
+):
+    """
+    Recreate a service's container(s) in place.
+
+    For docker-compose services this runs ``compose up -d`` (no preceding
+    ``down``), so only containers whose definition changed are rebuilt and the
+    rest keep running — the way to apply a compose edit (e.g. postgres
+    max_connections) without the full-stack outage a restart causes. Services
+    without in-place recreate support fall back to a normal restart.
+
+    Raises:
+        404: Service not found
+        500: Failed to recreate
+    """
+    state = process_mgr.get_state(service_key)
+    if not state:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Service '{service_key}' not found"
+        )
+
+    success = process_mgr.recreate(service_key)
+
+    if success:
+        get_logger().info("service_recreated", service=service_key)
+        return ServiceActionResponse(
+            success=True,
+            message=f"Service '{service_key}' recreated successfully",
+            service_key=service_key
+        )
+    else:
+        state = process_mgr.get_state(service_key)
+        get_logger().error("service_recreate_failed", service=service_key, error=state.last_error if state else None)
+        raise HTTPException(
+            status_code=500,
+            detail=state.last_error if state.last_error else "Failed to recreate service"
         )
 
 
@@ -813,11 +858,14 @@ async def apply_hook_config(
     # hook the built-in tool resolves silently/natively in the headless
     # subprocess, never reaching the chat panel:
     #   * AskUserQuestion → otherwise returns a default "Answer questions?"
+    #   * EnterPlanMode   → otherwise auto-approved (allow-listed) so Claude can
+    #                       slip into plan mode unprompted; hooking it surfaces an
+    #                       approve/reject card so the user can decline planning.
     #   * ExitPlanMode    → otherwise the plan-confirm prompt is invisible
     #                       (and auto-approved if left in permissions.allow),
     #                       so the user never gets to approve/reject the plan.
     # Combine with user-selected gating tools into a single matcher entry.
-    _ALWAYS_HOOKED = ("AskUserQuestion", "ExitPlanMode")
+    _ALWAYS_HOOKED = ("AskUserQuestion", "EnterPlanMode", "ExitPlanMode")
     matcher_tools = list(body.hook_tools)
     for tool in _ALWAYS_HOOKED:
         if tool not in matcher_tools:

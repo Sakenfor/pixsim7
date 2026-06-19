@@ -61,6 +61,10 @@ class ServiceDefinition:
     is_detached: bool = False  # True for services that run detached (like docker-compose)
     custom_start: Optional[Callable] = None  # Custom start function
     custom_stop: Optional[Callable] = None   # Custom stop function
+    # Custom recreate function (e.g. docker-compose `up -d` to apply compose
+    # changes without a full down). Lets a service rebuild its container(s) in
+    # place — recreating only what changed — instead of bouncing the whole stack.
+    custom_recreate: Optional[Callable] = None
     custom_health_check: Optional[Callable] = None  # Custom health check function
     # Hook executed just before subprocess spawn in the standard start path.
     # Receives the ServiceState; return True to proceed, False to abort (state.last_error must be set).

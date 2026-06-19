@@ -20,6 +20,7 @@ interface ServicesStore {
   startService: (key: string) => Promise<void>
   stopService: (key: string) => Promise<void>
   restartService: (key: string) => Promise<void>
+  recreateService: (key: string) => Promise<void>
   startAll: () => Promise<void>
   stopAll: () => Promise<void>
 
@@ -88,6 +89,15 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
       await get().refreshService(key)
     } catch (e: any) {
       set({ error: `Failed to restart ${key}: ${e.message}` })
+    }
+  },
+
+  recreateService: async (key) => {
+    try {
+      await api.recreateService(key)
+      await get().refreshService(key)
+    } catch (e: any) {
+      set({ error: `Failed to recreate ${key}: ${e.message}` })
     }
   },
 

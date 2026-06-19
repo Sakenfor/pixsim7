@@ -37,6 +37,8 @@ export interface ServiceState {
   extras: Record<string, unknown> | null
   /** pnpm workspace package this card builds (drives the manual Build button). */
   build_before_start_package?: string | null
+  /** True when the service supports in-place recreate (docker-compose `up -d`). */
+  supports_recreate?: boolean
 }
 
 export interface ServicesListResponse {
@@ -56,6 +58,7 @@ export const startService = (key: string) => request<ActionResponse>(`/services/
 export const stopService = (key: string, graceful = true) =>
   request<ActionResponse>(`/services/${key}/stop`, { method: 'POST', body: JSON.stringify({ graceful }) })
 export const restartService = (key: string) => request<ActionResponse>(`/services/${key}/restart`, { method: 'POST' })
+export const recreateService = (key: string) => request<ActionResponse>(`/services/${key}/recreate`, { method: 'POST' })
 export const startAllServices = () => request<ActionResponse>('/services/start-all', { method: 'POST' })
 export const stopAllServices = (graceful = true) =>
   request<ActionResponse>('/services/stop-all', { method: 'POST', body: JSON.stringify({ graceful }) })

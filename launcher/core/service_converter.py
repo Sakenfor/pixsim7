@@ -79,6 +79,7 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
     """
     custom_start = None
     custom_stop = None
+    custom_recreate = None
     custom_health = None
     is_detached = False
     pre_start_hook: Optional[Callable] = None
@@ -140,8 +141,34 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
             except Exception:
                 return False
 
+        def db_recreate(state):
+            # `compose up -d` WITHOUT a preceding `down`. Compose is declarative:
+            # it recreates only containers whose definition changed (e.g. a new
+            # `command:`/image/env) and leaves the rest running untouched. This is
+            # how you apply a compose edit (like postgres max_connections) without
+            # the full-stack outage a stop→start causes — a launcher restart runs
+            # `compose down` on the whole db-only.yml (postgres + logs DB + redis),
+            # which drops every backend connection during the gap.
+            from launcher.core.docker_utils import compose_up_detached
+            try:
+                ok, out = compose_up_detached(compose_file)
+                if ok:
+                    state.status = ServiceStatus.RUNNING
+                    state.health = HealthStatus.STARTING
+                    return True
+                state.status = ServiceStatus.FAILED
+                state.health = HealthStatus.UNHEALTHY
+                state.last_error = out.strip() if out else "compose up (recreate) failed"
+                return False
+            except Exception as e:
+                state.status = ServiceStatus.FAILED
+                state.health = HealthStatus.UNHEALTHY
+                state.last_error = str(e)
+                return False
+
         custom_start = db_start
         custom_stop = db_stop
+        custom_recreate = db_recreate
         custom_health = db_health
 
     return ServiceDefinition(
@@ -164,6 +191,7 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
         is_detached=is_detached,
         custom_start=custom_start,
         custom_stop=custom_stop,
+        custom_recreate=custom_recreate,
         custom_health_check=custom_health,
         pre_start_hook=pre_start_hook,
     )
