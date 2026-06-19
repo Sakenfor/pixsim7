@@ -25,6 +25,8 @@ export type AssetFilters = {
   upload_method?: string | string[];
   provider_status?: 'ok' | 'local_only' | 'unknown' | 'flagged';
   include_archived?: boolean;
+  /** Restrict results to ONLY archived assets (overrides include_archived). */
+  archived_only?: boolean;
 
   // Date range filters
   created_from?: string;  // ISO date string
@@ -73,6 +75,11 @@ export type AssetFilters = {
   prompt_family_id?: string;
   // Input-assets-key filter — "same input assets" siblings
   input_assets_key?: string;
+
+  // Prompt success-rate floor (0-100 %): keep assets whose prompt lands at least
+  // N% of attempts (completed vs fast-filtered / content-filtered). Same rate as
+  // the prompt-box moderation chip. 0/undefined = no-op.
+  prompt_success_rate?: number;
 
   // Sort options (backend fields)
   sort_by?: 'created_at' | 'file_size_bytes';
@@ -192,6 +199,7 @@ export function useAssets(options?: {
     upload_method: filters.upload_method || undefined,
     provider_status: filters.provider_status || undefined,
     include_archived: filters.include_archived || undefined,
+    archived_only: filters.archived_only || undefined,
 
     // Map friendly sort names to backend fields
     sort_by: filters.sort === 'size' ? 'file_size_bytes' : (filters.sort ? 'created_at' : undefined),
@@ -276,6 +284,22 @@ export function useAssets(options?: {
   const cursorRef = useRef(cursor);
   cursorRef.current = cursor;
 
+  // Page → start-cursor map for keyset pagination. `null` = page 1 (no cursor).
+  // Lets adjacent next/prev (and any page we've already walked) continue the
+  // index scan from a created_at|id boundary instead of re-walking from row 0
+  // via OFFSET. Deep-page OFFSET on a search degrades linearly (page 1 ≈ 1ms,
+  // page 100 ≈ 6s); keyset is ~constant per step. Cleared on reset/filter change.
+  const pageStartCursorsRef = useRef<Map<number, string | null>>(new Map([[1, null]]));
+
+  // Keyset is only correct for the default created_at-DESC ordering: the cursor
+  // encodes created_at|id, so similarity sort and size/ascending sorts must fall
+  // back to OFFSET or they'd mis-order. Recomputed each render.
+  const keysetEligibleRef = useRef(true);
+  keysetEligibleRef.current =
+    !filters.similar_to
+    && (!filterParams.sort_by || filterParams.sort_by === 'created_at')
+    && filterParams.sort_dir !== 'asc';
+
   // Build query params helper
   const buildQueryParams = useCallback((currentFilters: AssetFilters, offset?: number, currentCursor?: string | null): AssetSearchRequest => {
     const base = buildAssetSearchRequest(currentFilters, {
@@ -356,7 +380,13 @@ export function useAssets(options?: {
     requestIdRef.current += 1;
     const thisRequestId = requestIdRef.current;
 
-    const applyResult = (models: AssetModel[], resultPage: number, gotFullPage: boolean) => {
+    // Record the cursor that *starts* the page after `resultPage`, so a later
+    // forward step (or a prev back to a page we've already walked) can keyset.
+    const recordForwardCursor = (resultPage: number, nextCursor: string | null) => {
+      if (nextCursor) pageStartCursorsRef.current.set(resultPage + 1, nextCursor);
+    };
+
+    const applyResult = (models: AssetModel[], resultPage: number, gotFullPage: boolean, nextCursor: string | null) => {
       setItems(models);
       setCurrentPage(resultPage);
       if (gotFullPage) {
@@ -373,68 +403,92 @@ export function useAssets(options?: {
         setHasMore(false);
       }
       setCursor(null);
+      recordForwardCursor(resultPage, nextCursor);
     };
 
     try {
       const currentFilters = filtersRef.current;
-      const offset = (page - 1) * limit;
 
-      const queryParams = buildQueryParams(currentFilters, offset);
-      const data: AssetListResponse = await listAssets(queryParams);
-
-      // Ignore stale response if filters changed during request
-      if (thisRequestId !== requestIdRef.current) return;
-
-      const newModels = fromAssetResponses(data.assets);
-      const gotFullPage = newModels.length === limit;
-
-      // Overshoot detection: empty results on page > 1 means we went past the end.
-      // Compute the effective last page and fetch that instead.
-      if (newModels.length === 0 && page > 1) {
-        // The server told us this page is empty — figure out where the data ends.
-        // Best guess: totalPagesRef has the most recent known total from prior fetches.
-        const effectiveLastPage = Math.max(1, totalPagesRef.current);
-        const clampedPage = Math.min(page - 1, effectiveLastPage);
-
-        if (clampedPage >= page) {
-          // Can't clamp further, just show empty
-          applyResult(newModels, page, false);
-          return;
-        }
-
-        // Fetch the clamped page
-        const clampedOffset = (clampedPage - 1) * limit;
-        const clampedParams = buildQueryParams(currentFilters, clampedOffset);
-        const clampedData: AssetListResponse = await listAssets(clampedParams);
-
+      // --- Keyset path: ~constant per step regardless of depth. Used for any
+      // page whose start-cursor we've recorded (adjacent next/prev, forward
+      // steps from a jumped page) when the sort allows created_at|id keyset. ---
+      let handled = false;
+      if (keysetEligibleRef.current && pageStartCursorsRef.current.has(page)) {
+        const startCursor = pageStartCursorsRef.current.get(page) ?? null;
+        const queryParams = buildQueryParams(currentFilters, undefined, startCursor);
+        const data: AssetListResponse = await listAssets(queryParams);
         if (thisRequestId !== requestIdRef.current) return;
 
-        const clampedModels = fromAssetResponses(clampedData.assets);
-
-        if (clampedModels.length > 0) {
-          applyResult(clampedModels, clampedPage, clampedModels.length === limit);
-          return;
+        const newModels = fromAssetResponses(data.assets);
+        // Non-empty (or page 1) — accept it. An empty forward page means the data
+        // shifted under us (deletion/race); fall through to the OFFSET clamp below.
+        if (newModels.length > 0 || page === 1) {
+          applyResult(newModels, page, newModels.length === limit, data.next_cursor || null);
+          handled = true;
         }
+      }
 
-        // Clamped page also empty (large overshoot) — fall back to page 1
-        if (clampedPage > 1) {
-          const fallbackParams = buildQueryParams(currentFilters, 0);
-          const fallbackData: AssetListResponse = await listAssets(fallbackParams);
+      if (!handled) {
+        // --- Offset path: arbitrary jumps / non-keyset sorts. Slower for deep
+        // pages, but the only option without a known cursor. ---
+        const offset = (page - 1) * limit;
+        const queryParams = buildQueryParams(currentFilters, offset);
+        const data: AssetListResponse = await listAssets(queryParams);
+
+        // Ignore stale response if filters changed during request
+        if (thisRequestId !== requestIdRef.current) return;
+
+        const newModels = fromAssetResponses(data.assets);
+        const gotFullPage = newModels.length === limit;
+
+        // Overshoot detection: empty results on page > 1 means we went past the end.
+        // Compute the effective last page and fetch that instead.
+        if (newModels.length === 0 && page > 1) {
+          // The server told us this page is empty — figure out where the data ends.
+          // Best guess: totalPagesRef has the most recent known total from prior fetches.
+          const effectiveLastPage = Math.max(1, totalPagesRef.current);
+          const clampedPage = Math.min(page - 1, effectiveLastPage);
+
+          if (clampedPage >= page) {
+            // Can't clamp further, just show empty
+            applyResult(newModels, page, false, null);
+            return;
+          }
+
+          // Fetch the clamped page
+          const clampedOffset = (clampedPage - 1) * limit;
+          const clampedParams = buildQueryParams(currentFilters, clampedOffset);
+          const clampedData: AssetListResponse = await listAssets(clampedParams);
 
           if (thisRequestId !== requestIdRef.current) return;
 
-          const fallbackModels = fromAssetResponses(fallbackData.assets);
-          applyResult(fallbackModels, 1, fallbackModels.length === limit);
+          const clampedModels = fromAssetResponses(clampedData.assets);
+
+          if (clampedModels.length > 0) {
+            applyResult(clampedModels, clampedPage, clampedModels.length === limit, clampedData.next_cursor || null);
+            return;
+          }
+
+          // Clamped page also empty (large overshoot) — fall back to page 1
+          if (clampedPage > 1) {
+            const fallbackParams = buildQueryParams(currentFilters, 0);
+            const fallbackData: AssetListResponse = await listAssets(fallbackParams);
+
+            if (thisRequestId !== requestIdRef.current) return;
+
+            const fallbackModels = fromAssetResponses(fallbackData.assets);
+            applyResult(fallbackModels, 1, fallbackModels.length === limit, fallbackData.next_cursor || null);
+            return;
+          }
+
+          // Already at page 1 and empty — no results at all
+          applyResult(clampedModels, 1, false, null);
           return;
         }
 
-        // Already at page 1 and empty — no results at all
-        applyResult(clampedModels, 1, false);
-        return;
+        // Normal path — page has data
+        applyResult(newModels, page, gotFullPage, data.next_cursor || null);
       }
-
-      // Normal path — page has data
-      applyResult(newModels, page, gotFullPage);
     } catch (e: unknown) {
       // Ignore errors from stale requests
       if (thisRequestId !== requestIdRef.current) {
@@ -460,6 +514,9 @@ export function useAssets(options?: {
     requestIdRef.current += 1;
     setItems([]);
     setCursor(null);
+    // Forget the keyset cursor chain — the new filter/sort produces a different
+    // ordering, so old created_at|id boundaries no longer point at valid pages.
+    pageStartCursorsRef.current = new Map([[1, null]]);
     setHasMore(true);
     setError(null);
     setLoading(false); // Also reset loading state
