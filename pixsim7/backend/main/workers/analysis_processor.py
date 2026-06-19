@@ -76,7 +76,7 @@ async def process_analysis(ctx: dict, analysis_id: int) -> dict:
     """
     _init_worker_debug_flags()
 
-    analysis_logger = bind_job_context(logger, job_id=f"analysis-{analysis_id}")
+    analysis_logger = bind_job_context(logger, job_id=analysis_id, operation_type="analysis")
     analysis_logger.info("pipeline:start", msg="analysis_processing_started")
 
     worker_debug = get_global_debug_logger()
