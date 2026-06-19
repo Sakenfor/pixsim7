@@ -97,11 +97,12 @@ def _run(cmd: list[str], timeout: int = PROBE_TIMEOUT_SEC) -> subprocess.Complet
     return subprocess.run(cmd, capture_output=True, text=False, timeout=timeout)
 
 
-def probe_audio(path: Path) -> dict[str, Optional[float]]:
-    """Extract overall audio RMS / peak via volumedetect."""
+def probe_audio(source: str) -> dict[str, Optional[float]]:
+    """Extract overall audio RMS / peak via volumedetect. `source` is a local
+    file path or a fetchable URL (ffmpeg reads both)."""
     r = _run([
         "ffmpeg", "-hide_banner", "-nostats",
-        "-i", str(path),
+        "-i", source,
         "-af", "volumedetect",
         "-vn", "-f", "null", "-",
     ])
@@ -114,12 +115,13 @@ def probe_audio(path: Path) -> dict[str, Optional[float]]:
     }
 
 
-def probe_streams(path: Path) -> dict[str, Optional[float]]:
-    """Sample-rate / channels / duration via ffprobe one-shot."""
+def probe_streams(source: str) -> dict[str, Optional[float]]:
+    """Sample-rate / channels / duration via ffprobe one-shot. `source` is a
+    local file path or a fetchable URL."""
     r = _run([
         "ffprobe", "-v", "error",
         "-show_entries", "stream=codec_type,sample_rate,channels:format=duration",
-        "-of", "default=nw=1", str(path),
+        "-of", "default=nw=1", source,
     ])
     txt = r.stdout.decode("utf-8", errors="ignore")
     out: dict[str, Optional[Any]] = {"audio_sample_rate": None, "audio_channels": None, "duration_sec": None}
@@ -153,15 +155,15 @@ def _hamming(a: int, b: int) -> int:
     return bin(a ^ b).count("1")
 
 
-def probe_phash(path: Path, fps: int = 4) -> dict[str, Optional[float]]:
+def probe_phash(source: str, fps: int = 4) -> dict[str, Optional[float]]:
     """Decode at low fps/res to grayscale, dhash each frame, return divergence stats.
 
     Cheap (~1s per 15s clip): ffmpeg drops to 9x8 grayscale at 4fps and writes
-    raw bytes to stdout.
+    raw bytes to stdout. `source` is a local file path or a fetchable URL.
     """
     r = _run([
         "ffmpeg", "-hide_banner", "-nostats",
-        "-i", str(path),
+        "-i", source,
         "-vf", f"fps={fps},scale=9:8,format=gray",
         "-f", "rawvideo", "-",
     ])
@@ -230,25 +232,29 @@ def score_metrics(
 
 # ---------- combined per-file probe ----------
 
-def probe_path(path: Path) -> dict[str, Any]:
-    """Run all probes against a video file and return the full metrics dict.
+def probe_path(source: str | Path) -> dict[str, Any]:
+    """Run all probes against a video and return the full metrics dict.
 
-    Does NOT include `score` / `suspicious` (call `score_metrics` for that)
-    and does NOT touch the database.
+    `source` is a local file path OR a fetchable URL (e.g. a presigned S3/MinIO
+    URL for an archive-tiered asset) — ffmpeg reads both, so no local copy is
+    needed. Does NOT include `score` / `suspicious` (call `score_metrics`) and
+    does NOT touch the database.
 
     Raises:
-        FileNotFoundError: if path doesn't exist
+        FileNotFoundError: if a LOCAL path doesn't exist (URLs aren't checked)
         RuntimeError: if ffmpeg/ffprobe are not available
-        subprocess.TimeoutExpired: if a probe takes longer than PROBE_TIMEOUT_SEC
+        subprocess.TimeoutExpired: if a probe exceeds PROBE_TIMEOUT_SEC
     """
-    if not path.exists():
-        raise FileNotFoundError(str(path))
+    s = str(source)
+    is_url = s.startswith(("http://", "https://"))
+    if not is_url and not Path(s).exists():
+        raise FileNotFoundError(s)
     if not _ffmpeg_available():
         raise RuntimeError("ffmpeg/ffprobe not available in PATH")
     out: dict[str, Any] = {}
-    out.update(probe_streams(path))
-    out.update(probe_audio(path))
-    out.update(probe_phash(path))
+    out.update(probe_streams(s))
+    out.update(probe_audio(s))
+    out.update(probe_phash(s))
     return out
 
 
@@ -294,10 +300,40 @@ class SignalAnalysisService:
 
     @staticmethod
     def is_eligible(asset: Asset) -> bool:
-        """Only stamp video assets with a local file path resolved."""
+        """Video assets with a resolvable file — a local path OR a stored_key
+        (incl. archive-tiered files we can probe via a presigned URL)."""
         media_type = getattr(asset, "media_type", None)
         media_type_str = getattr(media_type, "value", media_type)
-        return str(media_type_str).lower() == "video" and bool(asset.local_path)
+        if str(media_type_str).lower() != "video":
+            return False
+        return bool(asset.local_path or asset.stored_key)
+
+    def _resolve_probe_source(self, asset: Asset) -> Optional[str]:
+        """Resolve a ffmpeg-readable source for `asset` WITHOUT copying.
+
+        Prefers an existing local file; otherwise resolves the ``stored_key`` on
+        its storage root — a canonical local path for local roots, or a
+        presigned URL for non-local (S3/MinIO archive) roots that ffmpeg streams
+        directly. Returns None if nothing is resolvable.
+        """
+        if asset.local_path and Path(asset.local_path).exists():
+            return asset.local_path
+        if not asset.stored_key:
+            return None
+        try:
+            from pixsim7.backend.main.services.storage import get_storage_service
+
+            storage = get_storage_service()
+            root_id = asset.storage_root_id or None
+            if storage.is_local(root_id):
+                canonical = storage.local_path_if_local(asset.stored_key, root_id)
+                return canonical if canonical and Path(canonical).exists() else None
+            # Non-local (archive): a presigned URL ffmpeg can stream — no copy.
+            url = storage.get_url(asset.stored_key, root_id=root_id)
+            return url if str(url).startswith(("http://", "https://")) else None
+        except Exception as e:  # noqa: BLE001 — resolution is best-effort
+            logger.warning("signal_analysis_resolve_failed", asset_id=asset.id, error=str(e))
+            return None
 
     async def probe_and_stamp(
         self,
@@ -330,13 +366,13 @@ class SignalAnalysisService:
         if not force and existing.get("scanner_version") == SCANNER_VERSION:
             return None
 
-        path = Path(asset.local_path) if asset.local_path else None
-        if path is None or not path.exists():
-            logger.debug("signal_analysis_skip_missing_file", asset_id=asset.id, path=str(path))
+        source = self._resolve_probe_source(asset)
+        if source is None:
+            logger.debug("signal_analysis_skip_no_source", asset_id=asset.id)
             return None
 
         try:
-            raw = probe_path(path)
+            raw = probe_path(source)
         except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as e:
             logger.warning("signal_analysis_probe_failed", asset_id=asset.id, error=str(e))
             return None
