@@ -15,6 +15,7 @@ import { useCallback, useMemo } from 'react';
 import { SourceGalleryView } from '@features/gallery/components/SourceGalleryView';
 import type { ClientFilterDef, ClientFilterState } from '@features/gallery/lib/useClientFilters';
 
+
 import type { AssetUploadState } from '@/components/media/AssetGallery';
 import type { MediaCardActions } from '@/components/media/MediaCard';
 import type { LocalFoldersController } from '@/types/localSources';
@@ -28,6 +29,8 @@ import {
   type LocalGroupBy,
 } from '../../lib/localGroupEngine';
 import type { AssetModel } from '../../models/asset';
+import { localFolderSource } from '../../sources/localFolderSource';
+import { useClientLoadedAssets } from '../../sources/useClientLoadedAssets';
 import type { ViewerAsset } from '../../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../../stores/localFolderSettingsStore';
 import type { LocalAssetModel } from '../../types/localFolderMeta';
@@ -101,6 +104,12 @@ export function LocalFoldersContent({
   localAssetToViewer,
   isViewerOpen,
 }: LocalFoldersContentProps) {
+  // Source assets through the AssetSource adapter (reactive read). The controller
+  // still owns hydration (with userId-gated loadPersisted), so opt out of the
+  // bridge's own load to avoid a second, ungated load. Equivalent array to
+  // controller.assets — both read the same zustand store.
+  const localAssets = useClientLoadedAssets<LocalAssetModel>(localFolderSource, { autoLoad: false });
+
   // --- Group settings from persisted store ---
   const localGroupBy = useLocalFolderSettingsStore((s) => s.localGroupBy);
   const localGroupView = useLocalFolderSettingsStore((s) => s.localGroupView);
@@ -184,7 +193,7 @@ export function LocalFoldersContent({
 
   return (
     <SourceGalleryView<LocalAssetModel, LocalGroupBy>
-      assets={controller.assets}
+      assets={localAssets}
       getAssetKey={getAssetKey}
       filterDefs={localFilterDefs}
       filterStorageKey={FILTER_STATE_KEY}

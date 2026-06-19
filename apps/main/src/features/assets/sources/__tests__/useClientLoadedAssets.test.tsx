@@ -51,6 +51,14 @@ describe('useClientLoadedAssets', () => {
     expect(result.current.map((a) => a.id)).toEqual([1, 2]);
   });
 
+  it('does not hydrate when autoLoad is false (another owner drives lifecycle)', () => {
+    const { source, load } = makeClientLoadedSource([asset(1)]);
+    const { result } = renderHook(() => useClientLoadedAssets(source, { autoLoad: false }));
+
+    expect(load).not.toHaveBeenCalled();
+    expect(result.current.map((a) => a.id)).toEqual([1]);
+  });
+
   it('re-renders with the new snapshot when the source emits a change', () => {
     const { source, emit } = makeClientLoadedSource([asset(1)]);
     const { result } = renderHook(() => useClientLoadedAssets(source));
