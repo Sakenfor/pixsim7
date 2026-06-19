@@ -24,6 +24,7 @@ import type { OperationType } from '@/types/operations';
 import { deleteAsset, deleteAssetFromProvider, bulkDeleteAssets, uploadAssetToProvider, archiveAsset } from '../lib/api';
 import { assetEvents } from '../lib/assetEvents';
 import { isAssetIngesting } from '../lib/assetUrlResolver';
+import { setSignalOverrideById } from '../lib/signalOverride';
 import { extractUploadError } from '../lib/uploadActions';
 import { getAssetDisplayUrls, toSelectedAsset } from '../models/asset';
 import { useAssetDetailStore } from '../stores/assetDetailStore';
@@ -590,6 +591,22 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     handleDeleteAsset,
   ]);
 
+  // Video-health (signal) manual override — flag a clip broken / mark it clean
+  // from any surface (gallery, viewer) where the gesture is bound, not just the
+  // dedicated triage gallery. Persists to media_metadata.signal_metrics
+  // .user_override and refreshes the card so its state reflects the flag.
+  const applySignalOverride = useCallback(
+    async (asset: AssetModel, decision: 'clean' | 'broken') => {
+      try {
+        await setSignalOverrideById(asset.id, decision);
+        toast.success(decision === 'broken' ? 'Flagged as broken' : 'Marked clean');
+      } catch (err) {
+        toast.error(extractUploadError(err, 'Failed to update video-health flag'));
+      }
+    },
+    [toast],
+  );
+
   // Get per-asset actions
   const getAssetActions = useCallback((asset: AssetModel) => {
     const actions = createAssetActions(asset, actionHandlers);
@@ -603,8 +620,11 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     // Gesture cascade actions — bound to the asset at the controller level.
     actions.onUpgradeModel = () => upgradeModel(asset);
     actions.onPatchAsset = () => patchAsset(asset);
+    // Signal flag/keep — works wherever the gesture is bound (not only triage).
+    actions.onMarkSignalFlag = () => applySignalOverride(asset, 'broken');
+    actions.onMarkSignalKeep = () => applySignalOverride(asset, 'clean');
     return actions;
-  }, [actionHandlers, quickGenerate, upgradeModel, patchAsset]);
+  }, [actionHandlers, quickGenerate, upgradeModel, patchAsset, applySignalOverride]);
 
   return {
     // Filters

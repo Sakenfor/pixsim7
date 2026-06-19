@@ -8,12 +8,13 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
-import { useViewerGestures, GestureOverlay, GestureCancelOverlay, type ViewerGestureContext } from '@lib/gestures';
+import { useViewerGestures, useLongPressRadial, GestureOverlay, GestureCancelOverlay, type ViewerGestureContext } from '@lib/gestures';
 import { EdgeInsetsScope } from '@lib/layout/edgeInsets';
 import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 import { OverlayContainer } from '@lib/ui/overlay';
 
 import { toggleFavoriteById } from '@features/assets/lib/favoriteTag';
+import { setSignalOverrideById } from '@features/assets/lib/signalOverride';
 import { useAssetRegionStore, useCaptureRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
 
 import { useOverlayWidgetsForAsset } from '../../hooks/useOverlayWidgetsForAsset';
@@ -422,16 +423,39 @@ function MediaPanelInner({ context }: MediaPanelProps) {
     if (typeof id === 'number') void toggleFavoriteById(id);
   }, [asset?._assetModel?.id]);
 
+  // Video-health flag/keep from the viewer. Resolved via the card-gesture
+  // fallback (cardResolverContext) so a viewer swipe bound to markSignalFlag /
+  // markSignalKeep persists the override — it was a silent no-op before.
+  const markSignalCb = useCallback((decision: 'broken' | 'clean') => {
+    const id = asset?._assetModel?.id;
+    if (typeof id === 'number') void setSignalOverrideById(id, decision);
+  }, [asset?._assetModel?.id]);
+
   const viewerGestureCtx = useMemo<ViewerGestureContext>(() => ({
     navigatePrev,
     navigateNext,
     closeViewer: resolvedContext.closeViewer,
     toggleFitMode: toggleFitModeCb,
     toggleFavorite: toggleFavoriteCb,
-  }), [navigatePrev, navigateNext, resolvedContext.closeViewer, toggleFitModeCb, toggleFavoriteCb]);
+    cardResolverContext: {
+      actions: {
+        onMarkSignalFlag: () => markSignalCb('broken'),
+        onMarkSignalKeep: () => markSignalCb('clean'),
+      },
+    },
+  }), [navigatePrev, navigateNext, resolvedContext.closeViewer, toggleFitModeCb, toggleFavoriteCb, markSignalCb]);
 
   const viewerGesture = useViewerGestures(viewerGestureCtx);
   const gesturesActive = viewerGesture.enabled && effectiveOverlayMode === 'none' && !isZoomed;
+
+  // Long-press radial (mobile): opens at the press point so the cross frames the
+  // thumb on the fullscreen viewer. Gated to the same conditions as the swipe.
+  const viewerRadial = useLongPressRadial({
+    id: typeof asset?.id === 'number' ? asset.id : 0,
+    enabled: gesturesActive && viewerGesture.radialEnabled,
+    arms: viewerGesture.radialArms,
+    commit: viewerGesture.commitRadial,
+  });
 
   const sourceAssetIds = useMemo(() => {
     if (!asset) return [] as number[];
@@ -513,7 +537,12 @@ function MediaPanelInner({ context }: MediaPanelProps) {
               ? isDragging ? ' cursor-grabbing' : ' cursor-grab'
               : ''
           }`}
-          {...(gesturesActive ? viewerGesture.gestureHandlers : {})}
+          {...(gesturesActive ? {
+            onPointerDown: (e: React.PointerEvent) => {
+              viewerGesture.gestureHandlers.onPointerDown(e);
+              viewerRadial.onPointerDown(e);
+            },
+          } : {})}
           {...(isZoomed && effectiveOverlayMode === 'none' ? {
             onPointerDown: handlePointerDown,
             onPointerMove: handlePointerMove,
@@ -525,6 +554,7 @@ function MediaPanelInner({ context }: MediaPanelProps) {
               : undefined
           }
         >
+          {viewerRadial.node}
           {hasViewerOverlay ? (
             // `cq-scale` defines the --cq-btn-*/--cq-icon-* custom properties
             // the badge widgets size against (see index.css:302). Without it,
