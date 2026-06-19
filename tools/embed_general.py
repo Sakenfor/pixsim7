@@ -64,7 +64,16 @@ def embed_images(model, processor, device, paths: list[str]) -> list[list[float]
 
     with torch.no_grad():
         features = model.get_image_features(**inputs)
-        features = features / features.norm(dim=-1, keepdim=True)
+        # Across transformers versions get_image_features may return either the
+        # projected pooled tensor or the raw vision-output object. Normalize to a
+        # tensor before L2-normalizing.
+        if not isinstance(features, torch.Tensor):
+            features = getattr(features, "pooler_output", None)
+            if features is None:
+                raise RuntimeError(
+                    "get_image_features returned a non-tensor without pooler_output"
+                )
+        features = torch.nn.functional.normalize(features, dim=-1)
 
     return features.cpu().numpy().tolist()
 
