@@ -228,6 +228,28 @@ def _emit_choice_as_denial(answers: dict[str, str]) -> None:
     sys.exit(0)
 
 
+def _emit_allow() -> None:
+    """Approve the tool call AND skip Claude Code's own confirmation prompt.
+
+    Exit-code 0 with no output only means "the hook didn't block" — Claude Code
+    then runs its native permission/confirmation flow. For ExitPlanMode /
+    EnterPlanMode that native flow is the plan-mode UI, which has no surface in
+    the headless bridge subprocess: it never gets answered, comes back as an
+    error, and the model stays wedged in plan mode (the "exit appears but isn't
+    recognized" symptom). Emitting an explicit ``permissionDecision: "allow"``
+    tells Claude Code to proceed without that second prompt, since the user
+    already approved via our card. (Confirmed against the PreToolUse hook
+    contract: only an explicit "allow" decision bypasses the native prompt.)
+    """
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+        }
+    }))
+    sys.exit(0)
+
+
 def _emit_deny(reason: str) -> None:
     """Deny the tool call; Claude surfaces ``reason`` as feedback."""
     print(json.dumps({
@@ -276,7 +298,7 @@ def _handle_enter_plan_mode(*, cli_session_id: Optional[str] = None) -> None:
         sys.exit(0)
 
     if result.get("approved", False):
-        sys.exit(0)  # allow — enter plan mode and begin planning
+        _emit_allow()  # allow — enter plan mode and begin planning (skip native prompt)
 
     note = (result.get("note") or result.get("reason") or "").strip()
     reason = (
@@ -324,7 +346,7 @@ def _handle_exit_plan_mode(tool_input: dict, *, cli_session_id: Optional[str] = 
         sys.exit(0)
 
     if result.get("approved", False):
-        sys.exit(0)  # allow — exit plan mode and begin executing
+        _emit_allow()  # allow — exit plan mode and begin executing (skip native prompt)
 
     # Rejected: keep planning. Forward any note the user left so Claude can
     # revise rather than just re-proposing the same plan.
