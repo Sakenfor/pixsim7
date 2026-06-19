@@ -2380,6 +2380,29 @@ async def _poll_analyses_phase(
         _analysis_id = analysis.__dict__.get("id")
 
         try:
+            # Embedding analyses are local daemon compute, not provider jobs:
+            # they never have a ProviderSubmission/account, so the provider-poll
+            # path below would wrongly fail every one with "No provider
+            # submission found" the moment it enters PROCESSING — racing the
+            # real worker. Only reap them here when genuinely stuck (>30 min);
+            # otherwise leave the worker to finish.
+            if analysis.analyzer_id == "asset:embedding":
+                stuck_threshold = datetime.now(timezone.utc) - timedelta(minutes=30)
+                if analysis.started_at and analysis.started_at < stuck_threshold:
+                    logger.warning(
+                        "analysis_timeout",
+                        analysis_id=analysis.id,
+                        analyzer_id=analysis.analyzer_id,
+                        started_at=str(analysis.started_at),
+                    )
+                    await analysis_service.mark_failed(
+                        analysis.id, "Analysis timed out after 30 minutes"
+                    )
+                    stats.failed += 1
+                else:
+                    stats.still_processing += 1
+                continue
+
             # Get latest submission for this analysis
             submission_result = await db.execute(
                 select(ProviderSubmission)

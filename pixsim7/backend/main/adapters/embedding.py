@@ -45,7 +45,7 @@ from pixsim7.embedding.protocol import (
 from pixsim7.embedding.validation import validate_embeddings
 
 
-_DEFAULT_COMMAND = "python tools/embed_general.py --serve"
+_DEFAULT_COMMAND = "python -m pixsim7.embedding.cli.image_local --serve"
 _DEFAULT_MODEL_ID = "google/siglip2-large-patch16-384"
 
 

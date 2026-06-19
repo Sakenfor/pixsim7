@@ -59,7 +59,7 @@ _FALLBACKS: dict[str, tuple[str, str]] = {
     ),
     "asset:embedding": (
         "PIXSIM_EMBEDDING_COMMAND",
-        "python tools/embed_general.py --serve",
+        "python -m pixsim7.embedding.cli.image_local --serve",
     ),
 }
 

@@ -169,6 +169,30 @@ async def test_timeout_raises_service_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_timeout_recycles_child() -> None:
+    """A timed-out child must be killed so the next request spawns a clean one.
+
+    Otherwise the wedged child (and its desynchronized pipe) poisons every
+    subsequent request, each eating another full timeout — the cascade that
+    starved the worker pool in the incident."""
+    wedged = _FakeProcess()  # never feeds a response → first request times out
+    healthy = _FakeProcess()
+    healthy.stdout.feed(b'{"embeddings":[[0.7]]}\n')
+
+    svc = _make_service(timeout=0.05)
+    with _patch_spawn([wedged, healthy]):
+        with pytest.raises(EmbeddingServiceError, match="timed out"):
+            await svc.embed_images(EmbedRequest(paths=["/a.jpg"]))
+        # The timeout handler terminated the wedged child...
+        assert wedged.returncode is not None
+        # ...so the next request spawns the second (healthy) child and succeeds.
+        result = await svc.embed_images(EmbedRequest(paths=["/b.jpg"]))
+
+    assert result.vectors == [[0.7]]
+    assert len(healthy.stdin.written) == 1
+
+
+@pytest.mark.asyncio
 async def test_daemon_returned_error_propagates() -> None:
     """When the daemon returns {"error": ...}, raise EmbeddingServiceError."""
     proc = _FakeProcess()

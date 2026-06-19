@@ -25,9 +25,12 @@ Output (single response):
 Install:
     pip install transformers torch pillow
 
+Invoke (matches the text sibling `cli.text_local`):
+    python -m pixsim7.embedding.cli.image_local --serve
+
 Configure:
     Settings → Analyzers → Visual Embeddings → command:
-    python tools/embed_general.py
+    python -m pixsim7.embedding.cli.image_local
 """
 
 import argparse

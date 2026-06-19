@@ -1,7 +1,7 @@
 """
 Subprocess-backed EmbeddingService implementation.
 
-Owns one long-lived Python child running `tools/embed_general.py --serve`.
+Owns one long-lived Python child running `python -m pixsim7.embedding.cli.image_local --serve`.
 The child loads the model once and processes line-delimited JSON requests on
 stdin, writing one JSON response per request on stdout. We serialize requests
 behind an asyncio.Lock (GPU work is single-stream anyway) and auto-restart on
@@ -10,7 +10,7 @@ crash.
 Usage (called from backend's adapters/embedding.py at startup):
 
     daemon = DaemonEmbeddingService(
-        command=["python", "tools/embed_general.py", "--serve"],
+        command=["python", "-m", "pixsim7.embedding.cli.image_local", "--serve"],
         model_id="google/siglip2-large-patch16-384",
     )
     bind_embedding_service(daemon)
@@ -125,8 +125,14 @@ class DaemonEmbeddingService(EmbeddingService):
                 proc.stdout.readline(), timeout=self._timeout
             )
         except asyncio.TimeoutError as exc:
+            # A timed-out child is almost certainly wedged (stuck decode /
+            # deadlock) AND the pipe is now desynchronized — its eventual
+            # response would be misread as the reply to the *next* request.
+            # Recycle it so the next call spawns a clean child instead of
+            # inheriting a poisoned one and eating another full timeout.
+            await self._kill_child()
             raise EmbeddingServiceError(
-                f"embedding daemon timed out after {self._timeout}s"
+                f"embedding daemon timed out after {self._timeout}s (child recycled)"
             ) from exc
 
         if not response_bytes:

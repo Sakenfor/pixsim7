@@ -282,36 +282,53 @@ async def _process_embedding_analysis(
         await analysis_service.mark_failed(analysis.id, "no readable asset path")
         return {"status": "failed", "reason": "no_path"}
 
-    await analysis_service.mark_started(analysis.id)
-    analysis_logger.info("embedding_started", asset_id=asset.id, path=embed_path)
+    # Capture everything we need from the ORM objects before releasing the
+    # session below — afterwards `analysis`/`asset` are detached.
+    asset_id = asset.id
+    analysis_id = analysis.id
+    embedder_id = analysis.embedder_id
+
+    await analysis_service.mark_started(analysis_id)
+    analysis_logger.info("embedding_started", asset_id=asset_id, path=embed_path)
+
+    # Release the DB connection for the duration of the (≤180s) daemon call.
+    # mark_started commits and then *refreshes*, which leaves the session
+    # holding a connection in an idle transaction. Pinning it across the long
+    # embed both starves the pool when embeds run concurrently (QueuePool
+    # timeouts then cascade to every other cron/job) and lets Postgres'
+    # idle-in-transaction timeout terminate it — so the later mark_* commit
+    # dies with "connection is closed". Closing returns it to the pool now;
+    # the mark_completed/mark_failed calls below auto-acquire a fresh,
+    # pre-pinged connection on the same session object.
+    await db.close()
 
     try:
         result = await get_embedding_service().embed_images(
             EmbedRequest(paths=[embed_path])
         )
     except EmbeddingServiceError as exc:
-        await analysis_service.mark_failed(analysis.id, str(exc))
+        await analysis_service.mark_failed(analysis_id, str(exc))
         analysis_logger.error("embedding_failed", error=str(exc))
         return {"status": "failed", "reason": "embedding_service_error"}
 
     if not result.vectors:
-        await analysis_service.mark_failed(analysis.id, "embedding service returned no vectors")
+        await analysis_service.mark_failed(analysis_id, "embedding service returned no vectors")
         return {"status": "failed", "reason": "empty_result"}
 
     await analysis_service.mark_completed(
-        analysis.id,
+        analysis_id,
         {"embedding": result.vectors[0]},
     )
     analysis_logger.info(
         "embedding_completed",
-        asset_id=asset.id,
-        embedder_id=analysis.embedder_id,
+        asset_id=asset_id,
+        embedder_id=embedder_id,
         dim=result.dim,
     )
 
     return {
         "status": "completed",
-        "analysis_id": analysis.id,
+        "analysis_id": analysis_id,
         "dim": result.dim,
     }
 

@@ -2332,7 +2332,7 @@ export function AnalyzersSettings() {
                   value={embeddingCommandDraft}
                   onChange={(e) => setEmbeddingCommandDraft(e.target.value)}
                   onBlur={handleEmbeddingCommandSave}
-                  placeholder="python tools/embed_general.py"
+                  placeholder="python -m pixsim7.embedding.cli.image_local"
                   className="flex-1 px-2 py-1.5 text-[11px] font-mono border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
                 />
                 <button
