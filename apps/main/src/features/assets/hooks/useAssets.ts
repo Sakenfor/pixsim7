@@ -607,18 +607,24 @@ export function useAssets(options?: {
     insertAssetSorted(response);
   }, [insertAssetSorted]);
 
-  // Update an existing asset in the list (used when asset is synced)
+  // Update an existing asset in the list (used when asset is synced).
+  // `fromAssetResponse` (object build + tag mapping) is deferred until after the
+  // membership check: asset:updated fans out to every mounted gallery, but only
+  // the one(s) actually holding the asset should pay to build the model. During
+  // a burst (many update/thumbnail-poll events) the other galleries now early-
+  // return without constructing a model they'd immediately discard. Membership
+  // is still checked against fresh `prev` inside the updater, so no asset that
+  // was just prepended can miss its update.
   const updateAsset = useCallback((response: AssetResponse) => {
-    const asset = fromAssetResponse(response);
     setItems((prev) => {
-      const index = prev.findIndex((a) => a.id === asset.id);
+      const index = prev.findIndex((a) => a.id === response.id);
       if (index === -1) {
         // Asset not in list, ignore
         return prev;
       }
       // Replace with updated asset
       const newItems = [...prev];
-      newItems[index] = asset;
+      newItems[index] = fromAssetResponse(response);
       return newItems;
     });
   }, []);
