@@ -44,6 +44,11 @@ import '@features/assets/stores/assetEngagementStore'
 // not delivered into a routing-less manager.
 import '@features/generation/hooks/useGenerationWebSocket'
 
+// Side-effect import: wires the bottom-right pause toast bridge (coalesced,
+// per-generation, reason-aware). Must run after the WS routing import above so
+// `job:paused` transitions are delivered into the store the bridge watches.
+import '@features/generation/lib/pauseToast'
+
 import { configureKVStorage, configureMetricPreviewApi } from '@pixsim7/game.engine'
 import { getAuthTokenProvider } from '@pixsim7/shared.auth.core'
 

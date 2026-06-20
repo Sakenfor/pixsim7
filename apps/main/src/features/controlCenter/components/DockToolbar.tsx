@@ -324,7 +324,11 @@ export function DockToolbar({
       )}
 
       {/* Content moderation warnings (horizontal only) */}
-      {!isVertical && <ContentModerationWarning />}
+      {!isVertical && (
+        <ContentModerationWarning
+          popoverPlacement={dockPosition === 'bottom' ? 'top' : 'bottom'}
+        />
+      )}
 
       <div className={clsx(
         'flex items-center',

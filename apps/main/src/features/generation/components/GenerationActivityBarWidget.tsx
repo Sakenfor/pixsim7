@@ -18,6 +18,7 @@ import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
 import { syncGenerationsFromApi } from '../hooks/useRecentGenerations';
 import type { GenerationGroupBy } from '../lib/generationGrouping';
 import { isActiveStatus, resolveGranularStatus } from '../models';
+import { useGenerationActivityFlyoutStore } from '../stores/generationActivityFlyoutStore';
 import { useGenerationsStore } from '../stores/generationsStore';
 
 import { GenerationActivityFlyout } from './GenerationActivityFlyout';
@@ -87,7 +88,11 @@ export function GenerationActivityBarWidget() {
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const triggerRef = useRef<HTMLDivElement>(null);
 
-  const [panelOpen, setPanelOpen] = useState(false);
+  // Open state lives in a store so other surfaces (e.g. the pause toast's
+  // "View paused" action) can open this very popup, pre-switched to a mode.
+  const panelOpen = useGenerationActivityFlyoutStore((s) => s.open);
+  const setPanelOpen = useGenerationActivityFlyoutStore((s) => s.setOpen);
+  const togglePanelOpen = useGenerationActivityFlyoutStore((s) => s.toggleOpen);
   const [groupBy, setGroupBy] = useState<GenerationGroupBy>('prompt');
   const [badgeMode, setBadgeMode] = useState<BadgeMode>('active');
 
@@ -97,8 +102,8 @@ export function GenerationActivityBarWidget() {
   });
 
   const handleClick = useCallback(() => {
-    setPanelOpen((prev) => !prev);
-  }, []);
+    togglePanelOpen();
+  }, [togglePanelOpen]);
 
   // Reconcile on open. The flyout renders purely from the store, which is fed
   // by best-effort WebSocket events (no delivery/ordering guarantee). A single

@@ -14,6 +14,7 @@ const PER_MODEL_PARAMS = new Set(['quality', 'resolution', 'output_resolution'])
 // accidentally dropped when switching operations or hydrating other operation scopes.
 export const GLOBAL_UI_PARAMS = new Set([
   'autoSwitchOperationType',
+  'pauseToastEnabled',
 ]);
 
 function pickGlobalUiParams(params: Record<string, any>): Record<string, any> {

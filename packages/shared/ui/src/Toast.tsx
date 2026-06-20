@@ -19,6 +19,7 @@ const TOAST_COLORS = {
 
 export function Toast({ toast, onDismiss }: ToastProps) {
   const [exiting, setExiting] = useState(false);
+  const [expanded, setExpanded] = useState(toast.expandable?.defaultExpanded ?? false);
 
   // Handle exit animation
   const handleDismiss = () => {
@@ -26,13 +27,15 @@ export function Toast({ toast, onDismiss }: ToastProps) {
     setTimeout(() => onDismiss(toast.id), 200);
   };
 
-  // Auto-dismiss on duration
+  // Auto-dismiss on duration. Paused while expanded so the user can read /
+  // interact with the detail region without it vanishing mid-action.
   useEffect(() => {
+    if (expanded) return;
     if (toast.duration && toast.duration > 0) {
       const timer = setTimeout(() => handleDismiss(), toast.duration - 200);
       return () => clearTimeout(timer);
     }
-  }, [toast.duration]);
+  }, [toast.duration, expanded]);
 
   return (
     <div
@@ -69,6 +72,41 @@ export function Toast({ toast, onDismiss }: ToastProps) {
         {toast.type === 'cube-message' && toast.fromCubeId && toast.toCubeId && (
           <div className="text-xs opacity-70 mt-1 font-mono">
             {toast.fromCubeId} → {toast.toCubeId}
+          </div>
+        )}
+
+        {/* Controls row: optional CTA + expand toggle */}
+        {(toast.action || toast.expandable) && (
+          <div className="mt-1.5 flex items-center gap-3">
+            {toast.action && (
+              <button
+                type="button"
+                onClick={() => {
+                  toast.action!.onClick();
+                  if (toast.action!.dismissOnClick !== false) handleDismiss();
+                }}
+                className="text-xs font-semibold underline underline-offset-2 hover:opacity-80 transition-opacity"
+              >
+                {toast.action.label}
+              </button>
+            )}
+            {toast.expandable && (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                aria-expanded={expanded}
+                className="text-xs font-semibold opacity-80 hover:opacity-100 transition-opacity"
+              >
+                {expanded ? '▾' : '▸'} {toast.expandable.label ?? 'Details'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Expandable detail region */}
+        {toast.expandable && expanded && (
+          <div className="mt-2 max-h-64 overflow-y-auto rounded-md border border-current/10 bg-black/10">
+            {toast.expandable.render()}
           </div>
         )}
       </div>

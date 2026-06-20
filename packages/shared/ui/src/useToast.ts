@@ -1,6 +1,25 @@
+import type { ReactNode } from 'react';
 import { create } from 'zustand';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning' | 'cube-message';
+
+/** Optional inline action rendered as a button inside the toast. */
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+  /** Dismiss the toast after running onClick. Defaults to true. */
+  dismissOnClick?: boolean;
+}
+
+/** Optional expandable region rendered inside the toast on demand. */
+export interface ToastExpandable {
+  /** Content shown when the toast is expanded. */
+  render: () => ReactNode;
+  /** Toggle label (e.g. "Details"). Defaults to "Details". */
+  label?: string;
+  /** Start expanded. Defaults to false. */
+  defaultExpanded?: boolean;
+}
 
 export interface Toast {
   id: string;
@@ -12,6 +31,10 @@ export interface Toast {
   icon?: string;
   fromCubeId?: string;
   toCubeId?: string;
+  /** Optional call-to-action button (e.g. "View paused"). */
+  action?: ToastAction;
+  /** Optional expandable detail region (auto-dismiss pauses while expanded). */
+  expandable?: ToastExpandable;
 }
 
 interface ToastState {

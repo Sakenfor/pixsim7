@@ -161,6 +161,20 @@ const generationGroups: SettingGroup[] = [
     ],
   },
   {
+    id: 'notifications',
+    title: 'Notifications',
+    description: 'Toast notifications for generation activity.',
+    fields: [
+      {
+        id: 'pauseToastEnabled',
+        type: 'toggle',
+        label: 'Show paused-generation toasts',
+        description: 'Pop a bottom-right toast when generations are auto-paused (e.g. provider concurrent-limit quarantine). Bursts are coalesced into a single toast, grouped by reason and naming the generation ids.',
+        defaultValue: true,
+      },
+    ],
+  },
+  {
     id: 'history',
     title: 'Asset History',
     description: 'Configure how asset usage history is tracked for quick reuse.',
@@ -854,6 +868,8 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       switch (fieldId) {
         case 'autoSwitchOperationType':
           return params.autoSwitchOperationType ?? true;
+        case 'pauseToastEnabled':
+          return params.pauseToastEnabled ?? true;
         case 'historyMode':
           return historyMode ?? 'per-operation';
         case 'maxHistorySize':
@@ -938,6 +954,9 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       if (fieldId === 'autoSwitchOperationType') {
         setParam('autoSwitchOperationType', Boolean(value));
       }
+      if (fieldId === 'pauseToastEnabled') {
+        setParam('pauseToastEnabled', Boolean(value));
+      }
       if (fieldId === 'historyMode') {
         setHistoryMode(value as HistoryMode);
       }
@@ -1007,6 +1026,7 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
     },
     getAll: () => ({
       autoSwitchOperationType: params.autoSwitchOperationType ?? true,
+      pauseToastEnabled: params.pauseToastEnabled ?? true,
       historyMode: historyMode ?? 'per-operation',
       maxHistorySize: maxHistorySize ?? 20,
       historySortMode: historySortMode ?? 'pinned-first',
