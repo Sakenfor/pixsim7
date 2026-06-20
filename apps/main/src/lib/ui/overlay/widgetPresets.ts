@@ -128,6 +128,13 @@ export interface TargetToggleWidgetOptions {
    * one-off concerns like an entrance animation on expand.
    */
   extraClassName?: string;
+  /**
+   * Force the glyph visible at rest even when the asset is NOT a member.
+   * Normally addable glyphs are hover-only (clean resting cards); set this when
+   * the glyph is the *only* affordance on the card (e.g. a single active set) so
+   * a non-member still has a greyed control to add/inspect.
+   */
+  alwaysVisible?: boolean;
 }
 
 /**
@@ -154,7 +161,7 @@ export function buildTargetToggleWidget(
     ...createBadgeWidget({
     id: options.id ?? 'target-toggle',
     ...BADGE_SLOT.topRight,
-    visibility: { trigger: isMember ? 'always' : 'hover-container' },
+    visibility: { trigger: isMember || options.alwaysVisible ? 'always' : 'hover-container' },
     variant: 'icon',
     icon: options.icon || (isMember ? 'check' : 'plus'),
     shape: 'circle',

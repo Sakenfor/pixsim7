@@ -105,9 +105,11 @@ function SetCountBadge({
 }
 
 /**
- * Build the (pinned, always-reachable) collapse/expand control. Members see the
- * count at rest; non-members get it hover-only so resting cards stay clean —
- * mirrors the per-set glyphs' member/addable visibility split.
+ * Build the (pinned, always-reachable) collapse/expand control. Shown at rest
+ * regardless of membership — greyed when the asset is in none of the sets — so a
+ * non-member still has a control to expand and add. It's a single small badge,
+ * so the at-rest cost is low; without it a non-member card would have no visible
+ * set affordance at all (you couldn't tune/add/remove).
  */
 function buildSetBadgeToggle(
   memberCount: number,
@@ -120,7 +122,7 @@ function buildSetBadgeToggle(
     id: 'set-target-toggle',
     type: 'custom',
     ...BADGE_SLOT.topRight,
-    visibility: { trigger: memberCount > 0 ? 'always' : 'hover-container' },
+    visibility: { trigger: 'always' },
     // Just above the per-set glyphs (status + 1) so it leads them in the stack,
     // and pinned (no `scrollable`) so it stays put while the glyphs scroll.
     priority: BADGE_PRIORITY.status + 2,
@@ -140,14 +142,18 @@ function buildSetBadgeToggle(
 
 /**
  * Build one toggle glyph per active target set for the given asset.
- * `animateIn` adds a one-shot pop-in (used when the glyphs appear on expand, so
- * the open reads as an animation rather than an instant swap — not applied to
- * the always-on single-set case, which would re-pop on every render).
+ * - `animateIn` adds a one-shot pop-in (used when glyphs appear on expand, so
+ *   the open reads as an animation rather than an instant swap — not applied to
+ *   the always-on single-set case, which would re-pop on every render).
+ * - `alwaysVisible` keeps even non-member (addable) glyphs visible at rest. Used
+ *   for the lone single-set glyph so a non-member still has a greyed control;
+ *   left off when expanding 2+ (the pinned count badge is the at-rest affordance
+ *   there, and the addable glyphs stay hover-only to keep the open row clean).
  */
 function buildPerSetGlyphs(
   assetId: number,
   activeSets: ManualAssetSet[],
-  animateIn = false,
+  { animateIn = false, alwaysVisible = false }: { animateIn?: boolean; alwaysVisible?: boolean } = {},
 ): OverlayWidget[] {
   return activeSets.map((set) => {
     const isMember = set.assetIds.includes(assetId);
@@ -163,6 +169,7 @@ function buildPerSetGlyphs(
         icon: set.icon,
         tooltip: isMember ? `In "${set.name}" — click to remove` : `Add to "${set.name}"`,
         extraClassName: animateIn ? 'animate-scale-in' : undefined,
+        alwaysVisible,
       },
     );
   });
@@ -182,10 +189,14 @@ export function buildActiveTargetWidgets(
   options: ActiveTargetWidgetsOptions,
 ): OverlayWidget[] {
   if (activeSets.length === 0) return [];
-  if (activeSets.length === 1) return buildPerSetGlyphs(assetId, activeSets);
+  // Single set: render its glyph directly (collapsing one is pointless), kept
+  // visible even for non-members so there's always a greyed control to add.
+  if (activeSets.length === 1) {
+    return buildPerSetGlyphs(assetId, activeSets, { alwaysVisible: true });
+  }
 
   const memberCount = countMemberships(assetId, activeSets);
   const toggle = buildSetBadgeToggle(memberCount, activeSets.length, options);
   if (!options.expanded) return [toggle];
-  return [toggle, ...buildPerSetGlyphs(assetId, activeSets, true)];
+  return [toggle, ...buildPerSetGlyphs(assetId, activeSets, { animateIn: true })];
 }
