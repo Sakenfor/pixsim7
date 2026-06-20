@@ -1279,8 +1279,9 @@ const setActiveManualSetSubmenuAction: MenuAction = {
       const isActive = activeIds.includes(set.id);
       items.push({
         id: `asset:sets:set-active:${set.id}`,
-        label: isActive ? `${set.name} (target)` : set.name,
-        icon: isActive ? 'check' : 'folder',
+        label: set.name,
+        icon: set.icon ?? 'folder',
+        active: isActive,
         execute: () => {
           useGalleryApplyTargetStore.getState().toggleActiveTarget(set.id);
           notify('success', isActive ? `Removed target: ${set.name}` : `Active target: ${set.name}`);
@@ -1318,12 +1319,15 @@ const addToAnySetSubmenuAction: MenuAction = {
     return manualSets.map((set) => {
       const alreadyIn = countAlreadyInSet(set, ids);
       const allIn = ids.length > 0 && alreadyIn === ids.length;
-      const memberSuffix =
-        alreadyIn === 0 ? '' : ids.length === 1 ? ' ✓' : ` ✓ ${alreadyIn}/${ids.length}`;
+      // Partial membership across a multi-selection surfaces as a count badge;
+      // full membership uses the active highlight (single-asset needs neither).
+      const badge = alreadyIn > 0 && ids.length > 1 ? `${alreadyIn}/${ids.length}` : undefined;
       return {
         id: `asset:sets:add-to:${set.id}`,
-        label: `${set.name} (${set.assetIds.length})${memberSuffix}`,
-        icon: allIn ? 'check' : 'folder',
+        label: `${set.name} (${set.assetIds.length})`,
+        icon: set.icon ?? 'folder',
+        active: allIn,
+        badge,
         disabled: () =>
           allIn
             ? ids.length === 1

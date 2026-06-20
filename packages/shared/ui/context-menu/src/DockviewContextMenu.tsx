@@ -17,6 +17,24 @@ const defaultRenderIcon: RenderIconFn = (name, _size, className) => (
   <span className={className}>{name}</span>
 );
 
+/**
+ * Renders a menu item's icon, overlaying the optional selection `badge` on its
+ * top-right — the same affordance gallery filter chips use for active counts.
+ */
+function renderMenuItemIcon(item: MenuItem, renderIcon: RenderIconFn): ReactNode {
+  if (!item.icon) return undefined;
+  const icon = renderIcon(item.icon, 14, item.iconColor || 'text-current');
+  if (item.badge === undefined || item.badge === '') return icon;
+  return (
+    <span className="relative inline-flex flex-shrink-0">
+      {icon}
+      <span className="absolute -top-1.5 -right-1.5 text-[8px] leading-none px-0.5 min-w-[12px] text-center rounded-full bg-accent text-accent-text">
+        {item.badge}
+      </span>
+    </span>
+  );
+}
+
 export interface ContextMenuPortalProps {
   renderIcon?: RenderIconFn;
 }
@@ -241,8 +259,8 @@ function MenuItemComponent({ item, onClose, depth = 0, renderIcon }: MenuItemCom
           onClick={handleClick}
           disabled={isDisabled}
           variant={variant === 'success' ? 'success' : variant === 'danger' ? 'danger' : variant === 'default' ? 'default' : 'primary'}
-          className="text-sm"
-          icon={item.icon ? renderIcon(item.icon, 14, item.iconColor || 'text-current') : undefined}
+          className={`text-sm${item.active ? ' bg-accent/10 text-accent font-medium' : ''}`}
+          icon={renderMenuItemIcon(item, renderIcon)}
           rightSlot={(
             <>
               {item.shortcut && <span>{item.shortcut}</span>}

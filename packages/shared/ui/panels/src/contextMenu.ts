@@ -150,6 +150,19 @@ export interface MenuActionBase<TContext = MenuActionContextBase> {
   /** Icon color class */
   iconColor?: string;
 
+  /**
+   * Active/toggled state. When true the item renders with the accent
+   * highlight used by gallery filter chips (persistent accent row), so a
+   * "this is on" affordance no longer needs icon-swaps or label suffixes.
+   */
+  active?: boolean;
+
+  /**
+   * Optional count/badge rendered on the top-right of the icon, mirroring the
+   * gallery filter chip's selection badge (e.g. `3` or `'3/5'`).
+   */
+  badge?: string | number;
+
   /** Category for grouping (affects sort order) */
   category?: string;
 
@@ -204,6 +217,10 @@ export interface MenuItem {
   label: string;
   icon?: string;
   iconColor?: string;
+  /** Active/toggled state — renders the accent row highlight. */
+  active?: boolean;
+  /** Count/badge rendered on the icon (mirrors filter-chip selection badge). */
+  badge?: string | number;
   variant?: "default" | "danger" | "success";
   shortcut?: string;
   divider?: boolean;

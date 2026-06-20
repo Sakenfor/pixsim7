@@ -359,6 +359,8 @@ export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
       label,
       icon: action.icon,
       iconColor: action.iconColor,
+      active: action.active,
+      badge: action.badge,
       variant: action.variant,
       shortcut: action.shortcut,
       divider: action.divider,
