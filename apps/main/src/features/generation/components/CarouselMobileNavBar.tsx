@@ -21,16 +21,14 @@
  * Plan: `media-card-input-time-nav` (consolidated bottom-bar variant).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
 import type { AssetModel } from '@features/assets';
 import type { AssetSetSlotRef } from '@features/generation';
 
-import { CohortPill } from '@/components/media/inputSlotNavControls';
-import { ViewModePill } from '@/components/media/inputSlotViewModePill';
+import { CohortNavBadge } from '@/components/media/inputSlotNavControls';
 import type { MediaCardQueueConfig } from '@/components/media/MediaCard';
 import { MediaCardQueueNav } from '@/components/media/MediaCardQueueNav';
-import { useInputSlotNavigation } from '@/components/media/useInputSlotNavigation';
 import type { OperationType } from '@/types/operations';
 
 export interface CarouselMobileNavBarProps {
@@ -49,113 +47,6 @@ export interface CarouselMobileNavBarProps {
    * slot still uses the standalone (absolute) form since it has no MediaCard.
    */
   inline?: boolean;
-}
-
-/**
- * Center badge that both displays and drives the time/prompt cohort:
- *   - tap chevron → walk prev/next
- *   - tap label/icon OR hold (long-press) anywhere on the badge → toggle cohort
- *   - scroll-wheel / horizontal swipe → walk prev↔next
- * A drag past threshold suppresses the trailing click so a swipe doesn't also
- * toggle the cohort.
- */
-function CohortNavBadge({
-  asset,
-  inputId,
-  operationType,
-  assetSetRef,
-}: {
-  asset: AssetModel;
-  inputId: string;
-  operationType: OperationType;
-  assetSetRef: AssetSetSlotRef | undefined;
-}) {
-  const { prev, next, commit } = useInputSlotNavigation({ asset, inputId, operationType, assetSetRef });
-  const ref = useRef<HTMLDivElement>(null);
-  const startX = useRef<number | null>(null);
-  const dragged = useRef(false);
-  // Tick bumps on each commit; the scrollHint chevrons key off it to re-trigger
-  // the one-shot bounce animation per commit.
-  const [tick, setTick] = useState(0);
-  const [lastDir, setLastDir] = useState<'prev' | 'next' | null>(null);
-
-  const commitDir = useCallback(
-    (target: AssetModel, dir: 'prev' | 'next') => {
-      setLastDir(dir);
-      setTick((t) => t + 1);
-      commit(target);
-    },
-    [commit],
-  );
-
-  // Wheel → walk. preventDefault + stopPropagation so the card's slot-cycling
-  // wheel handler doesn't also fire while the pointer is over the badge.
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      if (e.deltaY === 0) return;
-      const dir = e.deltaY > 0 ? 'next' : 'prev';
-      const target = dir === 'next' ? next : prev;
-      e.preventDefault();
-      e.stopPropagation();
-      if (target) commitDir(target, dir);
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [prev, next, commitDir]);
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    startX.current = e.clientX;
-    dragged.current = false;
-  };
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (startX.current !== null && Math.abs(e.clientX - startX.current) > 8) {
-      dragged.current = true;
-    }
-  };
-  const onPointerUp = (e: React.PointerEvent) => {
-    if (startX.current === null) return;
-    const dx = e.clientX - startX.current;
-    startX.current = null;
-    if (Math.abs(dx) < 24) return; // tap → let the inner toggle fire
-    const dir = dx < 0 ? 'next' : 'prev'; // swipe left → next, right → prev
-    const target = dir === 'next' ? next : prev;
-    if (target) commitDir(target, dir);
-  };
-  // Swallow the click that follows a drag so a swipe doesn't also toggle.
-  const onClickCapture = (e: React.MouseEvent) => {
-    if (dragged.current) {
-      e.preventDefault();
-      e.stopPropagation();
-      dragged.current = false;
-    }
-  };
-
-  const scrollHint = {
-    dir: lastDir,
-    tick,
-    onPrev: prev ? () => commitDir(prev, 'prev') : undefined,
-    onNext: next ? () => commitDir(next, 'next') : undefined,
-  };
-
-  return (
-    <div
-      ref={ref}
-      className="flex items-center gap-1 touch-pan-y cursor-pointer"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onClickCapture={onClickCapture}
-      title="Tap chevrons to walk · scroll/swipe to walk · hold or tap label to switch"
-    >
-      {assetSetRef ? (
-        <ViewModePill inputId={inputId} bare scrollHint={scrollHint} />
-      ) : (
-        <CohortPill asset={asset} operationType={operationType} bare scrollHint={scrollHint} />
-      )}
-    </div>
-  );
 }
 
 export function CarouselMobileNavBar({

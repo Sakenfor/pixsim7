@@ -36,8 +36,7 @@ import type { AssetSetSlotRef } from '@features/generation';
 
 import type { OperationType } from '@/types/operations';
 
-import { ChevronButton, CohortPill } from './inputSlotNavControls';
-import { ViewModePill } from './inputSlotViewModePill';
+import { CohortNavBadge } from './inputSlotNavControls';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,9 +58,13 @@ export interface InputTimeNavWidgetArgs {
 }
 
 /**
- * Build the prev + next chevron widgets and the cohort/view-mode pill for
- * an input-slot MediaCard. Spread into `customWidgets` from the slot's
- * call-site (typically `buildSlotExtraWidgets`).
+ * Build the consolidated input-slot navigation widget: a single top-center
+ * `CohortNavBadge` (vertical up/down chevrons walking prev/next, flanking the
+ * Time/Source — or Single/Grid for set slots — indicator), matching the
+ * carousel bottom bar. Replaces the older left/right edge chevrons + plain
+ * pill. Wheel / `[` `]` / swipe still walk via `useInputSlotShortcuts`.
+ * Spread into `customWidgets` from the slot's call-site (typically
+ * `buildSlotExtraWidgets`).
  */
 export function createInputTimeNavWidgets(
   args: InputTimeNavWidgetArgs,
@@ -69,56 +72,30 @@ export function createInputTimeNavWidgets(
   const { asset, inputId, operationType, assetSetRef } = args;
   return [
     {
-      id: 'input-time-nav-prev',
+      id: 'input-time-nav',
       type: 'custom',
-      position: { anchor: 'center-left', offset: { x: 4, y: 0 } },
+      // Bottom-center, matching the carousel bar for cross-mode consistency.
+      // Negative y (see position.ts: bottom anchors negate offset.y) lifts the
+      // badge off the bottom edge so the lower chevron stays inside the card.
+      position: { anchor: 'bottom-center', offset: { x: 0, y: -6 } },
       visibility: { trigger: 'hover-container' },
       priority: 30,
       interactive: true,
       handlesOwnInteraction: true,
+      // Wrap the BARE badge in a pill container (matching the carousel bar) so
+      // the vertical up/down chevron stack gets auto height — the non-bare
+      // CohortPill is a fixed h-6 that would clip the stacked chevrons.
       render: () => (
-        <ChevronButton
-          side="left"
-          asset={asset}
-          inputId={inputId}
-          operationType={operationType}
-          assetSetRef={assetSetRef}
-        />
+        <div className="flex items-center rounded-full bg-black/70 px-1.5 py-1 shadow-md backdrop-blur-sm">
+          <CohortNavBadge
+            asset={asset}
+            inputId={inputId}
+            operationType={operationType}
+            assetSetRef={assetSetRef}
+            bare
+          />
+        </div>
       ),
-    },
-    {
-      id: 'input-time-nav-next',
-      type: 'custom',
-      position: { anchor: 'center-right', offset: { x: -4, y: 0 } },
-      visibility: { trigger: 'hover-container' },
-      priority: 30,
-      interactive: true,
-      handlesOwnInteraction: true,
-      render: () => (
-        <ChevronButton
-          side="right"
-          asset={asset}
-          inputId={inputId}
-          operationType={operationType}
-          assetSetRef={assetSetRef}
-        />
-      ),
-    },
-    {
-      id: 'input-time-nav-pill',
-      type: 'custom',
-      // Top-center, between the two edge chevrons it controls. Slot/set/mask
-      // badges live top-left and the generation pill is bottom-center, so
-      // this lane is clear.
-      position: { anchor: 'top-center', offset: { x: 0, y: 4 } },
-      visibility: { trigger: 'hover-container' },
-      priority: 30,
-      interactive: true,
-      handlesOwnInteraction: true,
-      render: () =>
-        assetSetRef
-          ? <ViewModePill inputId={inputId} />
-          : <CohortPill asset={asset} operationType={operationType} />,
     },
   ];
 }
