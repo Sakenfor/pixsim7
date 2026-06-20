@@ -145,6 +145,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
               clickToPlay={state.clickToPlay}
               isGridMode={isGridMode}
               resolvedGridColumns={state.resolvedGridColumns}
+              resolvedCardMinSize={state.resolvedCardMinSize}
               effectiveProviderId={state.effectiveProviderId}
               uploadedAssetIds={state.uploadedAssetIds}
               uploadingAssetIds={state.uploadingAssetIds}

@@ -47,7 +47,7 @@ import {
 } from '../lib/runContext';
 import { executeSequentialSteps, createSequentialStepRunContextMetadata } from '../lib/sequentialExecutor';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
-import { useGenerationInputStore } from '../stores/generationInputStore';
+import { useGenerationInputStore, getPinnedPrompt } from '../stores/generationInputStore';
 import { useGenerationPresetStore } from '../stores/generationPresetStore';
 import { getRegisteredInputStores } from '../stores/generationScopeStores';
 
@@ -1170,10 +1170,7 @@ function useQuickGenerateControllerImpl() {
         // Per-input pinned prompt wins verbatim over the (shared) rolled prompt
         // so each queued asset can carry its own prompt while un-pinned inputs
         // fall back to the operation default. Plan: per-asset-prompt-pin.
-        const pinnedGroupPrompt =
-          typeof resolvedPrimary?.promptOverride === 'string' && resolvedPrimary.promptOverride.length > 0
-            ? resolvedPrimary.promptOverride
-            : undefined;
+        const pinnedGroupPrompt = getPinnedPrompt(resolvedPrimary);
         const request = await buildRequest(
           activeOperationType,
           dynamicParams,
@@ -1416,10 +1413,7 @@ function useQuickGenerateControllerImpl() {
     //   per-input pin > template roll > live operation prompt. Plan: per-asset-prompt-pin.
     // - 'each' mode: backend rolls per request using run_context
     // - 'once' mode: roll once client-side and pass prompt override
-    const pinnedCurrentPrompt =
-      typeof effectiveCurrentInput?.promptOverride === 'string' && effectiveCurrentInput.promptOverride.length > 0
-        ? effectiveCurrentInput.promptOverride
-        : undefined;
+    const pinnedCurrentPrompt = getPinnedPrompt(effectiveCurrentInput);
     const explicitOrPinnedPrompt = overrides?.promptOverride ?? pinnedCurrentPrompt;
     const useServerRolling = activeTemplateId && activeRollMode === 'each';
     const rolledOnce = explicitOrPinnedPrompt
@@ -1658,10 +1652,7 @@ function useQuickGenerateControllerImpl() {
       // A pin on the source input carries through the whole chained sequence
       // (steps 2+ reuse the previous output but keep the source's prompt).
       // Plan: per-asset-prompt-pin.
-      const pinnedSeqPrompt =
-        typeof currentInput?.promptOverride === 'string' && currentInput.promptOverride.length > 0
-          ? currentInput.promptOverride
-          : undefined;
+      const pinnedSeqPrompt = getPinnedPrompt(currentInput);
       const useServerRolling = activeTemplateId && activeRollMode === 'each';
       const rollOnce = pinnedSeqPrompt
         ? null

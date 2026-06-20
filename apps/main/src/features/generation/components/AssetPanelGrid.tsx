@@ -55,6 +55,8 @@ export interface AssetPanelGridProps {
   clickToPlay: boolean;
   isGridMode: boolean;
   resolvedGridColumns: number;
+  /** Strip-mode card `minmax()` floor (px). Grid sizes via columns instead. */
+  resolvedCardMinSize: number;
 
   // Upload
   effectiveProviderId: string | undefined;
@@ -91,6 +93,7 @@ export function AssetPanelGrid({
   clickToPlay,
   isGridMode,
   resolvedGridColumns,
+  resolvedCardMinSize,
   effectiveProviderId,
   uploadedAssetIds,
   uploadingAssetIds,
@@ -104,7 +107,7 @@ export function AssetPanelGrid({
       style={{
         gridTemplateColumns: isGridMode
           ? `repeat(${resolvedGridColumns}, minmax(0, 1fr))`
-          : 'repeat(auto-fill, minmax(72px, 1fr))',
+          : `repeat(auto-fill, minmax(${resolvedCardMinSize}px, 1fr))`,
       }}
     >
       {slotItems.map((inputItem, idx) => {
@@ -364,6 +367,15 @@ function FilledSlot({
               {(inputItem.maskLayers?.length || inputItem.maskUrl) && (
                 <MaskPreviewOverlay maskLayers={inputItem.maskLayers} maskUrl={inputItem.maskUrl} />
               )}
+              {/* Per-asset prompt pin indicator (plan: per-asset-prompt-pin). */}
+              {inputItem.promptPinned ? (
+                <div
+                  className="absolute bottom-1 left-1 z-10 flex items-center rounded bg-amber-500/90 px-1 py-0.5 text-white"
+                  title="This input has its own pinned prompt"
+                >
+                  <Icon name="pin" size={9} />
+                </div>
+              ) : null}
               {buildFusionRoleOverlay(inputItem, idx)}
             </>
           ),

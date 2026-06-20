@@ -29,6 +29,8 @@ import {
   PROMPT_TOOL_RUN_CONTEXT_PATCH_KEY,
   type PromptToolRunContextPatch,
 } from '@features/generation/lib/runContext';
+import { nextRandomGenerationSeed } from '@features/generation/lib/seed';
+import { getPinnedPrompt } from '@features/generation/stores/generationInputStore';
 import { useAssetRegionStore, useCaptureRegionStore } from '@features/mediaViewer/stores/assetRegionStore';
 import {
   useResolveComponentSettings,
@@ -89,11 +91,17 @@ export function PromptPanel(props: QuickGenPanelProps) {
   const allowAnySelected = !ctx;
   const isMobile = useIsMobileViewport();
   const controller = useQuickGenerateController();
-  const { useSessionStore, useInputStore } = useGenerationScopeStores();
+  const { useSessionStore, useInputStore, useSettingsStore } = useGenerationScopeStores();
   const setSessionUiState = useSessionStore((s) => s.setUiState);
+  // Seed badge: read/write the active seed param straight from the scope
+  // settings store (the `params` field that setDynamicParams mutates) so the
+  // badge stays reactive with the Advanced Settings seed input.
+  const seedValue = useSettingsStore((s) => (s.params as Record<string, unknown> | undefined)?.seed);
+  const setDynamicParams = useSettingsStore((s) => s.setDynamicParams);
   // Per-asset prompt pin: write target for a prompt bound to the current input.
   // Plan: per-asset-prompt-pin.
   const setInputPrompt = useInputStore((s) => s.setInputPrompt);
+  const togglePinPrompt = useInputStore((s) => s.togglePinPrompt);
   // Phase 2b: PromptComposer fires onSpanProvenanceChange after each
   // Adjust-tab acceptance with the live snapshot (auto-shifting positions
   // from spanProvenanceField). The session store holds it, then
@@ -245,11 +253,10 @@ export function PromptPanel(props: QuickGenPanelProps) {
   // to THIS input only; un-pinned inputs follow the shared operation default.
   // Transition mode keeps its own per-segment prompts and is out of scope.
   const canPin = !isTransitionMode && !!currentInput?.id && !!currentInput?.asset;
-  const pinnedPrompt =
-    typeof currentInput?.promptOverride === 'string' && currentInput.promptOverride.length > 0
-      ? currentInput.promptOverride
-      : undefined;
-  const isPinned = canPin && pinnedPrompt !== undefined;
+  // Active flag drives the toggle + edit routing; value (remembered across
+  // un-pin) drives what the box shows. getPinnedPrompt couples the two.
+  const isPinned = canPin && !!currentInput?.promptPinned;
+  const pinnedPrompt = getPinnedPrompt(currentInput);
 
   const promptValue = hasTransitionPrompt
     ? transitionPrompts?.[transitionIndex] ?? ''
@@ -392,12 +399,22 @@ export function PromptPanel(props: QuickGenPanelProps) {
   // OFF clears the override so the input falls back to the shared default.
   const handleTogglePin = useCallback(() => {
     if (!canPin || !currentInput?.id) return;
-    setInputPrompt(
-      operationType as OperationType,
-      currentInput.id,
-      isPinned ? undefined : promptValue,
-    );
-  }, [canPin, currentInput?.id, setInputPrompt, operationType, isPinned, promptValue]);
+    // Toggle remembers: un-pin keeps the value, re-pin restores it; first pin
+    // snapshots the current prompt. Plan: per-asset-prompt-pin.
+    togglePinPrompt(operationType as OperationType, currentInput.id, promptValue);
+  }, [canPin, currentInput?.id, togglePinPrompt, operationType, promptValue]);
+
+  // Seed badge state. A set, finite seed = "locked" (reproducible); absent =
+  // "random". Toggle: locked → clear to random; random → lock a fresh seed.
+  const hasSeed =
+    seedValue != null && seedValue !== '' && Number.isFinite(Number(seedValue));
+  const seedNum = hasSeed ? Number(seedValue) : null;
+  const handleToggleSeed = useCallback(() => {
+    setDynamicParams((prev: Record<string, unknown>) => ({
+      ...prev,
+      seed: hasSeed ? undefined : nextRandomGenerationSeed(),
+    }));
+  }, [hasSeed, setDynamicParams]);
   const handleTransitionDurationChange = useCallback((nextValue: number) => {
     setTransitionDurations((prev) => {
       const next = [...(prev ?? [])];
@@ -595,10 +612,38 @@ export function PromptPanel(props: QuickGenPanelProps) {
     </button>
   ) : undefined;
 
+  // Seed badge — only for operations whose param spec actually has a seed.
+  // Grey dice = random; accent dice + number = locked/reproducible.
+  const supportsSeed =
+    (paramSpecs as Array<{ name?: string }> | undefined)?.some((p) => p?.name === 'seed') ?? false;
+  const seedBadge = supportsSeed ? (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={handleToggleSeed}
+      aria-pressed={hasSeed}
+      title={
+        hasSeed
+          ? `Seed locked: ${seedNum} — click to randomize`
+          : 'Random seed each run — click to lock a fixed seed'
+      }
+      className={[
+        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums transition-colors',
+        hasSeed
+          ? 'bg-accent/15 text-accent'
+          : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200',
+      ].join(' ')}
+    >
+      <Icon name="dice" size={11} className={hasSeed ? '' : 'opacity-70'} />
+      {hasSeed ? seedNum : null}
+    </button>
+  ) : undefined;
+
   const composerAccessory =
-    pinToggle || moderationChip ? (
+    pinToggle || seedBadge || moderationChip ? (
       <div className="flex items-center gap-1.5">
         {pinToggle}
+        {seedBadge}
         {moderationChip}
       </div>
     ) : undefined;

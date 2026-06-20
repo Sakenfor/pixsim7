@@ -307,15 +307,23 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     undefined,
     { stable: true },
   );
+  const [operationCardMinSize, setOperationCardMinSize] = usePersistedScopeState<number | undefined>(
+    `assetLayout_cardMinSize_${operationType}`,
+    undefined,
+    { stable: true },
+  );
 
   // Resolution: per-operation → global component setting → default
   const globalDisplayMode =
     (assetGlobalSettings?.displayMode as string | undefined) ?? QUICKGEN_ASSET_DEFAULTS.displayMode;
   const globalGridColumns =
     Number(assetGlobalSettings?.gridColumns ?? QUICKGEN_ASSET_DEFAULTS.gridColumns);
+  const globalCardMinSize =
+    Number(assetGlobalSettings?.cardMinSize ?? QUICKGEN_ASSET_DEFAULTS.cardMinSize);
 
   const resolvedDisplayMode = operationDisplayMode ?? globalDisplayMode;
   const resolvedGridColumns = Math.max(2, Math.min(6, Number(operationGridColumns ?? globalGridColumns)));
+  const resolvedCardMinSize = Math.max(56, Math.min(160, Number(operationCardMinSize ?? globalCardMinSize)));
 
   // Sync input mode: carousel replaces current item, other modes append
   useEffect(() => {
@@ -326,8 +334,9 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     const overrides: Record<string, unknown> = {};
     if (operationDisplayMode !== undefined) overrides.displayMode = operationDisplayMode;
     if (operationGridColumns !== undefined) overrides.gridColumns = operationGridColumns;
+    if (operationCardMinSize !== undefined) overrides.cardMinSize = operationCardMinSize;
     return Object.keys(overrides).length > 0 ? overrides : undefined;
-  }, [operationDisplayMode, operationGridColumns]);
+  }, [operationDisplayMode, operationGridColumns, operationCardMinSize]);
   const assetHasOperationOverrides = assetOperationOverrides !== undefined;
 
   const handleComponentSetting = useCallback(
@@ -336,15 +345,18 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
         setOperationDisplayMode(value === '__global__' || value === undefined ? undefined : String(value));
       } else if (fieldId === 'gridColumns') {
         setOperationGridColumns(value === '__global__' || value === undefined ? undefined : Number(value));
+      } else if (fieldId === 'cardMinSize') {
+        setOperationCardMinSize(value === '__global__' || value === undefined ? undefined : Number(value));
       }
     },
-    [setOperationDisplayMode, setOperationGridColumns],
+    [setOperationDisplayMode, setOperationGridColumns, setOperationCardMinSize],
   );
 
   const handleClearOperationOverrides = useCallback(() => {
     setOperationDisplayMode(undefined);
     setOperationGridColumns(undefined);
-  }, [setOperationDisplayMode, setOperationGridColumns]);
+    setOperationCardMinSize(undefined);
+  }, [setOperationDisplayMode, setOperationGridColumns, setOperationCardMinSize]);
 
   // Persisted source_asset_id survives refresh even when lastSelectedAsset doesn't.
   // Used as fallback so the asset card isn't empty after a page reload.
@@ -1082,6 +1094,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     // Component settings
     resolvedDisplayMode,
     resolvedGridColumns,
+    resolvedCardMinSize,
     enableHoverPreview,
     showPlayOverlay,
     clickToPlay,

@@ -54,13 +54,19 @@ export interface InputItem {
   maskLayers?: InputMaskLayer[]; // List of mask layers to composite at generation time
   skipped?: boolean; // Temporarily omit this input from generation
   /**
-   * Per-input pinned prompt. When present, this input generates with this exact
-   * prompt instead of the live operation-default prompt (settings `promptMap`).
-   * Absence = follow the operation default (so editing the main prompt updates
-   * all un-pinned inputs at once). Set via `setInputPrompt` (snapshot the current
-   * prompt to pin; pass undefined to un-pin). Plan: `per-asset-prompt-pin`.
+   * Per-input prompt value, REMEMBERED across un-pin so the toggle can restore
+   * it. `promptPinned` decides whether it's currently ACTIVE; only when active
+   * does this input generate with this prompt instead of the operation default.
+   * Read the effective pinned prompt via `getPinnedPrompt(item)`.
+   * Plan: `per-asset-prompt-pin`.
    */
   promptOverride?: string;
+  /**
+   * Whether `promptOverride` is currently active. Toggling off keeps the value
+   * (so re-pinning restores it); toggling on with no remembered value snapshots
+   * the current prompt. Set via `togglePinPrompt`. Plan: `per-asset-prompt-pin`.
+   */
+  promptPinned?: boolean;
   /**
    * Per-input dynamic-param overrides (the prompt pin, generalized to any scalar
    * setting). Each key present here overrides the shared operation-default param
@@ -71,6 +77,19 @@ export interface InputItem {
    * generation time alongside `promptOverride`. Plan: `per-input-param-override`.
    */
   paramOverrides?: Record<string, any>;
+}
+
+/**
+ * The effective pinned prompt for an input: its remembered `promptOverride`
+ * only when `promptPinned` is active and the value is non-empty, else undefined
+ * (→ caller falls back to the operation-default prompt). Single source of truth
+ * for pin resolution across the controller, PromptPanel, and insert actions.
+ * Plan: `per-asset-prompt-pin`.
+ */
+export function getPinnedPrompt(item: InputItem | null | undefined): string | undefined {
+  if (!item?.promptPinned) return undefined;
+  const value = item.promptOverride;
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 export interface OperationInputs {
@@ -134,12 +153,23 @@ export interface GenerationInputsState {
   updateLockedTimestamp: (operationType: OperationType, inputId: string, timestamp: number | undefined) => void;
   updateRoleOverride: (operationType: OperationType, inputId: string, role: string | undefined) => void;
   /**
-   * Pin (or un-pin) a per-input prompt. Pass the prompt string to pin this input
-   * to it; pass undefined to clear the pin and fall back to the operation default.
-   * The caller is responsible for snapshotting the current operation prompt (the
-   * input store has no view of settings `promptMap`). Plan: `per-asset-prompt-pin`.
+   * Set a per-input prompt VALUE (the remembered `promptOverride`). Used while
+   * editing a pinned input, or by insert. Pass `{ pin: true }` to also activate
+   * the pin (insert), or `{ pin: false }` to deactivate; omit to leave the
+   * active flag untouched. Plan: `per-asset-prompt-pin`.
    */
-  setInputPrompt: (operationType: OperationType, inputId: string, prompt: string | undefined) => void;
+  setInputPrompt: (
+    operationType: OperationType,
+    inputId: string,
+    prompt: string | undefined,
+    options?: { pin?: boolean },
+  ) => void;
+  /**
+   * Toggle a per-input prompt pin. Off keeps the remembered `promptOverride` so
+   * re-pinning restores it; on with no remembered value snapshots `fallbackPrompt`
+   * (the current operation prompt, supplied by the caller). Plan: `per-asset-prompt-pin`.
+   */
+  togglePinPrompt: (operationType: OperationType, inputId: string, fallbackPrompt: string) => void;
   /**
    * Bind (or un-bind) a single dynamic param for one input — the prompt pin
    * generalized. Pass a value to override `key` for THIS input only; pass
@@ -604,11 +634,11 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
           });
         },
 
-        setInputPrompt: (operationType, inputId, prompt) => {
+        setInputPrompt: (operationType, inputId, prompt, options) => {
           set((state) => {
             const existing = getOperationInputs(state.inputsByOperation, operationType);
-            // Normalize empty/whitespace-only to "un-pinned" so a blank pin
-            // can't shadow the operation default with an empty prompt.
+            // Normalize empty/whitespace-only to "no value" so a blank prompt
+            // can't shadow the operation default.
             const normalized =
               typeof prompt === 'string' && prompt.trim().length > 0 ? prompt : undefined;
             return {
@@ -617,8 +647,44 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
                 [operationType]: {
                   ...existing,
                   items: existing.items.map((item) =>
-                    item.id === inputId ? { ...item, promptOverride: normalized } : item
+                    item.id === inputId
+                      ? {
+                          ...item,
+                          promptOverride: normalized,
+                          ...(options && 'pin' in options ? { promptPinned: options.pin } : {}),
+                        }
+                      : item
                   ),
+                },
+              },
+            };
+          });
+        },
+
+        togglePinPrompt: (operationType, inputId, fallbackPrompt) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) => {
+                    if (item.id !== inputId) return item;
+                    if (item.promptPinned) {
+                      // Un-pin: keep promptOverride so re-pinning restores it.
+                      return { ...item, promptPinned: false };
+                    }
+                    // Pin: reuse the remembered value, else snapshot the fallback.
+                    const remembered =
+                      typeof item.promptOverride === 'string' && item.promptOverride.length > 0
+                        ? item.promptOverride
+                        : undefined;
+                    const seeded =
+                      remembered ??
+                      (fallbackPrompt.trim().length > 0 ? fallbackPrompt : undefined);
+                    return { ...item, promptPinned: true, promptOverride: seeded };
+                  }),
                 },
               },
             };

@@ -1,3 +1,5 @@
+import type { StoreApi, UseBoundStore } from 'zustand';
+
 import { hmrSingleton } from '@lib/utils';
 
 import type { GenerationInputStoreHook } from "./generationInputStore";
@@ -6,9 +8,10 @@ import type { GenerationSessionStoreHook } from "./generationSessionStore";
 import type { GenerationSettingsState } from "./generationSettingsStore";
 import { createGenerationSettingsStore } from "./generationSettingsStore";
 
-export type GenerationSettingsStoreHook = <T>(
-  selector: (state: GenerationSettingsState) => T
-) => T;
+// Full bound-store type (callable selector + StoreApi: getState/setState/
+// subscribe), matching the sibling GenerationInputStoreHook. The previous
+// selector-only narrowing dropped getState, which getScopeStores() relies on.
+export type GenerationSettingsStoreHook = UseBoundStore<StoreApi<GenerationSettingsState>>;
 
 // Persist scope store Maps across HMR module re-evaluations.
 const settingsStores = hmrSingleton('generationScopes:settings', () => new Map<string, GenerationSettingsStoreHook>());
