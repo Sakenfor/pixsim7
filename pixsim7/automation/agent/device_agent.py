@@ -16,6 +16,11 @@ Usage:
 This module deliberately keeps zero ``pixsim7.*`` imports so it stays copyable
 as a single file. Do not add intra-package imports.
 
+Wire protocol: the request/response bodies below mirror the canonical Pydantic
+models in ``pixsim7/automation/protocols/agent_protocol.py`` by hand (this file
+can't import them). ``test_agent_protocol_stability`` guards the field names —
+keep the two in sync.
+
 Features:
 - Auto-discovers local ADB devices
 - Pairing code flow (no token required)

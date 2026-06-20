@@ -6,12 +6,18 @@ Handles registration and heartbeat from remote device agents.
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 
 from pixsim7.backend.main.infrastructure.database.session import get_automation_db
 from pixsim7.automation.domain import DeviceAgent, AndroidDevice
+from pixsim7.automation.protocols.agent_protocol import (
+    HeartbeatPayload,
+    HeartbeatResponse,
+    PairingRequest,
+    PairingResponse,
+    PairingStatus,
+)
 from pixsim7.automation.services import (
     AgentNotFound,
     AgentPairingService,
@@ -33,26 +39,6 @@ class AgentRegisterRequest(BaseModel):
     os_info: str
 
 
-class AgentHeartbeatRequest(BaseModel):
-    devices: List[dict[str, str]]  # [{"serial": "...", "state": "device"}]
-    timestamp: str
-
-
-class PairingStartRequest(BaseModel):
-    agent_id: str
-    name: str
-    host: str
-    port: int = 5037
-    api_port: int = 8765
-    version: str
-    os_info: str
-
-
-class PairingStartResponse(BaseModel):
-    pairing_code: str
-    agent_id: str
-
-
 class CompletePairingRequest(BaseModel):
     pairing_code: str
 
@@ -61,10 +47,6 @@ class CompletePairingResponse(BaseModel):
     """Response from completing agent pairing."""
     status: str
     agent_id: str
-
-
-class PairingStatusResponse(BaseModel):
-    status: str  # "pending" | "paired" | "expired" | "unknown"
 
 
 @router.post("/register")
@@ -137,12 +119,12 @@ async def register_agent(
     }
 
 
-@router.post("/request-pairing", response_model=PairingStartResponse)
+@router.post("/request-pairing", response_model=PairingResponse)
 async def request_pairing(
-    data: PairingStartRequest,
+    data: PairingRequest,
     req: Request,
     db: AsyncSession = Depends(get_automation_db),
-) -> PairingStartResponse:
+) -> PairingResponse:
     """Start pairing flow for a remote agent (no auth required).
 
     Agent calls this to obtain a short-lived pairing code. The user then enters
@@ -158,7 +140,7 @@ async def request_pairing(
         os_info=data.os_info,
         client_host=req.client.host if req.client else None,
     )
-    return PairingStartResponse(pairing_code=pairing_code, agent_id=data.agent_id)
+    return PairingResponse(pairing_code=pairing_code, agent_id=data.agent_id)
 
 
 @router.post("/complete-pairing", response_model=CompletePairingResponse)
@@ -185,22 +167,22 @@ async def complete_pairing(
     return CompletePairingResponse(status="paired", agent_id=agent.agent_id)
 
 
-@router.get("/pairing-status/{agent_id}", response_model=PairingStatusResponse)
+@router.get("/pairing-status/{agent_id}", response_model=PairingStatus)
 async def get_pairing_status(
     agent_id: str,
     db: AsyncSession = Depends(get_automation_db)
-) -> PairingStatusResponse:
+) -> PairingStatus:
     """Check pairing status for an agent (used by agent to know when user has paired it)."""
     status = await AgentPairingService(db).get_pairing_status(agent_id)
-    return PairingStatusResponse(status=status)
+    return PairingStatus(status=status)
 
 
-@router.post("/{agent_id}/heartbeat")
+@router.post("/{agent_id}/heartbeat", response_model=HeartbeatResponse)
 async def agent_heartbeat(
     agent_id: str,
-    data: AgentHeartbeatRequest,
+    data: HeartbeatPayload,
     db: AsyncSession = Depends(get_automation_db)
-):
+) -> HeartbeatResponse:
     """Receive heartbeat from agent and sync devices.
 
     No authentication required - agent just needs to be registered/paired.
@@ -208,16 +190,17 @@ async def agent_heartbeat(
     """
     try:
         result = await AgentPairingService(db).sync_heartbeat(
-            agent_id=agent_id, devices=data.devices
+            agent_id=agent_id,
+            devices=[d.model_dump() for d in data.devices],
         )
     except AgentNotFound:
         raise HTTPException(status_code=404, detail="Agent not found - complete pairing first")
 
-    return {
-        "status": "ok",
-        "devices_synced": result.devices_synced,
-        "timestamp": result.timestamp.isoformat(),
-    }
+    return HeartbeatResponse(
+        status="ok",
+        devices_synced=result.devices_synced,
+        timestamp=result.timestamp.isoformat(),
+    )
 
 
 @router.get("")
