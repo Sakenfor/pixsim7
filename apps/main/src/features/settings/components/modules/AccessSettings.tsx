@@ -19,14 +19,18 @@ import {
   listAdminAgentProfiles,
   listAdminProjectOptions,
   listAdminWorldOptions,
+  listAgentRuns,
   listBridgeMachines,
   listAdminUsers,
+  listProfileScopeAudit,
   listScopeContractOptions,
   listScopePlanOptions,
   updateAdminUserPermissions,
   type AdminAgentProfile,
   type AdminScopeResourceOption,
   type AdminUserPermissions,
+  type AgentRun,
+  type AuditEvent,
   type BridgeMachine,
   type ScopeOption,
 } from '@lib/api';
@@ -45,6 +49,7 @@ import {
   type ScopeDraft,
   type ScopeMode,
 } from './agentScopeDraft';
+import { ProfileScopeSummary, type ScopeOptionMaps } from './ProfileScopeSummary';
 
 function normalizePermissions(permissions: string[]): string[] {
   const seen = new Set<string>();
@@ -326,6 +331,126 @@ function ScopeFieldEditor({
   );
 }
 
+function fmtTs(ts: string | null): string {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
+}
+
+// Collapsible per-profile observability (agent-scope-admin-ux cp4): effective-grants
+// recap (shared <ProfileScopeSummary>), recent AgentRuns, and recent scope-change
+// audit. Runs/audit are lazy-loaded on first expand so the panel isn't N fetches.
+function ProfileDetailPanel({
+  profile,
+  options,
+}: {
+  profile: AdminAgentProfile;
+  options: ScopeOptionMaps;
+}) {
+  const [open, setOpen] = useState(false);
+  const [runs, setRuns] = useState<AgentRun[] | null>(null);
+  const [audit, setAudit] = useState<AuditEvent[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const saved = useMemo(() => draftFor(profile), [profile]);
+
+  const loadDetail = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [r, a] = await Promise.all([
+        listAgentRuns(profile.id, 8).catch(() => [] as AgentRun[]),
+        listProfileScopeAudit(profile.id, 8).catch(() => ({ events: [] as AuditEvent[] })),
+      ]);
+      setRuns(r);
+      setAudit(a.events);
+    } finally {
+      setLoading(false);
+    }
+  }, [profile.id]);
+
+  const toggle = useCallback(() => {
+    setOpen((prev) => {
+      const next = !prev;
+      if (next && runs === null) void loadDetail();
+      return next;
+    });
+  }, [runs, loadDetail]);
+
+  return (
+    <div className="border-t border-neutral-100 pt-1.5 dark:border-neutral-800">
+      <button
+        type="button"
+        onClick={toggle}
+        className="text-[10px] text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+      >
+        {open ? '▾' : '▸'} Details
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-2">
+          <div>
+            <div className="mb-0.5 text-[10px] font-medium text-neutral-400 uppercase">
+              Effective grants
+            </div>
+            <ProfileScopeSummary draft={saved} options={options} />
+          </div>
+
+          <div>
+            <div className="mb-0.5 text-[10px] font-medium text-neutral-400 uppercase">
+              Recent runs
+            </div>
+            {loading && runs === null ? (
+              <div className="text-[10px] text-neutral-400">Loading…</div>
+            ) : runs && runs.length > 0 ? (
+              <div className="space-y-0.5">
+                {runs.map((r) => (
+                  <div key={r.id} className="flex items-center gap-1.5 text-[10px]">
+                    <Badge
+                      color={
+                        r.status === 'completed' ? 'green' : r.status === 'failed' ? 'red' : 'gray'
+                      }
+                      className="!text-[9px] !px-1 !py-0"
+                    >
+                      {r.status}
+                    </Badge>
+                    <code className="text-neutral-500">{r.run_id.slice(0, 12)}</code>
+                    <span className="ml-auto text-neutral-400">{fmtTs(r.started_at)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[10px] text-neutral-400">No runs recorded.</div>
+            )}
+          </div>
+
+          <div>
+            <div className="mb-0.5 text-[10px] font-medium text-neutral-400 uppercase">
+              Recent scope changes
+            </div>
+            {audit && audit.length > 0 ? (
+              <div className="space-y-0.5">
+                {audit.map((e) => (
+                  <div key={e.id} className="flex items-center gap-1.5 text-[10px]">
+                    <span className="text-neutral-600 dark:text-neutral-300">
+                      {e.field ?? e.action}
+                    </span>
+                    {e.field && (
+                      <span className="truncate text-neutral-400">
+                        {e.oldValue ?? '∅'} → {e.newValue ?? '∅'}
+                      </span>
+                    )}
+                    <span className="ml-auto shrink-0 text-neutral-400">{fmtTs(e.timestamp)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[10px] text-neutral-400">No scope changes recorded.</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AgentProfileScopes({ userId }: { userId: number }) {
   const [profiles, setProfiles] = useState<AdminAgentProfile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -392,6 +517,16 @@ function AgentProfileScopes({ userId }: { userId: number }) {
       cancelled = true;
     };
   }, []);
+
+  const optionMaps: ScopeOptionMaps = useMemo(
+    () => ({
+      plans: planOptions,
+      worlds: worldOptions,
+      projects: projectOptions,
+      contracts: contractOptions,
+    }),
+    [planOptions, worldOptions, projectOptions, contractOptions],
+  );
 
   const setDraftField = useCallback((id: string, key: keyof ScopeDraft, val: FieldDraft) => {
     setDrafts((prev) => ({
@@ -535,6 +670,7 @@ function AgentProfileScopes({ userId }: { userId: number }) {
                     {p.status === 'paused' ? 'Resume' : 'Pause'}
                   </Button>
                 </div>
+                <ProfileDetailPanel profile={p} options={optionMaps} />
               </div>
             );
           })}

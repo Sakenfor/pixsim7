@@ -186,3 +186,52 @@ export async function listScopeContractOptions(): Promise<ScopeOption[]> {
   );
   return (resp.contracts ?? []).map((c) => ({ value: c.id, label: c.name || c.id }));
 }
+
+// --- Per-profile observability (agent-scope-admin-ux cp4) ---
+
+export interface AgentRun {
+  id: string;
+  profile_id: string;
+  run_id: string;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+  summary?: Record<string, unknown> | null;
+}
+
+/** Recent runs for one profile (newest first), for the profile detail panel. */
+export async function listAgentRuns(profileId: string, limit = 8): Promise<AgentRun[]> {
+  return pixsimClient.get<AgentRun[]>('/dev/agent-profiles/runs', {
+    params: { profile_id: profileId, limit },
+  });
+}
+
+export interface AuditEvent {
+  id: string;
+  domain: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  field: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  actor: string | null;
+  timestamp: string;
+}
+
+export interface AuditEventsResponse {
+  events: AuditEvent[];
+  total: number | null;
+  limit: number;
+  offset: number;
+}
+
+/** Recent scope-change audit events for one agent profile (the admin PATCH records diffs). */
+export async function listProfileScopeAudit(
+  profileId: string,
+  limit = 8,
+): Promise<AuditEventsResponse> {
+  return pixsimClient.get<AuditEventsResponse>('/audit/events', {
+    params: { domain: 'agent', entity_type: 'agent_profile', entity_id: profileId, limit },
+  });
+}
