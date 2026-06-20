@@ -35,6 +35,8 @@ vi.mock('@lib/media/mediaSuspendStore', () => ({
 }));
 vi.mock('@lib/media/videoActivationPool', () => ({
   useVideoActivationSlot: () => mocks.slotGranted,
+  VIDEO_SLOT_PRIORITY_PASSIVE: 0,
+  VIDEO_SLOT_PRIORITY_HOVER: 10,
 }));
 vi.mock('@lib/ui/coarsePointer', () => ({ useIsCoarsePointer: () => false }));
 vi.mock('@lib/media/capturedFrameStore', () => ({

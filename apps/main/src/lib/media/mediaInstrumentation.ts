@@ -23,6 +23,7 @@
  */
 import { hmrSingleton } from '@lib/utils';
 
+import { getVideoActivationPoolStats } from './videoActivationPool';
 import { getVideoElementPoolStats } from './videoElementPool';
 
 // ── Object URLs ──────────────────────────────────────────────────────────
@@ -198,6 +199,7 @@ export function getMediaInstrumentationStats(): MediaInstrumentationStats {
       liveMax: videoChurn.liveMax,
     },
     videoPool: getVideoElementPoolStats(),
+    videoActivation: getVideoActivationPoolStats(),
   };
 }
 
