@@ -9,10 +9,15 @@ from sqlalchemy import select
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
-import secrets
 
 from pixsim7.backend.main.infrastructure.database.session import get_automation_db
-from pixsim7.automation.domain import DeviceAgent, AndroidDevice, DeviceStatus, DeviceType, ConnectionMethod, PairingRequest
+from pixsim7.automation.domain import DeviceAgent, AndroidDevice
+from pixsim7.automation.services import (
+    AgentNotFound,
+    AgentPairingService,
+    PairingCodeExpired,
+    PairingCodeNotFound,
+)
 from pixsim7.backend.main.api.dependencies import CurrentUser
 
 router = APIRouter(prefix="/automation/agents", tags=["device-agents"])
@@ -31,10 +36,6 @@ class AgentRegisterRequest(BaseModel):
 class AgentHeartbeatRequest(BaseModel):
     devices: List[dict[str, str]]  # [{"serial": "...", "state": "device"}]
     timestamp: str
-
-
-# Pairing TTL constant (moved from in-memory implementation to database-backed)
-PAIRING_TTL_MINUTES = 15
 
 
 class PairingStartRequest(BaseModel):
@@ -147,67 +148,16 @@ async def request_pairing(
     Agent calls this to obtain a short-lived pairing code. The user then enters
     this code in the web UI to associate the agent with their account.
     """
-    now = datetime.now(timezone.utc)
-
-    # Cleanup expired requests (older than TTL)
-    expiry_cutoff = now - timedelta(minutes=PAIRING_TTL_MINUTES)
-    await db.execute(
-        select(PairingRequest).where(PairingRequest.expires_at < expiry_cutoff)
+    pairing_code = await AgentPairingService(db).request_pairing(
+        agent_id=data.agent_id,
+        name=data.name,
+        host=data.host,
+        port=data.port,
+        api_port=data.api_port,
+        version=data.version,
+        os_info=data.os_info,
+        client_host=req.client.host if req.client else None,
     )
-    expired_requests = (await db.execute(
-        select(PairingRequest).where(PairingRequest.expires_at < expiry_cutoff)
-    )).scalars().all()
-
-    for expired in expired_requests:
-        await db.delete(expired)
-
-    await db.commit()
-
-    # Generate a short pairing code: 4+4 hex segments (e.g., "A1B2-C3D4")
-    raw = secrets.token_hex(4).upper()
-    pairing_code = f"{raw[:4]}-{raw[4:]}"
-
-    host = data.host
-    if host == "auto" and req.client:
-        host = req.client.host
-
-    # Check if pairing request already exists for this agent_id
-    existing = (await db.execute(
-        select(PairingRequest).where(PairingRequest.agent_id == data.agent_id)
-    )).scalars().first()
-
-    expires_at = now + timedelta(minutes=PAIRING_TTL_MINUTES)
-
-    if existing:
-        # Update existing request
-        existing.pairing_code = pairing_code
-        existing.name = data.name
-        existing.host = host
-        existing.port = data.port
-        existing.api_port = data.api_port
-        existing.version = data.version
-        existing.os_info = data.os_info
-        existing.created_at = now
-        existing.expires_at = expires_at
-        existing.paired_user_id = None  # Reset pairing status
-    else:
-        # Create new pairing request
-        pairing_request = PairingRequest(
-            agent_id=data.agent_id,
-            pairing_code=pairing_code,
-            name=data.name,
-            host=host,
-            port=data.port,
-            api_port=data.api_port,
-            version=data.version,
-            os_info=data.os_info,
-            created_at=now,
-            expires_at=expires_at,
-        )
-        db.add(pairing_request)
-
-    await db.commit()
-
     return PairingStartResponse(pairing_code=pairing_code, agent_id=data.agent_id)
 
 
@@ -223,62 +173,14 @@ async def complete_pairing(
     This associates the agent with the user and creates/updates the DeviceAgent
     record. Agents can then poll pairing-status to know when pairing is done.
     """
-    now = datetime.now(timezone.utc)
-
-    # Look up pairing request by code
-    pairing_request = (await db.execute(
-        select(PairingRequest).where(PairingRequest.pairing_code == body.pairing_code)
-    )).scalars().first()
-
-    if not pairing_request:
-        raise HTTPException(status_code=404, detail="Invalid or expired pairing code")
-
-    # Enforce TTL
-    if pairing_request.expires_at < now:
-        # Clean up expired request
-        await db.delete(pairing_request)
-        await db.commit()
-        raise HTTPException(status_code=410, detail="Pairing code has expired")
-
-    # Mark as paired
-    pairing_request.paired_user_id = user.id
-
-    # Create or update DeviceAgent for this user/agent_id
-    result = await db.execute(
-        select(DeviceAgent).where(DeviceAgent.agent_id == pairing_request.agent_id)
-    )
-    existing = result.scalars().first()
-
-    if existing:
-        existing.user_id = user.id
-        existing.name = pairing_request.name
-        existing.host = pairing_request.host
-        existing.port = pairing_request.port
-        existing.api_port = pairing_request.api_port
-        existing.version = pairing_request.version
-        existing.os_info = pairing_request.os_info
-        existing.status = "online"
-        existing.updated_at = now
-        agent = existing
-    else:
-        agent = DeviceAgent(
-            agent_id=pairing_request.agent_id,
-            name=pairing_request.name,
-            host=pairing_request.host,
-            port=pairing_request.port,
-            api_port=pairing_request.api_port,
-            user_id=user.id,
-            status="online",
-            version=pairing_request.version,
-            os_info=pairing_request.os_info,
-            last_heartbeat=None,
-            created_at=now,
-            updated_at=now,
+    try:
+        agent = await AgentPairingService(db).complete_pairing(
+            pairing_code=body.pairing_code, user_id=user.id
         )
-        db.add(agent)
-
-    await db.commit()
-    await db.refresh(agent)
+    except PairingCodeNotFound:
+        raise HTTPException(status_code=404, detail="Invalid or expired pairing code")
+    except PairingCodeExpired:
+        raise HTTPException(status_code=410, detail="Pairing code has expired")
 
     return CompletePairingResponse(status="paired", agent_id=agent.agent_id)
 
@@ -289,21 +191,8 @@ async def get_pairing_status(
     db: AsyncSession = Depends(get_automation_db)
 ) -> PairingStatusResponse:
     """Check pairing status for an agent (used by agent to know when user has paired it)."""
-    pairing_request = (await db.execute(
-        select(PairingRequest).where(PairingRequest.agent_id == agent_id)
-    )).scalars().first()
-
-    if not pairing_request:
-        return PairingStatusResponse(status="unknown")
-
-    now = datetime.now(timezone.utc)
-    if pairing_request.expires_at < now:
-        return PairingStatusResponse(status="expired")
-
-    if pairing_request.paired_user_id is not None:
-        return PairingStatusResponse(status="paired")
-
-    return PairingStatusResponse(status="pending")
+    status = await AgentPairingService(db).get_pairing_status(agent_id)
+    return PairingStatusResponse(status=status)
 
 
 @router.post("/{agent_id}/heartbeat")
@@ -317,83 +206,17 @@ async def agent_heartbeat(
     No authentication required - agent just needs to be registered/paired.
     The agent_id serves as the authentication mechanism for paired agents.
     """
-
-    # Find agent by agent_id only (no user auth required for heartbeat)
-    result = await db.execute(
-        select(DeviceAgent).where(DeviceAgent.agent_id == agent_id)
-    )
-    agent = result.scalars().first()
-
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found - complete pairing first")
-    
-    # Update agent status
-    now = datetime.now(timezone.utc)
-    agent.status = "online"
-    agent.last_heartbeat = now
-    agent.updated_at = now
-    
-    # Sync devices
-    synced = 0
-    for device_info in data.devices:
-        serial = device_info["serial"]
-        state = device_info["state"]
-        
-        # Create unique adb_id for remote device
-        adb_id = f"{agent.host}:{agent.port}/{serial}"
-        
-        # Find existing device
-        result = await db.execute(
-            select(AndroidDevice).where(
-                AndroidDevice.adb_id == adb_id,
-                AndroidDevice.agent_id == agent.id
-            )
+    try:
+        result = await AgentPairingService(db).sync_heartbeat(
+            agent_id=agent_id, devices=data.devices
         )
-        existing_device = result.scalars().first()
-        
-        status = DeviceStatus.ONLINE if state == "device" else DeviceStatus.ERROR
-        
-        if existing_device:
-            # Update existing
-            existing_device.status = status
-            existing_device.last_seen = now
-            existing_device.updated_at = now
-        else:
-            # Create new
-            device = AndroidDevice(
-                name=f"{agent.name}/{serial}",
-                device_type=DeviceType.ADB,
-                connection_method=ConnectionMethod.ADB,
-                adb_id=adb_id,
-                device_serial=serial,
-                agent_id=agent.id,
-                status=status,
-                last_seen=now,
-                created_at=now,
-                updated_at=now
-            )
-            db.add(device)
-            synced += 1
-    
-    # Mark devices offline if not in heartbeat
-    reported_serials = {d["serial"] for d in data.devices}
-    result = await db.execute(
-        select(AndroidDevice).where(AndroidDevice.agent_id == agent.id)
-    )
-    all_agent_devices = result.scalars().all()
-    
-    for device in all_agent_devices:
-        device_serial = device.device_serial
-        if device_serial and device_serial not in reported_serials:
-            device.status = DeviceStatus.OFFLINE
-            device.updated_at = now
-    
-    await db.commit()
-    
+    except AgentNotFound:
+        raise HTTPException(status_code=404, detail="Agent not found - complete pairing first")
+
     return {
         "status": "ok",
-        "devices_synced": synced,
-        "timestamp": now.isoformat()
+        "devices_synced": result.devices_synced,
+        "timestamp": result.timestamp.isoformat(),
     }
 
 
