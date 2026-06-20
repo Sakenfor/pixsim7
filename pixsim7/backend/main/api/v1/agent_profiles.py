@@ -146,6 +146,22 @@ def _profile_visible_to_principal(profile: AgentProfile, principal: CurrentUser)
     return effective_uid is not None and profile.user_id == effective_uid
 
 
+async def _hard_revoke_profile(db, profile: AgentProfile, principal) -> None:
+    """Terminate the profile's live runs + revoke their sessions, then commit.
+
+    Called on any deactivating status transition (pause/archive). Owns the
+    commit so the status change and the revocation land atomically. Plan
+    ``scoped-agent-authorization`` (session-kill hard revocation).
+    """
+    from pixsim7.backend.main.services.audit import AgentTrackingService, resolve_actor
+
+    await AgentTrackingService(db).revoke_profile(
+        profile.id,
+        reason=f"profile_{profile.status}",
+        actor=resolve_actor(principal),
+    )
+
+
 def _to_response(p: AgentProfile) -> dict:
     return {
         "id": p.id,
@@ -642,7 +658,10 @@ async def update_agent_profile(
         fields=list(updates.keys()),
     )
 
-    await db.commit()
+    if "status" in updates and profile.status != "active":
+        await _hard_revoke_profile(db, profile, principal)
+    else:
+        await db.commit()
     await db.refresh(profile)
     return _to_response(profile)
 
@@ -731,7 +750,13 @@ async def admin_update_agent_profile_scope(
         fields=list(updates.keys()),
     )
 
-    await db.commit()
+    # Pausing/archiving must hard-kill live runs + their sessions, not just
+    # block future mints. revoke_profile owns the commit (flushes the status
+    # change too); skip the plain commit when it ran.
+    if "status" in updates and profile.status != "active":
+        await _hard_revoke_profile(db, profile, _admin)
+    else:
+        await db.commit()
     await db.refresh(profile)
     return _to_response(profile)
 
@@ -759,7 +784,9 @@ async def delete_agent_profile(
         action="deleted",
     )
 
-    await db.commit()
+    # Archiving deactivates the profile — hard-kill its live runs/sessions
+    # too. revoke_profile owns the commit.
+    await _hard_revoke_profile(db, profile, principal)
 
 
 # ── Mint Token ───────────────────────────────────────────────────

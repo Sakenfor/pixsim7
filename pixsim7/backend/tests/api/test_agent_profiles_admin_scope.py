@@ -90,11 +90,17 @@ def _app(profile, *, admin: bool = True, monkeypatch=None) -> tuple[FastAPI, obj
         app.dependency_overrides[get_current_admin_principal] = _deny
 
     # Audit is a side effect; stub it so the mocked db isn't exercised by it.
+    # Stub AgentTrackingService too — deactivating transitions call
+    # revoke_profile, which would otherwise hit the unconfigured mock db.
+    tracking = MagicMock()
+    tracking.revoke_profile = AsyncMock(return_value={"runs_revoked": 0, "sessions_revoked": 0})
     if monkeypatch is not None:
         stub = MagicMock()
         stub.record_diff = AsyncMock()
+        stub.record = AsyncMock()
         monkeypatch.setattr(audit_mod, "AuditService", lambda _db: stub)
-    return app, db
+        monkeypatch.setattr(audit_mod, "AgentTrackingService", lambda _db: tracking)
+    return app, db, tracking
 
 
 async def _patch(app, profile_id, body):
@@ -106,7 +112,7 @@ async def _patch(app, profile_id, body):
 @pytest.mark.asyncio
 async def test_admin_grants_scope_fields(monkeypatch):
     profile = _fake_profile()
-    app, _ = _app(profile, monkeypatch=monkeypatch)
+    app, _db, tracking = _app(profile, monkeypatch=monkeypatch)
     resp = await _patch(app, "collab-claude", {
         "assigned_plans": ["plan-a"],
         "default_scopes": ["world:42"],
@@ -122,7 +128,7 @@ async def test_admin_grants_scope_fields(monkeypatch):
 @pytest.mark.asyncio
 async def test_omitted_field_unchanged_null_clears(monkeypatch):
     profile = _fake_profile(assigned_plans=["old"], default_scopes=["world:1"])
-    app, _ = _app(profile, monkeypatch=monkeypatch)
+    app, _db, tracking = _app(profile, monkeypatch=monkeypatch)
     # Send default_scopes=null (clear → unrestricted); omit assigned_plans (keep).
     resp = await _patch(app, "collab-claude", {"default_scopes": None})
     assert resp.status_code == 200
@@ -133,16 +139,49 @@ async def test_omitted_field_unchanged_null_clears(monkeypatch):
 @pytest.mark.asyncio
 async def test_pause_via_status(monkeypatch):
     profile = _fake_profile()
-    app, _ = _app(profile, monkeypatch=monkeypatch)
+    app, _db, tracking = _app(profile, monkeypatch=monkeypatch)
     resp = await _patch(app, "collab-claude", {"status": "paused"})
     assert resp.status_code == 200
     assert profile.status == "paused"
+    # Pausing must hard-kill live runs/sessions, not just block future mints.
+    tracking.revoke_profile.assert_awaited_once()
+    assert tracking.revoke_profile.call_args.kwargs["reason"] == "profile_paused"
+
+
+@pytest.mark.asyncio
+async def test_archive_via_status_revokes(monkeypatch):
+    profile = _fake_profile()
+    app, _db, tracking = _app(profile, monkeypatch=monkeypatch)
+    resp = await _patch(app, "collab-claude", {"status": "archived"})
+    assert resp.status_code == 200
+    tracking.revoke_profile.assert_awaited_once()
+    assert tracking.revoke_profile.call_args.kwargs["reason"] == "profile_archived"
+
+
+@pytest.mark.asyncio
+async def test_scope_only_change_does_not_revoke(monkeypatch):
+    profile = _fake_profile()
+    app, _db, tracking = _app(profile, monkeypatch=monkeypatch)
+    resp = await _patch(app, "collab-claude", {"assigned_plans": ["plan-a"]})
+    assert resp.status_code == 200
+    # No status transition → no hard revocation, plain commit instead.
+    tracking.revoke_profile.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reactivate_does_not_revoke(monkeypatch):
+    profile = _fake_profile(status="paused")
+    app, _db, tracking = _app(profile, monkeypatch=monkeypatch)
+    resp = await _patch(app, "collab-claude", {"status": "active"})
+    assert resp.status_code == 200
+    assert profile.status == "active"
+    tracking.revoke_profile.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_invalid_status_rejected(monkeypatch):
     profile = _fake_profile()
-    app, _ = _app(profile, monkeypatch=monkeypatch)
+    app, _db, tracking = _app(profile, monkeypatch=monkeypatch)
     resp = await _patch(app, "collab-claude", {"status": "bogus"})
     assert resp.status_code == 400
 
@@ -150,14 +189,14 @@ async def test_invalid_status_rejected(monkeypatch):
 @pytest.mark.asyncio
 async def test_empty_body_rejected(monkeypatch):
     profile = _fake_profile()
-    app, _ = _app(profile, monkeypatch=monkeypatch)
+    app, _db, tracking = _app(profile, monkeypatch=monkeypatch)
     resp = await _patch(app, "collab-claude", {})
     assert resp.status_code == 400
 
 
 @pytest.mark.asyncio
 async def test_missing_profile_404(monkeypatch):
-    app, _ = _app(None, monkeypatch=monkeypatch)  # db.get returns None
+    app, _db, tracking = _app(None, monkeypatch=monkeypatch)  # db.get returns None
     resp = await _patch(app, "nope", {"status": "paused"})
     assert resp.status_code == 404
 
@@ -165,6 +204,6 @@ async def test_missing_profile_404(monkeypatch):
 @pytest.mark.asyncio
 async def test_non_admin_denied(monkeypatch):
     profile = _fake_profile()
-    app, _ = _app(profile, admin=False, monkeypatch=monkeypatch)
+    app, _db, tracking = _app(profile, admin=False, monkeypatch=monkeypatch)
     resp = await _patch(app, "collab-claude", {"status": "paused"})
     assert resp.status_code == 403

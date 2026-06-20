@@ -276,13 +276,24 @@ async def get_current_principal(
     # Enrich agent principals with profile label + delegating user name
     if principal.is_agent:
         if principal.profile_id:
+            profile = None
             try:
                 from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
                 profile = await auth_service.db.get(AgentProfile, principal.profile_id)
-                if profile:
-                    principal.agent_label = profile.label
             except Exception:
-                pass
+                profile = None
+            # Defense-in-depth for hard revocation: reject a token whose
+            # profile is no longer active even if its session check was
+            # bypassed (e.g. jwt_require_session off). Fail-open on a fetch
+            # error, fail-closed on an explicit non-active status. Plan
+            # ``scoped-agent-authorization`` (session-kill hard revocation).
+            if profile is not None:
+                if profile.status != "active":
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Agent profile is {profile.status}",
+                    )
+                principal.agent_label = profile.label
         if principal.on_behalf_of and not principal.on_behalf_of_name:
             try:
                 user = await auth_service.users.get_user(principal.on_behalf_of)
