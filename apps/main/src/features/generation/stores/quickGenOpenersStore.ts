@@ -15,13 +15,21 @@
  */
 import { create } from 'zustand';
 
+import type { AssetModel } from '@features/assets';
+
+/** Context handed to an opener so it can open against the right asset. */
+export interface QuickGenOpenContext {
+  /** Asset the routed intent targets — surfaces that need one (viewer/panel). */
+  asset?: AssetModel;
+}
+
 export interface QuickGenOpener {
   /** Matches a QuickGenWidget's `widgetId` / its CAP_GENERATION_WIDGET id. */
   widgetId: string;
   /** Human label for an "Open With" picker. */
   label: string;
   /** Reveal/open this surface so its widget opens and drains staged intents. */
-  open: () => void;
+  open: (ctx?: QuickGenOpenContext) => void;
   /** Sort hint for listings (lower first). */
   order?: number;
 }

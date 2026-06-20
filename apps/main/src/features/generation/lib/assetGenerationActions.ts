@@ -11,8 +11,12 @@ import { getModelFamily } from '@lib/generation-ui';
 
 
 import { fromAssetResponse, type AssetModel } from '@features/assets';
+// Direct store path (not the @features/componentSettings barrel) to avoid a
+// type-resolution cycle via @features/panels back into generation.
+import { useComponentSettingsStore } from '@features/componentSettings/stores/componentSettingsStore';
 import type { GenerationWidgetContext } from '@features/contextHub';
 import { providerCapabilityRegistry } from '@features/providers';
+
 
 
 import {
@@ -26,6 +30,10 @@ import type { OperationType } from '@/types/operations';
 import type { QuickGenIntent } from '../stores/quickGenStagingStore';
 
 import { generateAsset } from './api';
+import {
+  QUICKGEN_PROMPT_COMPONENT_ID,
+  QUICKGEN_PROMPT_DEFAULTS,
+} from './quickGenerateComponentSettings';
 import { createGenerationRunDescriptor, createGenerationRunItemContext } from './runContext';
 import { nextRandomGenerationSeed } from './seed';
 
@@ -295,9 +303,36 @@ export async function insertPromptToQuickGen(
   const ctx = await getAssetGenerationContext(asset.id);
   const { prompt } = parseGenerationContext(ctx, fallbackOperationType);
 
-  const { sessionStore } = await getScopeStores(scopeId);
-  sessionStore?.setPrompt(prompt);
+  const { sessionStore, inputStore } = await getScopeStores(scopeId);
+  // Respect a per-asset prompt pin: if the carousel's current input is pinned,
+  // the insert targets that input's prompt instead of the shared default —
+  // mirroring PromptPanel.handlePromptChange. With the "auto-pin on insert"
+  // setting enabled, the current input is pinned even if it wasn't already.
+  // Plan: per-asset-prompt-pin.
+  const currentInput = inputStore?.getCurrentInput(fallbackOperationType) ?? null;
+  const shouldPin =
+    !!inputStore &&
+    !!currentInput?.id &&
+    !!currentInput?.asset &&
+    (!!currentInput?.promptPinned || readAutoPinPromptOnInsert());
+  if (shouldPin && inputStore && currentInput) {
+    // Set the inserted prompt as this input's value and activate the pin.
+    inputStore.setInputPrompt(fallbackOperationType, currentInput.id, prompt, { pin: true });
+  } else {
+    sessionStore?.setPrompt(prompt);
+  }
   setOpen?.(true);
+}
+
+/**
+ * Read the global "auto-pin inserted prompts" QuickGen Prompt setting outside
+ * of React. Falls back to the component default. Per-panel-instance overrides
+ * are not consulted here (this runs in a plain async action, not a panel).
+ */
+function readAutoPinPromptOnInsert(): boolean {
+  const global = useComponentSettingsStore.getState().settings[QUICKGEN_PROMPT_COMPONENT_ID];
+  const value = global?.autoPinPromptOnInsert;
+  return typeof value === 'boolean' ? value : QUICKGEN_PROMPT_DEFAULTS.autoPinPromptOnInsert;
 }
 
 /** Insert the asset's source seed into the target's params. */

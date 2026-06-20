@@ -10,10 +10,10 @@ import type { IDockviewPanelProps } from 'dockview-core';
 import { useMemo } from 'react';
 
 import type { ViewerAsset } from '@features/assets';
-
-import { ViewerQuickGenerate } from '@/components/media/ViewerQuickGenerate';
 import { useResolvedPanelAsset } from '@features/panels/hooks/useResolvedPanelAsset';
 import { useResolvedPanelScene } from '@features/panels/hooks/useResolvedPanelScene';
+
+import { ViewerQuickGenerate } from '@/components/media/ViewerQuickGenerate';
 
 export interface QuickGeneratePanelContext {
   /** Current asset being viewed */
@@ -46,7 +46,12 @@ export function QuickGeneratePanel({ context, params }: QuickGeneratePanelProps)
     if (asset) {
       return (
         <div className="h-full overflow-y-auto p-2">
-          <ViewerQuickGenerate asset={asset} alwaysExpanded />
+          <ViewerQuickGenerate
+            asset={asset}
+            alwaysExpanded
+            widgetId="panelQuickGenerate"
+            label="Quick Gen Panel"
+          />
         </div>
       );
     }
