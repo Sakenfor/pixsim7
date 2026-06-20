@@ -7,8 +7,8 @@ Mirrors adapters/automation.py: this is the ONE direction of import we allow
 We bind a `CompositeEmbeddingService` that satisfies the sibling's unified
 `EmbeddingService` protocol across both modalities:
 
-- embed_images(...) → `DaemonEmbeddingService` (self-contained SigLIP-2
-  subprocess; lives in the sibling).
+- embed_images(...) → `HttpEmbeddingService` (HTTP client to the standalone
+  embedding-daemon service; lives in the sibling, no torch dependency).
 - embed_texts(...)  → the backend text-provider registry (OpenAI / command),
   which stays host-side because it needs DB-backed credentials and the backend
   subprocess runner. The composite resolves model_id → provider here, where
@@ -19,11 +19,13 @@ in the per-request services; the composite only does session-free provider
 *lookup* from an explicit, already-resolved model_id.
 
 Configuration (env vars, with sensible defaults):
-- PIXSIM_EMBEDDING_COMMAND — argv string for the image daemon process
+- PIXSIM_EMBEDDING_URL — base URL of the embedding-daemon HTTP service
 - PIXSIM_EMBEDDING_MODEL_ID — model identifier recorded on each image vector row
 
-Phase 2 swap point: replace `_build_image_service()` (and/or the composite)
-to return an HTTP client to a dedicated inference service — no caller changes.
+The image path is an HTTP client to the standalone `embedding-daemon` service
+(launcher-managed, one GPU-resident model shared across all consumers). The
+legacy stdio `DaemonEmbeddingService` (pixsim7/embedding/daemon.py) is kept for
+backfill / standalone use but is no longer the default worker path.
 """
 from __future__ import annotations
 
@@ -34,7 +36,7 @@ from pixsim7.backend.main.services.embedding.embedding_service import (
     EmbeddingModelError,
 )
 from pixsim7.backend.main.services.embedding.registry import embedding_registry
-from pixsim7.embedding.daemon import DaemonEmbeddingService
+from pixsim7.embedding.http_client import HttpEmbeddingService
 from pixsim7.embedding.locator import bind_embedding_service, try_get_embedding_service
 from pixsim7.embedding.protocol import (
     EmbedRequest,
@@ -45,14 +47,14 @@ from pixsim7.embedding.protocol import (
 from pixsim7.embedding.validation import validate_embeddings
 
 
-_DEFAULT_COMMAND = "python -m pixsim7.embedding.cli.image_local --serve"
+_DEFAULT_URL = "http://localhost:8002"
 _DEFAULT_MODEL_ID = "google/siglip2-large-patch16-384"
 
 
 def _build_image_service() -> EmbeddingService:
-    command = os.environ.get("PIXSIM_EMBEDDING_COMMAND", _DEFAULT_COMMAND)
+    base_url = os.environ.get("PIXSIM_EMBEDDING_URL", _DEFAULT_URL)
     model_id = os.environ.get("PIXSIM_EMBEDDING_MODEL_ID", _DEFAULT_MODEL_ID)
-    return DaemonEmbeddingService(command=command, model_id=model_id)
+    return HttpEmbeddingService(base_url=base_url, model_id=model_id)
 
 
 def _extract_bare_model(model_id: str) -> str:

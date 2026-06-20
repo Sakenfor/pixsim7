@@ -103,6 +103,17 @@ function Gamepad(p: { className?: string }) {
   )
 }
 
+function Cpu(p: { className?: string }) {
+  return (
+    <svg {...svgProps} className={p.className} stroke="currentColor">
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <rect x="9" y="9" width="6" height="6" />
+      <path d="M9 2v2" /><path d="M15 2v2" /><path d="M9 20v2" /><path d="M15 20v2" />
+      <path d="M2 9h2" /><path d="M2 15h2" /><path d="M20 9h2" /><path d="M20 15h2" />
+    </svg>
+  )
+}
+
 /* ---------- service key -> icon mapping ---------- */
 
 const SERVICE_ICONS: Record<string, (p: { className?: string }) => React.ReactNode> = {
@@ -115,6 +126,7 @@ const SERVICE_ICONS: Record<string, (p: { className?: string }) => React.ReactNo
   'simulation-worker': Gamepad,
   'generation-api':    Sparkles,
   'ai-client':         Bot,
+  'embedding-daemon':  Cpu,
 }
 
 /* ---------- public component ---------- */

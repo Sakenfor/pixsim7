@@ -433,6 +433,44 @@ class BackendConverter(ServiceConverter):
         }
 
 
+class InferenceConverter(ServiceConverter):
+    """Standalone model-hosting daemon: a uvicorn HTTP service WITHOUT --reload
+    (reloading would re-load the model — expensive) and a long health grace for
+    model warm-up. Probed via an HTTP /health endpoint, so a wedged model shows
+    as an unhealthy card rather than a silent hang."""
+
+    schema_type = "inference"
+    default_grace = 30  # SigLIP-2 cold load can take 10-30s
+
+    def _program(self, _config):
+        return find_python_executable()
+
+    def _args(self, config):
+        port = self._resolve_port(config)
+        module = config.get("module", "pixsim7.embedding.server:app")
+        return [
+            "-m",
+            "uvicorn",
+            module,
+            "--host",
+            "0.0.0.0",
+            "--port",
+            str(port),
+            "--no-access-log",
+        ]
+
+    def _env(self, config):
+        return _merge_env_overrides(_PYTHON_ENV, config)
+
+    def _url(self, config):
+        return self._resolve_base_url(config)
+
+    def _health_url(self, config):
+        return _join_base_url(
+            self._resolve_base_url(config), config.get("health_endpoint", "/health")
+        )
+
+
 class WorkerConverter(ServiceConverter):
     schema_type = "worker"
     default_grace = 10
@@ -472,6 +510,8 @@ _CONVERTERS: Dict[str, ServiceConverter] = {
     "web":            FrontendConverter(),
     "backend":        BackendConverter(),
     "api":            BackendConverter(),
+    "inference":      InferenceConverter(),
+    "daemon":         InferenceConverter(),
     "worker":         WorkerConverter(),
     "python":         WorkerConverter(),
     "docker-compose": DockerComposeConverter(),

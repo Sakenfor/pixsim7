@@ -71,6 +71,39 @@ TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
             "default": "",
         },
     ],
+    "inference": [
+        {
+            "key": "port",
+            "type": "number",
+            "label": "Port",
+            "description": "HTTP port the inference daemon listens on",
+            "default": 8002,
+        },
+        {
+            "key": "base_url",
+            "type": "string",
+            "label": "Base URL",
+            "description": "Public base URL (empty = http://localhost:{port})",
+            "default": "",
+        },
+        {
+            "key": "model_id",
+            "type": "string",
+            "label": "Model ID",
+            "description": "HuggingFace model identifier to load",
+            "default": "google/siglip2-large-patch16-384",
+            "env_map": "PIXSIM_EMBEDDING_MODEL_ID",
+        },
+        {
+            "key": "log_level",
+            "type": "select",
+            "label": "Log Level",
+            "description": "Uvicorn server log level",
+            "options": ["debug", "info", "warning", "error"],
+            "default": "info",
+            "arg_map": "--log-level",
+        },
+    ],
     "worker": [
         {
             "key": "log_level",

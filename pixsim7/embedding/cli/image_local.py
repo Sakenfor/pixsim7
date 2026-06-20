@@ -37,48 +37,11 @@ import argparse
 import json
 import sys
 
-import torch
-from PIL import Image
-from transformers import AutoModel, AutoProcessor
+# Model load + embedding live in the shared helper so the HTTP service
+# (pixsim7.embedding.server) and this stdio CLI run identical inference.
+from pixsim7.embedding._siglip import MODEL_ID, embed_images, load_model
 
-
-MODEL_ID = "google/siglip2-large-patch16-384"
-
-
-def load_model():
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = AutoModel.from_pretrained(MODEL_ID).to(device)
-    model.eval()
-    processor = AutoProcessor.from_pretrained(MODEL_ID)
-    return model, processor, device
-
-
-def embed_images(model, processor, device, paths: list[str]) -> list[list[float]]:
-    images = []
-    for path in paths:
-        try:
-            img = Image.open(path).convert("RGB")
-            images.append(img)
-        except Exception as e:
-            print(f"Warning: failed to load {path}: {e}", file=sys.stderr)
-            images.append(Image.new("RGB", (384, 384), (0, 0, 0)))
-
-    inputs = processor(images=images, return_tensors="pt").to(device)
-
-    with torch.no_grad():
-        features = model.get_image_features(**inputs)
-        # Across transformers versions get_image_features may return either the
-        # projected pooled tensor or the raw vision-output object. Normalize to a
-        # tensor before L2-normalizing.
-        if not isinstance(features, torch.Tensor):
-            features = getattr(features, "pooler_output", None)
-            if features is None:
-                raise RuntimeError(
-                    "get_image_features returned a non-tensor without pooler_output"
-                )
-        features = torch.nn.functional.normalize(features, dim=-1)
-
-    return features.cpu().numpy().tolist()
+__all__ = ["MODEL_ID", "embed_images", "load_model", "main"]
 
 
 def _process_request(model, processor, device, request: dict) -> dict:
