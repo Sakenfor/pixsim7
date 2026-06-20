@@ -14,7 +14,10 @@ def _embedding_daemon():
 def test_embedding_daemon_discovered_and_categorized():
     s = _embedding_daemon()
     assert s.category == "models"
-    assert s.title == "Embedding Daemon (SigLIP-2)"
+    # Title is role-based with the live model derived from model_id, so a card
+    # rename follows the setting instead of a baked-in manifest string.
+    assert s.title.startswith("Image Embedding Daemon")
+    assert "siglip2" in s.title
 
 
 def test_embedding_daemon_runs_uvicorn_without_reload():

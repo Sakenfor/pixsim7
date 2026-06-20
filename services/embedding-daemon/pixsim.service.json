@@ -2,7 +2,7 @@
   "id": "embedding-daemon",
   "category": "models",
   "type": "inference",
-  "name": "Embedding Daemon (SigLIP-2)",
+  "name": "Image Embedding Daemon",
   "description": "GPU-resident SigLIP-2 image embedding service. Loads the model once and serves /embed over HTTP so every worker/backend shares one model instead of spawning its own subprocess. /health detects model warm-up and wedges.",
   "module": "pixsim7.embedding.server:app",
   "port_env": "PIXSIM_EMBEDDING_PORT",

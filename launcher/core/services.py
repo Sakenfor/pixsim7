@@ -287,7 +287,7 @@ class ServiceConverter:
 
         return ServiceDef(
             key=sid,
-            title=config.get("name", sid),
+            title=self._title(config),
             program=self._program(config),
             args=self._args(config),
             cwd=cwd,
@@ -310,6 +310,9 @@ class ServiceConverter:
 
     def _program(self, config: Dict) -> str:
         return ""
+
+    def _title(self, config: Dict) -> str:
+        return config.get("name", config["id"])
 
     def _args(self, config: Dict) -> List[str]:
         return []
@@ -441,6 +444,33 @@ class InferenceConverter(ServiceConverter):
 
     schema_type = "inference"
     default_grace = 30  # SigLIP-2 cold load can take 10-30s
+
+    def _title(self, config):
+        # Reflect the live model on the card label instead of baking it into the
+        # manifest name — so changing the `model_id` setting renames the card.
+        base = config.get("name", config["id"])
+        model_id = self._resolve_model_id(config)
+        if not model_id:
+            return base
+        short = model_id.rstrip("/").split("/")[-1]
+        return f"{base} · {short}"
+
+    def _resolve_model_id(self, config) -> Optional[str]:
+        """Effective model_id: persisted setting -> env -> inference schema default."""
+        from .service_settings import TYPE_BASE_SCHEMAS, load_persisted
+
+        sid = config.get("id")
+        if sid:
+            persisted = load_persisted(sid)
+            if persisted.get("model_id"):
+                return str(persisted["model_id"])
+        env_val = os.environ.get("PIXSIM_EMBEDDING_MODEL_ID")
+        if env_val:
+            return env_val
+        for field in TYPE_BASE_SCHEMAS.get("inference", []):
+            if field.get("key") == "model_id":
+                return field.get("default")
+        return None
 
     def _program(self, _config):
         return find_python_executable()
