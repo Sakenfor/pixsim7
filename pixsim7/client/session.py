@@ -163,6 +163,12 @@ class AgentCmdSession:
         # updated when a `set_model` control_request is applied mid-session so we
         # only push a control frame when the requested model actually changes.
         self._live_model = model
+        # Permission mode currently active in the live process. ``None`` until
+        # the first `set_permission_mode` control_request lands, so the first
+        # explicit request always applies (the spawn default is unknown to us —
+        # the CLI's own default, typically "default"). Drives the per-tab plan
+        # toggle taking effect mid-conversation without a respawn.
+        self._live_permission_mode: str | None = None
         # Monotonic id source for control_request frames.
         self._control_seq = 0
         self._workdir = workdir
@@ -720,12 +726,74 @@ class AgentCmdSession:
         if not frame:
             return False
 
+        ok = await self._exchange_control_request(
+            request_id, frame, timeout=timeout,
+            log_event="session_set_model", log_fields={"model": model},
+        )
+        if ok:
+            self._live_model = model
+            self.cli_model = model
+            self._log.info("session_model_switched", model=model)
+        return ok
+
+    async def apply_permission_mode(self, mode: str | None, *, timeout: float = 10.0) -> bool:
+        """Switch the live process's permission mode mid-session via a
+        ``set_permission_mode`` control_request — no respawn, no ``--resume``.
+        Drives the per-tab plan toggle: flip the session into ``"plan"`` so the
+        model researches and calls ``ExitPlanMode`` (surfacing the approval card
+        via the PreToolUse hook), or back to ``"default"`` to resume normally.
+
+        No-op (returns True) when the requested mode is empty, already matches
+        the live mode, or the protocol has no control channel (Codex). Must be
+        called while the session is NOT mid-turn — the pool invokes it right
+        before ``send_message``. Returns False if the round-trip failed (caller
+        proceeds at the current mode rather than aborting).
+        """
+        if not mode or not mode.strip():
+            return True
+        mode = mode.strip()
+        if mode == self._live_permission_mode:
+            return True
+        if not self._protocol.supports_runtime_control():
+            return False
+        if not self.is_alive or not self._process or not self._process.stdin:
+            return False
+
+        self._control_seq += 1
+        request_id = f"set-mode-{self._control_seq}"
+        frame = self._protocol.build_control_request(request_id, "set_permission_mode", mode=mode)
+        if not frame:
+            return False
+
+        ok = await self._exchange_control_request(
+            request_id, frame, timeout=timeout,
+            log_event="session_set_permission_mode", log_fields={"mode": mode},
+        )
+        if ok:
+            self._live_permission_mode = mode
+            self._log.info("session_permission_mode_switched", mode=mode)
+        return ok
+
+    async def _exchange_control_request(
+        self,
+        request_id: str,
+        frame: str,
+        *,
+        timeout: float,
+        log_event: str,
+        log_fields: dict,
+    ) -> bool:
+        """Write a ``control_request`` frame to stdin and await its matching
+        ``control_response``, returning True on a ``success`` ack.
+
+        Shared by ``apply_runtime_model`` / ``apply_permission_mode``. Caller
+        guarantees the session is alive and NOT mid-turn. Stray events shouldn't
+        arrive here (no turn in flight), but anything that isn't our response is
+        re-queued so a late init/etc. isn't swallowed.
+        """
         self._process.stdin.write(frame.encode())
         await self._process.stdin.drain()
 
-        # Await the matching control_response. Stray events shouldn't arrive at
-        # this point (no turn in flight), but re-queue anything that isn't ours
-        # so a late init/etc. isn't swallowed.
         deferred: list = []
         ok = False
         try:
@@ -743,21 +811,16 @@ class AgentCmdSession:
                     if resp.get("request_id") == request_id:
                         ok = str(resp.get("subtype")) == "success"
                         if not ok:
-                            self._log.warning("session_set_model_failed", model=model, response=resp)
+                            self._log.warning(f"{log_event}_failed", response=resp, **log_fields)
                         break
                     # A different control_response — ignore (not ours).
                     continue
                 deferred.append(event)
         except asyncio.TimeoutError:
-            self._log.warning("session_set_model_timeout", model=model)
+            self._log.warning(f"{log_event}_timeout", **log_fields)
         finally:
             for ev in deferred:
                 self._response_queue.put_nowait(ev)
-
-        if ok:
-            self._live_model = model
-            self.cli_model = model
-            self._log.info("session_model_switched", model=model)
         return ok
 
     async def send_message(

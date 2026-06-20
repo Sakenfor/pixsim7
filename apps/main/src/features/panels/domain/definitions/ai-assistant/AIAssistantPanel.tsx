@@ -72,6 +72,7 @@ import {
   OPEN_PLAN_CHAT_EVENT,
   isSameThinkingLog,
   renderBridgeError,
+  isAgentLimitError,
   extractReferenceScope,
   findPoolSession,
 } from './assistantTypes';
@@ -713,6 +714,10 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     if (resolvedProfileId && !tab.usePersona) body.skip_persona = true;
     if (tab.modelOverride) body.model = tab.modelOverride;
     if (tab.reasoningEffortOverride) body.reasoning_effort = tab.reasoningEffortOverride;
+    // Per-tab plan toggle (Claude only — Codex has no plan mode). Sent every
+    // turn so a session previously flipped into plan mode reverts to 'default'
+    // when the toggle is off. The bridge applies it live before the turn.
+    if (tab.engine !== 'codex') body.permission_mode = tab.planMode ? 'plan' : 'default';
     if (tab.customInstructions.trim()) body.custom_instructions = tab.customInstructions.trim();
     if (tab.focusAreas.length > 0) body.focus = tab.focusAreas;
     const scope = extractReferenceScope(text);
@@ -774,7 +779,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
     // Fire-and-forget — the bridge singleton manages the SSE fetch.
     void chatBridge.send(tab.id, body);
-  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.modelOverride, tab.reasoningEffortOverride, tab.customInstructions, tab.focusAreas, profiles, onUpdateTab]);
+  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.planMode, tab.modelOverride, tab.reasoningEffortOverride, tab.customInstructions, tab.focusAreas, profiles, onUpdateTab]);
 
   const retryLast = useCallback(() => {
     const msgs = useAssistantChatStore.getState().getMessages(tab.id);
@@ -963,6 +968,11 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                   onApprove={() => {
                     const conf = bridgeReq.pendingConfirmation!;
                     chatBridge.respondToConfirmation(tab.id, conf.confirmationId, true);
+                    // Approving an ExitPlanMode card consumes the plan: the CLI
+                    // leaves plan mode for the rest of the turn, so clear the
+                    // per-tab toggle to match (terminal shift+tab parity). A
+                    // rejection keeps planning, so the toggle stays on there.
+                    if (conf.toolName === 'ExitPlanMode' && tab.planMode) onUpdateTab({ planMode: false });
                     useAssistantChatStore.getState().appendMessage(tab.id, {
                       role: 'system', text: `Approved: ${conf.toolName || conf.title}`, timestamp: new Date(),
                       confirmation: { confirmationId: conf.confirmationId, title: conf.title, description: conf.description, toolName: conf.toolName, resolved: 'approved' },
@@ -1255,6 +1265,29 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             engine={tab.engine}
           />
 
+          {/* Plan-mode toggle (Claude only). When on, each turn is dispatched
+              with permission_mode:'plan' so Claude drafts a plan and calls
+              ExitPlanMode → approval card. Auto-clears when a plan is approved. */}
+          {tab.engine !== 'codex' && (
+            <button
+              type="button"
+              onClick={() => onUpdateTab({ planMode: !tab.planMode })}
+              disabled={sending}
+              aria-pressed={tab.planMode}
+              title={tab.planMode
+                ? 'Plan mode ON — Claude drafts a plan and asks for approval before executing. Click to turn off.'
+                : 'Plan mode OFF — click so Claude plans first and shows an approval card before doing work.'}
+              className={`shrink-0 inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                tab.planMode
+                  ? 'bg-signal-warning/20 text-signal-warning'
+                  : 'text-th-muted hover:text-th-secondary'
+              }`}
+            >
+              <Icon name="clipboard" size={13} />
+              <span>Plan</span>
+            </button>
+          )}
+
           {/* Send — inline right after the model selector */}
           <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">
             <Icon name="send" size={14} />
@@ -1422,6 +1455,18 @@ function ChatSearchResults({ results, query, profiles, activeTabId, onOpen }: {
   );
 }
 
+function hasTailLimitError(
+  messages: readonly { role: string; text: string; synthetic?: boolean }[] | undefined,
+): boolean {
+  if (!messages) return false;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message.role === 'system' || message.synthetic) continue;
+    return (message.role === 'error' || message.role === 'assistant') && isAgentLimitError(message.text);
+  }
+  return false;
+}
+
 // =============================================================================
 // Main Component
 // =============================================================================
@@ -1445,6 +1490,12 @@ export function AIAssistantPanel() {
   const tabsLoading = useAssistantChatStore((s) => s.tabsLoading);
   const tabsError = useAssistantChatStore((s) => s.tabsError);
   const store = useAssistantChatStore;
+  // Sidebar rows read live bridge state (sending/error/activity) for every
+  // tab, including inactive tabs whose TabChatView is not mounted.
+  useSyncExternalStore(
+    chatBridge.subscribe.bind(chatBridge),
+    chatBridge.getSnapshot.bind(chatBridge),
+  );
 
   // Per-tab timestamp of the last *substantive* assistant reply when it's the
   // user's turn (i.e. the conversation's tail is the agent, not the user).
@@ -1465,6 +1516,15 @@ export function AIAssistantPanel() {
           if (m.role === 'assistant') out[t.id] = m.timestamp.getTime();
           break; // first substantive message from the tail decides whose turn it is
         }
+      }
+      return out;
+    }),
+  );
+  const limitStoppedByTab = useAssistantChatStore(
+    useShallow((s) => {
+      const out: Record<string, true> = {};
+      for (const tab of s.tabs) {
+        if (hasTailLimitError(s.messagesByTab[tab.id])) out[tab.id] = true;
       }
       return out;
     }),
@@ -1540,6 +1600,8 @@ export function AIAssistantPanel() {
       modelOverride: null,
       reasoningEffortOverride: null,
       usePersona: true,
+      planMode: false,
+      draft: null,
       customInstructions: '',
       focusAreas: [],
       injectToken: Boolean(resolvedProfileId),
@@ -1698,6 +1760,8 @@ export function AIAssistantPanel() {
         modelOverride: null,
         reasoningEffortOverride: null,
         usePersona: true,
+        planMode: false,
+        draft: null,
         customInstructions: '',
         focusAreas: [],
         injectToken: Boolean(defaultProfile?.id),
@@ -1784,6 +1848,10 @@ export function AIAssistantPanel() {
   const renderItem = (tab: ChatTab, isActive: boolean) => {
     const bridgeReq = chatBridge.get(tab.id);
     const isSending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
+    const hasLimitStop = !isSending && (
+      !!limitStoppedByTab[tab.id]
+      || ((bridgeReq?.status === 'error' || bridgeReq?.status === 'completed') && isAgentLimitError(bridgeReq.result))
+    );
     // Soft "your turn" tint: the agent's last reply is the conversation tail
     // and landed recently, and it isn't still working. Survives focus (unlike
     // the bright unread ring) so live chats stay scannable, then fades out as
@@ -1812,6 +1880,7 @@ export function AIAssistantPanel() {
             !!(tab.sessionId && chatUnreadBySession[tab.sessionId]))
         }
         hasPendingQuestion={!isActive && !!questionsByTabId[tab.id]}
+        hasLimitStop={hasLimitStop}
         renamingTabId={renamingTabId}
         renameValue={renameValue}
         onSetActive={setActiveTab}

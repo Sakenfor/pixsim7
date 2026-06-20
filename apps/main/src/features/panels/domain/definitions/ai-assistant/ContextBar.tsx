@@ -277,6 +277,16 @@ export function ContextBar({
     );
   }
 
+  // Plan mode (per-tab toggle) — Claude drafts a plan and asks before executing.
+  if (tab.planMode && tab.engine !== 'codex') {
+    chips.push(
+      <span key="plan" className="inline-flex items-center gap-0.5 text-signal-warning" title="Plan mode on — Claude plans first and shows an approval card before doing work.">
+        <Icon name="clipboard" size={9} />
+        <span>plan</span>
+      </span>,
+    );
+  }
+
   // Custom instructions
   if (tab.customInstructions.trim()) {
     chips.push(

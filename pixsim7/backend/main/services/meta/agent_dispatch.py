@@ -77,6 +77,7 @@ def build_task_payload(
     user_token: Optional[str] = None,
     profile_prompt: Optional[str] = None,
     profile_config: Optional[Dict[str, Any]] = None,
+    permission_mode: Optional[str] = None,
     bridge_session_id: Optional[str] = None,
     session_policy: Optional[str] = None,
     scope_key: Optional[str] = None,
@@ -108,6 +109,10 @@ def build_task_payload(
         payload["profile_prompt"] = profile_prompt
     if profile_config:
         payload["profile_config"] = profile_config
+    # Per-tab plan toggle. Only forward recognized modes; the bridge re-validates
+    # and a missing value leaves the live session's mode untouched.
+    if permission_mode in ("plan", "default", "acceptEdits"):
+        payload["permission_mode"] = permission_mode
     session_id = normalize_scope_value(bridge_session_id)
     if session_id:
         payload["bridge_session_id"] = session_id

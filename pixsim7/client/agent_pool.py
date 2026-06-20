@@ -758,6 +758,7 @@ class AgentPool:
         engine: str | None = None,
         model: str | None = None,
         reasoning_effort: str | None = None,
+        permission_mode: str | None = None,
         session_policy: str | None = None,
         scope_key: str | None = None,
         mcp_config_path: str | None = None,
@@ -887,6 +888,18 @@ class AgentPool:
                     await session.apply_runtime_model(model)
                 except Exception as exc:
                     get_logger().warning("pool_set_model_failed", session=session.session_id, model=model, error=str(exc))
+
+            # Live plan-mode switch: flip the session's permission mode before the
+            # turn so the per-tab plan toggle takes effect mid-conversation (no
+            # respawn). 'plan' makes the model draft a plan and call ExitPlanMode
+            # (→ approval card via the PreToolUse hook); 'default' resumes normal
+            # execution. No-op when unchanged or when the engine (Codex) has no
+            # live control. See plan: agent-confirmation-hooks / plan-mode-per-tab-toggle.
+            if permission_mode:
+                try:
+                    await session.apply_permission_mode(permission_mode)
+                except Exception as exc:
+                    get_logger().warning("pool_set_permission_mode_failed", session=session.session_id, mode=permission_mode, error=str(exc))
 
             response = await session.send_message(message, timeout=timeout, images=images, on_progress=on_progress, tool_gate=tool_gate)
             # Update index after first message (session now has its bridge_session_id)

@@ -656,6 +656,15 @@ async def _handle_message(
     request_effort = effort_raw.strip().lower() if isinstance(effort_raw, str) else None
     if not request_effort:
         request_effort = None
+    # Per-tab plan toggle (composer "Plan" switch). "plan" makes the model draft
+    # a plan and call ExitPlanMode → approval card; "default" resumes normal
+    # execution. Only recognized values are forwarded; anything else is dropped.
+    perm_raw = data.get("permission_mode")
+    permission_mode = perm_raw.strip().lower() if isinstance(perm_raw, str) else None
+    if permission_mode not in ("plan", "default", "acceptedits"):
+        permission_mode = None
+    elif permission_mode == "acceptedits":
+        permission_mode = "acceptEdits"
     assistant_id_raw = data.get("assistant_id")
     assistant_id = assistant_id_raw.strip() if isinstance(assistant_id_raw, str) else assistant_id_raw
     if isinstance(assistant_id, str) and assistant_id.lower() in {"unknown", "none", "null"}:
@@ -847,6 +856,7 @@ async def _handle_message(
         user_token=effective_token,
         profile_prompt=profile_prompt,
         profile_config=profile_config,
+        permission_mode=permission_mode,
         bridge_session_id=bridge_session_id,
         session_policy=session_policy,
         scope_key=scope_key,

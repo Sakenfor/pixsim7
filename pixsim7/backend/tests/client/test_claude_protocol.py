@@ -189,6 +189,18 @@ class TestClaudeRuntimeControl:
             "request": {"subtype": "set_model", "model": "claude-opus-4-8"},
         }
 
+    def test_build_set_permission_mode_control_request_envelope(self):
+        import json
+        p = ClaudeProtocol()
+        frame = p.build_control_request("set-mode-1", "set_permission_mode", mode="plan")
+        assert frame.endswith("\n")
+        obj = json.loads(frame)
+        assert obj == {
+            "type": "control_request",
+            "request_id": "set-mode-1",
+            "request": {"subtype": "set_permission_mode", "mode": "plan"},
+        }
+
 
 class _RecordingStdin:
     def __init__(self):
@@ -303,4 +315,92 @@ class TestApplyRuntimeModel:
 
         ok, s = asyncio.run(_run())
         assert ok is False  # Codex can't switch live — falls back to spawn-time
+        assert s._process.stdin.writes == []
+
+
+class TestApplyPermissionMode:
+    """Session.apply_permission_mode writes a ``set_permission_mode`` control
+    frame and commits only on a matching ``success`` ack. Drives the per-tab
+    plan toggle taking effect mid-conversation (agent_pool calls this before
+    each turn when the toggle is on/off).
+    """
+
+    def test_switch_to_plan_writes_frame_and_commits_on_success(self):
+        async def _run():
+            s = AgentCmdSession("s", command="claude")
+            s._process = _AliveProc()
+
+            async def ack():
+                await asyncio.sleep(0.02)
+                await s._response_queue.put({
+                    "type": "control_response",
+                    "response": {"request_id": "set-mode-1", "subtype": "success"},
+                })
+
+            feeder = asyncio.create_task(ack())
+            ok = await s.apply_permission_mode("plan")
+            await feeder
+            return ok, s
+
+        ok, s = asyncio.run(_run())
+        assert ok is True
+        assert s._live_permission_mode == "plan"
+        frames = [_json.loads(w.decode()) for w in s._process.stdin.writes]
+        assert any(
+            f.get("type") == "control_request"
+            and f["request"] == {"subtype": "set_permission_mode", "mode": "plan"}
+            for f in frames
+        )
+
+    def test_noop_when_mode_unchanged_writes_nothing(self):
+        async def _run():
+            s = AgentCmdSession("s", command="claude")
+            s._process = _AliveProc()
+            s._live_permission_mode = "plan"
+            ok = await s.apply_permission_mode("plan")
+            return ok, s
+
+        ok, s = asyncio.run(_run())
+        assert ok is True
+        assert s._process.stdin.writes == []
+
+    def test_empty_mode_is_noop(self):
+        async def _run():
+            s = AgentCmdSession("s", command="claude")
+            s._process = _AliveProc()
+            return await s.apply_permission_mode(""), s
+
+        ok, s = asyncio.run(_run())
+        assert ok is True
+        assert s._process.stdin.writes == []
+
+    def test_failure_response_does_not_commit(self):
+        async def _run():
+            s = AgentCmdSession("s", command="claude")
+            s._process = _AliveProc()
+
+            async def nack():
+                await asyncio.sleep(0.02)
+                await s._response_queue.put({
+                    "type": "control_response",
+                    "response": {"request_id": "set-mode-1", "subtype": "error", "error": "nope"},
+                })
+
+            feeder = asyncio.create_task(nack())
+            ok = await s.apply_permission_mode("plan")
+            await feeder
+            return ok, s
+
+        ok, s = asyncio.run(_run())
+        assert ok is False
+        assert s._live_permission_mode is None  # unchanged
+
+    def test_codex_protocol_has_no_live_control(self):
+        async def _run():
+            s = AgentCmdSession("s", command="codex")
+            s._process = _AliveProc()
+            return await s.apply_permission_mode("plan"), s
+
+        ok, s = asyncio.run(_run())
+        assert ok is False  # Codex can't switch live — no plan mode
         assert s._process.stdin.writes == []

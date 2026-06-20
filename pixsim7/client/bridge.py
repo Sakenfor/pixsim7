@@ -1515,6 +1515,14 @@ class Bridge:
 
         profile_config = msg.get("profile_config") or {}
 
+        # Per-tab plan toggle: the frontend sends "plan" (draft a plan first,
+        # surfacing the ExitPlanMode approval card) or "default" (normal). Only
+        # "plan"/"default"/"acceptEdits" are honored; anything else (incl. the
+        # common absent case) leaves the live mode untouched downstream.
+        permission_mode = _str("permission_mode")
+        if permission_mode not in ("plan", "default", "acceptEdits"):
+            permission_mode = None
+
         # Tab anchor: explicit ``tab_id`` from the dispatch, else parsed from a
         # ``tab:<id>`` scope_key (unbound tabs). Lets the per-session token mint
         # pin identity on turn 1 — before any chat_session_id exists — for both
@@ -1531,6 +1539,7 @@ class Bridge:
             "engine": msg.get("engine"),
             "model": model,
             "reasoning_effort": profile_config.get("reasoning_effort"),
+            "permission_mode": permission_mode,
             "focus": focus,
             "task_kind": _str("task_kind"),
             "plan_id": plan_id,
@@ -1928,6 +1937,7 @@ class Bridge:
                     engine=meta["engine"],
                     model=meta["model"],
                     reasoning_effort=meta["reasoning_effort"],
+                    permission_mode=meta["permission_mode"],
                     session_policy=meta["session_policy"],
                     scope_key=meta["scope_key"],
                     mcp_config_path=mcp_config_override,

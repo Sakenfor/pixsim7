@@ -108,6 +108,15 @@ interface ChatTab {
    */
   reasoningEffortOverride: string | null;
   usePersona: boolean;
+  /**
+   * Per-tab plan toggle. When on, each turn is sent with `permission_mode:
+   * 'plan'` so Claude drafts a plan and calls ExitPlanMode — surfacing the
+   * approval card in the panel — before doing work. Sent as `'default'` when
+   * off so a session previously flipped into plan mode reverts. Auto-clears
+   * when the user approves an ExitPlanMode card (the plan is consumed), mirroring
+   * the terminal's shift+tab plan mode. Claude only (Codex has no plan mode).
+   */
+  planMode: boolean;
   customInstructions: string;
   focusAreas: string[];
   injectToken: boolean;
@@ -229,6 +238,7 @@ interface TabPrefs {
   modelOverride: string | null;
   reasoningEffortOverride: string | null;
   usePersona: boolean;
+  planMode: boolean;
   customInstructions: string;
   focusAreas: string[];
   injectToken: boolean;
@@ -240,6 +250,7 @@ const DEFAULT_PREFS: TabPrefs = {
   modelOverride: null,
   reasoningEffortOverride: null,
   usePersona: true,
+  planMode: false,
   customInstructions: '',
   focusAreas: [],
   injectToken: false,
@@ -286,6 +297,7 @@ function extractPrefs(tab: Partial<ChatTab>): TabPrefs {
     modelOverride: tab.modelOverride ?? null,
     reasoningEffortOverride: tab.reasoningEffortOverride ?? null,
     usePersona: tab.usePersona ?? DEFAULT_PREFS.usePersona,
+    planMode: tab.planMode ?? DEFAULT_PREFS.planMode,
     customInstructions: tab.customInstructions ?? DEFAULT_PREFS.customInstructions,
     focusAreas: tab.focusAreas ?? DEFAULT_PREFS.focusAreas,
     injectToken: tab.injectToken ?? DEFAULT_PREFS.injectToken,
@@ -400,6 +412,7 @@ function deriveTab(server: ServerChatTab, prefs: TabPrefs | undefined): ChatTab 
     modelOverride: p.modelOverride,
     reasoningEffortOverride: p.reasoningEffortOverride,
     usePersona: p.usePersona,
+    planMode: p.planMode,
     customInstructions: p.customInstructions,
     focusAreas: p.focusAreas,
     injectToken: hasLocalPrefs ? p.injectToken : Boolean(profileId),
@@ -1247,6 +1260,7 @@ export const useAssistantChatStore = hmrSingleton(
         if (updates.modelOverride !== undefined) prefPatch.modelOverride = updates.modelOverride;
         if (updates.reasoningEffortOverride !== undefined) prefPatch.reasoningEffortOverride = updates.reasoningEffortOverride;
         if (updates.usePersona !== undefined) prefPatch.usePersona = updates.usePersona;
+        if (updates.planMode !== undefined) prefPatch.planMode = updates.planMode;
         if (updates.customInstructions !== undefined) {
           prefPatch.customInstructions = updates.customInstructions;
         }
@@ -1564,6 +1578,7 @@ export function buildResumedTab(session: {
     modelOverride: null,
     reasoningEffortOverride: null,
     usePersona: true,
+    planMode: false,
     customInstructions: '',
     focusAreas: [],
     injectToken: Boolean(profileId),
