@@ -67,6 +67,7 @@ const SERVICE_TAB_ICONS: Record<string, () => React.ReactNode> = {
   'simulation-worker': IcoGamepad,
   'generation-api': IcoSparkles,
   'ai-client': IcoBot,
+  'embedding-daemon': IcoCpu,
 }
 
 /** Tabs whose icon should reflect the currently selected service. */
@@ -83,12 +84,13 @@ const HEALTH_TAB_COLOR: Record<string, string> = {
 
 // ── Panel components registry ──
 
-const CATEGORY_ORDER = ['platform', 'core', 'apps', 'services', 'launcher']
+const CATEGORY_ORDER = ['platform', 'core', 'apps', 'services', 'models', 'launcher']
 const CATEGORY_LABELS: Record<string, string> = {
   platform: 'Platform',
   core: 'Core',
   apps: 'Apps',
   services: 'Services',
+  models: 'Models',
   launcher: 'Launcher',
 }
 
