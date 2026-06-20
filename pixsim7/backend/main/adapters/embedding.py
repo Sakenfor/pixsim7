@@ -19,7 +19,9 @@ in the per-request services; the composite only does session-free provider
 *lookup* from an explicit, already-resolved model_id.
 
 Configuration (env vars, with sensible defaults):
-- PIXSIM_EMBEDDING_URL — base URL of the embedding-daemon HTTP service
+- PIXSIM_EMBEDDING_BASE_URL — base URL of the embedding-daemon HTTP service
+  (the launcher auto-derives this from the daemon's PIXSIM_EMBEDDING_PORT and
+  injects it into every service process)
 - PIXSIM_EMBEDDING_MODEL_ID — model identifier recorded on each image vector row
 
 The image path is an HTTP client to the standalone `embedding-daemon` service
@@ -52,7 +54,7 @@ _DEFAULT_MODEL_ID = "google/siglip2-large-patch16-384"
 
 
 def _build_image_service() -> EmbeddingService:
-    base_url = os.environ.get("PIXSIM_EMBEDDING_URL", _DEFAULT_URL)
+    base_url = os.environ.get("PIXSIM_EMBEDDING_BASE_URL", _DEFAULT_URL)
     model_id = os.environ.get("PIXSIM_EMBEDDING_MODEL_ID", _DEFAULT_MODEL_ID)
     return HttpEmbeddingService(base_url=base_url, model_id=model_id)
 

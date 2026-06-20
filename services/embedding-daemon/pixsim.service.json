@@ -7,7 +7,7 @@
   "module": "pixsim7.embedding.server:app",
   "port_env": "PIXSIM_EMBEDDING_PORT",
   "default_port": 8002,
-  "base_url_env": "PIXSIM_EMBEDDING_URL",
+  "base_url_env": "PIXSIM_EMBEDDING_BASE_URL",
   "health_endpoint": "/health",
   "ports": [
     {
@@ -24,6 +24,11 @@
       "default": 8002,
       "description": "HTTP port the embedding daemon listens on",
       "env_export": "PIXSIM_EMBEDDING_PORT"
+    },
+    {
+      "key": "base_url",
+      "description": "Public base URL consumers reach the daemon at (empty = auto-derived from port and exported to every service as PIXSIM_EMBEDDING_BASE_URL)",
+      "env_export": "PIXSIM_EMBEDDING_BASE_URL"
     }
   ]
 }

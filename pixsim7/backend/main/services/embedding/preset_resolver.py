@@ -57,10 +57,10 @@ _FALLBACKS: dict[str, tuple[str, str]] = {
         "CMD_EMBEDDING_COMMAND",
         "python -m pixsim7.embedding.cli.text_local",
     ),
-    "asset:embedding": (
-        "PIXSIM_EMBEDDING_COMMAND",
-        "python -m pixsim7.embedding.cli.image_local --serve",
-    ),
+    # NOTE: asset:embedding (image) no longer resolves a subprocess *command* —
+    # it runs as a standalone HTTP service (the embedding-daemon card) reached
+    # via HttpEmbeddingService. See adapters/embedding.py. Only the text path
+    # still uses a per-analyzer command here.
 }
 
 

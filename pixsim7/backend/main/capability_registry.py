@@ -64,7 +64,13 @@ def all_bindings() -> tuple[CapabilityBinding, ...]:
             name="embedding",
             binder=bind_embedding_capabilities,
             shutdown=shutdown_embedding_capabilities,
-            hosts=frozenset({"main_worker"}),
+            # fastapi included so request-time text-embedding paths (e.g.
+            # /prompts/search/similar?mode=vector, asset semantic search) can
+            # reach the locator. Binding constructs the CompositeEmbeddingService
+            # over an HttpEmbeddingService (image) + the host-side text-provider
+            # registry (text). The image client is a plain HTTP client to the
+            # embedding-daemon service — no torch import cost in any host.
+            hosts=frozenset({"fastapi", "main_worker"}),
         ),
     )
 
