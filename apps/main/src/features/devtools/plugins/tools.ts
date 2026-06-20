@@ -52,6 +52,27 @@ export const blockFitTool = defineDevTool({
 });
 
 // ============================================================================
+// Launcher
+// ============================================================================
+
+export const launcherWebTool = defineDevTool({
+  id: 'launcher-web',
+  label: 'Open Launcher',
+  updatedAt: '2026-06-19T00:00:00Z',
+  changeNote: 'Shortcut from the main app to the launcher web UI.',
+  featureHighlights: ['Opens the launcher service web UI in a new browser tab.'],
+  description: 'Open the launcher service web UI (services, logs, codegen, DB tools) in a new tab',
+  icon: 'rocket',
+  category: 'debug',
+  // Dev: launcher Vite server on :3100. Prod build: launcher API serves the
+  // bundle on :8100. The panel rewrites `localhost` to the current hostname so
+  // it survives LAN/ZeroTier access.
+  externalUrl: import.meta.env.PROD ? 'http://localhost:8100' : 'http://localhost:3100',
+  tags: ['launcher', 'services', 'logs', 'devops'],
+  safeForNonDev: true,
+});
+
+// ============================================================================
 // Codegen Tools
 // ============================================================================
 

@@ -227,6 +227,16 @@ export function DevToolsPanel() {
   const handleOpenTool = (tool: DevToolEntry) => {
     addRecentTool(tool.id);
 
+    if (tool.externalUrl) {
+      // Rewrite localhost → current hostname so LAN/ZeroTier access works.
+      const url = tool.externalUrl.replace(
+        /^http:\/\/localhost:/,
+        `http://${window.location.hostname}:`,
+      );
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
     if (tool.__panelId) {
       openFloatingWorkspacePanel(tool.__panelId);
       return;
@@ -321,7 +331,7 @@ interface DevToolCardProps {
 }
 
 function DevToolCard({ tool, onOpen }: DevToolCardProps) {
-  const hasAction = !!(tool.routePath || tool.panelComponent || tool.__panelId);
+  const hasAction = !!(tool.externalUrl || tool.routePath || tool.panelComponent || tool.__panelId);
   const variant = CATEGORY_VARIANTS[tool.category ?? "misc"] ?? "primary";
   const updatedAtLabel = formatUpdatedAt(tool.updatedAt);
   const highlights = tool.featureHighlights ?? [];

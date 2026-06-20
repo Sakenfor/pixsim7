@@ -104,6 +104,14 @@ export interface DevToolDefinition extends PluginMeta {
   /** Optional route for full-page dev tools */
   routePath?: string;
 
+  /**
+   * Optional external URL opened in a new browser tab (e.g. a sibling web app
+   * served on a different port/origin). A leading `http://localhost:` is
+   * rewritten to the current `location.hostname` so it survives LAN/ZeroTier
+   * access. Takes precedence over `routePath` when present.
+   */
+  externalUrl?: string;
+
   /** Optional tags for filtering/search */
   tags?: string[];
 
