@@ -1,9 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { getCurrentUserProfile, updateCurrentUserProfile, type UserProfile } from '@lib/api';
+import {
+  getCurrentUserProfile,
+  listMyAgentProfiles,
+  listMyProjectScopeOptions,
+  listMyWorldScopeOptions,
+  listScopeContractOptions,
+  listScopePlanOptions,
+  updateCurrentUserProfile,
+  type AdminAgentProfile,
+  type UserProfile,
+} from '@lib/api';
 import { CODEGEN_PERMISSION, DIAGNOSTICS_PERMISSION } from '@lib/auth/userRoles';
 import { Icon } from '@lib/icons';
 
+import { draftFor } from '@/features/settings/components/modules/agentScopeDraft';
+import {
+  ProfileScopeSummary,
+  type ScopeOptionMaps,
+} from '@/features/settings/components/modules/ProfileScopeSummary';
 import { useAuthStore } from '@/stores/authStore';
 
 // ---------------------------------------------------------------------------
@@ -81,6 +96,43 @@ export function AccountView() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Read-only reflection of the user's OWN agent profiles + what each may touch
+  // (agent-scope-admin-ux cp5). Mirrors the admin Settings → Access view via the
+  // shared <ProfileScopeSummary>; uses owner-scoped endpoints only. Labels resolve
+  // own worlds/projects + global plans/contracts; cross-owner grants fall back to
+  // raw ids. Per-source failures are tolerated.
+  const [agentProfiles, setAgentProfiles] = useState<AdminAgentProfile[] | null>(null);
+  const [scopeOptions, setScopeOptions] = useState<ScopeOptionMaps>({
+    plans: [],
+    worlds: [],
+    projects: [],
+    contracts: [],
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [profs, plans, worlds, projects, contracts] = await Promise.all([
+        listMyAgentProfiles().catch(() => ({ profiles: [], total: 0 })),
+        listScopePlanOptions().catch(() => []),
+        listMyWorldScopeOptions().catch(() => []),
+        listMyProjectScopeOptions().catch(() => []),
+        listScopeContractOptions().catch(() => []),
+      ]);
+      if (cancelled) return;
+      setAgentProfiles(profs.profiles.filter((p) => p.status !== 'archived'));
+      setScopeOptions({
+        plans,
+        worlds: [{ value: 'world:*', label: 'All worlds' }, ...worlds],
+        projects,
+        contracts,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const dirty = useMemo(() => {
     if (!profile) return false;
@@ -257,6 +309,39 @@ export function AccountView() {
                   Ask an admin to enable a capability in Settings → Access.
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Agent profile scopes — read-only reflection of Settings → Access (cp5). */}
+          {agentProfiles && agentProfiles.length > 0 && (
+            <div className="pt-3 border-t border-neutral-800 space-y-2">
+              <h3 className="text-xs font-medium text-neutral-300">Agent profiles</h3>
+              <p className="text-[11px] text-neutral-600 leading-snug">
+                What the agents you run may touch. Granting is admin-only (Settings → Access).
+              </p>
+              <div className="space-y-2">
+                {agentProfiles.map((p) => (
+                  <div
+                    key={p.id}
+                    className="rounded border border-neutral-800 bg-neutral-900/40 px-2.5 py-2 space-y-1.5"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          p.status === 'active'
+                            ? 'bg-emerald-600/20 text-emerald-300'
+                            : 'bg-neutral-800 text-neutral-500'
+                        }`}
+                      >
+                        {p.status}
+                      </span>
+                      <span className="text-xs text-neutral-200 truncate">{p.label}</span>
+                      <code className="ml-auto text-[9px] text-neutral-500">{p.agent_type}</code>
+                    </div>
+                    <ProfileScopeSummary draft={draftFor(p)} options={scopeOptions} />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

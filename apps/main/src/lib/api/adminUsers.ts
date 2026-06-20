@@ -235,3 +235,29 @@ export async function listProfileScopeAudit(
     params: { domain: 'agent', entity_type: 'agent_profile', entity_id: profileId, limit },
   });
 }
+
+// --- Self (non-admin) reflection of own agent profiles (agent-scope-admin-ux cp5) ---
+// AccountView shows the current user their OWN profiles' scopes read-only, via the
+// owner-scoped endpoints (no admin gate). Label resolution uses the user's own
+// worlds/projects; cross-owner grants fall back to raw ids in the summary.
+
+/** The current user's own agent profiles (owner-scoped, non-admin). */
+export async function listMyAgentProfiles(): Promise<AdminAgentProfilesResponse> {
+  return pixsimClient.get<AdminAgentProfilesResponse>('/dev/agent-profiles');
+}
+
+/** The current user's own worlds as scope options, for labelling the self summary. */
+export async function listMyWorldScopeOptions(): Promise<ScopeOption[]> {
+  const resp = await pixsimClient.get<{ worlds?: Array<{ id: number; name: string }> }>(
+    '/game/worlds/',
+  );
+  return (resp.worlds ?? []).map((w) => ({ value: `world:${w.id}`, label: `${w.name} (#${w.id})` }));
+}
+
+/** The current user's own saved project snapshots as scope options. */
+export async function listMyProjectScopeOptions(): Promise<ScopeOption[]> {
+  const resp = await pixsimClient.get<Array<{ id: number; name: string }>>(
+    '/game/worlds/projects/snapshots',
+  );
+  return (resp ?? []).map((p) => ({ value: `project:${p.id}`, label: `${p.name} (#${p.id})` }));
+}

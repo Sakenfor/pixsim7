@@ -65,7 +65,7 @@ export { getCurrentUserProfile, updateCurrentUserProfile } from './userProfile';
 export type { UserProfile, UpdateUserProfileParams } from './userProfile';
 export { getCommunityRoom, sendCommunityMessage, markCommunityRoomRead } from './communityChat';
 export type { CommunityChatMessage, CommunityRoomResponse } from './communityChat';
-export { adminDeactivateUser, adminUpdateUser, adminUpdateAgentProfileScope, listAdminAgentProfiles, listAdminUsers, listAdminWorldOptions, listAdminProjectOptions, listScopePlanOptions, listScopeContractOptions, listAgentRuns, listProfileScopeAudit, listBridgeMachines, updateAdminUserPermissions } from './adminUsers';
+export { adminDeactivateUser, adminUpdateUser, adminUpdateAgentProfileScope, listAdminAgentProfiles, listAdminUsers, listAdminWorldOptions, listAdminProjectOptions, listScopePlanOptions, listScopeContractOptions, listAgentRuns, listProfileScopeAudit, listMyAgentProfiles, listMyWorldScopeOptions, listMyProjectScopeOptions, listBridgeMachines, updateAdminUserPermissions } from './adminUsers';
 export type { AdminAgentProfile, AdminAgentProfilesResponse, AdminProfileScopeParams, AdminUpdateUserParams, AdminUserPermissions, AdminUsersListResponse, AdminScopeResourceOption, AdminWorldOptionsResponse, AgentRun, AuditEvent, AuditEventsResponse, ScopeOption, BridgeMachine, BridgeMachinesResponse, ListAdminUsersParams, ListBridgeMachinesParams } from './adminUsers';
 export { listCodegenTasks, runCodegenTask } from './codegen';
 export type { CodegenRunRequest, CodegenRunResponse, CodegenTask, CodegenTasksResponse } from './codegen';
