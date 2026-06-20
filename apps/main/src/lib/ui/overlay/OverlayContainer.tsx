@@ -123,10 +123,27 @@ function StackGroupContainer({
     return () => ro.disconnect();
   }, [measure, scrollCount]);
 
+  // Remembered scroll position across hover cycles. Hover-gated glyphs collapse
+  // via `grid-template-rows: 0fr` on hover-out (they don't unmount), shrinking
+  // the region so the browser clamps scrollTop to 0; on hover-in we restore the
+  // saved spot once the glyphs finish re-expanding (see handleTransitionEnd).
+  const savedScrollRef = useRef(0);
+  const prevScrollSizeRef = useRef(0);
+
   const handleScroll = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     const pos = isColumn ? el.scrollTop : el.scrollLeft;
+    const scrollSize = isColumn ? el.scrollHeight : el.scrollWidth;
+    // Only remember the position on a real user scroll — i.e. when the content
+    // size is stable. A scroll event fired *because* the content is collapsing/
+    // expanding (height changing) is the browser clamping, not the user, and
+    // must not overwrite the saved spot with the clamped 0.
+    if (scrollSize === prevScrollSizeRef.current) {
+      savedScrollRef.current = pos;
+    }
+    prevScrollSizeRef.current = scrollSize;
+
     const dir = pos > lastPos.current ? 1 : pos < lastPos.current ? -1 : 0;
     lastPos.current = pos;
     if (dir !== 0) {
@@ -136,6 +153,36 @@ function StackGroupContainer({
     }
     measure();
   }, [isColumn, measure]);
+
+  // Restore the saved position when the glyphs finish re-expanding on hover-in.
+  // `grid-template-rows` is the collapse/expand axis; ignore the sibling opacity/
+  // margin transitions. No-op while collapsed (not overflowing).
+  const handleTransitionEnd = useCallback(
+    (e: React.TransitionEvent) => {
+      if (e.propertyName !== 'grid-template-rows') return;
+      const el = ref.current;
+      if (!el) return;
+      const size = isColumn ? el.clientHeight : el.clientWidth;
+      const scrollSize = isColumn ? el.scrollHeight : el.scrollWidth;
+      if (scrollSize <= size + 1) return; // collapsed → nothing to restore yet
+      const target = Math.min(savedScrollRef.current, scrollSize - size);
+      if (target <= 0) return;
+      if (isColumn) {
+        if (Math.abs(el.scrollTop - target) > 1) el.scrollTop = target;
+      } else if (Math.abs(el.scrollLeft - target) > 1) {
+        el.scrollLeft = target;
+      }
+    },
+    [isColumn],
+  );
+
+  // Forget the saved spot when the set of scrollable widgets changes (e.g.
+  // expand/collapse toggled, or active sets added/removed) — a fresh stack
+  // starts at the top.
+  useEffect(() => {
+    savedScrollRef.current = 0;
+    prevScrollSizeRef.current = 0;
+  }, [scrollCount]);
 
   const flexStyle: React.CSSProperties = {
     display: 'flex',
@@ -161,6 +208,7 @@ function StackGroupContainer({
           <div
             ref={ref}
             onScroll={handleScroll}
+            onTransitionEnd={handleTransitionEnd}
             className="no-scrollbar"
             // Marks this region as wheel-scrollable so ancestor wheel handlers
             // (e.g. the asset viewer's scroll-to-zoom in MediaPanel) bail out

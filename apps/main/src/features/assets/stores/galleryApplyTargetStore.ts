@@ -2,10 +2,11 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 /**
- * Max simultaneously-active add-target sets. The media-card badge stack scrolls
- * when it overflows a small card, so this can be generous without crowding.
+ * Max simultaneously-active add-target sets. The media-card badge stack collapses
+ * to a count badge by default and scrolls when expanded past a small card, so
+ * this can be generous without crowding.
  */
-export const MAX_ACTIVE_TARGETS = 6;
+export const MAX_ACTIVE_TARGETS = 20;
 
 interface GalleryApplyTargetState {
   /**
