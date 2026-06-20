@@ -579,7 +579,13 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   const groupSearchOverrides = useMemo(() => {
     // Build union of asset IDs from checked filter sets
     let asset_ids: number[] | undefined;
-    if (filterSetIds.length > 0) {
+    // Only resolve set membership once the backend-backed set cache has loaded.
+    // Before that, `allSets` is empty, every referenced set looks empty, and the
+    // filter collapses to the [-1] "match nothing" sentinel — blanking the
+    // gallery on refresh when a set filter is persisted. While the cache is
+    // still loading we leave asset_ids unset; this memo recomputes once the
+    // sets arrive (allSets / setsStatus are deps).
+    if (filterSetIds.length > 0 && setsStatus === 'ready') {
       const ids = new Set<number>();
       for (const setId of filterSetIds) {
         const s = allSets.find((ms): ms is ManualAssetSet => ms.kind === 'manual' && ms.id === setId);
@@ -594,7 +600,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     const idsPart = asset_ids ? { asset_ids } : {};
     const merged = { ...groupPart, ...idsPart };
     return Object.keys(merged).length > 0 ? merged : undefined;
-  }, [groupFilter, groupPathPayload, isLeafGroup, filterSetIds, allSets]);
+  }, [groupFilter, groupPathPayload, isLeafGroup, filterSetIds, allSets, setsStatus]);
   const initialPageRef = useRef(parsePageParam(location.search));
   const controller = useAssetsController({
     initialPage: initialPageRef.current,
