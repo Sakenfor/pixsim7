@@ -287,6 +287,13 @@ function MediaPanelInner({ context }: MediaPanelProps) {
 
     const onWheel = (e: WheelEvent) => {
       if (effectiveOverlayMode !== 'none') return;
+      // Let a wheel-scrollable overlay region (e.g. the top-right active-target
+      // set-badge stack) consume the wheel for its own native scroll instead of
+      // zooming the media. Without this bail, preventDefault below cancels the
+      // inner region's scroll and the badges can't be wheeled in the viewer
+      // (they scroll fine in the gallery, which has no zoom-wheel handler).
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-overlay-scroll]')) return;
       e.preventDefault();
 
       const rect = el.getBoundingClientRect();

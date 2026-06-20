@@ -123,6 +123,11 @@ export interface TargetToggleWidgetOptions {
   tooltip?: string;
   /** Override className (rarely needed; tint is derived from `isMember`). */
   className?: string;
+  /**
+   * Appended to the resolved className (does NOT replace the tint). Use for
+   * one-off concerns like an entrance animation on expand.
+   */
+  extraClassName?: string;
 }
 
 /**
@@ -155,11 +160,12 @@ export function buildTargetToggleWidget(
     shape: 'circle',
     tooltip: options.tooltip,
     onClick: () => onToggle(),
-    className:
+    className: `${
       options.className ??
       (isMember
         ? '!bg-emerald-600/90 !text-white backdrop-blur-sm shadow-sm'
-        : '!bg-white/95 dark:!bg-neutral-900/95 !text-neutral-700 dark:!text-neutral-200 hover:!bg-accent/10 shadow-sm'),
+        : '!bg-white/95 dark:!bg-neutral-900/95 !text-neutral-700 dark:!text-neutral-200 hover:!bg-accent/10 shadow-sm')
+    }${options.extraClassName ? ` ${options.extraClassName}` : ''}`,
     // Keep status/favorite/tag controls at the top-right leader positions.
     priority: BADGE_PRIORITY.status + 1,
     }),

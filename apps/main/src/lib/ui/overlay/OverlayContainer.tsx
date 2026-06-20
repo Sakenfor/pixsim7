@@ -6,6 +6,7 @@
  * optional collision detection.
  */
 
+import { OverflowBracket } from '@pixsim7/shared.ui';
 import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 
 import { useWidgetData, type DataSourceBinding } from '@lib/dataBinding';
@@ -35,38 +36,14 @@ const STACK_EDGE_MARGIN = 8;
 /** Cap the region to this fraction of the card so it stays proportionally tight
  *  on small cards (where the room-to-edge alone is still too generous). */
 const STACK_MAX_FRACTION = 0.42;
-
-/** Curved "more items" bracket, matching the ButtonGroup overflow affordance. */
-function StackOverflowBracket({
-  edge,
-  bob,
-}: {
-  edge: 'start' | 'end';
-  /** True while scrolling toward this edge — nudges the bracket outward briefly. */
-  bob: boolean;
-}) {
-  // Column stacks bracket top/bottom; only the column case is used today, but
-  // keep the markup identical in spirit to ButtonGroup's vertical brackets.
-  const isStart = edge === 'start';
-  return (
-    <svg
-      className={`absolute pointer-events-none z-10 text-accent-hover overflow-visible transition-transform duration-200 ease-out inset-x-0 w-full h-1.5 ${
-        isStart ? '-top-1.5' : '-bottom-1.5'
-      }`}
-      style={{ transform: `translateY(${bob ? (isStart ? -2 : 2) : 0}px)` }}
-      viewBox="0 0 24 6"
-      preserveAspectRatio="none"
-      fill="none"
-    >
-      <path
-        d={isStart ? 'M0,6 C0,0 24,0 24,6' : 'M0,0 C0,6 24,6 24,0'}
-        stroke="currentColor"
-        strokeWidth="1.5"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
-}
+/**
+ * Slack (px) added on the region's cross axis so a badge's hover-pop (scale up
+ * to ~1.18×, see tailwind `hover-pop`) has room to grow instead of being
+ * clipped. A scroll container with `overflow: auto` on one axis forces the
+ * other axis to compute to `auto` too (CSS spec), so `overflow-x: visible`
+ * doesn't actually keep the sides un-clipped — the padding does, and a matching
+ * negative margin keeps the region's visual position unchanged. */
+const STACK_POP_SLACK = 5;
 
 /**
  * A single auto-stacked badge group (e.g. the top-right column). Capped via
@@ -175,17 +152,43 @@ function StackGroupContainer({
       {pinned.map(renderWidget)}
       {scrollCount > 0 && (
         <div className="relative" style={{ ...flexStyle, pointerEvents: 'none' }}>
-          {overflowing && !atStart && <StackOverflowBracket edge="start" bob={scrollDir === -1} />}
-          {overflowing && !atEnd && <StackOverflowBracket edge="end" bob={scrollDir === 1} />}
+          {overflowing && !atStart && (
+            <OverflowBracket orientation="vertical" edge="start" variant="round" active={scrollDir === -1} />
+          )}
+          {overflowing && !atEnd && (
+            <OverflowBracket orientation="vertical" edge="end" variant="round" active={scrollDir === 1} />
+          )}
           <div
             ref={ref}
             onScroll={handleScroll}
             className="no-scrollbar"
+            // Marks this region as wheel-scrollable so ancestor wheel handlers
+            // (e.g. the asset viewer's scroll-to-zoom in MediaPanel) bail out
+            // and let the native overflow scroll run instead of preventing it.
+            data-overlay-scroll=""
             style={{
               ...flexStyle,
               ...(isColumn
-                ? { maxHeight: maxExtent, overflowY: 'auto', overflowX: 'visible' }
-                : { maxWidth: maxExtent, overflowX: 'auto', overflowY: 'visible' }),
+                ? {
+                    maxHeight: maxExtent,
+                    overflowY: 'auto',
+                    overflowX: 'visible',
+                    // Cross axis (horizontal) slack so the hover-pop isn't
+                    // clipped at the sides; negative margin cancels the shift.
+                    paddingLeft: STACK_POP_SLACK,
+                    paddingRight: STACK_POP_SLACK,
+                    marginLeft: -STACK_POP_SLACK,
+                    marginRight: -STACK_POP_SLACK,
+                  }
+                : {
+                    maxWidth: maxExtent,
+                    overflowX: 'auto',
+                    overflowY: 'visible',
+                    paddingTop: STACK_POP_SLACK,
+                    paddingBottom: STACK_POP_SLACK,
+                    marginTop: -STACK_POP_SLACK,
+                    marginBottom: -STACK_POP_SLACK,
+                  }),
               // Don't chain the wheel to the gallery when the stack hits its edge.
               overscrollBehavior: 'contain',
               // Capture pointer events (for wheel scroll) only while overflowing;

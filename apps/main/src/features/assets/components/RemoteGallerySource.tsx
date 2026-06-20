@@ -48,6 +48,7 @@ import { useAssetSets, useAssetSetStore, type ManualAssetSet } from '../stores/a
 import { useAssetViewerStore, selectIsViewerOpen } from '../stores/assetViewerStore';
 import { useFilterPresetStore } from '../stores/filterPresetStore';
 import { useGalleryApplyTargetStore } from '../stores/galleryApplyTargetStore';
+import { useSurfaceSetBadgesExpanded } from '../stores/setBadgeExpansionStore';
 
 import { ClusterCard } from './ClusterCard';
 import { CuratorSurfaceContent } from './CuratorGallerySurface';
@@ -440,10 +441,17 @@ const RemoteGalleryCard = memo(function RemoteGalleryCard({
     [asset, getAssetActions, activeSets, onAddToActiveTargets, providers, filterProviderId, reuploadAsset, onResetAssets],
   );
 
+  // Collapsed/expanded set badges are scoped to this surface ('gallery'),
+  // shared across every gallery card rather than saved per card.
+  const setBadgesExpanded = useSurfaceSetBadgesExpanded('gallery');
+
   const customWidgets = useMemo(() => {
-    const widgets = buildActiveTargetWidgets(asset.id, activeSets);
+    const widgets = buildActiveTargetWidgets(asset.id, activeSets, {
+      surfaceKey: 'gallery',
+      expanded: setBadgesExpanded,
+    });
     return widgets.length > 0 ? widgets : undefined;
-  }, [asset, activeSets]);
+  }, [asset, activeSets, setBadgesExpanded]);
 
   return (
     <div

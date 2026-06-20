@@ -22,6 +22,7 @@ import { isBackendAssetId } from '@features/assets/lib/backendAssetId';
 import { isFavoriteAsset } from '@features/assets/lib/favoriteTag';
 import { useAssetSets } from '@features/assets/stores/assetSetStore';
 import { useGalleryApplyTargetStore } from '@features/assets/stores/galleryApplyTargetStore';
+import { useSurfaceSetBadgesExpanded } from '@features/assets/stores/setBadgeExpansionStore';
 
 import { buildMediaCardOverlayData } from '../mediaCardRuntimeWidgetBuilder';
 import type { MediaCardOverlayData } from '../mediaCardWidgets';
@@ -153,6 +154,9 @@ export function useOverlayWidgetsForAsset({
     () => selectActiveTargetSets(sets, activeManualSetIds),
     [activeManualSetIds, sets],
   );
+  // Collapsed/expanded set badges are scoped to this surface ('viewer'), shared
+  // across every card in the viewer rather than saved per card.
+  const setBadgesExpanded = useSurfaceSetBadgesExpanded('viewer');
 
   // Push semantics: left inset = sum of currently-active tool sidebars in
   // this viewer's EdgeInsetsScope. Used to shift left-anchored badges past
@@ -193,7 +197,10 @@ export function useOverlayWidgetsForAsset({
         widget !== null && widget.id !== 'video-scrubber',
     );
 
-    for (const widget of buildActiveTargetWidgets(asset.id, activeSets)) {
+    for (const widget of buildActiveTargetWidgets(asset.id, activeSets, {
+      surfaceKey: 'viewer',
+      expanded: setBadgesExpanded,
+    })) {
       candidates.push(widget as OverlayWidget<MediaCardOverlayData>);
     }
 
@@ -221,5 +228,5 @@ export function useOverlayWidgetsForAsset({
     });
 
     return { overlayConfig, overlayData };
-  }, [asset, getVisibility, activeSets, leftInset]);
+  }, [asset, getVisibility, activeSets, leftInset, setBadgesExpanded]);
 }

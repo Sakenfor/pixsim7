@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { useHoverExpand } from './useHoverExpand';
+import { OverflowBracket } from './OverflowBracket';
 import { PortalFloat, type AnchorPlacement } from './PortalFloat';
 import { useBurstGesture, BurstLadder } from './burstGesture';
 
@@ -398,56 +399,20 @@ export function ButtonGroup({
         className
       )}
     >
-      {/* Scroll indicators — brackets showing more items exist */}
+      {/* Scroll indicators — brackets showing more items exist (shared shape;
+          `pill` variant matches this row's rounded-full curvature). */}
       {isWindowed && (
         <>
-          {/* Scroll indicators — SVG arcs matching the pill's rounded-full curvature */}
-          <svg
-            className={clsx(
-              'absolute pointer-events-none z-10 text-accent-hover overflow-visible transition-transform duration-200 ease-out',
-              isHorizontal
-                ? '-left-1.5 inset-y-0 h-full w-1.5'
-                : 'inset-x-0 -top-1.5 w-full h-1.5',
-            )}
-            style={{
-              transform: isHorizontal
-                ? `translateX(${scrollDir === -1 ? -2 : 0}px)`
-                : `translateY(${scrollDir === -1 ? -2 : 0}px)`,
-            }}
-            viewBox={isHorizontal ? '0 0 6 24' : '0 0 24 6'}
-            preserveAspectRatio="none"
-            fill="none"
-          >
-            <path
-              d={isHorizontal ? 'M6,0 C0,0 0,24 6,24' : 'M0,6 C0,0 24,0 24,6'}
-              stroke="currentColor"
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-          <svg
-            className={clsx(
-              'absolute pointer-events-none z-10 text-accent-hover overflow-visible transition-transform duration-200 ease-out',
-              isHorizontal
-                ? '-right-1.5 inset-y-0 h-full w-1.5'
-                : 'inset-x-0 -bottom-1.5 w-full h-1.5',
-            )}
-            style={{
-              transform: isHorizontal
-                ? `translateX(${scrollDir === 1 ? 2 : 0}px)`
-                : `translateY(${scrollDir === 1 ? 2 : 0}px)`,
-            }}
-            viewBox={isHorizontal ? '0 0 6 24' : '0 0 24 6'}
-            preserveAspectRatio="none"
-            fill="none"
-          >
-            <path
-              d={isHorizontal ? 'M0,0 C6,0 6,24 0,24' : 'M0,0 C0,6 24,6 24,0'}
-              stroke="currentColor"
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
+          <OverflowBracket
+            orientation={isHorizontal ? 'horizontal' : 'vertical'}
+            edge="start"
+            active={scrollDir === -1}
+          />
+          <OverflowBracket
+            orientation={isHorizontal ? 'horizontal' : 'vertical'}
+            edge="end"
+            active={scrollDir === 1}
+          />
         </>
       )}
 
