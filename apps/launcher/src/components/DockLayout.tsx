@@ -110,7 +110,7 @@ function groupByCategory(services: ServiceState[]): { category: string; label: s
     )
 }
 
-function ServicesPanel() {
+export function ServicesPanel({ onServiceOpen }: { onServiceOpen?: (key: string) => void } = {}) {
   const {
     services, selectedKey, loading,
     selectService, startService, stopService, restartService,
@@ -163,7 +163,7 @@ function ServicesPanel() {
                   {groupServices.map((svc) => (
                     <ServiceCard key={svc.key} service={svc} services={services} selected={svc.key === selectedKey}
                       desktopAvailable={desktopAvailable}
-                      onSelect={() => selectService(svc.key)}
+                      onSelect={() => { selectService(svc.key); onServiceOpen?.(svc.key) }}
                       onStart={() => startService(svc.key)}
                       onStop={() => stopService(svc.key)}
                       onRestart={() => restartService(svc.key)} />
@@ -182,7 +182,7 @@ function ConsolePanel({ onFieldClick }: { onFieldClick?: (n: string, v: string) 
   return <LogViewer onFieldClick={onFieldClick} />
 }
 
-function ServiceInfoPanel() {
+export function ServiceInfoPanel() {
   const selectedKey = useServicesStore((s) => s.selectedKey)
   const selectedSection = useServicesStore((s) => s.selectedSection)
   const services = useServicesStore((s) => s.services)

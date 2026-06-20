@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Bind to all interfaces so LAN / ZeroTier devices (phone, tablet) can
+    // reach the launcher dev UI — same as the main app's dev server.
+    host: true,
     port: 3100,
     proxy: {
       '/services': 'http://localhost:8100',
