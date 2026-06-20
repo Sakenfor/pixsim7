@@ -6,7 +6,15 @@ Lightweight agent that runs on user's machine to expose local Android devices
 to the PixSim7 server over ZeroTier network.
 
 Usage:
+    # On a machine that has the repo/package installed:
+    python -m pixsim7.automation.agent --server https://your-server.com
+
+    # Standalone: copy this single file to any machine with Python + aiohttp +
+    # ADB + ZeroTier (no repo needed) and run it directly:
     python device_agent.py --server https://your-server.com
+
+This module deliberately keeps zero ``pixsim7.*`` imports so it stays copyable
+as a single file. Do not add intra-package imports.
 
 Features:
 - Auto-discovers local ADB devices

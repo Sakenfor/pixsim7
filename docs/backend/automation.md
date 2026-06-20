@@ -91,7 +91,7 @@ class DeviceAgent(SQLModel, table=True):
 ```
 
 **Connection Flow:**
-1. User runs `device_agent.py` on remote PC
+1. User runs the device agent on remote PC (`python -m pixsim7.automation.agent`, or the copied standalone `device_agent.py`)
 2. Agent requests pairing code from server (`/automation/agents/request-pairing`)
 3. Agent displays code (e.g., "A1B2-C3D4") to user
 4. User enters code in web UI (`/automation/agents/complete-pairing`)
@@ -296,7 +296,7 @@ Devices connect via agents running on host machines over ZeroTier:
 ```
 
 **Scripts:**
-- `scripts/device_agent.py` - Python agent for remote PCs
+- `pixsim7/automation/agent/` - Python agent for remote PCs (`python -m pixsim7.automation.agent`; the single `device_agent.py` is also copyable to a repo-less machine)
 - `apps/pixsim7-android/` - Android app agent (mobile)
 
 ## Integration with Other Domains

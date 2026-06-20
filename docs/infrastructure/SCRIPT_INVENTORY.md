@@ -57,13 +57,14 @@
   - Status: ✅ Active (recent addition)
 
 ### Device Automation
-- **`scripts/device_agent.py`**
+- **`pixsim7/automation/agent/device_agent.py`** (moved from `scripts/` — automation package now owns it)
   - Purpose: Lightweight agent for exposing local Android devices over network
+  - Run: `python -m pixsim7.automation.agent` (repo present), or copy the single `device_agent.py` to a repo-less machine and run `python device_agent.py`
   - Used by: Device automation system (pixsim7/backend/main/api/v1/device_agents.py)
   - Status: ✅ Active (part of automation infrastructure)
   - Features: ADB device discovery, server registration, command proxy
   - Backend: Has dedicated API endpoints, domain models, and database migrations
-  - Documentation: scripts/DEVICE_AGENT_README.md
+  - Documentation: pixsim7/automation/agent/README.md
 
 ## Experimental/Legacy Scripts
 
@@ -83,9 +84,11 @@ scripts/
 ├── view_account_passwords.py        # Admin utility
 ├── check_missing_imports.py         # Dev tool
 ├── check_orphan_routers.py          # Dev tool
-├── device_agent.py                  # Device automation agent
-├── DEVICE_AGENT_README.md           # Device agent docs
 └── IMPORT_ACCOUNTS_GUIDE.md         # Import accounts docs
+
+# Device agent moved to the automation package:
+#   pixsim7/automation/agent/device_agent.py  (run: python -m pixsim7.automation.agent)
+#   pixsim7/automation/agent/README.md
 ```
 
 ### No Changes Needed

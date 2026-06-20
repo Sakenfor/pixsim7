@@ -2,6 +2,9 @@
 
 Connect your local Android devices to PixSim7 server remotely over ZeroTier.
 
+Lives at `pixsim7/automation/agent/` — the automation package owns Android
+device concerns end-to-end.
+
 ## Prerequisites
 
 - Python 3.8+
@@ -11,17 +14,34 @@ Connect your local Android devices to PixSim7 server remotely over ZeroTier.
 
 ## Installation
 
+The agent has **zero `pixsim7.*` imports**, so you can run it two ways:
+
+**A. On a machine that has the repo** — run it as a module, no copying needed:
+
 ```bash
-# Install required packages
+python -m pixsim7.automation.agent --server http://10.243.48.125:8001
+```
+
+**B. On a remote machine without the repo** — copy the single
+`device_agent.py` from this directory to that machine, then:
+
+```bash
+# Install the one runtime dependency
 pip install aiohttp
 
 # Make agent executable (Linux/Mac)
 chmod +x device_agent.py
+
+python device_agent.py --server http://10.243.48.125:8001
 ```
 
 ## Quick Start
 
 ```bash
+# With the repo:
+python -m pixsim7.automation.agent --server http://10.243.48.125:8001
+
+# Standalone copied file:
 python device_agent.py --server http://10.243.48.125:8001
 ```
 
