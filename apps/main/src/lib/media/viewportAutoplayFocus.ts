@@ -26,12 +26,26 @@ import type { RefObject } from 'react';
 import { hmrSingleton } from '@lib/utils';
 
 /**
- * A card is eligible to play only when at least this fraction of it is on
- * screen — measured against `min(cardHeight, viewportHeight)` so a card taller
- * than the viewport qualifies once it fills half the screen, while a short card
- * must be half-visible. Below this it is "scrolling past", so we play nothing.
+ * A card must reach this fraction on screen to *win* focus — measured against
+ * `min(cardHeight, viewportHeight)` so a card taller than the viewport qualifies
+ * once it fills half the screen, while a short card must be half-visible.
  */
 const MIN_VISIBLE_FRACTION = 0.5;
+
+/**
+ * Hysteresis: once a card is playing, it KEEPS focus until it drops below this
+ * (lower) fraction. Without the gap, a card dipping a hair under 0.5 mid-scroll
+ * would deselect to "no winner" and the clip would stutter to a stop before the
+ * next card qualifies. The incumbent rides the dip.
+ */
+const RELEASE_VISIBLE_FRACTION = 0.3;
+
+/**
+ * A challenger must be at least this many px closer to the viewport center than
+ * the current winner before we hand off. Stops two near-equidistant cards from
+ * trading focus (and tearing down/standing up decoders) every scroll frame.
+ */
+const SWITCH_MARGIN_PX = 48;
 
 type Entry = {
   el: HTMLElement;
@@ -44,12 +58,15 @@ interface FocusState {
   entries: Map<symbol, Entry>;
   recomputeScheduled: boolean;
   listenersWired: boolean;
+  /** The id currently holding focus — the incumbent for hysteresis. */
+  winner: symbol | null;
 }
 
 const state = hmrSingleton<FocusState>('viewportAutoplayFocus', () => ({
   entries: new Map<symbol, Entry>(),
   recomputeScheduled: false,
   listenersWired: false,
+  winner: null,
 }));
 
 function viewportHeight(): number {
@@ -65,10 +82,15 @@ function recompute(): void {
   const vh = viewportHeight();
   const center = vh / 2;
 
-  let winner: symbol | null = null;
-  // Sort key: prefer a card straddling the center line, then nearest center.
-  let bestCovers = false;
-  let bestDist = Infinity;
+  const incumbent = state.winner;
+  // Best fresh candidate at the full (win) threshold, plus the incumbent's
+  // current geometry so we can decide whether it still deserves to keep focus.
+  let challenger: symbol | null = null;
+  let challengerCovers = false;
+  let challengerDist = Infinity;
+  let incumbentOnScreen = false;
+  let incumbentDist = Infinity;
+  let incumbentFraction = 0;
 
   for (const [id, e] of state.entries) {
     if (!e.onScreen) continue;
@@ -76,24 +98,43 @@ function recompute(): void {
     if (rect.height <= 0) continue;
 
     const visibleH = Math.max(0, Math.min(rect.bottom, vh) - Math.max(rect.top, 0));
-    const eligibleFloor = Math.min(rect.height, vh) * MIN_VISIBLE_FRACTION;
-    if (visibleH < eligibleFloor) continue;
-
+    const fraction = visibleH / Math.min(rect.height, vh);
     const cardCenter = rect.top + rect.height / 2;
     const dist = Math.abs(cardCenter - center);
     const covers = rect.top <= center && rect.bottom >= center;
 
+    if (id === incumbent) {
+      incumbentOnScreen = true;
+      incumbentDist = dist;
+      incumbentFraction = fraction;
+    }
+
+    if (fraction < MIN_VISIBLE_FRACTION) continue;
     // Covering cards win over non-covering; within a group, nearest center wins.
     const better =
-      winner === null ||
-      (covers && !bestCovers) ||
-      (covers === bestCovers && dist < bestDist);
+      challenger === null ||
+      (covers && !challengerCovers) ||
+      (covers === challengerCovers && dist < challengerDist);
     if (better) {
-      winner = id;
-      bestCovers = covers;
-      bestDist = dist;
+      challenger = id;
+      challengerCovers = covers;
+      challengerDist = dist;
     }
   }
+
+  // Sticky winner: the incumbent rides minor dips (down to RELEASE_VISIBLE_
+  // FRACTION) and only yields when a challenger is clearly more central. If the
+  // incumbent is gone or too small, the best fresh challenger takes over.
+  let winner: symbol | null;
+  if (incumbentOnScreen && incumbentFraction >= RELEASE_VISIBLE_FRACTION) {
+    winner =
+      challenger !== null && challenger !== incumbent && challengerDist < incumbentDist - SWITCH_MARGIN_PX
+        ? challenger
+        : incumbent;
+  } else {
+    winner = challenger;
+  }
+  state.winner = winner;
 
   for (const [id, e] of state.entries) {
     const shouldBeActive = id === winner;
@@ -149,6 +190,8 @@ function register(el: HTMLElement, notify: (active: boolean) => void) {
     release() {
       const e = state.entries.get(id);
       state.entries.delete(id);
+      // Clear the incumbent if it was us, so hysteresis doesn't pin a ghost.
+      if (state.winner === id) state.winner = null;
       // Re-elect only if we were the active holder, so the next card lights up.
       if (e?.active) scheduleRecompute();
       teardownListenersIfIdle();
