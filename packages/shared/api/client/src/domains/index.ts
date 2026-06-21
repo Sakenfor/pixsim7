@@ -174,6 +174,7 @@ export type {
   AnalyzerTaskFamily,
   AnalyzersListResponse,
   ListAnalyzersOptions,
+  EmbeddingDaemonStatus,
 } from './analyzers';
 
 export type {

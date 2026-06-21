@@ -222,6 +222,21 @@ class AnalyzerInstanceListResponse(BaseModel):
     instances: List[AnalyzerInstanceResponse]
 
 
+class EmbeddingDaemonStatus(BaseModel):
+    """Live status of the image embedding daemon.
+
+    Lets the UI surface which model is actually hosted so a per-instance
+    model_id that the daemon isn't serving (-> 409 at embed time) is visible
+    before ingest. `configured_model_id` is what this backend process expects
+    (env), `served_model_id` is what the daemon reports it loaded."""
+    reachable: bool
+    model_loaded: bool
+    configured_model_id: str
+    served_model_id: Optional[str] = None
+    status: Optional[str] = None
+    error: Optional[str] = None
+
+
 class AnalyzerDefinitionCreate(BaseModel):
     """Create a new analyzer definition."""
     analyzer_id: str = Field(
@@ -970,6 +985,60 @@ async def delete_analyzer_instance(
         raise HTTPException(status_code=404, detail="Analyzer instance not found")
 
     await db.commit()
+
+
+# include_in_schema=False: advisory internal status probe with a hand-written
+# frontend type (EmbeddingDaemonStatus in the api client). Keeping it out of the
+# OpenAPI schema avoids codegen drift (orval generates from the live server) and
+# the foot-gun where a daemon reload would fail the next openapi:check.
+@router.get(
+    "/embedding/daemon-status",
+    response_model=EmbeddingDaemonStatus,
+    include_in_schema=False,
+)
+async def get_embedding_daemon_status(user: CurrentUser):
+    """Best-effort probe of the image embedding daemon's loaded model.
+
+    Powers the AnalyzersSettings "effective model" surface + mismatch warning.
+    Until the daemon hosts multiple models (c3 of the per-instance model plan),
+    an asset:embedding instance's model_id must match `served_model_id` or the
+    daemon rejects the embed (409) and the analysis fails.
+    """
+    import os
+    import httpx
+
+    base_url = os.environ.get(
+        "PIXSIM_EMBEDDING_BASE_URL", "http://localhost:8002"
+    ).rstrip("/")
+    configured = os.environ.get(
+        "PIXSIM_EMBEDDING_MODEL_ID", "google/siglip2-large-patch16-384"
+    )
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=3.0, read=5.0, write=3.0, pool=3.0)
+        ) as client:
+            resp = await client.get(f"{base_url}/health")
+        data = resp.json() if resp.content else {}
+        if not isinstance(data, dict):
+            data = {}
+        return EmbeddingDaemonStatus(
+            reachable=True,
+            model_loaded=bool(data.get("model_loaded")) or data.get("status") == "ok",
+            configured_model_id=configured,
+            served_model_id=data.get("model_id"),
+            status=data.get("status"),
+            error=data.get("error"),
+        )
+    except (httpx.HTTPError, ValueError) as exc:
+        return EmbeddingDaemonStatus(
+            reachable=False,
+            model_loaded=False,
+            configured_model_id=configured,
+            served_model_id=None,
+            status="unreachable",
+            error=str(exc),
+        )
 
 
 def _mask_instance_config(config: dict) -> dict:

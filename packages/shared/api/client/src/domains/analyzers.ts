@@ -89,6 +89,20 @@ export interface UpdateAnalysisPointRequest {
   default_analyzer_ids?: string[] | null;
 }
 
+/**
+ * Live status of the image embedding daemon.
+ * [frontend-only] Mirrors the EmbeddingDaemonStatus backend response so the UI
+ * can surface the hosted model and warn on a per-instance model_id mismatch.
+ */
+export interface EmbeddingDaemonStatus {
+  reachable: boolean;
+  model_loaded: boolean;
+  configured_model_id: string;
+  served_model_id?: string | null;
+  status?: string | null;
+  error?: string | null;
+}
+
 // Backward compatibility alias
 export type AnalyzerInfo = AnalyzerResponse;
 export type AnalyzerInstance = AnalyzerInstanceResponse;
@@ -172,6 +186,10 @@ export function createAnalyzersApi(client: PixSimApiClient) {
 
     async deleteAnalyzerInstance(instanceId: number): Promise<void> {
       await client.delete(`/analyzer-instances/${instanceId}`);
+    },
+
+    async getEmbeddingDaemonStatus(): Promise<EmbeddingDaemonStatus> {
+      return client.get<EmbeddingDaemonStatus>('/embedding/daemon-status');
     },
   };
 }

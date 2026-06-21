@@ -42,6 +42,17 @@ def test_health_ready() -> None:
     res = _run(srv.health())  # plain dict on the happy path
     assert res["status"] == "ok"
     assert res["model_loaded"] is True
+    # The hosted model is observable so the UI can surface it + warn on mismatch.
+    assert res["model_id"] == st.model_id
+
+
+def test_health_loading_reports_model_id() -> None:
+    # model_id is known even before load completes (set from env at construction).
+    st = _fresh_state()
+    st.loaded = False
+    code, body = _resp(_run(srv.health()))
+    assert code == 503
+    assert body["model_id"] == st.model_id
 
 
 def test_health_wedged() -> None:

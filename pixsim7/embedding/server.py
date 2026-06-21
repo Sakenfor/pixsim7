@@ -100,15 +100,18 @@ class EmbedBody(BaseModel):
 
 @app.get("/health")
 async def health():
+    # `model_id` is the model this daemon is configured to serve; it's known
+    # even while loading/erroring, so callers (the UI's daemon-status surface)
+    # can always show which model is hosted.
     if state.load_error:
         return JSONResponse(
             status_code=503,
-            content={"status": "error", "error": state.load_error},
+            content={"status": "error", "error": state.load_error, "model_id": state.model_id},
         )
     if not state.loaded:
         return JSONResponse(
             status_code=503,
-            content={"status": "loading", "model_loaded": False},
+            content={"status": "loading", "model_loaded": False, "model_id": state.model_id},
         )
     age = state.oldest_age()
     if age is not None and age > _WEDGE_THRESHOLD_SEC:
@@ -118,9 +121,15 @@ async def health():
                 "status": "wedged",
                 "in_flight": state.in_flight,
                 "oldest_age_sec": round(age, 1),
+                "model_id": state.model_id,
             },
         )
-    return {"status": "ok", "model_loaded": True, "in_flight": state.in_flight}
+    return {
+        "status": "ok",
+        "model_loaded": True,
+        "in_flight": state.in_flight,
+        "model_id": state.model_id,
+    }
 
 
 @app.post("/embed")

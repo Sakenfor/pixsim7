@@ -25,6 +25,7 @@ export type {
   AnalyzerTaskFamily,
   AnalyzersListResponse,
   ListAnalyzersOptions,
+  EmbeddingDaemonStatus,
 } from '@pixsim7/shared.api.client/domains';
 
 const analyzersApi = createAnalyzersApi(pixsimClient);
@@ -42,3 +43,4 @@ export const createAnalyzerInstance = analyzersApi.createAnalyzerInstance;
 export const getAnalyzerInstance = analyzersApi.getAnalyzerInstance;
 export const updateAnalyzerInstance = analyzersApi.updateAnalyzerInstance;
 export const deleteAnalyzerInstance = analyzersApi.deleteAnalyzerInstance;
+export const getEmbeddingDaemonStatus = analyzersApi.getEmbeddingDaemonStatus;

@@ -28,11 +28,13 @@ import {
   createAnalyzerInstance,
   updateAnalyzerInstance,
   deleteAnalyzerInstance,
+  getEmbeddingDaemonStatus,
   type AnalyzerInfo,
   type AnalyzerInstance,
   type AnalysisPointInfo,
   type CreateAnalyzerInstanceRequest,
   type UpdateAnalyzerInstanceRequest,
+  type EmbeddingDaemonStatus,
 } from '@lib/api/analyzers';
 import {
   getUserPreferences,
@@ -1488,6 +1490,8 @@ export function AnalyzersSettings() {
   const setVisualSimilarityThreshold = useMediaSettingsStore((s) => s.setVisualSimilarityThreshold);
   const [isSavingEmbedding, setIsSavingEmbedding] = useState(false);
   const [embeddingError, setEmbeddingError] = useState<string | null>(null);
+  const [embeddingModelDraft, setEmbeddingModelDraft] = useState('');
+  const [daemonStatus, setDaemonStatus] = useState<EmbeddingDaemonStatus | null>(null);
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminUser(user);
 
@@ -1646,9 +1650,39 @@ export function AnalyzersSettings() {
 
   const embeddingEnabled = Boolean(activeEmbeddingInstance?.enabled && activeEmbeddingInstance?.on_ingest);
 
+  // The active instance's model_id is the authoritative selection. Keep the
+  // draft in sync when the instance changes (or its model is updated elsewhere).
+  const activeEmbeddingModelId = activeEmbeddingInstance?.model_id ?? '';
+  useEffect(() => {
+    setEmbeddingModelDraft(activeEmbeddingModelId);
+  }, [activeEmbeddingModelId]);
+
+  const refreshDaemonStatus = useCallback(async () => {
+    try {
+      setDaemonStatus(await getEmbeddingDaemonStatus());
+    } catch {
+      // Status is advisory; a fetch failure shouldn't surface as an error toast.
+      setDaemonStatus(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    void refreshDaemonStatus();
+  }, [isAdmin, refreshDaemonStatus]);
+
+  // The model the daemon actually serves (live), falling back to what it's
+  // configured to host. An instance model_id that doesn't match this is
+  // rejected (409) at embed time until multi-model hosting lands.
+  const hostedModelId = daemonStatus?.served_model_id || daemonStatus?.configured_model_id || '';
+  const embeddingModelMismatch = Boolean(
+    activeEmbeddingModelId && hostedModelId && activeEmbeddingModelId !== hostedModelId
+  );
+
   const persistEmbeddingControls = useCallback(
-    async (updates: { enabled?: boolean }) => {
+    async (updates: { enabled?: boolean; model_id?: string }) => {
       const requestedEnabled = updates.enabled;
+      const requestedModelId = updates.model_id;
       setEmbeddingError(null);
       setIsSavingEmbedding(true);
 
@@ -1657,6 +1691,7 @@ export function AnalyzersSettings() {
           await updateAnalyzerInstance(activeEmbeddingInstance.id, {
             enabled: requestedEnabled ?? activeEmbeddingInstance.enabled,
             on_ingest: requestedEnabled ?? activeEmbeddingInstance.on_ingest,
+            ...(requestedModelId !== undefined ? { model_id: requestedModelId.trim() } : {}),
           });
         } else {
           const shouldEnable = requestedEnabled ?? false;
@@ -1668,7 +1703,7 @@ export function AnalyzersSettings() {
             analyzer_id: EMBEDDING_ANALYZER_ID,
             label: DEFAULT_EMBEDDING_LABEL,
             provider_id: DEFAULT_EMBEDDING_PROVIDER_ID,
-            model_id: DEFAULT_EMBEDDING_MODEL_ID,
+            model_id: requestedModelId?.trim() || DEFAULT_EMBEDDING_MODEL_ID,
             embedder_id: DEFAULT_EMBEDDING_EMBEDDER_ID,
             is_primary: true,
             enabled: shouldEnable,
@@ -1694,6 +1729,14 @@ export function AnalyzersSettings() {
       void persistEmbeddingControls({ enabled });
     },
     [persistEmbeddingControls]
+  );
+
+  const handleEmbeddingModelSave = useCallback(
+    (modelId: string) => {
+      if (modelId.trim() === activeEmbeddingModelId) return;
+      void persistEmbeddingControls({ model_id: modelId });
+    },
+    [activeEmbeddingModelId, persistEmbeddingControls]
   );
 
   const hasActiveBackfillRuns = useMemo(
@@ -2292,6 +2335,67 @@ export function AnalyzersSettings() {
                   {embeddingInstances.length} embedding instances detected. This toggle controls the active one.
                 </p>
               )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+                Embedding Model
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={embeddingModelDraft}
+                  onChange={(e) => setEmbeddingModelDraft(e.target.value)}
+                  onBlur={() => handleEmbeddingModelSave(embeddingModelDraft)}
+                  placeholder={DEFAULT_EMBEDDING_MODEL_ID}
+                  disabled={isSavingEmbedding || !activeEmbeddingInstance}
+                  className="flex-1 px-2 py-1.5 text-[11px] font-mono border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleEmbeddingModelSave(embeddingModelDraft)}
+                  disabled={isSavingEmbedding || !activeEmbeddingInstance || embeddingModelDraft.trim() === activeEmbeddingModelId}
+                  className="px-2 py-1.5 text-[10px] rounded bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 text-neutral-700 dark:text-neutral-300 transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+              <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                Daemon hosting:{' '}
+                {daemonStatus ? (
+                  daemonStatus.reachable ? (
+                    <>
+                      <span className="font-mono">{hostedModelId || 'unknown'}</span>
+                      {' '}
+                      <span className="text-neutral-400 dark:text-neutral-500">
+                        ({daemonStatus.model_loaded ? 'loaded' : daemonStatus.status ?? 'not loaded'})
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-neutral-400 dark:text-neutral-500">unreachable</span>
+                  )
+                ) : (
+                  <span className="text-neutral-400 dark:text-neutral-500">checking…</span>
+                )}
+              </p>
+              {embeddingModelMismatch && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                  This model isn't the one the daemon hosts — embeds will fail (409) until they match.{' '}
+                  <button
+                    type="button"
+                    onClick={() => handleEmbeddingModelSave(hostedModelId)}
+                    disabled={isSavingEmbedding}
+                    className="underline disabled:opacity-50"
+                  >
+                    Use hosted model
+                  </button>
+                </p>
+              )}
+              <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                The daemon hosts a single model (launcher setting{' '}
+                <span className="font-mono">PIXSIM_EMBEDDING_MODEL_ID</span>); this instance's
+                model must match it until per-instance multi-model hosting lands.
+              </p>
             </div>
           </div>
         </section>
