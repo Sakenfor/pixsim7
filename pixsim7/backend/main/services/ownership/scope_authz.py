@@ -20,6 +20,7 @@ from pixsim7.common.scope_grants import (
     assert_can_access,
     build_grants_from_profile,
     can_access,
+    merge_grants,
 )
 
 __all__ = [
@@ -49,7 +50,41 @@ async def load_scope_grants(db: AsyncSession, principal: Any) -> tuple[ScopeGran
     from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
 
     profile = await db.get(AgentProfile, profile_id)
-    return build_grants_from_profile(profile)
+    grants = list(build_grants_from_profile(profile))
+
+    # Second source: peer plan-access grants (ResourceGrant, resource_type='plan').
+    # WIDEN-ONLY — only fold these in when the profile is ALREADY restricted for
+    # 'plan' (assigned_plans set). The resolver is a narrowing model: injecting a
+    # restricted grant where none existed would flip an unrestricted principal to
+    # restricted-to-just-the-granted-ids, breaking access to its own plans. So a
+    # peer grant may only union ids into an existing 'plan' restriction.
+    if any(g.kind == "plan" and g.allowed_ids is not None for g in grants):
+        plan_ids = await _peer_plan_grant_ids(db, principal)
+        if plan_ids:
+            grants.append(ScopeGrant.restricted("plan", plan_ids))
+            grants = list(merge_grants(grants))
+
+    return tuple(grants)
+
+
+async def _peer_plan_grant_ids(db: AsyncSession, principal: Any) -> list[str]:
+    """Plan ids granted to this principal's effective user via active
+    ResourceGrant(resource_type='plan') rows."""
+    from pixsim7.backend.main.shared.actor import resolve_effective_user_id
+
+    user_id = resolve_effective_user_id(principal)
+    if not user_id:
+        return []
+    from pixsim7.backend.main.domain.grants import ResourceGrantType
+    from pixsim7.backend.main.services.grants import ResourceGrantService
+
+    received = await ResourceGrantService(db).list_received(user_id, ResourceGrantType.PLAN)
+    ids: list[str] = []
+    for grant in received:
+        plan_id = grant.scope_value("plan_id")
+        if plan_id:
+            ids.append(str(plan_id))
+    return ids
 
 
 async def assert_scope_access(

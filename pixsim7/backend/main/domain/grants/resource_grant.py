@@ -39,10 +39,11 @@ class ResourceGrantType:
     type is a one-liner and storage stays migration-free."""
 
     PROVIDER_SLOTS = "provider_slots"
+    PLAN = "plan"          # peer plan-access grant (feeds the scope resolver)
     BRIDGE = "bridge"      # reserved — bridge session sharing
     REVIEW = "review"      # reserved — plan-review delegation
 
-    ALL = (PROVIDER_SLOTS, BRIDGE, REVIEW)
+    ALL = (PROVIDER_SLOTS, PLAN, BRIDGE, REVIEW)
 
 
 def compute_scope_key(resource_type: str, scope: Optional[dict[str, Any]]) -> str:

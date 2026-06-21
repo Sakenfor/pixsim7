@@ -144,6 +144,8 @@ from pixsim7.backend.main.api.v1.plans.routes_agent import (
 from pixsim7.backend.main.api.v1.plans.routes_coverage import router as _coverage_router
 from pixsim7.backend.main.api.v1.plans.routes_todo import router as _todo_router
 from pixsim7.backend.main.api.v1.plans.routes_export import router as _export_router
+from pixsim7.backend.main.api.v1.plans.routes_grants import router as _grants_router
+router.include_router(_grants_router)
 router.include_router(_review_router)
 router.include_router(_admin_router)
 router.include_router(_agent_router)
