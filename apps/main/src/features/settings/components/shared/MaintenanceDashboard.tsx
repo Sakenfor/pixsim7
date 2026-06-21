@@ -550,7 +550,7 @@ function SignalBreakdown({ stats }: { stats: SignalScanStats }) {
       <div className="flex flex-wrap items-center gap-3 pt-1">
         {stats.broken > 0 && (
           <Button
-            onClick={() => navigate('/assets/signal-triage')}
+            onClick={() => navigate('/assets?surface=assets-signal-triage&signal_likely_broken=true')}
             variant="outline"
             size="sm"
           >
