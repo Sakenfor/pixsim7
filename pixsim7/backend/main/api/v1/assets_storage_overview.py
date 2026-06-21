@@ -880,6 +880,24 @@ class RelocateJobProgress(BaseModel):
     skipped_reasons: dict[str, int] = {}
 
 
+class RestoreJobProgress(BaseModel):
+    """Live snapshot of a background restore job (Redis-backed)."""
+    job_id: str
+    status: str  # queued | running | completed | cancelled | error | continued | interrupted
+    apply: bool
+    cursor: int
+    processed: int
+    restored: int
+    skipped: int
+    errors: int
+    restored_bytes: int
+    restored_human: str
+    would_bytes: int
+    would_human: str
+    error_ids: list[int]
+    skipped_reasons: dict[str, int] = {}
+
+
 def _csv_list(raw: Optional[str]) -> Optional[list[str]]:
     """Parse a comma-separated query param into a list (None when empty)."""
     if not raw:
@@ -1385,6 +1403,109 @@ async def cancel_relocate_job(
     from pixsim7.backend.main.workers.relocation_processor import request_relocation_cancel
 
     await request_relocation_cancel(job_id)
+    return {"ok": True, "job_id": job_id}
+
+
+# ---------------------------------------------------------------------------
+# Background restore: reverse of background relocation. Same long-lived arq job
+# pattern so a bulk un-archive doesn't block the request — progress lives in
+# Redis, so /restore/job is pollable and survives a page reload. Both run on the
+# single-slot media-archive worker, so a restore and a relocation serialize
+# (intended — they share the same S3/ZeroTier link).
+# ---------------------------------------------------------------------------
+
+def _restore_progress_to_model(p: Optional[dict]) -> Optional[RestoreJobProgress]:
+    if not p:
+        return None
+    restored = int(p.get("restored_bytes", 0) or 0)
+    would = int(p.get("would_bytes", 0) or 0)
+    return RestoreJobProgress(
+        job_id=p.get("job_id", ""),
+        status=p.get("status", "unknown"),
+        apply=bool(p.get("apply", False)),
+        cursor=int(p.get("cursor", 0) or 0),
+        processed=int(p.get("processed", 0) or 0),
+        restored=int(p.get("restored", 0) or 0),
+        skipped=int(p.get("skipped", 0) or 0),
+        errors=int(p.get("errors", 0) or 0),
+        restored_bytes=restored,
+        restored_human=_human_size(restored),
+        would_bytes=would,
+        would_human=_human_size(would),
+        error_ids=list(p.get("error_ids", []) or [])[:20],
+        skipped_reasons=dict(p.get("skipped_reasons", {}) or {}),
+    )
+
+
+@router.post("/restore/start", response_model=RelocateJobStartResponse)
+async def start_restore_background(
+    admin: CurrentAdminUser,
+    dry_run: bool = Query(False, description="Preview without restoring (apply = not dry_run)"),
+    verify_hash: bool = Query(False, description="Re-hash the restored local copy vs archive (slower)"),
+    delete_archive: bool = _DELETE_ARCHIVE_Q,
+    asset_ids: Optional[str] = _RESTORE_ASSET_IDS_Q,
+    set_ids: Optional[str] = _RESTORE_SET_IDS_Q,
+    media_types: Optional[str] = _MEDIA_TYPES_Q,
+    max_assets: Optional[int] = Query(None, ge=1, description="Cap assets processed (testing)"),
+):
+    """Start a background restore job; returns its id for polling /restore/job.
+
+    Same selection as POST /restore. ``dry_run`` previews without downloading; an
+    apply (``dry_run=false``) requires a configured archive.
+    """
+    from pixsim7.backend.main.services.storage.placement import (
+        ARCHIVE_ROOT_ID,
+        archive_configured,
+    )
+    from pixsim7.backend.main.workers.restore_processor import start_restore_job
+
+    apply = not dry_run
+    if apply and not archive_configured():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Archive root '{ARCHIVE_ROOT_ID}' is not configured — cannot restore."
+            ),
+        )
+    criteria = {
+        "user_id": admin.id,
+        "asset_ids": _csv_int_list(asset_ids),
+        "set_ids": _csv_int_list(set_ids),
+        # No video-only default for restore (mirrors restore_candidate_query):
+        # None => restore all archived media types in the selection.
+        "media_types": _csv_list(media_types),
+    }
+    job_id = await start_restore_job(
+        criteria, apply=apply, verify_hash=verify_hash,
+        delete_archive=delete_archive, max_assets=max_assets,
+    )
+    return RelocateJobStartResponse(job_id=job_id, status="queued")
+
+
+@router.get("/restore/job", response_model=Optional[RestoreJobProgress])
+async def get_restore_job(
+    admin: CurrentAdminUser,
+    job_id: Optional[str] = Query(None, description="Job id; omit for the latest job"),
+):
+    """Poll a background restore job's progress (latest job when ``job_id`` omitted).
+
+    Returns null when there is no such job (or none has ever run) — the UI treats
+    that as "nothing in flight".
+    """
+    from pixsim7.backend.main.workers.restore_processor import read_restore_progress
+
+    return _restore_progress_to_model(await read_restore_progress(job_id))
+
+
+@router.post("/restore/cancel")
+async def cancel_restore_job(
+    admin: CurrentAdminUser,
+    job_id: str = Query(..., description="Job id to cancel"),
+):
+    """Request cancellation; the job stops after its current asset."""
+    from pixsim7.backend.main.workers.restore_processor import request_restore_cancel
+
+    await request_restore_cancel(job_id)
     return {"ok": True, "job_id": job_id}
 
 

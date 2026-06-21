@@ -17,6 +17,7 @@ Redis configuration:
 
 import asyncio
 import os
+from typing import Optional
 
 # Load .env file BEFORE any other imports that need env vars
 from dotenv import load_dotenv
@@ -41,6 +42,7 @@ from pixsim7.backend.main.workers.chain_execution_processor import (
 )
 from pixsim7.backend.main.workers.derivatives_processor import process_derivatives
 from pixsim7.backend.main.workers.relocation_processor import process_relocation
+from pixsim7.backend.main.workers.restore_processor import process_restore
 from pixsim7.backend.main.workers.ingestion_processor import process_ingestion
 from pixsim7.backend.main.workers.prompt_tagging_processor import process_prompt_tagging
 from pixsim7.backend.main.workers.prompt_embedding_processor import process_prompt_embedding
@@ -360,18 +362,6 @@ async def startup(ctx: dict) -> None:
     except Exception as e:
         logger.warning("startup_stale_recovery_failed", error=str(e))
 
-    # Retire any relocation job left non-terminal by a crash/restart so the UI
-    # doesn't show a phantom in-flight job (see relocation_processor docstring).
-    try:
-        from pixsim7.backend.main.workers.relocation_processor import (
-            reconcile_orphaned_relocation_job,
-        )
-        retired = await reconcile_orphaned_relocation_job()
-        if retired:
-            logger.info("startup_relocation_reconcile_complete", job_id=retired)
-    except Exception as e:
-        logger.warning("startup_relocation_reconcile_failed", error=str(e))
-
     # Reconcile account counters on startup (fixes counter drift from crashes)
     try:
         reconcile_result = await reconcile_account_counters(ctx)
@@ -589,10 +579,47 @@ async def media_archive_startup(ctx: dict) -> None:
         component="process_relocation",
         queue=MEDIA_ARCHIVE_QUEUE_NAME,
     )
+    logger.info(
+        "worker_component_registered",
+        component="process_restore",
+        queue=MEDIA_ARCHIVE_QUEUE_NAME,
+    )
     logger.info("worker_component_registered", component="update_media_archive_heartbeat", schedule="*/30s")
+
+    # Retire any relocation/restore job left non-terminal by a crash/restart so
+    # the UI doesn't show a phantom in-flight job. This belongs HERE, not in the
+    # main worker: relocation/restore run exclusively on this family, so only
+    # *this* worker's startup actually implies "no batch is mid-flight". Calling
+    # it from the main worker would both miss orphans (this worker can die while
+    # main stays up) and false-positive a live job (main restarts mid-batch).
+    for reconcile in (
+        _reconcile_relocation_on_startup,
+        _reconcile_restore_on_startup,
+    ):
+        try:
+            retired = await reconcile()
+            if retired:
+                logger.info("startup_media_archive_reconcile_complete", job_id=retired)
+        except Exception as e:
+            logger.warning("startup_media_archive_reconcile_failed", error=str(e))
+
     await update_media_archive_heartbeat(ctx)
     # Slow archive uploads can run for a long time; keep the machine awake.
     inhibit_sleep()
+
+
+async def _reconcile_relocation_on_startup() -> Optional[str]:
+    from pixsim7.backend.main.workers.relocation_processor import (
+        reconcile_orphaned_relocation_job,
+    )
+    return await reconcile_orphaned_relocation_job()
+
+
+async def _reconcile_restore_on_startup() -> Optional[str]:
+    from pixsim7.backend.main.workers.restore_processor import (
+        reconcile_orphaned_restore_job,
+    )
+    return await reconcile_orphaned_restore_job()
 
 
 async def media_archive_shutdown(ctx: dict) -> None:
@@ -877,6 +904,7 @@ class MediaArchiveWorkerSettings:
 
     functions = [
         process_relocation,
+        process_restore,
         reload_logging_config,
     ]
 
