@@ -4,24 +4,22 @@ Durable analysis backfill runs with checkpoint state.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
 from typing import Any, Dict, Optional
 
 from pydantic import ConfigDict
 from sqlalchemy import JSON
 from sqlmodel import Column, Field, Index, SQLModel
 
+from pixsim7.backend.main.domain.assets.backfill import (
+    TERMINAL_BACKFILL_STATUSES,
+    BackfillStatus,
+)
 from pixsim7.backend.main.domain.enums import enum_column
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
-
-class AnalysisBackfillStatus(str, Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    PAUSED = "paused"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+# The lifecycle enum is shared across all backfill domains; keep the historical
+# name as an alias so existing imports (api, domain re-exports) keep working.
+AnalysisBackfillStatus = BackfillStatus
 
 
 class AnalysisBackfillRun(SQLModel, table=True):
@@ -31,10 +29,10 @@ class AnalysisBackfillRun(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="users.id", index=True)
 
-    status: AnalysisBackfillStatus = Field(
-        default=AnalysisBackfillStatus.PENDING,
+    status: BackfillStatus = Field(
+        default=BackfillStatus.PENDING,
         sa_column=enum_column(
-            AnalysisBackfillStatus,
+            BackfillStatus,
             "analysis_backfill_status_enum",
             index=True,
         ),
@@ -70,8 +68,16 @@ class AnalysisBackfillRun(SQLModel, table=True):
 
     @property
     def is_terminal(self) -> bool:
-        return self.status in {
-            AnalysisBackfillStatus.COMPLETED,
-            AnalysisBackfillStatus.FAILED,
-            AnalysisBackfillStatus.CANCELLED,
+        return self.status in TERMINAL_BACKFILL_STATUSES
+
+    def to_progress_dict(self) -> Dict[str, Any]:
+        """Worker-facing progress snapshot (the ARQ task's return value)."""
+        return {
+            "status": self.status.value,
+            "run_id": self.id,
+            "processed_assets": self.processed_assets,
+            "created_analyses": self.created_analyses,
+            "deduped_assets": self.deduped_assets,
+            "failed_assets": self.failed_assets,
+            "cursor_asset_id": self.cursor_asset_id,
         }
