@@ -394,6 +394,32 @@ def build_signal_metrics_payload(
     }
 
 
+# ---------- stale-video selection (shared by sync endpoint + durable run) ----------
+
+def stale_signal_video_conditions(scanner_version: str, user_id: int) -> list:
+    """SQLAlchemy WHERE conditions selecting probe-eligible STALE videos.
+
+    "Stale" = signal_scanner_version distinct from ``scanner_version``;
+    "probe-eligible" = a VIDEO, not archived, with a resolvable source (a local
+    path OR a stored_key — the same bar as ``SignalAnalysisService.is_eligible``,
+    so archive-tiered files probed via presigned URL are included).
+
+    The single source of truth for "which videos need a (re)probe", composed by
+    both the synchronous ``/backfill-signal-scan?reprobe=true`` endpoint and the
+    durable ``SignalBackfillService`` (cursor-paged). Returns a list of
+    conditions to splat into ``select(...).where(*conds)``.
+    """
+    from sqlalchemy import or_
+
+    return [
+        Asset.user_id == user_id,
+        Asset.media_type == "VIDEO",
+        Asset.is_archived == False,  # noqa: E712
+        Asset.signal_scanner_version.is_distinct_from(scanner_version),
+        or_(Asset.local_path.isnot(None), Asset.stored_key.isnot(None)),
+    ]
+
+
 # ---------- service: stamp into Asset.media_metadata ----------
 
 class SignalAnalysisService:

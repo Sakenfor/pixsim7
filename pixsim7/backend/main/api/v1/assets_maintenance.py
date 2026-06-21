@@ -7,14 +7,41 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 
+from sqlalchemy import select, func, or_, and_, case, text, Integer
+from sqlalchemy.dialects.postgresql import JSONB
+
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, AssetSvc, DatabaseSession
+from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.domain.enums import MediaType
 from pixsim_logging import get_logger
 
 router = APIRouter(tags=["assets-maintenance"])
 logger = get_logger()
 
 
+def _coverage_pct(numerator: float, denominator: float) -> float:
+    """Coverage percentage, guarding division by zero. Callers round as needed."""
+    return (numerator / denominator * 100) if denominator > 0 else 0.0
+
+
 # ===== SCHEMAS =====
+
+class BackfillResultBase(BaseModel):
+    """Shared shape for batch backfill responses.
+
+    Every backfill endpoint reports the rows it walked (`processed`), left
+    untouched (`skipped`), and that raised (`errors`), plus an overall
+    `success` flag. Endpoint-specific success counters (updated / linked /
+    synced / converted / …) are added by subclasses.
+
+    `BackfillFolderContextResponse` stays standalone — its phase-based
+    counters don't roll up into a single `processed` total.
+    """
+    success: bool
+    processed: int
+    skipped: int
+    errors: int
+
 
 class SHAStatsResponse(BaseModel):
     """SHA hash coverage statistics"""
@@ -26,14 +53,10 @@ class SHAStatsResponse(BaseModel):
     percentage: float
 
 
-class BackfillSHAResponse(BaseModel):
+class BackfillSHAResponse(BackfillResultBase):
     """Response from SHA backfill operation"""
-    success: bool
-    processed: int
     updated: int
-    skipped: int
     duplicates: int = 0
-    errors: int
 
 
 class StorageSyncStatsResponse(BaseModel):
@@ -45,13 +68,9 @@ class StorageSyncStatsResponse(BaseModel):
     percentage: float
 
 
-class BulkSyncResponse(BaseModel):
+class BulkSyncResponse(BackfillResultBase):
     """Response from bulk storage sync operation"""
-    success: bool
-    processed: int
     synced: int
-    skipped: int
-    errors: int
 
 
 class ContentBlobStatsResponse(BaseModel):
@@ -64,14 +83,10 @@ class ContentBlobStatsResponse(BaseModel):
     percentage: float
 
 
-class BackfillContentBlobsResponse(BaseModel):
+class BackfillContentBlobsResponse(BackfillResultBase):
     """Response from content blob backfill operation"""
-    success: bool
-    processed: int
     linked: int
     updated_sizes: int
-    skipped: int
-    errors: int
 
 
 class SignalScanStatsResponse(BaseModel):
@@ -87,14 +102,10 @@ class SignalScanStatsResponse(BaseModel):
     percentage: float
 
 
-class BackfillSignalScanResponse(BaseModel):
+class BackfillSignalScanResponse(BackfillResultBase):
     """Result of a batch signal-scan backfill."""
-    success: bool
-    processed: int
     scanned: int
     broken: int
-    skipped: int
-    errors: int
 
 
 class CohortBucket(BaseModel):
@@ -153,8 +164,6 @@ async def get_sha_stats(
     Returns counts of assets with/without SHA hashes, and which ones
     can be backfilled (have local files).
     """
-    from sqlalchemy import select, func
-    from pixsim7.backend.main.domain.assets.models import Asset
 
     # Count total assets
     total_result = await db.execute(
@@ -184,7 +193,7 @@ async def get_sha_stats(
     # Calculate derived stats
     without_sha = total - with_sha
     without_sha_no_local = without_sha - without_sha_with_local
-    percentage = (with_sha / total * 100) if total > 0 else 0
+    percentage = _coverage_pct(with_sha, total)
 
     return SHAStatsResponse(
         total_assets=total,
@@ -211,8 +220,6 @@ async def backfill_sha_hashes(
     This enables duplicate detection for older assets that were created
     before SHA hashing was implemented.
     """
-    from sqlalchemy import select
-    from pixsim7.backend.main.domain.assets.models import Asset
     import os
 
     try:
@@ -321,8 +328,6 @@ async def get_storage_sync_stats(
 
     Returns counts of assets on old vs new storage systems.
     """
-    from sqlalchemy import select, func, or_
-    from pixsim7.backend.main.domain.assets.models import Asset
 
     # Count total assets
     total_result = await db.execute(
@@ -362,7 +367,7 @@ async def get_storage_sync_stats(
     )
     no_local = no_local_result.scalar() or 0
 
-    percentage = (new_storage / total * 100) if total > 0 else 0
+    percentage = _coverage_pct(new_storage, total)
 
     return StorageSyncStatsResponse(
         total_assets=total,
@@ -388,8 +393,6 @@ async def bulk_sync_storage(
     Finds assets with provider URLs that are on old storage and re-downloads them
     to the new content-addressed storage system.
     """
-    from sqlalchemy import select, or_
-    from pixsim7.backend.main.domain.assets.models import Asset
 
     try:
         # Find assets that need syncing:
@@ -480,8 +483,6 @@ async def get_content_blob_stats(
     Content blobs enable future cross-user deduplication by linking
     assets to a global SHA256 record.
     """
-    from sqlalchemy import select, func, and_
-    from pixsim7.backend.main.domain.assets.models import Asset
 
     total_result = await db.execute(
         select(func.count(Asset.id)).where(Asset.user_id == admin.id)
@@ -516,7 +517,7 @@ async def get_content_blob_stats(
     )
     missing_logical_size = missing_logical_size_result.scalar() or 0
 
-    percentage = (with_content / total * 100) if total > 0 else 0
+    percentage = _coverage_pct(with_content, total)
 
     return ContentBlobStatsResponse(
         total_assets=total,
@@ -542,8 +543,6 @@ async def backfill_content_blobs(
     Links assets that have SHA256 but no content_id, and fills
     logical_size_bytes from file_size_bytes when missing.
     """
-    from sqlalchemy import select, or_, and_
-    from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.services.asset.content import ensure_content_blob
 
     try:
@@ -621,13 +620,9 @@ async def backfill_content_blobs(
 
 # ===== THUMBNAIL BACKFILL =====
 
-class BackfillThumbnailsResponse(BaseModel):
+class BackfillThumbnailsResponse(BackfillResultBase):
     """Response from thumbnail backfill operation"""
-    success: bool
-    processed: int
     generated: int
-    skipped: int
-    errors: int
     error_ids: list[int] = []
 
 
@@ -649,8 +644,6 @@ async def backfill_thumbnails(
     Optionally includes assets missing thumbnail_key (downloads from remote_url if needed).
     Useful after storage cleanup or migration.
     """
-    from sqlalchemy import select, or_
-    from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.services.asset.ingestion import AssetIngestionService
     from pixsim7.backend.main.services.storage import get_storage_service
     import os
@@ -756,6 +749,239 @@ async def backfill_thumbnails(
         )
 
 
+# ===== PREVIEW DERIVATIVE BACKFILL =====
+#
+# Coverage stats + bulk regen for the preview tier.  Mirrors
+# `tools/backfill_preview_derivatives.py` but exposed via the maintenance
+# dashboard so users don't need to shell into the host to run a one-off.
+#
+# An asset is "preview-eligible" when its source max dimension is at least
+# `_MIN_PREVIEW_SOURCE_SIZE` (800px in `services/media/derivatives.py`).  We
+# split the eligible set into:
+#   * with_preview       — already has a preview_key (some may still be at the
+#                          old cap; the `upgradeable` bucket below names them).
+#   * eligible_no_preview — has source pixels but no preview yet.
+#   * upgradeable        — has a preview AND source max_dim > prev_cap, so a
+#                          regen at the current cap would produce a larger
+#                          preview than what's stored.
+#   * not_eligible       — source smaller than the threshold; preview gen
+#                          intentionally skips these (would be a no-op).
+#
+# `prev_cap` defaults to 800 — the value of `preview_size` before the May
+# 2026 bump to 1600 — so existing libraries surface the regen backlog
+# without callers needing to know the magic number.
+
+
+class PreviewBackfillStats(BaseModel):
+    """Preview derivative coverage statistics."""
+    total_assets: int
+    with_preview: int
+    eligible_no_preview: int
+    upgradeable: int
+    not_eligible: int
+    percentage: float
+    target_size: int
+    prev_cap: int
+
+
+class BackfillPreviewsResponse(BackfillResultBase):
+    """Response from preview backfill enqueue operation."""
+    enqueued: int
+    error_ids: list[int] = []
+
+
+@router.get("/preview-backfill-stats", response_model=PreviewBackfillStats)
+async def preview_backfill_stats(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    prev_cap: int = Query(
+        800, ge=0, le=10000,
+        description="Assumed prior preview_size cap (px). Sources larger than this "
+                    "with an existing preview are reported as 'upgradeable'.",
+    ),
+):
+    """Return preview coverage and regen backlog counts for the caller."""
+    from pixsim7.backend.main.services.media.derivatives import _MIN_PREVIEW_SOURCE_SIZE
+    from pixsim7.backend.main.services.media.settings import get_media_settings
+
+    target_size = get_media_settings().preview_size[0]
+    # COALESCE handles assets with NULL dimensions — they bucket as not_eligible.
+    max_dim = func.coalesce(func.greatest(Asset.width, Asset.height), 0)
+    has_preview = Asset.preview_key.isnot(None)
+
+    q = select(
+        func.count().label("total_assets"),
+        func.coalesce(
+            func.sum(case((has_preview, 1), else_=0)), 0
+        ).label("with_preview"),
+        func.coalesce(
+            func.sum(case(
+                (
+                    (Asset.preview_key.is_(None)) & (max_dim >= _MIN_PREVIEW_SOURCE_SIZE),
+                    1,
+                ),
+                else_=0,
+            )),
+            0,
+        ).label("eligible_no_preview"),
+        func.coalesce(
+            func.sum(case(
+                (has_preview & (max_dim > prev_cap), 1),
+                else_=0,
+            )),
+            0,
+        ).label("upgradeable"),
+        func.coalesce(
+            func.sum(case((max_dim < _MIN_PREVIEW_SOURCE_SIZE, 1), else_=0)),
+            0,
+        ).label("not_eligible"),
+    ).where(
+        Asset.user_id == admin.id,
+        Asset.media_type.in_([MediaType.IMAGE, MediaType.VIDEO]),
+        Asset.is_archived.is_(False),
+        Asset.stored_key.isnot(None),
+    )
+
+    row = (await db.execute(q)).one()
+    total = int(row.total_assets or 0)
+    with_preview = int(row.with_preview or 0)
+    eligible_no_preview = int(row.eligible_no_preview or 0)
+    upgradeable = int(row.upgradeable or 0)
+    not_eligible = int(row.not_eligible or 0)
+
+    # Coverage = fraction of preview-eligible assets that already have a
+    # preview at-or-above the prior cap.  Assets in `upgradeable` count as
+    # done for the percentage (they have *some* preview); the prev_cap arg
+    # exists for the backlog count, not the coverage metric.
+    eligible_total = total - not_eligible
+    pct = (with_preview / eligible_total * 100.0) if eligible_total > 0 else 100.0
+
+    return PreviewBackfillStats(
+        total_assets=total,
+        with_preview=with_preview,
+        eligible_no_preview=eligible_no_preview,
+        upgradeable=upgradeable,
+        not_eligible=not_eligible,
+        percentage=round(pct, 2),
+        target_size=int(target_size),
+        prev_cap=prev_cap,
+    )
+
+
+@router.post("/backfill-previews", response_model=BackfillPreviewsResponse)
+async def backfill_previews(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    limit: int = Query(50, ge=1, le=500, description="Max assets to enqueue"),
+    prev_cap: int = Query(
+        800, ge=0, le=10000,
+        description="Sources at or below this size are skipped because a regen "
+                    "can't produce a larger preview than the prior run.",
+    ),
+):
+    """Enqueue preview-derivative regen jobs for eligible assets.
+
+    Selects assets whose source resolution clears the preview threshold AND
+    which would benefit from a regen (no preview yet, OR existing preview
+    smaller than what the current `preview_size` could produce).  Each
+    candidate gets an ARQ `process_ingestion` job with `generate_previews=
+    True, generate_thumbnails=False`; the job id `ingest:{asset_id}`
+    deduplicates against any concurrent ingestion of the same asset.
+
+    Returns immediately after enqueue — actual ffmpeg/Pillow work happens
+    in the worker.  Watch ARQ worker logs (`arq.process_ingestion`) for
+    progress, or refresh the stats endpoint.
+    """
+    from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+    from pixsim7.backend.main.services.media.derivatives import _MIN_PREVIEW_SOURCE_SIZE
+
+    try:
+        # Newest-first; over-fetch since Python-side filter throws away
+        # rows that don't meet the dim threshold.  3× is the same heuristic
+        # `/backfill-thumbnails` uses.
+        q = (
+            select(
+                Asset.id,
+                Asset.width,
+                Asset.height,
+                Asset.preview_key,
+                Asset.stored_key,
+            )
+            .where(
+                Asset.user_id == admin.id,
+                Asset.media_type.in_([MediaType.IMAGE, MediaType.VIDEO]),
+                Asset.is_archived.is_(False),
+                Asset.stored_key.isnot(None),
+            )
+            .order_by(Asset.id.desc())
+            .limit(limit * 3)
+        )
+        rows = (await db.execute(q)).all()
+
+        candidates: list[int] = []
+        skipped = 0
+        for row in rows:
+            if len(candidates) >= limit:
+                break
+            max_dim = max(row.width or 0, row.height or 0)
+            if max_dim < _MIN_PREVIEW_SOURCE_SIZE:
+                # Below threshold — preview generation would no-op.
+                skipped += 1
+                continue
+            if row.preview_key and max_dim <= prev_cap:
+                # Existing preview already as large as the source can yield
+                # under the prior cap; regen at the new cap can't grow it.
+                skipped += 1
+                continue
+            candidates.append(row.id)
+
+        pool = await get_arq_pool()
+        enqueued = 0
+        errors = 0
+        error_ids: list[int] = []
+        for asset_id in candidates:
+            try:
+                await pool.enqueue_job(
+                    "process_ingestion",
+                    asset_id,
+                    _job_id=f"ingest:{asset_id}",
+                    force=True,
+                    store_for_serving=False,
+                    extract_metadata=False,
+                    generate_thumbnails=False,
+                    generate_previews=True,
+                    derivatives_mode="inline",
+                )
+                enqueued += 1
+            except Exception as exc:
+                logger.warning(
+                    "preview_backfill_enqueue_failed",
+                    asset_id=asset_id,
+                    error=str(exc),
+                )
+                errors += 1
+                error_ids.append(asset_id)
+
+        return BackfillPreviewsResponse(
+            success=True,
+            processed=len(candidates),
+            enqueued=enqueued,
+            skipped=skipped,
+            errors=errors,
+            error_ids=error_ids[:20],
+        )
+    except Exception as exc:
+        logger.error(
+            "preview_backfill_error",
+            error=str(exc),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to backfill previews: {str(exc)}",
+        )
+
+
 # ===== FOLDER CONTEXT STATS =====
 
 class FolderContextStatsResponse(BaseModel):
@@ -791,7 +1017,6 @@ async def get_folder_context_stats(
     Shows how many local assets have upload_context with source_folder_id,
     and which ones can be recovered from media_metadata or user preferences.
     """
-    from sqlalchemy import text
 
     uid = {"user_id": admin.id}
 
@@ -837,7 +1062,7 @@ async def get_folder_context_stats(
     fixable_from_prefs = fixable_prefs_r.scalar() or 0
 
     unfixable = max(0, without_folder_context - fixable_from_metadata)
-    percentage = (with_folder_context / total_local * 100) if total_local > 0 else 0
+    percentage = _coverage_pct(with_folder_context, total_local)
 
     return FolderContextStatsResponse(
         total_local=total_local,
@@ -865,7 +1090,6 @@ async def backfill_folder_context(
     Phase 2: Resolve source_folder display name from user preferences
     Phase 3: Derive source_subfolder from source_relative_path
     """
-    from sqlalchemy import text
 
     try:
         uid = admin.id
@@ -1048,8 +1272,6 @@ async def get_upload_method_stats(
     Shows how many assets have upload_method set, and breakdown by method.
     Useful for identifying assets that need backfill.
     """
-    from sqlalchemy import select, func
-    from pixsim7.backend.main.domain.assets.models import Asset
 
     # Total assets
     total_result = await db.execute(
@@ -1079,7 +1301,7 @@ async def get_upload_method_stats(
     )
     by_method = {row[0]: row[1] for row in by_method_result.fetchall()}
 
-    percentage = (with_method / total * 100) if total > 0 else 0
+    percentage = _coverage_pct(with_method, total)
 
     return UploadMethodStatsResponse(
         total_assets=total,
@@ -1092,14 +1314,10 @@ async def get_upload_method_stats(
 
 # ===== UPLOAD METHOD BACKFILL =====
 
-class BackfillUploadMethodResponse(BaseModel):
+class BackfillUploadMethodResponse(BackfillResultBase):
     """Response from upload method backfill operation"""
-    success: bool
-    processed: int
     updated: int
     by_method: dict[str, int]
-    skipped: int
-    errors: int
 
 
 @router.post("/backfill-upload-method", response_model=BackfillUploadMethodResponse)
@@ -1122,8 +1340,6 @@ async def backfill_upload_method(
 
     Rules can be extended by adding to INFERENCE_RULES in upload_attribution.py
     """
-    from sqlalchemy import select
-    from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.domain.assets.upload_attribution import infer_upload_method_from_asset
 
     try:
@@ -1208,13 +1424,9 @@ class FormatConversionStatsResponse(BaseModel):
     estimated_savings_pct: float
 
 
-class FormatConversionResponse(BaseModel):
+class FormatConversionResponse(BackfillResultBase):
     """Response from format conversion operation"""
-    success: bool
-    processed: int
     converted: int
-    skipped: int
-    errors: int
     bytes_before: int
     bytes_after: int
     savings_bytes: int
@@ -1252,8 +1464,6 @@ async def get_format_conversion_stats(
     Returns per-format breakdown and how many images could be converted
     to the target format.
     """
-    from sqlalchemy import select, func, case
-    from pixsim7.backend.main.domain.assets.models import Asset
 
     target_mime = {
         "webp": "image/webp",
@@ -1343,9 +1553,7 @@ async def convert_asset_format(
     import io
     import os
     from pathlib import Path
-    from sqlalchemy import select
     from sqlalchemy.orm import attributes
-    from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.services.storage import get_storage_service
 
     fmt_upper = target_format.upper()
@@ -1469,7 +1677,6 @@ async def convert_asset_format(
                 # Post-commit: delete old blob if no other asset references it.
                 # Done after commit so the row's new stored_key is persisted
                 # before we remove the old file (avoids races with readers).
-                from sqlalchemy import func
                 sibling_count = (await db.execute(
                     select(func.count()).select_from(Asset).where(
                         Asset.stored_key == old_key,
@@ -1591,7 +1798,6 @@ async def get_duplicates_stats(
     counts file_size_bytes for every asset beyond the first in each group
     (what could be reclaimed by keeping one copy per group).
     """
-    from sqlalchemy import text
 
     row = (await db.execute(text("""
         WITH dup_groups AS (
@@ -1637,8 +1843,6 @@ async def list_duplicates(
 
     Groups ordered by count desc, then total bytes desc.
     """
-    from sqlalchemy import text, select
-    from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 
     # Total group count for pagination
@@ -1775,6 +1979,7 @@ async def backfill_signal_scan(
     from pixsim7.backend.main.services.asset.signal_analysis import (
         SCANNER_VERSION,
         SignalAnalysisService,
+        stale_signal_video_conditions,
     )
     from pixsim7.backend.main.services.asset.cohort_baselines import (
         load_cohort_baselines,
@@ -1785,24 +1990,20 @@ async def backfill_signal_scan(
     baselines = await load_cohort_baselines(db)
 
     # Select stale rows via the fast denormalized column (no media_metadata
-    # de-TOAST). Default mode needs a prior score to re-score from; reprobe
-    # mode needs a local file to decode.
-    stale = Asset.signal_scanner_version.is_distinct_from(SCANNER_VERSION)
-    mode_filter = (
-        Asset.local_path.isnot(None) if reprobe else Asset.signal_score.isnot(None)
-    )
-    stmt = (
-        select(Asset)
-        .where(
+    # de-TOAST). Reprobe mode needs a resolvable source to decode (shared with
+    # the durable SignalBackfillService); default mode needs a prior score to
+    # re-score from.
+    if reprobe:
+        conds = stale_signal_video_conditions(SCANNER_VERSION, admin.id)
+    else:
+        conds = [
             Asset.user_id == admin.id,
             Asset.media_type == "VIDEO",
             Asset.is_archived == False,  # noqa: E712
-            stale,
-            mode_filter,
-        )
-        .order_by(Asset.id.desc())
-        .limit(limit)
-    )
+            Asset.signal_scanner_version.is_distinct_from(SCANNER_VERSION),
+            Asset.signal_score.isnot(None),
+        ]
+    stmt = select(Asset).where(*conds).order_by(Asset.id.desc()).limit(limit)
     assets = (await db.execute(stmt)).scalars().all()
 
     service = SignalAnalysisService(db)

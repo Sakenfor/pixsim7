@@ -217,6 +217,8 @@ class BackfillRunServiceBase(ABC, Generic[TRun]):
         await self.db.commit()
         await self.db.refresh(run)
 
+        await self._after_batch(run, totals)
+
         if run.status == BackfillStatus.RUNNING and has_more:
             await self._enqueue_batch(run.id)
 
@@ -283,5 +285,12 @@ class BackfillRunServiceBase(ABC, Generic[TRun]):
 
         Returns an opaque context handed to each ``_process_asset`` call.
         Defaults to ``None``; override when the domain needs batch-wide state.
+        """
+        return None
+
+    async def _after_batch(self, run: TRun, totals: Dict[str, int]) -> None:
+        """Post-commit hook fired once per processed batch (after the run row is
+        persisted). Override for side effects like cache invalidation. ``totals``
+        is the batch's accumulated counter deltas. Defaults to no-op.
         """
         return None
