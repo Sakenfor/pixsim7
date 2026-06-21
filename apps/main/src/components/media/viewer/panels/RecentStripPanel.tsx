@@ -15,7 +15,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 
 import { archiveAsset } from '@lib/api/assets';
 import { useContextMenuItem } from '@lib/dockview';
-import { useCardGestures } from '@lib/gestures';
+import { useCardGestures, useLongPressRadial } from '@lib/gestures';
 import { Icon } from '@lib/icons';
 
 import { useAssetEngagement, useAssetViewerStore, type ViewerAsset } from '@features/assets';
@@ -61,13 +61,31 @@ const StripThumb = memo(function StripThumb({ asset, isActive, isPending, onClic
     [model],
   );
 
-  const { gestureHandlers, isCommitted, direction, actionLabel, isReturning, returningActionLabel } =
-    useCardGestures({
-      id: numericId,
-      surfaceId: 'strip',
-      onToggleFavorite,
-      actions: gestureActions,
-    });
+  const {
+    gestureHandlers,
+    isCommitted,
+    direction,
+    actionLabel,
+    isReturning,
+    returningActionLabel,
+    radialEnabled,
+    radialArms,
+    commitRadial,
+  } = useCardGestures({
+    id: numericId,
+    surfaceId: 'strip',
+    onToggleFavorite,
+    actions: gestureActions,
+  });
+
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const radial = useLongPressRadial({
+    id: numericId,
+    enabled: radialEnabled,
+    arms: radialArms,
+    commit: commitRadial,
+    anchor: buttonRef,
+  });
 
   const committedBadge = isReturning
     ? returningActionLabel
@@ -118,10 +136,14 @@ const StripThumb = memo(function StripThumb({ asset, isActive, isPending, onClic
     : 'Seen';
   return (
     <button
+      ref={buttonRef}
       type="button"
       {...contextMenuAttrs}
       onClick={() => onClick(asset.id)}
-      onPointerDown={gestureHandlers.onPointerDown}
+      onPointerDown={(e) => {
+        gestureHandlers.onPointerDown(e);
+        radial.onPointerDown(e);
+      }}
       className={[
         'relative flex-shrink-0 h-full aspect-square rounded overflow-hidden',
         'border-2 transition-colors bg-neutral-200 dark:bg-neutral-800',
@@ -168,6 +190,7 @@ const StripThumb = memo(function StripThumb({ asset, isActive, isPending, onClic
           {isReturning ? `↩ ${committedBadge}` : `${direction} · ${committedBadge}`}
         </span>
       )}
+      {radial.node}
     </button>
   );
 });

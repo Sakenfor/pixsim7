@@ -270,6 +270,11 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = React.memo(({
       tabIndex={tabIndex}
       data-widget-id={widget.id}
       data-widget-type={widget.type}
+      // Marks any interactive widget (badges, buttons, scrub, …) so surfaces
+      // above it — e.g. MediaCard's touch first-tap "reveal" swallow and the
+      // long-press radial — let taps fall through to the widget's own handler
+      // instead of intercepting them.
+      data-overlay-interactive={widget.interactive ? 'true' : undefined}
     >
       {/* Inner wrapper clips content during grid-template-rows 0fr collapse.
           overflow is visible when expanded so rings/outlines/scale animations

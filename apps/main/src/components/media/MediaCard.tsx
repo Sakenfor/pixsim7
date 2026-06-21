@@ -29,6 +29,7 @@ import {
   useCardGestures,
   GestureOverlay,
   GestureCancelOverlay,
+  useLongPressRadial,
 } from '@lib/gestures';
 import { Icon } from '@lib/icons';
 import { useCapturedFrame } from '@lib/media/capturedFrameStore';
@@ -290,8 +291,14 @@ export interface MediaCardResolvedProps extends MediaCardRuntimeProps {
   createdAt: string;
   status?: string;
   providerStatus?: 'ok' | 'local_only' | 'unknown' | 'flagged';
-  /** Full asset model — required for context menu and capability registration */
-  contextMenuAsset: AssetModel;
+  /**
+   * Full asset model — drives the context menu, capability registration, and
+   * every asset-derived overlay widget. Optional by design: the legacy
+   * individual-field path (e.g. remote provider-library items that have no
+   * backing AssetModel) leaves it undefined, so consumers MUST guard. The
+   * compiler enforces this — do not narrow it to non-optional.
+   */
+  contextMenuAsset?: AssetModel;
   /** ID of the generation that created this asset (for regenerate) */
   sourceGenerationId?: number;
   /** True when asset has generation context (from record or metadata) */
@@ -772,22 +779,43 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   const TAP_MAX_MS = 500; // press longer than this = long-press, not tap
   const tapStartRef = useRef<{ id: number; t: number; x: number; y: number } | null>(null);
   const lastTapRef = useRef<{ t: number; x: number; y: number } | null>(null);
+
+  // ── Long-press → radial gesture menu (mobile) ──────────────────────────────
+  // Touch disables swipe gestures (they fight scroll), so a press-and-hold opens
+  // a cross of the surface's mapped directions instead. The shared hook owns the
+  // timing + slop-cancel; we just compose its pointerdown into the tap handler
+  // and render its node. `onOpen` cancels the pending tap chain.
+  const radial = useLongPressRadial({
+    id,
+    enabled: gesture.radialEnabled,
+    arms: gesture.radialArms,
+    commit: gesture.commitRadial,
+    anchor: cardRootRef,
+    onOpen: () => {
+      tapStartRef.current = null;
+    },
+  });
+
   const handleRootPointerDownCapture = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       tapStartRef.current = null;
+      radial.onPointerDown(event); // arms the long-press radial (touch only)
+
       if (mediaType !== 'video') return;
       if (event.pointerType === 'mouse') return;
       if (!onOpen) return;
       const target = event.target;
       if (
         target instanceof Element &&
-        target.closest('button, a, input, select, textarea, [role="button"], [data-gen-action-popover="true"]')
+        target.closest(
+          'button, a, input, select, textarea, [role="button"], [data-gen-action-popover="true"], [data-overlay-interactive="true"]',
+        )
       ) {
         return;
       }
       tapStartRef.current = { id: event.pointerId, t: Date.now(), x: event.clientX, y: event.clientY };
     },
-    [mediaType, onOpen],
+    [mediaType, onOpen, radial.onPointerDown],
   );
   const handleRootPointerUpCapture = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -1166,7 +1194,13 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
         // treat such a click as a reveal-tap — swallowing it here (capture
         // phase) would eat the submenu button's own onClick before it fires.
         const target = event.target;
-        if (target instanceof Element && target.closest('[data-gen-action-popover="true"]')) {
+        if (
+          target instanceof Element &&
+          target.closest('[data-gen-action-popover="true"], [data-overlay-interactive="true"]')
+        ) {
+          // A tap on an always-visible interactive widget (e.g. the top-left
+          // similarity badges) is meant for that widget — don't eat it as a
+          // reveal-tap, or the badge would need a throwaway first tap.
           return;
         }
         if (canRevealOverlays && !overlayRevealed) {
@@ -1329,6 +1363,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
               actionLabel={gesture.returningActionLabel}
             />
           ) : null}
+          {radial.node}
           {mediaType === 'video' &&
             (layout?.enableHoverPreview === false || layout?.clickToPlay) &&
             (layout?.showPlayOverlay ?? true) && (

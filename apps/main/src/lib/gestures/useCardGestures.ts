@@ -16,11 +16,13 @@ import {
   resolveCascadeAction,
   type GestureResolverContext,
 } from './gestureActions';
+import type { RadialArms } from './GestureRadialMenu';
 import {
   getCascadeActionsForDirection,
   getChainActionForDirection,
   type GestureSurfaceId,
 } from './gestureSurfaces';
+import { buildRadialArms, hasAnyArm } from './radialArms';
 import { useGestureSecondaryStore, resolveDurationFromDy } from './useGestureSecondaryStore';
 import { useSurfaceGestureConfig } from './useGestureSurfaceStore';
 import type { GestureDirection, GestureEvent } from './useMouseGesture';
@@ -58,6 +60,16 @@ export interface UseCardGesturesResult {
   isReturning: boolean;
   returningDirection: GestureDirection | null;
   returningActionLabel: string | null;
+  /**
+   * Touch long-press radial menu. Mobile disables swipe/drag (it fights native
+   * scroll), so the same per-surface direction mappings surface here instead —
+   * a cross the user can read rather than blind-swipe. `radialEnabled` is the
+   * mirror of `enabled`: on (and only on) mobile, when the surface is enabled
+   * and at least one direction maps to a real action.
+   */
+  radialEnabled: boolean;
+  radialArms: RadialArms;
+  commitRadial: (direction: GestureDirection, tierIndex: number) => void;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -207,10 +219,37 @@ export function useCardGestures({
     ? resolveDurationFromDy(activeGesture.dy, secondaryState)
     : undefined;
 
+  // ── Long-press radial (mobile) ────────────────────────────────────────────
+  // Build the cross from the same per-surface direction config the desktop
+  // swipe uses (shared with useViewerGestures via buildRadialArms).
+  const radialArms: RadialArms = useMemo(() => buildRadialArms(gestureDirections), [gestureDirections]);
+
+  const radialEnabled =
+    isMobile && (presetGestureOverrides?.enabled ?? cfg.enabled) && hasAnyArm(radialArms);
+
+  const commitRadial = useCallback(
+    (direction: GestureDirection, tierIndex: number) => {
+      const tiers = getCascadeActionsForDirection(gestureDirections, direction).filter(
+        (actionId) => actionId && actionId !== 'none',
+      );
+      const actionId = tiers[tierIndex] ?? tiers[0];
+      if (!actionId) return;
+      const handler = resolveGestureHandler(actionId, resolverContext);
+      if (!handler) return;
+      // No drag distance in the radial — scalable actions fire a single unit.
+      const count = isScalableAction(actionId) ? 1 : undefined;
+      handler(id, count, undefined);
+    },
+    [gestureDirections, resolverContext, id],
+  );
+
   return {
     gestureHandlers,
     gestureConsumed,
     enabled: effectiveGestureEnabled,
+    radialEnabled,
+    radialArms,
+    commitRadial,
     isCommitted,
     direction: isCommitted ? activeGesture.direction : null,
     actionId: activeActionId,

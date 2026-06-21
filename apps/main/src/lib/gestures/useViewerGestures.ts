@@ -8,6 +8,8 @@
 
 import { useCallback, useMemo, useRef } from 'react';
 
+import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
+
 import {
   getGestureActionLabel,
   computeGestureCount,
@@ -16,10 +18,12 @@ import {
   resolveGestureHandler,
   type GestureResolverContext,
 } from './gestureActions';
+import type { RadialArms } from './GestureRadialMenu';
 import {
   getCascadeActionsForDirection,
   getChainActionForDirection,
 } from './gestureSurfaces';
+import { buildRadialArms, hasAnyArm } from './radialArms';
 import { useGestureSecondaryStore, resolveDurationFromDy } from './useGestureSecondaryStore';
 import { useSurfaceGestureConfig } from './useGestureSurfaceStore';
 import type { GestureDirection, GestureEvent } from './useMouseGesture';
@@ -52,6 +56,10 @@ export interface UseViewerGesturesResult {
   isReturning: boolean;
   returningDirection: GestureDirection | null;
   returningActionLabel: string | null;
+  /** Long-press radial menu (mobile) — mirrors the viewer's mapped directions. */
+  radialEnabled: boolean;
+  radialArms: RadialArms;
+  commitRadial: (direction: GestureDirection, tierIndex: number) => void;
 }
 
 function resolveViewerGestureHandler(
@@ -79,6 +87,7 @@ function resolveViewerGestureHandler(
 
 export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesResult {
   const cfg = useSurfaceGestureConfig('viewer');
+  const isMobile = useIsMobileViewport();
 
   const gestureDirections = useMemo(
     () => ({
@@ -147,6 +156,21 @@ export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesR
 
   const isReturning = phase === 'pending' && lastCommittedRef.current !== null;
 
+  // ── Long-press radial (mobile) ────────────────────────────────────────────
+  const radialArms = useMemo(() => buildRadialArms(gestureDirections), [gestureDirections]);
+  const radialEnabled = isMobile && cfg.enabled && hasAnyArm(radialArms);
+  const commitRadial = useCallback(
+    (direction: GestureDirection, tierIndex: number) => {
+      const tiers = getCascadeActionsForDirection(gestureDirections, direction).filter(
+        (actionId) => actionId && actionId !== 'none',
+      );
+      const actionId = tiers[tierIndex] ?? tiers[0];
+      if (!actionId) return;
+      resolveViewerGestureHandler(actionId, ctxRef.current)?.();
+    },
+    [gestureDirections],
+  );
+
   const activeCascade = isCommitted
     ? resolveCascadeAction(
         getCascadeActionsForDirection(gestureDirections, activeGesture.direction),
@@ -190,5 +214,8 @@ export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesR
     isReturning,
     returningDirection: isReturning ? lastCommittedRef.current!.direction : null,
     returningActionLabel: isReturning ? lastCommittedRef.current!.actionLabel : null,
+    radialEnabled,
+    radialArms,
+    commitRadial,
   };
 }
