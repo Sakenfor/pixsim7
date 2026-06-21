@@ -994,14 +994,24 @@ describe('Assistant Chat Store', () => {
       vi.useRealTimers();
     });
 
-    // Seed a server-row tab so setDraft's pending check passes.
-    function seedTab(id = 'tab-1') {
+    // Seed a server-row tab so setDraft's pending check passes. addTab fires
+    // an optimistic create marked pending='creating'; flush the mocked POST so
+    // it reconciles. The store's live poll subscription (which would re-derive
+    // state.tabs from the snapshot and drop the pending marker) is severed by
+    // __resetChatTabsPollForTest, so mirror that reconcile explicitly here —
+    // a persisted, non-pending row is the precondition for draft autosave
+    // (autosave is correctly skipped while a row is still pending).
+    async function seedTab(id = 'tab-1') {
       const s = useAssistantChatStore.getState();
       s.addTab(makeTab({ id }));
+      await vi.advanceTimersByTimeAsync(0);
+      useAssistantChatStore.setState((st) => ({
+        tabs: st.tabs.map((t) => (t.id === id ? { ...t, pending: undefined } : t)),
+      }));
     }
 
     it('marks the tab dirty on setDraft and PATCHes after 500ms idle', async () => {
-      seedTab();
+      await seedTab();
       const s = useAssistantChatStore.getState();
       s.setDraft('tab-1', 'hi there');
 
@@ -1022,7 +1032,7 @@ describe('Assistant Chat Store', () => {
     });
 
     it('debounces a burst of keystrokes — only the latest text is PATCHed', async () => {
-      seedTab();
+      await seedTab();
       const s = useAssistantChatStore.getState();
 
       s.setDraft('tab-1', 'h');
@@ -1044,7 +1054,7 @@ describe('Assistant Chat Store', () => {
     });
 
     it('flushDraftSync fires the PATCH immediately (cancels the pending timer)', async () => {
-      seedTab();
+      await seedTab();
       const s = useAssistantChatStore.getState();
 
       s.setDraft('tab-1', 'send-time');
@@ -1067,14 +1077,14 @@ describe('Assistant Chat Store', () => {
     });
 
     it('flushDraftSync is a no-op when nothing is dirty', async () => {
-      seedTab();
+      await seedTab();
       useAssistantChatStore.getState().flushDraftSync('tab-1');
       await vi.advanceTimersByTimeAsync(0);
       expect(patch).not.toHaveBeenCalled();
     });
 
     it('PATCHes draft: null when the user cleared the composer', async () => {
-      seedTab();
+      await seedTab();
       const s = useAssistantChatStore.getState();
       s.setDraft('tab-1', 'first');
       await vi.advanceTimersByTimeAsync(500);
@@ -1090,7 +1100,7 @@ describe('Assistant Chat Store', () => {
     });
 
     it('does NOT clear dirty if the user typed mid-flight after PATCH was sent', async () => {
-      seedTab();
+      await seedTab();
       const s = useAssistantChatStore.getState();
 
       // Slow server — PATCH takes 100ms.
@@ -1113,7 +1123,7 @@ describe('Assistant Chat Store', () => {
 
     it('skips server PATCH for create-failed rows (no server row to update)', async () => {
       // Mark a tab as create-failed in the store directly.
-      seedTab();
+      await seedTab();
       useAssistantChatStore.setState((s) => ({
         tabs: s.tabs.map((t) => t.id === 'tab-1' ? { ...t, pending: 'create-failed' as const } : t),
       }));
@@ -1128,7 +1138,7 @@ describe('Assistant Chat Store', () => {
     });
 
     it('cancels pending PATCH on tab close', async () => {
-      seedTab();
+      await seedTab();
       useAssistantChatStore.getState().setDraft('tab-1', 'about to be cancelled');
       useAssistantChatStore.getState().closeTab('tab-1');
 

@@ -86,6 +86,7 @@ import {
   dismissFailedCreate,
   retryFailedCreate,
 } from './useChatTabsQuery';
+import { usePlanTitles } from './usePlanTitles';
 import { useTabPlanClaims } from './useTabPlanClaims';
 
 // =============================================================================
@@ -1782,6 +1783,12 @@ export function AIAssistantPanel() {
     return () => window.removeEventListener(OPEN_PLAN_CHAT_EVENT, handler);
   }, [tabs, profiles]);
 
+  // id → title for plan-group headers; absence ⇒ a dead link (plan deleted /
+  // archived / never formally created from a self-assigned claim string), so
+  // the header renders non-navigable rather than dumping the user into the
+  // Plans panel's "Selected plan is unavailable" state.
+  const planTitles = usePlanTitles();
+
   // Group tabs: plan-bound first (grouped by their single PRIMARY plan),
   // then ungrouped. Keyed off tabPrimaryPlanId — NOT a raw multi-claim
   // list — so a tab on N plans still renders exactly once. Multi-plan
@@ -1968,20 +1975,42 @@ export function AIAssistantPanel() {
           {/* Session list */}
           <div className="flex-1 overflow-y-auto px-1 py-1 space-y-0.5">
             {/* Plan-bound groups */}
-            {planGroups.map(({ planId, items }) => (
-              <div key={planId}>
-                <button
-                  type="button"
-                  onClick={() => navigateToPlan(planId)}
-                  className="flex items-center gap-1 px-1.5 py-1 text-[9px] uppercase tracking-wide font-medium text-signal-success hover:underline w-full text-left"
-                >
-                  <Icon name="clipboard" size={9} className="shrink-0" />
-                  <span className="truncate">{planId}</span>
-                  <Badge color="green" className="text-[8px] ml-auto">{items.length}</Badge>
-                </button>
-                {items.map((tab) => renderItem(tab, tab.id === activeTabId))}
-              </div>
-            ))}
+            {planGroups.map(({ planId, items }) => {
+              const planTitle = planTitles.get(planId);
+              // No resolvable plan ⇒ dead link. Render as static muted text
+              // (not a button) so clicking can't open the panel to an
+              // "unavailable" plan. `planTitles` is empty until the first
+              // fetch lands, so only treat as missing once we have data.
+              const resolvable = planTitle !== undefined;
+              const hydrated = planTitles.size > 0;
+              const isDeadLink = hydrated && !resolvable;
+              return (
+                <div key={planId}>
+                  {isDeadLink ? (
+                    <div
+                      className="flex items-center gap-1 px-1.5 py-1 text-[9px] uppercase tracking-wide font-medium text-th-muted w-full text-left"
+                      title={`Plan "${planId}" is no longer available`}
+                    >
+                      <Icon name="clipboard" size={9} className="shrink-0 opacity-60" />
+                      <span className="truncate">{planId}</span>
+                      <Badge color="gray" className="text-[8px] ml-auto">{items.length}</Badge>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => navigateToPlan(planId)}
+                      className="flex items-center gap-1 px-1.5 py-1 text-[9px] uppercase tracking-wide font-medium text-signal-success hover:underline w-full text-left"
+                      title={planTitle ?? planId}
+                    >
+                      <Icon name="clipboard" size={9} className="shrink-0" />
+                      <span className="truncate">{planTitle ?? planId}</span>
+                      <Badge color="green" className="text-[8px] ml-auto">{items.length}</Badge>
+                    </button>
+                  )}
+                  {items.map((tab) => renderItem(tab, tab.id === activeTabId))}
+                </div>
+              );
+            })}
 
             {/* Ungrouped chats */}
             {ungroupedTabs.length > 0 && planGroups.length > 0 && (

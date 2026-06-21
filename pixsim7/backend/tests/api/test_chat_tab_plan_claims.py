@@ -308,7 +308,14 @@ async def test_derive_primary_falls_back_to_recent_open_claim() -> None:
 
 
 @pytest.mark.asyncio
-async def test_derive_primary_ignores_released_and_sessionless() -> None:
+async def test_derive_primary_sticky_keeps_released_claim() -> None:
+    """Sticky grouping: a released claim still groups the tab.
+
+    Claims idle-release (and a mere Plans-panel roster read runs
+    ``sweep_idle_claims``); if a released claim dropped the tab from its
+    group the sidebar grouping would silently collapse mid-session. So a
+    released claim is kept as the fallback primary.
+    """
     bound = _tab(1, session_id="s1", plan_id=None)
     nosess = _tab(1, session_id=None, plan_id=None)
     released = (datetime.now(timezone.utc)).isoformat()
@@ -317,8 +324,27 @@ async def test_derive_primary_ignores_released_and_sessionless() -> None:
     ]
     db = SimpleNamespace(execute=AsyncMock(return_value=_result(parts)))
     out = await ct._derive_primary_plan_ids(db, [bound, nosess])
-    # Released claim → not grouped; no session → not grouped.
-    assert out == {}
+    # Released claim still groups (sticky); a sessionless tab never groups.
+    assert out == {str(bound.id): "plan-x"}
+
+
+@pytest.mark.asyncio
+async def test_derive_primary_prefers_open_over_more_recent_released() -> None:
+    """An open claim wins over a more-recently-claimed released one.
+
+    Ranking is ``(is_open, claimed_at)`` — a live claim beats any released
+    claim regardless of recency, so an actively-worked plan stays primary
+    even if the session briefly touched (and released) another plan later.
+    """
+    tab = _tab(1, session_id="s1", plan_id=None)
+    newer = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    parts = [
+        _participant("plan-open", "s1", _open_claim()),
+        _participant("plan-released", "s1", {**_open_claim(claimed_at=newer), "released_at": newer}),
+    ]
+    db = SimpleNamespace(execute=AsyncMock(return_value=_result(parts)))
+    out = await ct._derive_primary_plan_ids(db, [tab])
+    assert out == {str(tab.id): "plan-open"}
 
 
 # ── single-tab responses carry the claim-derived primary ─────────────

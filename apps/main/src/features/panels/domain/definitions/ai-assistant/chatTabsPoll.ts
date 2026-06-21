@@ -214,6 +214,32 @@ export function applyUpdateTab(
   });
 }
 
+/**
+ * Optimistically clear a tab's `pending` marker (delete the key entirely).
+ *
+ * `applyUpdateTab` intentionally skips `undefined`-valued keys so a partial
+ * server merge can't clobber a known field (e.g. a server-derived
+ * `primaryPlanId`). That makes it unable to *remove* `pending` — passing
+ * `pending: undefined` is a silent no-op. Use this dedicated path after a
+ * create/retry succeeds so the row stops rendering its `creating` /
+ * `create-failed` state immediately, instead of lingering until the next
+ * poll replaces the row wholesale.
+ */
+export function clearPending(tabId: string): void {
+  if (!snapshot.tabs.some((t) => t.id === tabId && t.pending !== undefined)) {
+    return;
+  }
+  publish({
+    ...snapshot,
+    tabs: snapshot.tabs.map((t) => {
+      if (t.id !== tabId || t.pending === undefined) return t;
+      const { pending: _pending, ...rest } = t;
+      void _pending;
+      return rest;
+    }),
+  });
+}
+
 /** Optimistically remove a tab. */
 export function applyRemoveTab(tabId: string): void {
   publish({

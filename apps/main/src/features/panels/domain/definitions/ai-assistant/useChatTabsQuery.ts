@@ -30,6 +30,7 @@ import {
   applyReorder,
   applyRollback,
   applyUpdateTab,
+  clearPending,
   clearLastError,
   getChatTabsSnapshot,
   refreshChatTabs,
@@ -112,11 +113,12 @@ export async function createTabOptimistic(
   try {
     const server = await apiCreateChatTab({ ...payload, id });
     // Replace optimistic row with server truth (session_id may have been
-    // server-assigned, createdAt is canonical, etc.). The API response never
-    // carries `pending` and applyUpdateTab is a shallow merge, so clear the
-    // marker explicitly — both the `'creating'` flag set above and any prior
-    // `'create-failed'` (e.g. from a manual retry) — otherwise it sticks.
-    applyUpdateTab(id, { ...server, pending: undefined });
+    // server-assigned, createdAt is canonical, etc.), then clear the
+    // `pending` marker via the dedicated path — `applyUpdateTab` skips
+    // `undefined` keys, so `pending: undefined` would be a silent no-op and
+    // the `'creating'` flag would stick until the next poll.
+    applyUpdateTab(id, server);
+    clearPending(id);
     clearLastError();
     return server;
   } catch (err) {
@@ -146,12 +148,13 @@ export async function retryFailedCreate(
   tabId: string,
   payload: CreateChatTabPayload,
 ): Promise<ServerChatTab> {
-  // Clear the pending flag while the retry is in flight so the UI
-  // shows a normal "creating…" state rather than the failed one.
-  applyUpdateTab(tabId, { pending: undefined });
+  // Clear the failed flag while the retry is in flight (dedicated path —
+  // `applyUpdateTab` can't remove `pending` via `undefined`).
+  clearPending(tabId);
   try {
     const server = await apiCreateChatTab({ ...payload, id: tabId });
     applyUpdateTab(tabId, server);
+    clearPending(tabId);
     clearLastError();
     return server;
   } catch (err) {

@@ -190,10 +190,18 @@ async def _derive_primary_plan_ids(
     """{tab.id: derived primary plan} for tabs the sidebar should group.
 
     Primary = the tab's manual `plan_id` when set, else the plan of the
-    session's most-recent OPEN builder claim (the participant-claim
-    ledger keyed by `session_id` — shared with MCP self-assign). One
-    batched query over the caller's session ids; tabs with a manual
-    binding or no session never need a claim lookup.
+    session's builder claim (the participant-claim ledger keyed by
+    `session_id` — shared with MCP self-assign). One batched query over
+    the caller's session ids; tabs with a manual binding or no session
+    never need a claim lookup.
+
+    Stickiness: we rank claims by ``(is_open, claimed_at)`` and keep the
+    winner even when it's already released. A live (open) claim always
+    wins; with none open we fall back to the most-recent claim the
+    session ever held. This keeps a tab in its plan group after the claim
+    idle-releases — otherwise merely opening the Plans panel (whose
+    roster read runs ``sweep_idle_claims``) would null every tab's
+    primary and silently collapse the sidebar grouping mid-session.
     """
     session_ids = {t.session_id for t in tabs if t.session_id and not t.plan_id}
     out: dict[str, str] = {}
@@ -210,22 +218,26 @@ async def _derive_primary_plan_ids(
         PlanParticipant.role == "builder",
     )
     rows = list((await db.execute(stmt)).scalars().all())
-    # session_id -> (claimed_at, plan_id) of the most-recent open claim.
-    best: dict[str, tuple[str, str]] = {}
+    # session_id -> (is_open, claimed_at, plan_id) of the winning claim.
+    # Ranked by (is_open, claimed_at): an open claim beats any released
+    # one; ties break on recency. Released claims are kept (not skipped)
+    # so grouping survives idle-release.
+    best: dict[str, tuple[int, str, str]] = {}
     for row in rows:
         claim = _ph.participant_claim(row)
-        if not _ph.claim_is_open(claim):
+        if not claim:
             continue
+        is_open = 1 if _ph.claim_is_open(claim) else 0
         at = claim.get("claimed_at") or ""
         cur = best.get(row.session_id)
-        if cur is None or at > cur[0]:
-            best[row.session_id] = (at, row.plan_id)
+        if cur is None or (is_open, at) > (cur[0], cur[1]):
+            best[row.session_id] = (is_open, at, row.plan_id)
     for t in tabs:
         if t.plan_id or not t.session_id:
             continue
         hit = best.get(t.session_id)
         if hit:
-            out[str(t.id)] = hit[1]
+            out[str(t.id)] = hit[2]
     return out
 
 
