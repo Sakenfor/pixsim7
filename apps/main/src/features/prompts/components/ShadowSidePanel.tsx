@@ -13,13 +13,16 @@ import { Icon } from '@lib/icons';
 
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
+import { usePromptProjection } from '../hooks/usePromptProjection';
 import { usePromptVariables } from '../hooks/usePromptVariables';
+import { useRelationRecipes } from '../hooks/useRelationRecipes';
 import type { PromptTokenLine, ShadowAnalysisState } from '../hooks/useShadowAnalysis';
 import { extractInlineVarValues } from '../lib/inlineVarValues';
 import {
   extractPrimitiveMatches,
   type CandidateWithPrimitiveMatch,
 } from '../lib/parsePrimitiveMatch';
+import { projectStructuredPrompt } from '../lib/projectStructuredPrompt';
 import {
   buildVariableTransformMap,
   buildVariableValueMap,
@@ -262,6 +265,8 @@ export function ShadowSidePanel({
     entries: savedEntries,
     saveVariable,
   } = usePromptVariables();
+  const { mode: projectionMode } = usePromptProjection();
+  const relationRecipes = useRelationRecipes();
   const toast = useToast();
 
   // Scroll the pinned role section into view within the panel's own scroll
@@ -338,16 +343,21 @@ export function ShadowSidePanel({
   const resolvedPreview = useMemo(() => {
     const source = result?.analyzedPrompt ?? '';
     if (!source) return null;
-    // Inline VAR(value) bindings from the prompt win over stored values
-    // (mirrors the backend outbound path).
+    // Mirror the backend outbound pipeline: inline-collapse -> project -> resolve.
+    // Inline VAR(value) bindings win over stored values; projection (opt-in)
+    // compiles chain operators to prose before substitution.
     const { values: inlineValues, collapsed } = extractInlineVarValues(source);
+    const projected =
+      projectionMode !== 'off'
+        ? projectStructuredPrompt(collapsed, relationRecipes.recipes)
+        : collapsed;
     const resolved = resolvePromptVariables(
-      collapsed,
+      projected,
       { ...buildVariableValueMap(savedEntries), ...inlineValues },
       buildVariableTransformMap(savedEntries),
     );
     return resolved !== source ? resolved : null;
-  }, [result?.analyzedPrompt, savedEntries]);
+  }, [result?.analyzedPrompt, savedEntries, projectionMode, relationRecipes.recipes]);
 
   const handleSaveVariable = async (rawName: string) => {
     const name = rawName.trim().toUpperCase();
@@ -679,7 +689,10 @@ export function ShadowSidePanel({
             <DisclosureSection
               persistKey={`${keyPrefix}:resolved`}
               label={
-                <SectionLabel dotClass="bg-violet-500" label="Resolved preview" />
+                <SectionLabel
+                  dotClass="bg-violet-500"
+                  label={projectionMode !== 'off' ? 'Projected & resolved preview' : 'Resolved preview'}
+                />
               }
               size="sm"
               bordered

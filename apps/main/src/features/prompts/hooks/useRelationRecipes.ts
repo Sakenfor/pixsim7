@@ -24,6 +24,8 @@ export interface RelationRecipeNote {
 export interface RelationRecipeOperator {
   op: string;
   meaning?: string;
+  /** Prose fragment for rule-based projection ({lhs}/{rhs} placeholders). */
+  template?: string;
   run_semantics?: Record<string, string>;
   swap_targets: string[];
   notes?: RelationRecipeNote[];
