@@ -1,8 +1,7 @@
 """Shared SigLIP-2 image-embedding inference.
 
-The actual model load + image embedding, factored out so both the stdio CLI
-(`cli/image_local.py`) and the HTTP service (`server.py`) share one
-implementation. Importing this module pulls in torch/transformers — keep it out
+The actual model load + image embedding, consumed by the HTTP service
+(`server.py`). Importing this module pulls in torch/transformers — keep it out
 of any host that must stay lightweight (the backend reaches the model over HTTP
 via `http_client.HttpEmbeddingService`, which has no torch dependency).
 """

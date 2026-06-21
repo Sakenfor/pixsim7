@@ -16,9 +16,8 @@ The backend binds a composite `EmbeddingService` whose embed_images delegates
 to `HttpEmbeddingService` and whose embed_texts delegates to the text-provider
 registry — both reachable via one `get_embedding_service()`.
 
-The legacy stdio `DaemonEmbeddingService` (`daemon.py`) + its CLI entry point
-(`cli/image_local.py`) remain for backfill / standalone use; `_siglip.py` holds
-the shared model-load + inference used by both the CLI and the HTTP service.
+`_siglip.py` holds the shared model-load + inference; the HTTP service
+(`server.py`) is its only in-tree consumer.
 
 Pure, hostless helpers live here too (see `validation.py`).
 """

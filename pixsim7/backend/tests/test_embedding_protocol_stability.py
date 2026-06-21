@@ -69,7 +69,7 @@ def test_only_documented_methods_on_protocol() -> None:
 
 
 def test_embed_request_fields() -> None:
-    assert _field_names(EmbedRequest) == ["paths"]
+    assert _field_names(EmbedRequest) == ["paths", "model_id"]
 
 
 def test_embed_text_request_fields() -> None:
@@ -86,7 +86,9 @@ def test_dtos_are_frozen_and_slotted() -> None:
     for dc in (EmbedRequest, EmbedTextRequest, EmbedResult):
         params = dc.__dataclass_params__
         assert params.frozen, f"{dc.__name__} must be frozen=True"
-        assert params.slots, f"{dc.__name__} must be slots=True"
+        # `slots` isn't recorded on __dataclass_params__; a slotted dataclass
+        # carries __slots__ and has no per-instance __dict__.
+        assert "__slots__" in dc.__dict__, f"{dc.__name__} must be slots=True"
 
 
 # ── Error class identity ───────────────────────────────────────────────

@@ -287,6 +287,7 @@ async def _process_embedding_analysis(
     asset_id = asset.id
     analysis_id = analysis.id
     embedder_id = analysis.embedder_id
+    model_id = analysis.model_id
 
     await analysis_service.mark_started(analysis_id)
     analysis_logger.info("embedding_started", asset_id=asset_id, path=embed_path)
@@ -304,7 +305,7 @@ async def _process_embedding_analysis(
 
     try:
         result = await get_embedding_service().embed_images(
-            EmbedRequest(paths=[embed_path])
+            EmbedRequest(paths=[embed_path], model_id=model_id)
         )
     except EmbeddingServiceError as exc:
         await analysis_service.mark_failed(analysis_id, str(exc))
@@ -323,6 +324,7 @@ async def _process_embedding_analysis(
         "embedding_completed",
         asset_id=asset_id,
         embedder_id=embedder_id,
+        model_id=result.model_id,
         dim=result.dim,
     )
 

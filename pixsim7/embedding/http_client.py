@@ -1,10 +1,9 @@
 """HTTP client implementation of the EmbeddingService protocol.
 
 Talks to the standalone `pixsim7.embedding.server` (the launcher-managed
-`embedding-daemon` service) over HTTP. This is the default image path in the
+`embedding-daemon` service) over HTTP. This is the image path in the
 backend — it has **no torch dependency**, so binding it in the fastapi host
-costs nothing (unlike the stdio `DaemonEmbeddingService`, which pulled torch in
-lazily). Image embedding routes here; text embedding stays host-side.
+costs nothing. Image embedding routes here; text embedding stays host-side.
 
 Graceful failure: if the service is unreachable / times out / returns a bad
 response, `embed_images` raises `EmbeddingServiceError`. The analysis worker
@@ -51,12 +50,15 @@ class HttpEmbeddingService(EmbeddingService):
 
     async def embed_images(self, request: EmbedRequest) -> EmbedResult:
         if not request.paths:
-            return EmbedResult(vectors=[], dim=0, model_id=self._model_id)
-
-        try:
-            response = await self._get_client().post(
-                "/embed", json={"paths": list(request.paths)}
+            return EmbedResult(
+                vectors=[], dim=0, model_id=request.model_id or self._model_id
             )
+
+        payload: dict[str, object] = {"paths": list(request.paths)}
+        if request.model_id is not None:
+            payload["model_id"] = request.model_id
+        try:
+            response = await self._get_client().post("/embed", json=payload)
         except httpx.HTTPError as exc:
             raise EmbeddingServiceError(
                 f"embedding service unreachable at {self._base_url}: {exc}"
@@ -89,7 +91,15 @@ class HttpEmbeddingService(EmbeddingService):
         if any(len(v) != dim for v in vectors):
             raise EmbeddingServiceError("embedding service returned vectors with mixed dims")
 
-        return EmbedResult(vectors=vectors, dim=dim, model_id=self._model_id)
+        # Provenance is the model the daemon actually used (from its response),
+        # not this adapter's env default — they diverge once instances select a
+        # model. Fall back to the configured id if the daemon omits it.
+        served_model_id = data.get("model_id")
+        provenance_model_id = (
+            served_model_id if isinstance(served_model_id, str) and served_model_id
+            else self._model_id
+        )
+        return EmbedResult(vectors=vectors, dim=dim, model_id=provenance_model_id)
 
     async def embed_texts(self, request: EmbedTextRequest) -> EmbedResult:
         raise NotImplementedError(

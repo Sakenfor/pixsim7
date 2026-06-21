@@ -40,8 +40,37 @@ async def test_embed_success() -> None:
     res = await _svc(handler).embed_images(EmbedRequest(paths=["/a.jpg", "/b.jpg"]))
     assert res.vectors == [[0.1, 0.2], [0.3, 0.4]]
     assert res.dim == 2
-    # The client reports its OWN configured model_id (provenance), not the wire one.
-    assert res.model_id == "m"
+    # Provenance is the model the daemon actually used (from its response),
+    # not this adapter's configured default — they diverge once an instance
+    # selects a model the daemon serves.
+    assert res.model_id == "x"
+
+
+@pytest.mark.asyncio
+async def test_model_id_forwarded_in_payload() -> None:
+    # When the request carries a model_id, it must reach the daemon so the
+    # daemon can serve (or reject) that exact model.
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content) == {"paths": ["/a.jpg"], "model_id": "google/siglip2"}
+        return httpx.Response(200, json={"embeddings": [[0.1]], "dim": 1, "model_id": "google/siglip2"})
+
+    res = await _svc(handler).embed_images(
+        EmbedRequest(paths=["/a.jpg"], model_id="google/siglip2")
+    )
+    assert res.model_id == "google/siglip2"
+
+
+@pytest.mark.asyncio
+async def test_model_mismatch_is_service_error() -> None:
+    # The daemon's 409 reject surfaces as EmbeddingServiceError → the worker
+    # marks the analysis failed (graceful), no wrong-model embedding stored.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(409, json={"error": "model_not_served"})
+
+    with pytest.raises(EmbeddingServiceError, match="HTTP 409"):
+        await _svc(handler).embed_images(
+            EmbedRequest(paths=["/a.jpg"], model_id="other")
+        )
 
 
 @pytest.mark.asyncio

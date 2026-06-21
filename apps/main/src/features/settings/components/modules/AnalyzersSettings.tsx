@@ -105,11 +105,6 @@ const DEFAULT_EMBEDDING_LABEL = 'SigLIP-2 Large (primary)';
 
 const ACTIVE_BACKFILL_STATUSES: AnalysisBackfillStatus[] = ['pending', 'running'];
 
-function extractEmbeddingCommand(config: Record<string, unknown>): string {
-  const command = config.command;
-  return typeof command === 'string' ? command : '';
-}
-
 function normalizeAnalyzerChainPreference(
   listValue: unknown,
   fallback: string
@@ -1493,7 +1488,6 @@ export function AnalyzersSettings() {
   const setVisualSimilarityThreshold = useMediaSettingsStore((s) => s.setVisualSimilarityThreshold);
   const [isSavingEmbedding, setIsSavingEmbedding] = useState(false);
   const [embeddingError, setEmbeddingError] = useState<string | null>(null);
-  const [embeddingCommandDraft, setEmbeddingCommandDraft] = useState('');
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminUser(user);
 
@@ -1650,40 +1644,23 @@ export function AnalyzersSettings() {
     return embeddingInstances.find((instance) => instance.on_ingest) ?? embeddingInstances[0] ?? null;
   }, [embeddingInstances]);
 
-  const activeEmbeddingCommand = useMemo(() => {
-    if (!activeEmbeddingInstance) return '';
-    return extractEmbeddingCommand(activeEmbeddingInstance.config as Record<string, unknown>);
-  }, [activeEmbeddingInstance]);
-
   const embeddingEnabled = Boolean(activeEmbeddingInstance?.enabled && activeEmbeddingInstance?.on_ingest);
 
-  useEffect(() => {
-    setEmbeddingCommandDraft(activeEmbeddingCommand);
-  }, [activeEmbeddingCommand]);
-
   const persistEmbeddingControls = useCallback(
-    async (updates: { enabled?: boolean; command?: string }) => {
+    async (updates: { enabled?: boolean }) => {
       const requestedEnabled = updates.enabled;
-      const requestedCommand = updates.command;
       setEmbeddingError(null);
       setIsSavingEmbedding(true);
 
       try {
         if (activeEmbeddingInstance) {
-          const currentConfig = (activeEmbeddingInstance.config ?? {}) as Record<string, unknown>;
-          const nextConfig = requestedCommand === undefined
-            ? currentConfig
-            : { ...currentConfig, command: requestedCommand.trim() };
-
           await updateAnalyzerInstance(activeEmbeddingInstance.id, {
             enabled: requestedEnabled ?? activeEmbeddingInstance.enabled,
             on_ingest: requestedEnabled ?? activeEmbeddingInstance.on_ingest,
-            config: nextConfig,
           });
         } else {
           const shouldEnable = requestedEnabled ?? false;
-          const hasCommand = typeof requestedCommand === 'string' && requestedCommand.trim().length > 0;
-          if (!shouldEnable && !hasCommand) {
+          if (!shouldEnable) {
             return;
           }
 
@@ -1697,7 +1674,7 @@ export function AnalyzersSettings() {
             enabled: shouldEnable,
             on_ingest: shouldEnable,
             priority: 0,
-            config: hasCommand ? { command: requestedCommand?.trim() ?? '' } : {},
+            config: {},
           };
           await createAnalyzerInstance(payload);
         }
@@ -1718,11 +1695,6 @@ export function AnalyzersSettings() {
     },
     [persistEmbeddingControls]
   );
-
-  const handleEmbeddingCommandSave = useCallback(() => {
-    if (embeddingCommandDraft === activeEmbeddingCommand) return;
-    void persistEmbeddingControls({ command: embeddingCommandDraft });
-  }, [activeEmbeddingCommand, embeddingCommandDraft, persistEmbeddingControls]);
 
   const hasActiveBackfillRuns = useMemo(
     () => backfillRuns.some((run) => isBackfillActive(run.status)),
@@ -2320,33 +2292,6 @@ export function AnalyzersSettings() {
                   {embeddingInstances.length} embedding instances detected. This toggle controls the active one.
                 </p>
               )}
-            </div>
-
-            <div className="space-y-1">
-              <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
-                Embedding Command
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={embeddingCommandDraft}
-                  onChange={(e) => setEmbeddingCommandDraft(e.target.value)}
-                  onBlur={handleEmbeddingCommandSave}
-                  placeholder="python -m pixsim7.embedding.cli.image_local"
-                  className="flex-1 px-2 py-1.5 text-[11px] font-mono border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
-                />
-                <button
-                  type="button"
-                  onClick={handleEmbeddingCommandSave}
-                  disabled={isSavingEmbedding || embeddingCommandDraft === activeEmbeddingCommand}
-                  className="px-2 py-1.5 text-[10px] rounded bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 text-neutral-700 dark:text-neutral-300 transition-colors"
-                >
-                  Save
-                </button>
-              </div>
-              <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                Command that accepts JSON on stdin and returns embeddings on stdout.
-              </p>
             </div>
           </div>
         </section>

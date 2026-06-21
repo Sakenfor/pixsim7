@@ -16,12 +16,17 @@ from typing import Protocol, Sequence
 
 @dataclass(frozen=True, slots=True)
 class EmbedRequest:
-    """Image paths to embed.
+    """Image paths to embed, plus the model to embed them with.
 
-    `paths` are absolute paths the embedder can read directly.
+    `paths` are absolute paths the embedder can read directly. `model_id` is the
+    per-analyzer-instance model selection; when set, the image daemon must be
+    serving that exact model or it rejects the request (so a mismatch fails the
+    analysis cleanly rather than silently embedding with the wrong model). When
+    None the daemon uses whatever model it has loaded.
     """
 
     paths: Sequence[str]
+    model_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

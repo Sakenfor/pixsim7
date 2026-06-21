@@ -25,9 +25,7 @@ Configuration (env vars, with sensible defaults):
 - PIXSIM_EMBEDDING_MODEL_ID — model identifier recorded on each image vector row
 
 The image path is an HTTP client to the standalone `embedding-daemon` service
-(launcher-managed, one GPU-resident model shared across all consumers). The
-legacy stdio `DaemonEmbeddingService` (pixsim7/embedding/daemon.py) is kept for
-backfill / standalone use but is no longer the default worker path.
+(launcher-managed, one GPU-resident model shared across all consumers).
 """
 from __future__ import annotations
 

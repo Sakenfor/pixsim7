@@ -75,6 +75,30 @@ def test_embed_roundtrip(monkeypatch) -> None:
     assert st.in_flight == 0
 
 
+def test_embed_model_match(monkeypatch) -> None:
+    # A request whose model_id matches the loaded model is served normally.
+    st = _fresh_state()
+    st.loaded = True
+    st.model, st.processor, st.device = "M", "P", "cpu"
+    monkeypatch.setattr(srv, "embed_images", lambda m, p, d, paths: [[0.1] for _ in paths])
+
+    res = _run(srv.embed(EmbedBody(paths=["/a.jpg"], model_id=st.model_id)))
+    assert res["embeddings"] == [[0.1]]
+    assert res["model_id"] == st.model_id
+
+
+def test_embed_model_mismatch_rejected() -> None:
+    # A request for a model this daemon isn't serving is rejected (409) rather
+    # than silently embedded with the wrong model.
+    st = _fresh_state()
+    st.loaded = True
+    code, body = _resp(_run(srv.embed(EmbedBody(paths=["/a.jpg"], model_id="some/other-model"))))
+    assert code == 409
+    assert body["error"] == "model_not_served"
+    assert body["requested_model_id"] == "some/other-model"
+    assert body["served_model_id"] == st.model_id
+
+
 def test_embed_empty() -> None:
     st = _fresh_state()
     st.loaded = True

@@ -14,7 +14,10 @@ Endpoints:
                    200 {"status":"ok","model_loaded":true} once ready. The
                    launcher's HealthManager probes this — so a wedge surfaces
                    as an unhealthy card instead of a silent hang.
-  POST /embed   -> {"paths":[...]} -> {"embeddings":[[...]],"dim":N,"model_id":...}
+  POST /embed   -> {"paths":[...], "model_id"?:...} ->
+                   {"embeddings":[[...]],"dim":N,"model_id":...}
+                   An optional request "model_id" must match the loaded model;
+                   a mismatch returns 409 {"error":"model_not_served",...}.
 
 Configuration (env):
   PIXSIM_EMBEDDING_MODEL_ID  - model identifier (default SigLIP-2 large)
@@ -89,6 +92,10 @@ app = FastAPI(title="PixSim Embedding Daemon", lifespan=lifespan)
 
 class EmbedBody(BaseModel):
     paths: list[str]
+    # Optional per-instance model selection. When set it must match the model
+    # this daemon has loaded; a mismatch is rejected (409) so the caller fails
+    # the analysis cleanly instead of embedding with the wrong model.
+    model_id: str | None = None
 
 
 @app.get("/health")
@@ -120,6 +127,18 @@ async def health():
 async def embed(body: EmbedBody):
     if not state.loaded:
         return JSONResponse(status_code=503, content={"error": "model not loaded"})
+    if body.model_id is not None and body.model_id != state.model_id:
+        # Reject rather than silently embed with the wrong model. Until the
+        # daemon hosts multiple models (c3), the requested model must match the
+        # one this daemon loaded.
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "model_not_served",
+                "requested_model_id": body.model_id,
+                "served_model_id": state.model_id,
+            },
+        )
     if not body.paths:
         return {"embeddings": [], "dim": 0, "model_id": state.model_id}
 
