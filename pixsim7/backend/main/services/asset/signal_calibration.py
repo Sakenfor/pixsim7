@@ -88,6 +88,7 @@ async def compute_calibration(db: AsyncSession, user_id: int) -> dict[str, Any]:
         PEAK_DB_THRESHOLD,
         PHASH_FIRST_TO_LAST_THRESHOLD,
         PHASH_MEAN_DIV_THRESHOLD,
+        FLATNESS_WEAK,
         RENDER_RATIO_WEAK,
         SUSPICIOUS_THRESHOLD,
         SCANNER_VERSION,
@@ -136,6 +137,10 @@ async def compute_calibration(db: AsyncSession, user_id: int) -> dict[str, Any]:
             mdf is not None and mdf < PHASH_MEAN_DIV_THRESHOLD
         )
 
+    def is_tonal(sm: dict) -> bool:
+        fl = sm.get("spectral_flatness")
+        return fl is not None and fl < FLATNESS_WEAK
+
     def predicted_broken(sm: dict) -> bool:
         s = sm.get("suspicious")
         if s is not None:
@@ -181,13 +186,20 @@ async def compute_calibration(db: AsyncSession, user_id: int) -> dict[str, Any]:
     # Which signals carry the broken labels (blind-spot finder).
     if n_broken:
         rfast = sum(1 for sm in broken if (sm.get("render_ratio") or 99) < RENDER_RATIO_WEAK)
+        tonal = sum(1 for sm in broken if is_tonal(sm))
         quiet = sum(1 for sm in broken if is_quiet(sm))
         static = sum(1 for sm in broken if is_static(sm))
         none = sum(
             1 for sm in broken
-            if not ((sm.get("render_ratio") or 99) < RENDER_RATIO_WEAK or is_quiet(sm) or is_static(sm))
+            if not (
+                is_tonal(sm)
+                or (sm.get("render_ratio") or 99) < RENDER_RATIO_WEAK
+                or is_quiet(sm)
+                or is_static(sm)
+            )
         )
         report["broken_signal_presence"] = {
+            "tonal_audio": tonal,
             "render_fast": rfast,
             "audio_quiet": quiet,
             "visual_static": static,

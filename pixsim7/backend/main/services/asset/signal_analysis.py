@@ -5,24 +5,29 @@ combines them with the generation's *cohort-relative render time* to score
 how likely a clip is a degenerate generation (e.g. a fast-failed output where
 the model bailed early / returned a canned rejection clip).
 
-Scoring model (v2 — render-primary, conservative). See plan
+Scoring model (v3 — tonal-audio + render dual-primary). See plan
 ``signal-scan-recalibration`` for the live-data validation behind it:
 
-  * PRIMARY — render ratio vs cohort median (``render_ratio``, supplied by
-    the caller from cohort_baselines): < 0.5 strong (+4), < 0.7 moderate
-    (+2), < 0.85 weak (+1). This is the strongest single discriminator;
-    genuine fast-fails render ~0.8x cohort median and below.
+  * PRIMARY — tonal audio (``spectral_flatness``): < 0.25 strong (+4), < 0.32
+    moderate (+3), < 0.38 weak (+1). The single strongest discriminator on live
+    data — broken clips carry narrowband synthetic audio (canned refusal voice,
+    pitched "hum" melody, silent gibberish; flatness ~0.15-0.25) while genuine
+    clips carry a broadband soundtrack (~0.43-0.48), with no overlap.
+  * PRIMARY — render ratio vs cohort median (``render_ratio``, supplied by the
+    caller from cohort_baselines): < 0.5 strong (+4), < 0.7 moderate (+2),
+    < 0.85 weak (+1). Genuine fast-fails render below cohort median — but note
+    this barely separates the current library (broken render ~0.98x), so tonal
+    audio carries most of the recall now.
   * CORROBORATING ONLY — audio-quiet (rms OR peak below threshold) and
     visual-static (first-to-last OR mean-div below threshold), each +1. The
     two sub-signals per axis are collapsed with OR because they are highly
     correlated (double-counting them was the v1 bug). Modern "failed"
-    generations often still animate, so a single axis alone is never enough
-    to flag "broken" — without a render signal the score caps at borderline.
+    generations often still animate, so a corroborating axis alone is never
+    enough to flag "broken".
 
 ``suspicious`` (broken) requires score >= SUSPICIOUS_THRESHOLD (3), reachable
-only via a render signal: render-strong alone, or render-moderate + >=1
-corroborating axis. Audio/visual without a trusted cohort baseline top out at
-2 → borderline, never broken.
+via either primary axis alone (tonal-moderate or render-strong); corroborating
+axes alone top out at 2 → borderline, never broken.
 
 Stamps results into `Asset.media_metadata.signal_metrics`:
 
@@ -35,6 +40,8 @@ Stamps results into `Asset.media_metadata.signal_metrics`:
       "audio_channels": int,
       "phash_first_to_last": int,
       "phash_mean_div_from_first": float,
+      "spectral_flatness": float | null, # median per-frame flatness (0=tonal, 1=noise)
+      "tonal_frac": float | null,        # fraction of frames below FRAME_TONAL_FLATNESS
       "render_ratio": float | null,      # render sec / cohort p50 (null = no baseline)
       "cohort_n": int | null,            # sample size of the cohort baseline used
       "cohort_p50_sec": float | null,    # cohort median render seconds
@@ -65,7 +72,7 @@ from pixsim_logging import get_logger
 logger = get_logger()
 
 # Bump when scoring changes so re-scans can be detected via prev_scanner_version.
-SCANNER_VERSION = "v2"
+SCANNER_VERSION = "v3"
 
 # Corroborating-axis thresholds. Each axis ORs its two sub-signals (they are
 # highly correlated; summing them was the v1 double-counting bug) and
@@ -81,6 +88,31 @@ RENDER_RATIO_MODERATE = 0.7        # below this → +2
 RENDER_RATIO_WEAK = 0.85           # below this → +1
 
 SUSPICIOUS_THRESHOLD = 3           # score >= this is flagged broken
+
+# Tonal-audio axis (v3 — PRIMARY, alongside render). Genuine i2v outputs carry a
+# broadband music+ambience soundtrack; degenerate/guardrail outputs (a canned
+# refusal voice "which option would you prefer", a pitched-up "hum" melody, or
+# silent gibberish) carry narrowband, synthetic audio. Spectral flatness
+# (geo-mean / arith-mean of the magnitude spectrum: ~0 = pure tone, ~1 = white
+# noise) separates them cleanly on live data — user-flagged broken cluster at
+# ~0.15-0.25 median flatness vs ~0.43-0.48 for genuine clips, with no overlap
+# (93% of broken below 0.32, 0% of genuine). It is the single strongest
+# discriminator for this library — render time, the v2 primary, barely separates
+# (broken render ~0.98x cohort). See plan signal-scan-recalibration.
+FLATNESS_STRONG = 0.25     # median flatness below this → +4 (deep broken band; flags alone)
+FLATNESS_MODERATE = 0.32   # below this → +3 (still clear of the clean band; flags alone)
+FLATNESS_WEAK = 0.38       # below this → +1 (ambiguous mid-zone; needs corroboration)
+FRAME_TONAL_FLATNESS = 0.15  # per-frame flatness below this counts as a "tonal" frame
+SPECTRAL_SR = 16000        # mono decode rate for the spectral probe
+SPECTRAL_WIN = 2048        # FFT window (samples)
+SPECTRAL_HOP = 1024        # hop between frames (samples)
+# Minimum AUDIBLE frames (silence skipped) needed to trust the tonal verdict.
+# ~15 frames ≈ 1s of audible audio. Below this the median rests on too little
+# signal — e.g. a mostly-silent good clip with a brief musical sting could read
+# spuriously tonal — so the probe abstains (flatness=None → tonal axis scores 0)
+# rather than risk a false "broken". Real broken hums are tonal throughout (100+
+# frames), so this only mutes genuinely under-sampled clips.
+MIN_SPECTRAL_FRAMES = 15
 
 # Probe budget: ffmpeg should be sub-second per clip. Generous timeout to
 # absorb cold-cache or contention; if exceeded, treat as probe failure.
@@ -182,10 +214,60 @@ def probe_phash(source: str, fps: int = 4) -> dict[str, Optional[float]]:
     }
 
 
+def probe_spectral(source: str) -> dict[str, Optional[float]]:
+    """Decode audio to mono PCM and measure spectral flatness / tonal fraction.
+
+    Per-frame spectral flatness is the geometric mean over the arithmetic mean of
+    the magnitude spectrum (~0 for a pure tone, ~1 for white noise). Degenerate
+    generations (canned refusal voice, pitched "hum" melody, silent gibberish)
+    carry narrowband synthetic audio → low flatness; genuine clips carry a
+    broadband music+ambience mix → high flatness. `source` is a local file path
+    or a fetchable URL (ffmpeg reads both). numpy is imported lazily so importing
+    this module stays cheap for callers that never probe.
+
+    Returns the median flatness across frames and the fraction of "tonal" frames
+    (flatness < FRAME_TONAL_FLATNESS). Values are None when there is no decodable
+    audio (≥ ~1s required).
+    """
+    import numpy as np
+
+    r = _run([
+        "ffmpeg", "-hide_banner", "-nostats",
+        "-i", source,
+        "-ac", "1", "-ar", str(SPECTRAL_SR),
+        "-f", "f32le", "-",
+    ])
+    x = np.frombuffer(r.stdout, dtype=np.float32)
+    none = {"spectral_flatness": None, "tonal_frac": None, "spectral_frames": 0}
+    if x.size < SPECTRAL_SR:  # under ~1s of audio — not enough to judge
+        return none
+    win, hop = SPECTRAL_WIN, SPECTRAL_HOP
+    window = np.hanning(win)
+    flats: list[float] = []
+    tonal = 0
+    for i in range(0, len(x) - win, hop):
+        mag = np.abs(np.fft.rfft(x[i:i + win] * window)) + 1e-9
+        if mag.sum() < 1e-3:  # silent frame — skip so leading/trailing silence doesn't skew
+            continue
+        flat = float(np.exp(np.log(mag).mean()) / mag.mean())
+        flats.append(flat)
+        if flat < FRAME_TONAL_FLATNESS:
+            tonal += 1
+    if len(flats) < MIN_SPECTRAL_FRAMES:
+        # Too little audible audio to judge tonal-ness — abstain (don't flag),
+        # but keep the audible-frame count for diagnostics.
+        return {"spectral_flatness": None, "tonal_frac": None, "spectral_frames": len(flats)}
+    return {
+        "spectral_flatness": round(float(np.median(flats)), 4),
+        "tonal_frac":        round(tonal / len(flats), 4),
+        "spectral_frames":   len(flats),
+    }
+
+
 # ---------- scoring ----------
 
 def _render_points(render_ratio: Optional[float]) -> int:
-    """Graded points for the primary cohort-relative render-time signal."""
+    """Graded points for the cohort-relative render-time signal (a primary axis)."""
     if render_ratio is None:
         return 0
     if render_ratio < RENDER_RATIO_STRONG:
@@ -197,21 +279,40 @@ def _render_points(render_ratio: Optional[float]) -> int:
     return 0
 
 
+def _tonal_points(flatness: Optional[float]) -> int:
+    """Graded points for the tonal-audio (spectral-flatness) primary signal."""
+    if flatness is None:
+        return 0
+    if flatness < FLATNESS_STRONG:
+        return 4
+    if flatness < FLATNESS_MODERATE:
+        return 3
+    if flatness < FLATNESS_WEAK:
+        return 1
+    return 0
+
+
 def score_metrics(
     metrics: dict[str, Any],
     render_ratio: Optional[float] = None,
 ) -> tuple[int, bool]:
     """Compute (score, suspicious) from probed metrics + optional render ratio.
 
-    Render time is the primary signal (graded 0/+1/+2/+4). Audio-quiet and
-    visual-static are corroborating axes worth at most +1 each — each axis ORs
-    its two correlated sub-signals rather than summing them. ``suspicious`` is
-    only reachable with a render signal (axes alone cap at 2 → borderline).
+    Two PRIMARY axes, each graded and each able to flag on its own:
+      * tonal audio (spectral flatness): 0/+1/+3/+4 — the strongest discriminator
+        for current data (narrowband synthetic "broken" audio vs broadband
+        genuine soundtracks);
+      * render time vs cohort: 0/+1/+2/+4.
+    Plus two CORROBORATING axes worth at most +1 each — audio-quiet and
+    visual-static — each ORing its two correlated sub-signals rather than summing
+    them. ``suspicious`` (score >= 3) is reachable via either primary axis;
+    corroborating axes alone cap at 2 → borderline, never broken.
     """
     rms  = metrics.get("audio_rms_db")
     peak = metrics.get("audio_peak_db")
     f2l  = metrics.get("phash_first_to_last")
     mdf  = metrics.get("phash_mean_div_from_first")
+    flatness = metrics.get("spectral_flatness")
 
     audio_quiet = (
         (rms  is not None and rms  < RMS_DB_THRESHOLD) or
@@ -222,7 +323,7 @@ def score_metrics(
         (mdf  is not None and mdf  < PHASH_MEAN_DIV_THRESHOLD)
     )
 
-    score = _render_points(render_ratio)
+    score = _tonal_points(flatness) + _render_points(render_ratio)
     if audio_quiet:
         score += 1
     if visual_static:
@@ -255,6 +356,7 @@ def probe_path(source: str | Path) -> dict[str, Any]:
     out.update(probe_streams(s))
     out.update(probe_audio(s))
     out.update(probe_phash(s))
+    out.update(probe_spectral(s))
     return out
 
 
@@ -282,6 +384,8 @@ def build_signal_metrics_payload(
         "audio_channels":            metrics.get("audio_channels"),
         "phash_first_to_last":       metrics.get("phash_first_to_last"),
         "phash_mean_div_from_first": metrics.get("phash_mean_div_from_first"),
+        "spectral_flatness":         metrics.get("spectral_flatness"),
+        "tonal_frac":                metrics.get("tonal_frac"),
         "render_ratio":              render_ratio,
         "cohort_n":                  rc.get("cohort_n"),
         "cohort_p50_sec":            rc.get("cohort_p50_sec"),
