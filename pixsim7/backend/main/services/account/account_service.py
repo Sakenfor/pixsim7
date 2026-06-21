@@ -504,6 +504,10 @@ def _grant_visibility_clause(user_id: int):
             ResourceGrant.recipient_user_id == user_id,
             ResourceGrant.resource_type == ResourceGrantType.PROVIDER_SLOTS,
             ResourceGrant.revoked_at.is_(None),
+            or_(
+                ResourceGrant.expires_at.is_(None),
+                ResourceGrant.expires_at > func.now(),
+            ),
             ResourceGrant.owner_user_id == ProviderAccount.user_id,
             _GRANT_SCOPE_PROVIDER == ProviderAccount.provider_id,
             or_(
@@ -989,6 +993,10 @@ class AccountService:
                     ResourceGrant.resource_type == ResourceGrantType.PROVIDER_SLOTS,
                     _GRANT_SCOPE_PROVIDER == provider_id,
                     ResourceGrant.revoked_at.is_(None),
+                    or_(
+                        ResourceGrant.expires_at.is_(None),
+                        ResourceGrant.expires_at > now,
+                    ),
                 )
             )
             grant_rules = list(rule_rows.scalars().all())
@@ -2387,9 +2395,10 @@ class AccountService:
         account_id: Optional[int] = None,
         slot_limit: int = 1,
         note: Optional[str] = None,
+        expires_at: Optional[datetime] = None,
     ) -> ResourceGrant:
         """Create or update a provider-slots share rule: (provider, model?, slots)
-        for a recipient, optionally pinned to a single account.
+        for a recipient, optionally pinned to a single account and time-boxed.
 
         Raises ValueError for invalid ownership / recipient combinations.
         """
@@ -2428,6 +2437,7 @@ class AccountService:
             scope=self._slot_scope(provider_id, model, account_id),
             cap=slot_limit,
             note=note,
+            expires_at=expires_at,
         )
 
     async def list_grants_issued(self, owner_user_id: int) -> list[ResourceGrant]:
@@ -2451,6 +2461,10 @@ class AccountService:
                 ResourceGrant.owner_user_id == owner_user_id,
                 ResourceGrant.resource_type == ResourceGrantType.PROVIDER_SLOTS,
                 ResourceGrant.revoked_at.is_(None),
+                or_(
+                    ResourceGrant.expires_at.is_(None),
+                    ResourceGrant.expires_at > func.now(),
+                ),
                 _GRANT_SCOPE_PROVIDER == account.provider_id,
                 or_(
                     _GRANT_SCOPE_ACCOUNT.is_(None),

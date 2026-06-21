@@ -43,6 +43,7 @@ def _grant_to_response(
         account_id=int(account_id) if account_id is not None else None,
         slot_limit=grant.cap if grant.cap is not None else 0,
         note=grant.note,
+        expires_at=grant.expires_at,
         created_at=grant.created_at,
         updated_at=grant.updated_at,
     )
@@ -90,6 +91,7 @@ async def create_grant(
             account_id=request.account_id,
             slot_limit=request.slot_limit,
             note=request.note,
+            expires_at=request.expires_at,
         )
         await db.commit()
         await db.refresh(grant)

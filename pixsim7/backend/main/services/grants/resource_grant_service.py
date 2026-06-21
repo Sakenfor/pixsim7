@@ -6,14 +6,23 @@ Resource-agnostic: callers pass a ``resource_type`` and a scope dict. Adapters
 any resource-specific validation; this service just persists, upserts, lists,
 and revokes grants. Bridge / review sharing can reuse it verbatim.
 """
+from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.grants import ResourceGrant, compute_scope_key
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
+
+
+def _not_expired_clause():
+    """SQL: grant has no expiry, or it's still in the future."""
+    return or_(
+        ResourceGrant.expires_at.is_(None),
+        ResourceGrant.expires_at > func.now(),
+    )
 
 
 class ResourceGrantService:
@@ -29,11 +38,12 @@ class ResourceGrantService:
         scope: dict[str, Any],
         cap: Optional[int] = None,
         note: Optional[str] = None,
+        expires_at: Optional[datetime] = None,
     ) -> ResourceGrant:
         """Upsert a grant keyed on (owner, recipient, resource_type, scope).
 
-        Re-granting an identical scope (even if previously revoked) reactivates
-        and updates the existing row rather than duplicating.
+        Re-granting an identical scope (even if previously revoked/expired)
+        reactivates and updates the existing row rather than duplicating.
         """
         if recipient_user_id == owner_user_id:
             raise ValueError("Cannot grant to yourself")
@@ -59,11 +69,13 @@ class ResourceGrantService:
                 scope_key=scope_key,
                 cap=cap,
                 note=note,
+                expires_at=expires_at,
             )
             self.db.add(grant)
         else:
             grant.cap = cap
             grant.note = note
+            grant.expires_at = expires_at
             grant.revoked_at = None
             grant.updated_at = utcnow()
 
@@ -78,6 +90,7 @@ class ResourceGrantService:
         stmt = select(ResourceGrant).where(
             ResourceGrant.owner_user_id == owner_user_id,
             ResourceGrant.revoked_at.is_(None),
+            _not_expired_clause(),
         )
         if resource_type is not None:
             stmt = stmt.where(ResourceGrant.resource_type == resource_type)
@@ -91,6 +104,7 @@ class ResourceGrantService:
         stmt = select(ResourceGrant).where(
             ResourceGrant.recipient_user_id == recipient_user_id,
             ResourceGrant.revoked_at.is_(None),
+            _not_expired_clause(),
         )
         if resource_type is not None:
             stmt = stmt.where(ResourceGrant.resource_type == resource_type)

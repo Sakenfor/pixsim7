@@ -54,6 +54,7 @@ interface GrantRule {
   account_id: number | null;
   slot_limit: number;
   note: string | null;
+  expires_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -229,6 +230,7 @@ export function ProfileView() {
   const [providerId, setProviderId] = useState('');
   const [model, setModel] = useState('');
   const [slots, setSlots] = useState('1');
+  const [expiresDays, setExpiresDays] = useState('');
   // delegation fields
   const [planId, setPlanId] = useState('');
   const [allowedProfileIds, setAllowedProfileIds] = useState('');
@@ -337,6 +339,7 @@ export function ProfileView() {
     setNote('');
     setModel('');
     setSlots('1');
+    setExpiresDays('');
     setPlanId('');
     setAllowedProfileIds('');
     setAllowedBridgeIds('');
@@ -369,6 +372,14 @@ export function ProfileView() {
         else payload.recipient_username = recipientTrimmed;
         if (model.trim()) payload.model = model.trim();
         if (note.trim()) payload.note = note.trim();
+        if (expiresDays.trim()) {
+          const days = Number.parseFloat(expiresDays);
+          if (!Number.isFinite(days) || days <= 0) {
+            setMutationError('Expiry (days) must be a positive number.');
+            return;
+          }
+          payload.expires_at = new Date(Date.now() + days * 86_400_000).toISOString();
+        }
         await pixsimClient.post<GrantRule>('/accounts/grants', payload);
         setMutationNotice('Slot share rule added.');
       } else {
@@ -410,6 +421,7 @@ export function ProfileView() {
     resetBuilder,
     resolveRecipientId,
     slots,
+    expiresDays,
   ]);
 
   // ---- delegation action gates (unchanged behavior) ----
@@ -550,7 +562,7 @@ export function ProfileView() {
         title: `${userLabel(rule.owner_user_id, currentUser?.id)} -> ${recipientLabel}`,
         lines: [
           `${rule.provider_id} · ${rule.model || 'all models'} · ${rule.account_id ? `account #${rule.account_id}` : 'pooled'}`,
-          `${rule.slot_limit} concurrent slot${rule.slot_limit === 1 ? '' : 's'}`,
+          `${rule.slot_limit} concurrent slot${rule.slot_limit === 1 ? '' : 's'}${rule.expires_at ? ` · expires ${formatDateTime(rule.expires_at)}` : ''}`,
         ],
         status: 'active',
         note: rule.note,
@@ -713,6 +725,18 @@ export function ProfileView() {
                   value={slots}
                   onChange={(event) => setSlots(event.target.value)}
                   className={inputClassName}
+                />
+              </label>
+              <label className="block text-[10px] text-neutral-400">
+                Expires in days (optional)
+                <input
+                  type="number"
+                  min={0}
+                  step="0.5"
+                  value={expiresDays}
+                  onChange={(event) => setExpiresDays(event.target.value)}
+                  className={inputClassName}
+                  placeholder="never"
                 />
               </label>
             </div>

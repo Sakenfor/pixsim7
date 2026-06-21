@@ -87,6 +87,11 @@ class ResourceGrant(SQLModel, table=True):
 
     revoked_at: Optional[datetime] = Field(default=None)
 
+    # Optional expiry. Past this instant the grant is inactive (treated like a
+    # soft revoke by visibility/cap/list logic). NULL = never expires. Cheap,
+    # broadly useful for time-boxed shares (slots for 24h, a session-long bridge).
+    expires_at: Optional[datetime] = Field(default=None)
+
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -104,8 +109,12 @@ class ResourceGrant(SQLModel, table=True):
             f"revoked={self.revoked_at is not None})>"
         )
 
-    def is_active(self) -> bool:
-        return self.revoked_at is None
+    def is_active(self, *, now: Optional[datetime] = None) -> bool:
+        if self.revoked_at is not None:
+            return False
+        if self.expires_at is not None and self.expires_at <= (now or utcnow()):
+            return False
+        return True
 
     def scope_value(self, key: str) -> Any:
         return (self.scope or {}).get(key)

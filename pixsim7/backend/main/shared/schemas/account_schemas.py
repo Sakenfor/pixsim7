@@ -65,6 +65,7 @@ class GrantCreate(BaseModel):
     account_id: Optional[int] = Field(default=None, description="Pin to one account; omit to pool across the provider")
     slot_limit: int = Field(default=1, ge=1, description="Max concurrent jobs for the recipient within this rule")
     note: Optional[str] = Field(default=None, max_length=500)
+    expires_at: Optional[datetime] = Field(default=None, description="Optional expiry; omit for no expiry")
 
 
 class GrantResponse(BaseModel):
@@ -78,6 +79,7 @@ class GrantResponse(BaseModel):
     account_id: Optional[int] = None
     slot_limit: int
     note: Optional[str] = None
+    expires_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
