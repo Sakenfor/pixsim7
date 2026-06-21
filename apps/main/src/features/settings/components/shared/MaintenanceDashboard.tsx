@@ -53,6 +53,7 @@ import {
 } from './maintenanceShared';
 import { Spinner } from './MaintenanceSpinner';
 import { ProviderConcurrencyRow } from './ProviderConcurrencyRow';
+import { SignalReprobeRunner } from './SignalReprobeRunner';
 
 const SURFACE = 'settings:maintenance-dashboard';
 
@@ -598,6 +599,7 @@ const signalScanConfig: RowConfig<SignalScanStats> = {
   },
   renderExtra: () => (
     <div className="space-y-2">
+      <SignalReprobeRunner />
       <CalibrationPanel />
       <DurationCohortTable />
     </div>
