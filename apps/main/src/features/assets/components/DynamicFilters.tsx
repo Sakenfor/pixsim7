@@ -53,7 +53,8 @@ const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number; overflow
   missing_embedding: { icon: 'eye', order: 82, overflow: true },
   missing_tags: { icon: 'tags', order: 83, overflow: true },
   signal_likely_broken: { icon: 'alertTriangle', order: 84, overflow: true },
-  signal_likely_clean: { icon: 'checkCircle', order: 85, overflow: true },
+  signal_borderline: { icon: 'alertCircle', order: 85, overflow: true },
+  signal_likely_clean: { icon: 'checkCircle', order: 86, overflow: true },
   include_archived: { icon: 'archive', order: 90, overflow: true },
   provider_status: { icon: 'shield', order: 91, overflow: true },
 };

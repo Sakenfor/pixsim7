@@ -1373,6 +1373,18 @@ def register_default_asset_filters() -> None:
     )
     asset_filter_registry.register(
         FilterSpec(
+            key="signal_borderline",
+            type="boolean",
+            label="Borderline",
+            description="Signal score 1–2 (one weak/corroborating axis only) and not yet user-decided. The undecided middle to triage.",
+            # 1 <= score <= 2 AND no user_override yet
+            condition_builder=lambda v: (
+                (_signal_score >= 1) & (_signal_score <= 2) & _signal_override.is_(None)
+            ) if v else None,
+        )
+    )
+    asset_filter_registry.register(
+        FilterSpec(
             key="signal_overridden",
             type="boolean",
             label="Signal: overridden",
