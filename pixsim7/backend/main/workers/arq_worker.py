@@ -45,6 +45,7 @@ from pixsim7.backend.main.workers.ingestion_processor import process_ingestion
 from pixsim7.backend.main.workers.prompt_tagging_processor import process_prompt_tagging
 from pixsim7.backend.main.workers.prompt_embedding_processor import process_prompt_embedding
 from pixsim7.backend.main.workers.analysis_backfill import run_analysis_backfill_batch
+from pixsim7.backend.main.workers.signal_backfill import run_signal_backfill_batch
 from pixsim7.automation.services.device_sync_service import poll_device_ads, poll_device_reconnects
 from pixsim7.backend.main.workers.health import (
     update_main_heartbeat,
@@ -324,6 +325,7 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="process_ephemeral_chain_execution")
     logger.info("worker_component_registered", component="process_ephemeral_fanout_execution")
     logger.info("worker_component_registered", component="run_analysis_backfill_batch")
+    logger.info("worker_component_registered", component="run_signal_backfill_batch")
     logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/2s")
     logger.info("worker_component_registered", component="requeue_pending_generations", schedule="*/30s")
     logger.info("worker_component_registered", component="requeue_pending_analyses", schedule="*/30s")
@@ -645,6 +647,7 @@ class WorkerSettings:
         process_ephemeral_chain_execution,
         process_ephemeral_fanout_execution,
         run_analysis_backfill_batch,
+        run_signal_backfill_batch,
         poll_job_statuses,
         poll_generation_once,
         requeue_pending_generations,
