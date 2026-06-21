@@ -33,7 +33,7 @@ import { useAssetSelectionStore } from '../stores/assetSelectionStore';
 import { useDeleteModalStore } from '../stores/deleteModalStore';
 
 import { useAsset } from './useAsset';
-import { useAssets, type AssetModel } from './useAssets';
+import { useAssets, type AssetModel, type AssetFilters } from './useAssets';
 
 
 const SESSION_KEY = 'assets_filters';
@@ -180,7 +180,7 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
   } = useMediaGenerationActions();
 
   // Filter persistence
-  const { filters, setFilters, replaceFilters } = useFilterPersistence({
+  const { filters, setFilters, replaceFilters } = useFilterPersistence<AssetFilters>({
     sessionKey: SESSION_KEY,
     initialFilters: {
       q: '',

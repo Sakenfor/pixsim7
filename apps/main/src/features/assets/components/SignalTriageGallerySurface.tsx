@@ -32,13 +32,15 @@ export interface SignalTriageContentProps {
 export function SignalTriageContent({ controller }: SignalTriageContentProps) {
   const [focusedIndex, setFocusedIndex] = useState(0);
 
-  // Pre-apply signal_likely_broken filter on mount. Don't fight the user if they
-  // toggle it off — they may want to view their overridden items via the
-  // signal_overridden filter.
+  // Start from a CLEAN triage state on mount. The asset filter session
+  // (`assets_filters`) is shared across every gallery surface, so merging here
+  // would inherit whatever stale filters the user left on the main gallery
+  // (e.g. media_type=image, a search query, a tag) — combined with the
+  // video-only signal flag that silently yields an empty queue. replaceFilters
+  // resets to defaults + the broken flag; subsequent in-surface toggles still
+  // apply on top of this clean base.
   useEffect(() => {
-    if (!controller.filters?.signal_likely_broken) {
-      controller.setFilters({ signal_likely_broken: true });
-    }
+    controller.replaceFilters({ signal_likely_broken: true });
     // intentionally only on mount; subsequent edits respect user choices
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
