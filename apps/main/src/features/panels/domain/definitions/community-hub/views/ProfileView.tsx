@@ -11,6 +11,8 @@ import {
 import { isAdminUser } from '@lib/auth/userRoles';
 import { formatActorLabel } from '@lib/identity/actorDisplay';
 
+import { useProviders } from '@features/providers/hooks/useProviders';
+
 import { useAuthStore } from '@/stores/authStore';
 
 interface PlanReviewDelegationEntry {
@@ -41,6 +43,21 @@ interface PlanReviewDelegationPayload {
   note?: string;
 }
 
+// Slot-share rule (account-family endpoints; snake_case, unlike delegation).
+interface GrantRule {
+  id: number;
+  owner_user_id: number;
+  recipient_user_id: number;
+  recipient_username: string | null;
+  provider_id: string;
+  model: string | null;
+  account_id: number | null;
+  slot_limit: number;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface BridgeStatusAgent {
   bridge_client_id: string;
   user_id: number | null;
@@ -56,6 +73,9 @@ interface BridgeStatusResponse {
   agents: BridgeStatusAgent[];
 }
 
+type AccessKind = 'slots' | 'delegation';
+type Direction = 'grant' | 'request';
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return 'Never';
   return new Date(value).toLocaleString();
@@ -69,6 +89,12 @@ function statusPillClass(status: string): string {
     return 'bg-neutral-500/15 text-neutral-300 border-neutral-500/30';
   }
   return 'bg-blue-500/15 text-blue-300 border-blue-500/30';
+}
+
+function kindChipClass(kind: AccessKind): string {
+  return kind === 'slots'
+    ? 'border-cyan-500/30 bg-cyan-500/15 text-cyan-200'
+    : 'border-violet-500/30 bg-violet-500/15 text-violet-200';
 }
 
 function userLabel(userId: number, currentUserId?: number): string {
@@ -88,157 +114,86 @@ function delegationTerminal(status: string): boolean {
   return normalized === 'revoked' || normalized === 'cancelled';
 }
 
-interface UserPickerOption {
-  id: number;
-  label: string;
-}
-
-function UserIdField({
-  label,
-  value,
-  onChange,
-  options,
-  inputClassName,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: UserPickerOption[];
-  inputClassName: string;
-  placeholder: string;
-}) {
-  const hasOptions = options.length > 0;
-  return (
-    <label className="mt-2 block text-[10px] text-neutral-400">
-      {label}
-      {hasOptions ? (
-        <select
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className={inputClassName}
-        >
-          <option value="">Select user...</option>
-          {options.map((option) => (
-            <option key={option.id} value={String(option.id)}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className={inputClassName}
-          placeholder={placeholder}
-        />
-      )}
-    </label>
-  );
-}
-
-function DelegationList({
-  title,
-  emptyLabel,
-  items,
-  currentUserId,
-  actionBusyKey,
-  canApprove,
-  canRevoke,
-  onApprove,
-  onRevoke,
-}: {
+// Normalized ledger row spanning both resource kinds.
+interface AccessRow {
+  key: string;
+  kind: AccessKind;
+  kindLabel: string;
   title: string;
-  emptyLabel: string;
-  items: PlanReviewDelegationEntry[];
-  currentUserId?: number;
-  actionBusyKey?: string | null;
-  canApprove: (item: PlanReviewDelegationEntry) => boolean;
-  canRevoke: (item: PlanReviewDelegationEntry) => boolean;
-  onApprove: (item: PlanReviewDelegationEntry) => void;
-  onRevoke: (item: PlanReviewDelegationEntry) => void;
-}) {
+  lines: string[];
+  status: string;
+  note?: string | null;
+  footer?: string;
+  canApprove?: boolean;
+  canRevoke?: boolean;
+  revokeLabel?: string;
+  approveBusy?: boolean;
+  revokeBusy?: boolean;
+  onApprove?: () => void;
+  onRevoke?: () => void;
+}
+
+function LedgerCard({ title, emptyLabel, rows }: { title: string; emptyLabel: string; rows: AccessRow[] }) {
   return (
     <div className="rounded-lg border border-neutral-800 bg-neutral-900/40">
       <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
         <h3 className="text-xs font-medium text-neutral-200">{title}</h3>
         <span className="text-[10px] text-neutral-500">
-          {items.length} item{items.length === 1 ? '' : 's'}
+          {rows.length} item{rows.length === 1 ? '' : 's'}
         </span>
       </div>
-      {items.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="px-3 py-3 text-[11px] text-neutral-500">{emptyLabel}</div>
       ) : (
         <div className="space-y-2 p-3">
-          {items.map((item) => {
-            const scopeBits: string[] = [];
-            if (item.allowedProfileIds.length > 0) scopeBits.push(`profiles ${item.allowedProfileIds.length}`);
-            if (item.allowedBridgeIds.length > 0) scopeBits.push(`bridges ${item.allowedBridgeIds.length}`);
-            if (item.allowedAgentIds.length > 0) scopeBits.push(`agents ${item.allowedAgentIds.length}`);
-            const scopeLabel = scopeBits.length > 0 ? scopeBits.join(' | ') : 'No explicit target filters';
-            const normalizedStatus = item.status.trim().toLowerCase();
-            const approveBusy = actionBusyKey === `approve:${item.id}`;
-            const revokeBusy = actionBusyKey === `revoke:${item.id}`;
-            const canApproveItem = canApprove(item);
-            const canRevokeItem = canRevoke(item);
-            const revokeLabel =
-              normalizedStatus === 'pending' &&
-              currentUserId === item.delegateUserId &&
-              currentUserId !== item.grantorUserId
-                ? 'Cancel'
-                : 'Revoke';
-            return (
-              <div key={item.id} className="rounded border border-neutral-800 bg-neutral-950/40 px-2.5 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] text-neutral-200">
-                    {userLabel(item.grantorUserId, currentUserId)} {'->'}
-                    {' '}
-                    {userLabel(item.delegateUserId, currentUserId)}
-                  </div>
+          {rows.map((row) => (
+            <div key={row.key} className="rounded border border-neutral-800 bg-neutral-950/40 px-2.5 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
                   <span
-                    className={`rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${statusPillClass(item.status)}`}
+                    className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wide ${kindChipClass(row.kind)}`}
                   >
-                    {item.status}
+                    {row.kindLabel}
                   </span>
+                  <span className="text-[11px] text-neutral-200">{row.title}</span>
                 </div>
-                <div className="mt-1 text-[10px] text-neutral-500">
-                  Plan scope: {item.planId || 'Any plan'}
-                </div>
-                <div className="mt-1 text-[10px] text-neutral-500">
-                  Scope: {scopeLabel}
-                </div>
-                {item.note ? (
-                  <div className="mt-1 text-[10px] text-neutral-400">{item.note}</div>
-                ) : null}
-                <div className="mt-1 text-[10px] text-neutral-600">
-                  Updated {formatDateTime(item.updatedAt)}
-                  {item.expiresAt ? ` | Expires ${formatDateTime(item.expiresAt)}` : ''}
-                </div>
-                {(canApproveItem || canRevokeItem) && (
-                  <div className="mt-2 flex items-center gap-2">
-                    {canApproveItem ? (
-                      <button
-                        onClick={() => onApprove(item)}
-                        disabled={approveBusy || revokeBusy}
-                        className="rounded border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[10px] text-green-200 transition-colors hover:border-green-400/70 disabled:opacity-50"
-                      >
-                        {approveBusy ? 'Approving...' : 'Approve'}
-                      </button>
-                    ) : null}
-                    {canRevokeItem ? (
-                      <button
-                        onClick={() => onRevoke(item)}
-                        disabled={approveBusy || revokeBusy}
-                        className="rounded border border-neutral-600 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100 disabled:opacity-50"
-                      >
-                        {revokeBusy ? 'Updating...' : revokeLabel}
-                      </button>
-                    ) : null}
-                  </div>
-                )}
+                <span
+                  className={`rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${statusPillClass(row.status)}`}
+                >
+                  {row.status}
+                </span>
               </div>
-            );
-          })}
+              {row.lines.map((line, idx) => (
+                <div key={idx} className="mt-1 text-[10px] text-neutral-500">
+                  {line}
+                </div>
+              ))}
+              {row.note ? <div className="mt-1 text-[10px] text-neutral-400">{row.note}</div> : null}
+              {row.footer ? <div className="mt-1 text-[10px] text-neutral-600">{row.footer}</div> : null}
+              {(row.canApprove || row.canRevoke) && (
+                <div className="mt-2 flex items-center gap-2">
+                  {row.canApprove ? (
+                    <button
+                      onClick={row.onApprove}
+                      disabled={row.approveBusy || row.revokeBusy}
+                      className="rounded border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[10px] text-green-200 transition-colors hover:border-green-400/70 disabled:opacity-50"
+                    >
+                      {row.approveBusy ? 'Approving...' : 'Approve'}
+                    </button>
+                  ) : null}
+                  {row.canRevoke ? (
+                    <button
+                      onClick={row.onRevoke}
+                      disabled={row.approveBusy || row.revokeBusy}
+                      className="rounded border border-neutral-600 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100 disabled:opacity-50"
+                    >
+                      {row.revokeBusy ? 'Updating...' : row.revokeLabel ?? 'Revoke'}
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -248,33 +203,37 @@ function DelegationList({
 export function ProfileView() {
   const currentUser = useAuthStore((state) => state.user);
   const isAdmin = isAdminUser(currentUser);
+  const { providers } = useProviders();
+
   const [directoryUsers, setDirectoryUsers] = useState<AdminUserPermissions[]>([]);
   const [directoryLoading, setDirectoryLoading] = useState(false);
   const [directoryError, setDirectoryError] = useState('');
   const [machines, setMachines] = useState<BridgeMachine[]>([]);
   const [liveBridgeAgents, setLiveBridgeAgents] = useState<BridgeStatusAgent[]>([]);
   const [delegations, setDelegations] = useState<PlanReviewDelegationListResponse | null>(null);
+  const [slotsIssued, setSlotsIssued] = useState<GrantRule[]>([]);
+  const [slotsReceived, setSlotsReceived] = useState<GrantRule[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [mutationError, setMutationError] = useState('');
   const [mutationNotice, setMutationNotice] = useState('');
   const [actionBusyKey, setActionBusyKey] = useState<string | null>(null);
 
-  const [requestGrantorUserId, setRequestGrantorUserId] = useState('');
-  const [requestPlanId, setRequestPlanId] = useState('');
-  const [requestAllowedProfileIds, setRequestAllowedProfileIds] = useState('');
-  const [requestAllowedBridgeIds, setRequestAllowedBridgeIds] = useState('');
-  const [requestAllowedAgentIds, setRequestAllowedAgentIds] = useState('');
-  const [requestNote, setRequestNote] = useState('');
-  const [requesting, setRequesting] = useState(false);
-
-  const [grantDelegateUserId, setGrantDelegateUserId] = useState('');
-  const [grantPlanId, setGrantPlanId] = useState('');
-  const [grantAllowedProfileIds, setGrantAllowedProfileIds] = useState('');
-  const [grantAllowedBridgeIds, setGrantAllowedBridgeIds] = useState('');
-  const [grantAllowedAgentIds, setGrantAllowedAgentIds] = useState('');
-  const [grantNote, setGrantNote] = useState('');
-  const [granting, setGranting] = useState(false);
+  // Unified "add access" builder.
+  const [kind, setKind] = useState<AccessKind>('slots');
+  const [direction, setDirection] = useState<Direction>('grant');
+  const [recipient, setRecipient] = useState('');
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  // slots fields
+  const [providerId, setProviderId] = useState('');
+  const [model, setModel] = useState('');
+  const [slots, setSlots] = useState('1');
+  // delegation fields
+  const [planId, setPlanId] = useState('');
+  const [allowedProfileIds, setAllowedProfileIds] = useState('');
+  const [allowedBridgeIds, setAllowedBridgeIds] = useState('');
+  const [allowedAgentIds, setAllowedAgentIds] = useState('');
 
   const inputClassName =
     'mt-1 w-full rounded border border-neutral-700 bg-neutral-950/60 px-2 py-1 text-[11px] text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-neutral-500';
@@ -283,16 +242,20 @@ export function ProfileView() {
     setLoading(true);
     setError('');
     try {
-      const [machineResponse, delegationResponse] = await Promise.all([
+      const [machineResponse, delegationResponse, issued, received] = await Promise.all([
         listBridgeMachines({ limit: 100 }),
         pixsimClient.get<PlanReviewDelegationListResponse>('/dev/plans/reviews/delegations'),
+        pixsimClient.get<GrantRule[]>('/accounts/grants/issued'),
+        pixsimClient.get<GrantRule[]>('/accounts/grants/received'),
       ]);
       setMachines(machineResponse.machines || []);
       setDelegations(delegationResponse);
+      setSlotsIssued(issued ?? []);
+      setSlotsReceived(received ?? []);
       const bridgeStatus = await pixsimClient.get<BridgeStatusResponse>('/meta/agents/bridge').catch(() => null);
       setLiveBridgeAgents(bridgeStatus?.agents ?? []);
     } catch (err) {
-      setError(extractErrorMessage(err, 'Failed to load profile access data.'));
+      setError(extractErrorMessage(err, 'Failed to load access data.'));
     } finally {
       setLoading(false);
     }
@@ -314,17 +277,11 @@ export function ProfileView() {
       setDirectoryError('');
       try {
         const response = await listAdminUsers({ limit: 300, offset: 0 });
-        if (!cancelled) {
-          setDirectoryUsers(response.users ?? []);
-        }
+        if (!cancelled) setDirectoryUsers(response.users ?? []);
       } catch (err) {
-        if (!cancelled) {
-          setDirectoryError(extractErrorMessage(err, 'Failed to load user directory.'));
-        }
+        if (!cancelled) setDirectoryError(extractErrorMessage(err, 'Failed to load user directory.'));
       } finally {
-        if (!cancelled) {
-          setDirectoryLoading(false);
-        }
+        if (!cancelled) setDirectoryLoading(false);
       }
     };
     void loadDirectoryUsers();
@@ -345,150 +302,117 @@ export function ProfileView() {
   );
   const asGrantor = delegations?.asGrantor ?? [];
   const asDelegate = delegations?.asDelegate ?? [];
-  const userPickerOptions = useMemo(() => {
-    const byId = new Map<number, UserPickerOption>();
-    const sortedDirectory = [...directoryUsers].sort((a, b) => a.username.localeCompare(b.username));
-    for (const user of sortedDirectory) {
-      const youPrefix = currentUser?.id === user.id ? 'You - ' : '';
-      byId.set(user.id, {
-        id: user.id,
-        label: `${youPrefix}${user.username} (#${user.id})`,
-      });
-    }
-    const knownIds = new Set<number>();
-    if (typeof currentUser?.id === 'number' && currentUser.id > 0) knownIds.add(currentUser.id);
-    for (const item of asGrantor) {
-      knownIds.add(item.grantorUserId);
-      knownIds.add(item.delegateUserId);
-    }
-    for (const item of asDelegate) {
-      knownIds.add(item.grantorUserId);
-      knownIds.add(item.delegateUserId);
-    }
-    for (const knownId of knownIds) {
-      if (byId.has(knownId)) continue;
-      byId.set(knownId, {
-        id: knownId,
-        label: knownId === currentUser?.id ? `You (#${knownId})` : `User #${knownId}`,
-      });
-    }
-    return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
-  }, [asDelegate, asGrantor, currentUser?.id, directoryUsers]);
-
-  const buildCommonPayload = useCallback(
-    (params: {
-      planId: string;
-      allowedProfileIds: string;
-      allowedBridgeIds: string;
-      allowedAgentIds: string;
-      note: string;
-    }): PlanReviewDelegationPayload => {
-      const payload: PlanReviewDelegationPayload = {};
-      const planId = params.planId.trim();
-      const note = params.note.trim();
-      const profileIds = parseIdList(params.allowedProfileIds);
-      const bridgeIds = parseIdList(params.allowedBridgeIds);
-      const agentIds = parseIdList(params.allowedAgentIds);
-      if (planId) payload.plan_id = planId;
-      if (profileIds) payload.allowed_profile_ids = profileIds;
-      if (bridgeIds) payload.allowed_bridge_ids = bridgeIds;
-      if (agentIds) payload.allowed_agent_ids = agentIds;
-      if (note) payload.note = note;
-      return payload;
-    },
-    [],
+  const providerOptions = useMemo(
+    () => [...providers].sort((a, b) => a.name.localeCompare(b.name)),
+    [providers],
   );
 
-  const handleRequestDelegation = useCallback(async () => {
-    const grantorUserId = Number.parseInt(requestGrantorUserId.trim(), 10);
-    if (!Number.isInteger(grantorUserId) || grantorUserId <= 0) {
-      setMutationError('Grantor user ID must be a positive number.');
-      return;
-    }
-    setRequesting(true);
+  // Resolve a recipient input (numeric id or username) to a numeric user id.
+  // Username resolution relies on the admin directory; non-admins use numeric ids.
+  const resolveRecipientId = useCallback(
+    (text: string): number | null => {
+      const trimmed = text.trim();
+      if (/^\d+$/.test(trimmed)) return Number.parseInt(trimmed, 10);
+      const match = directoryUsers.find((u) => u.username.toLowerCase() === trimmed.toLowerCase());
+      return match ? match.id : null;
+    },
+    [directoryUsers],
+  );
+
+  const buildDelegationPayload = useCallback((): PlanReviewDelegationPayload => {
+    const payload: PlanReviewDelegationPayload = {};
+    const profileIds = parseIdList(allowedProfileIds);
+    const bridgeIds = parseIdList(allowedBridgeIds);
+    const agentIds = parseIdList(allowedAgentIds);
+    if (planId.trim()) payload.plan_id = planId.trim();
+    if (profileIds) payload.allowed_profile_ids = profileIds;
+    if (bridgeIds) payload.allowed_bridge_ids = bridgeIds;
+    if (agentIds) payload.allowed_agent_ids = agentIds;
+    if (note.trim()) payload.note = note.trim();
+    return payload;
+  }, [allowedAgentIds, allowedBridgeIds, allowedProfileIds, note, planId]);
+
+  const resetBuilder = useCallback(() => {
+    setRecipient('');
+    setNote('');
+    setModel('');
+    setSlots('1');
+    setPlanId('');
+    setAllowedProfileIds('');
+    setAllowedBridgeIds('');
+    setAllowedAgentIds('');
+  }, []);
+
+  const handleSubmit = useCallback(async () => {
     setMutationError('');
     setMutationNotice('');
-    try {
-      const payload = {
-        grantor_user_id: grantorUserId,
-        ...buildCommonPayload({
-          planId: requestPlanId,
-          allowedProfileIds: requestAllowedProfileIds,
-          allowedBridgeIds: requestAllowedBridgeIds,
-          allowedAgentIds: requestAllowedAgentIds,
-          note: requestNote,
-        }),
-      };
-      await pixsimClient.post<PlanReviewDelegationEntry>('/dev/plans/reviews/delegations/requests', payload);
-      setRequestGrantorUserId('');
-      setRequestPlanId('');
-      setRequestAllowedProfileIds('');
-      setRequestAllowedBridgeIds('');
-      setRequestAllowedAgentIds('');
-      setRequestNote('');
-      setMutationNotice(`Delegation request sent to User #${grantorUserId}.`);
-      await refresh();
-    } catch (err) {
-      setMutationError(extractErrorMessage(err, 'Failed to create delegation request.'));
-    } finally {
-      setRequesting(false);
-    }
-  }, [
-    buildCommonPayload,
-    refresh,
-    requestAllowedAgentIds,
-    requestAllowedBridgeIds,
-    requestAllowedProfileIds,
-    requestGrantorUserId,
-    requestNote,
-    requestPlanId,
-  ]);
-
-  const handleGrantDelegation = useCallback(async () => {
-    const delegateUserId = Number.parseInt(grantDelegateUserId.trim(), 10);
-    if (!Number.isInteger(delegateUserId) || delegateUserId <= 0) {
-      setMutationError('Delegate user ID must be a positive number.');
+    const recipientTrimmed = recipient.trim();
+    if (!recipientTrimmed) {
+      setMutationError('Recipient (username or #id) is required.');
       return;
     }
-    setGranting(true);
-    setMutationError('');
-    setMutationNotice('');
+
+    setSubmitting(true);
     try {
-      const payload = {
-        delegate_user_id: delegateUserId,
-        ...buildCommonPayload({
-          planId: grantPlanId,
-          allowedProfileIds: grantAllowedProfileIds,
-          allowedBridgeIds: grantAllowedBridgeIds,
-          allowedAgentIds: grantAllowedAgentIds,
-          note: grantNote,
-        }),
-      };
-      await pixsimClient.post<PlanReviewDelegationEntry>('/dev/plans/reviews/delegations/grants', payload);
-      setGrantDelegateUserId('');
-      setGrantPlanId('');
-      setGrantAllowedProfileIds('');
-      setGrantAllowedBridgeIds('');
-      setGrantAllowedAgentIds('');
-      setGrantNote('');
-      setMutationNotice(`Delegation granted to User #${delegateUserId}.`);
+      if (kind === 'slots') {
+        if (!providerId) {
+          setMutationError('Pick a provider to share.');
+          return;
+        }
+        const slotLimit = Number.parseInt(slots, 10);
+        if (!Number.isInteger(slotLimit) || slotLimit < 1) {
+          setMutationError('Slots must be a positive number.');
+          return;
+        }
+        const payload: Record<string, unknown> = { provider_id: providerId, slot_limit: slotLimit };
+        if (/^\d+$/.test(recipientTrimmed)) payload.recipient_user_id = Number.parseInt(recipientTrimmed, 10);
+        else payload.recipient_username = recipientTrimmed;
+        if (model.trim()) payload.model = model.trim();
+        if (note.trim()) payload.note = note.trim();
+        await pixsimClient.post<GrantRule>('/accounts/grants', payload);
+        setMutationNotice('Slot share rule added.');
+      } else {
+        const userId = resolveRecipientId(recipientTrimmed);
+        if (userId == null) {
+          setMutationError('Delegation needs a numeric user id (or a known username).');
+          return;
+        }
+        if (direction === 'grant') {
+          await pixsimClient.post('/dev/plans/reviews/delegations/grants', {
+            delegate_user_id: userId,
+            ...buildDelegationPayload(),
+          });
+          setMutationNotice(`Delegation granted to User #${userId}.`);
+        } else {
+          await pixsimClient.post('/dev/plans/reviews/delegations/requests', {
+            grantor_user_id: userId,
+            ...buildDelegationPayload(),
+          });
+          setMutationNotice(`Delegation request sent to User #${userId}.`);
+        }
+      }
+      resetBuilder();
       await refresh();
     } catch (err) {
-      setMutationError(extractErrorMessage(err, 'Failed to create delegation grant.'));
+      setMutationError(extractErrorMessage(err, 'Failed to add access rule.'));
     } finally {
-      setGranting(false);
+      setSubmitting(false);
     }
   }, [
-    buildCommonPayload,
-    grantAllowedAgentIds,
-    grantAllowedBridgeIds,
-    grantAllowedProfileIds,
-    grantDelegateUserId,
-    grantNote,
-    grantPlanId,
+    buildDelegationPayload,
+    direction,
+    kind,
+    model,
+    note,
+    providerId,
+    recipient,
     refresh,
+    resetBuilder,
+    resolveRecipientId,
+    slots,
   ]);
 
+  // ---- delegation action gates (unchanged behavior) ----
   const canApproveDelegation = useCallback(
     (entry: PlanReviewDelegationEntry): boolean => {
       if (entry.status.trim().toLowerCase() !== 'pending') return false;
@@ -515,10 +439,7 @@ export function ProfileView() {
       setMutationError('');
       setMutationNotice('');
       try {
-        await pixsimClient.post<PlanReviewDelegationEntry>(
-          `/dev/plans/reviews/delegations/${encodeURIComponent(entry.id)}/approve`,
-          {},
-        );
+        await pixsimClient.post(`/dev/plans/reviews/delegations/${encodeURIComponent(entry.id)}/approve`, {});
         setMutationNotice(`Delegation ${entry.id.slice(0, 8)} approved.`);
         await refresh();
       } catch (err) {
@@ -532,14 +453,11 @@ export function ProfileView() {
 
   const handleRevokeDelegation = useCallback(
     async (entry: PlanReviewDelegationEntry) => {
-      setActionBusyKey(`revoke:${entry.id}`);
+      setActionBusyKey(`revoke-deleg:${entry.id}`);
       setMutationError('');
       setMutationNotice('');
       try {
-        await pixsimClient.post<PlanReviewDelegationEntry>(
-          `/dev/plans/reviews/delegations/${encodeURIComponent(entry.id)}/revoke`,
-          {},
-        );
+        await pixsimClient.post(`/dev/plans/reviews/delegations/${encodeURIComponent(entry.id)}/revoke`, {});
         const normalizedStatus = entry.status.trim().toLowerCase();
         const cancelledByDelegate =
           normalizedStatus === 'pending' &&
@@ -561,6 +479,101 @@ export function ProfileView() {
     [currentUser?.id, isAdmin, refresh],
   );
 
+  const handleRevokeSlot = useCallback(
+    async (rule: GrantRule) => {
+      setActionBusyKey(`revoke-slot:${rule.id}`);
+      setMutationError('');
+      setMutationNotice('');
+      try {
+        await pixsimClient.delete(`/accounts/grants/${rule.id}`);
+        setMutationNotice('Slot share rule revoked.');
+        await refresh();
+      } catch (err) {
+        setMutationError(extractErrorMessage(err, 'Failed to revoke slot rule.'));
+      } finally {
+        setActionBusyKey(null);
+      }
+    },
+    [refresh],
+  );
+
+  // ---- normalize both resource kinds into one ledger ----
+  const delegationRow = useCallback(
+    (entry: PlanReviewDelegationEntry): AccessRow => {
+      const scopeBits: string[] = [];
+      if (entry.allowedProfileIds.length > 0) scopeBits.push(`profiles ${entry.allowedProfileIds.length}`);
+      if (entry.allowedBridgeIds.length > 0) scopeBits.push(`bridges ${entry.allowedBridgeIds.length}`);
+      if (entry.allowedAgentIds.length > 0) scopeBits.push(`agents ${entry.allowedAgentIds.length}`);
+      const normalizedStatus = entry.status.trim().toLowerCase();
+      const revokeLabel =
+        normalizedStatus === 'pending' &&
+        currentUser?.id === entry.delegateUserId &&
+        currentUser?.id !== entry.grantorUserId
+          ? 'Cancel'
+          : 'Revoke';
+      return {
+        key: `deleg:${entry.id}`,
+        kind: 'delegation',
+        kindLabel: 'Delegation',
+        title: `${userLabel(entry.grantorUserId, currentUser?.id)} -> ${userLabel(entry.delegateUserId, currentUser?.id)}`,
+        lines: [
+          `Plan scope: ${entry.planId || 'Any plan'}`,
+          `Scope: ${scopeBits.length > 0 ? scopeBits.join(' | ') : 'No explicit target filters'}`,
+        ],
+        status: entry.status,
+        note: entry.note,
+        footer: `Updated ${formatDateTime(entry.updatedAt)}${entry.expiresAt ? ` | Expires ${formatDateTime(entry.expiresAt)}` : ''}`,
+        canApprove: canApproveDelegation(entry),
+        canRevoke: canRevokeDelegation(entry),
+        revokeLabel,
+        approveBusy: actionBusyKey === `approve:${entry.id}`,
+        revokeBusy: actionBusyKey === `revoke-deleg:${entry.id}`,
+        onApprove: () => void handleApproveDelegation(entry),
+        onRevoke: () => void handleRevokeDelegation(entry),
+      };
+    },
+    [actionBusyKey, canApproveDelegation, canRevokeDelegation, currentUser?.id, handleApproveDelegation, handleRevokeDelegation],
+  );
+
+  const slotRow = useCallback(
+    (rule: GrantRule, canRevoke: boolean): AccessRow => {
+      const recipientLabel =
+        rule.recipient_user_id === currentUser?.id
+          ? 'You'
+          : rule.recipient_username
+            ? `${rule.recipient_username} (#${rule.recipient_user_id})`
+            : `User #${rule.recipient_user_id}`;
+      return {
+        key: `slot:${rule.id}`,
+        kind: 'slots',
+        kindLabel: 'Slots',
+        title: `${userLabel(rule.owner_user_id, currentUser?.id)} -> ${recipientLabel}`,
+        lines: [
+          `${rule.provider_id} · ${rule.model || 'all models'} · ${rule.account_id ? `account #${rule.account_id}` : 'pooled'}`,
+          `${rule.slot_limit} concurrent slot${rule.slot_limit === 1 ? '' : 's'}`,
+        ],
+        status: 'active',
+        note: rule.note,
+        canRevoke,
+        revokeLabel: 'Revoke',
+        revokeBusy: actionBusyKey === `revoke-slot:${rule.id}`,
+        onRevoke: () => void handleRevokeSlot(rule),
+      };
+    },
+    [actionBusyKey, currentUser?.id, handleRevokeSlot],
+  );
+
+  const rowsByYou = useMemo<AccessRow[]>(
+    () => [...slotsIssued.map((r) => slotRow(r, true)), ...asGrantor.map(delegationRow)],
+    [asGrantor, delegationRow, slotRow, slotsIssued],
+  );
+  const rowsToYou = useMemo<AccessRow[]>(
+    () => [...slotsReceived.map((r) => slotRow(r, false)), ...asDelegate.map(delegationRow)],
+    [asDelegate, delegationRow, slotRow, slotsReceived],
+  );
+
+  const userOptionCount = directoryUsers.length;
+
   return (
     <div className="h-full overflow-auto bg-neutral-900 p-4 text-neutral-200">
       <div className="space-y-4">
@@ -568,7 +581,7 @@ export function ProfileView() {
           <div>
             <h2 className="text-sm font-medium text-neutral-100">Profile & Access</h2>
             <p className="text-xs text-neutral-500">
-              Self-scoped bridge identity and review delegation visibility.
+              One surface to share what's yours — generation slots and review delegation — and review what's shared with you.
             </p>
           </div>
           <button
@@ -581,29 +594,19 @@ export function ProfileView() {
         </div>
 
         {error ? (
-          <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
-            {error}
-          </div>
+          <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">{error}</div>
         ) : null}
-
         {mutationError ? (
-          <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
-            {mutationError}
-          </div>
+          <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">{mutationError}</div>
         ) : null}
-
         {mutationNotice ? (
-          <div className="rounded border border-green-500/30 bg-green-500/10 px-3 py-2 text-[11px] text-green-200">
-            {mutationNotice}
-          </div>
+          <div className="rounded border border-green-500/30 bg-green-500/10 px-3 py-2 text-[11px] text-green-200">{mutationNotice}</div>
         ) : null}
-
         {directoryError ? (
           <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
             {directoryError} Falling back to manual numeric user IDs.
           </div>
         ) : null}
-
         {orphanSharedBridgeAgents.length > 0 ? (
           <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
             <div>
@@ -626,148 +629,161 @@ export function ProfileView() {
           </div>
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-2">
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-3">
-            <h3 className="text-xs font-medium text-neutral-200">Request Delegation</h3>
-            <p className="mt-1 text-[10px] text-neutral-500">
-              Ask another user to approve your access to their review routing.
-            </p>
-            <UserIdField
-              label="Grantor user"
-              value={requestGrantorUserId}
-              onChange={setRequestGrantorUserId}
-              options={userPickerOptions}
-              inputClassName={inputClassName}
-              placeholder="e.g. 2"
-            />
-            <div className="mt-1 text-[10px] text-neutral-500">
-              {directoryLoading ? 'Loading users...' : `${userPickerOptions.length} user option(s) available`}
-            </div>
-            <label className="mt-2 block text-[10px] text-neutral-400">
-              Plan scope (optional)
-              <input
-                value={requestPlanId}
-                onChange={(event) => setRequestPlanId(event.target.value)}
+        {/* Unified "Add access" builder */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-3">
+          <h3 className="text-xs font-medium text-neutral-200">Add Access</h3>
+          <p className="mt-1 text-[10px] text-neutral-500">
+            Pick what to share, who with, then add. Stack as many rules as you like.
+          </p>
+
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <label className="block text-[10px] text-neutral-400">
+              What to share
+              <select
+                value={kind}
+                onChange={(event) => setKind(event.target.value as AccessKind)}
                 className={inputClassName}
-                placeholder="unified-task-agent-architecture"
-              />
+              >
+                <option value="slots">Generation slots</option>
+                <option value="delegation">Review delegation</option>
+              </select>
             </label>
-            <label className="mt-2 block text-[10px] text-neutral-400">
-              Allowed profile IDs (optional, comma-separated)
-              <input
-                value={requestAllowedProfileIds}
-                onChange={(event) => setRequestAllowedProfileIds(event.target.value)}
-                className={inputClassName}
-                placeholder="profile-a, profile-b"
-              />
-            </label>
-            <label className="mt-2 block text-[10px] text-neutral-400">
-              Allowed bridge client IDs (optional, comma-separated)
-              <input
-                value={requestAllowedBridgeIds}
-                onChange={(event) => setRequestAllowedBridgeIds(event.target.value)}
-                className={inputClassName}
-                placeholder="bridge-client-a"
-              />
-            </label>
-            <label className="mt-2 block text-[10px] text-neutral-400">
-              Allowed agent IDs (optional, comma-separated)
-              <input
-                value={requestAllowedAgentIds}
-                onChange={(event) => setRequestAllowedAgentIds(event.target.value)}
-                className={inputClassName}
-                placeholder="profile-xyz"
-              />
-            </label>
-            <label className="mt-2 block text-[10px] text-neutral-400">
-              Note (optional)
-              <textarea
-                value={requestNote}
-                onChange={(event) => setRequestNote(event.target.value)}
-                className={`${inputClassName} min-h-[52px] resize-y`}
-                placeholder="Reason for request..."
-              />
-            </label>
-            <button
-              onClick={() => void handleRequestDelegation()}
-              disabled={requesting}
-              className="mt-3 rounded border border-blue-500/40 bg-blue-500/10 px-2.5 py-1 text-[10px] text-blue-200 transition-colors hover:border-blue-400/70 disabled:opacity-50"
-            >
-              {requesting ? 'Submitting...' : 'Submit Request'}
-            </button>
+            {kind === 'delegation' ? (
+              <label className="block text-[10px] text-neutral-400">
+                Direction
+                <select
+                  value={direction}
+                  onChange={(event) => setDirection(event.target.value as Direction)}
+                  className={inputClassName}
+                >
+                  <option value="grant">Grant to user</option>
+                  <option value="request">Request from user</option>
+                </select>
+              </label>
+            ) : (
+              <label className="block text-[10px] text-neutral-400">
+                Provider
+                <select
+                  value={providerId}
+                  onChange={(event) => setProviderId(event.target.value)}
+                  className={inputClassName}
+                >
+                  <option value="">Select provider...</option>
+                  {providerOptions.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
 
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-3">
-            <h3 className="text-xs font-medium text-neutral-200">Grant Delegation</h3>
-            <p className="mt-1 text-[10px] text-neutral-500">
-              Immediately allow another user to route plan reviews through your bridge scope.
-            </p>
-            <UserIdField
-              label="Delegate user"
-              value={grantDelegateUserId}
-              onChange={setGrantDelegateUserId}
-              options={userPickerOptions}
-              inputClassName={inputClassName}
-              placeholder="e.g. 2"
+          <label className="mt-2 block text-[10px] text-neutral-400">
+            {kind === 'delegation' && direction === 'request' ? 'User to request from' : 'Recipient'} (username or #id)
+            <input
+              value={recipient}
+              onChange={(event) => setRecipient(event.target.value)}
+              className={inputClassName}
+              placeholder="e.g. claude or 28"
             />
+          </label>
+          {isAdmin ? (
             <div className="mt-1 text-[10px] text-neutral-500">
-              {directoryLoading ? 'Loading users...' : `${userPickerOptions.length} user option(s) available`}
+              {directoryLoading ? 'Loading users...' : `${userOptionCount} known user(s) for username lookup`}
             </div>
-            <label className="mt-2 block text-[10px] text-neutral-400">
-              Plan scope (optional)
-              <input
-                value={grantPlanId}
-                onChange={(event) => setGrantPlanId(event.target.value)}
-                className={inputClassName}
-                placeholder="unified-task-agent-architecture"
-              />
-            </label>
-            <label className="mt-2 block text-[10px] text-neutral-400">
-              Allowed profile IDs (optional, comma-separated)
-              <input
-                value={grantAllowedProfileIds}
-                onChange={(event) => setGrantAllowedProfileIds(event.target.value)}
-                className={inputClassName}
-                placeholder="profile-a, profile-b"
-              />
-            </label>
-            <label className="mt-2 block text-[10px] text-neutral-400">
-              Allowed bridge client IDs (optional, comma-separated)
-              <input
-                value={grantAllowedBridgeIds}
-                onChange={(event) => setGrantAllowedBridgeIds(event.target.value)}
-                className={inputClassName}
-                placeholder="bridge-client-a"
-              />
-            </label>
-            <label className="mt-2 block text-[10px] text-neutral-400">
-              Allowed agent IDs (optional, comma-separated)
-              <input
-                value={grantAllowedAgentIds}
-                onChange={(event) => setGrantAllowedAgentIds(event.target.value)}
-                className={inputClassName}
-                placeholder="profile-xyz"
-              />
-            </label>
-            <label className="mt-2 block text-[10px] text-neutral-400">
-              Note (optional)
-              <textarea
-                value={grantNote}
-                onChange={(event) => setGrantNote(event.target.value)}
-                className={`${inputClassName} min-h-[52px] resize-y`}
-                placeholder="Reason for grant..."
-              />
-            </label>
-            <button
-              onClick={() => void handleGrantDelegation()}
-              disabled={granting}
-              className="mt-3 rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[10px] text-emerald-200 transition-colors hover:border-emerald-400/70 disabled:opacity-50"
-            >
-              {granting ? 'Granting...' : 'Grant Access'}
-            </button>
-          </div>
+          ) : null}
+
+          {kind === 'slots' ? (
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <label className="block text-[10px] text-neutral-400">
+                Model (optional)
+                <input
+                  value={model}
+                  onChange={(event) => setModel(event.target.value)}
+                  className={inputClassName}
+                  placeholder="All models — or e.g. gemini-3.1"
+                />
+              </label>
+              <label className="block text-[10px] text-neutral-400">
+                Slots
+                <input
+                  type="number"
+                  min={1}
+                  value={slots}
+                  onChange={(event) => setSlots(event.target.value)}
+                  className={inputClassName}
+                />
+              </label>
+            </div>
+          ) : (
+            <>
+              <label className="mt-2 block text-[10px] text-neutral-400">
+                Plan scope (optional)
+                <input
+                  value={planId}
+                  onChange={(event) => setPlanId(event.target.value)}
+                  className={inputClassName}
+                  placeholder="unified-task-agent-architecture"
+                />
+              </label>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <label className="block text-[10px] text-neutral-400">
+                  Profile IDs
+                  <input
+                    value={allowedProfileIds}
+                    onChange={(event) => setAllowedProfileIds(event.target.value)}
+                    className={inputClassName}
+                    placeholder="profile-a, profile-b"
+                  />
+                </label>
+                <label className="block text-[10px] text-neutral-400">
+                  Bridge IDs
+                  <input
+                    value={allowedBridgeIds}
+                    onChange={(event) => setAllowedBridgeIds(event.target.value)}
+                    className={inputClassName}
+                    placeholder="bridge-client-a"
+                  />
+                </label>
+                <label className="block text-[10px] text-neutral-400">
+                  Agent IDs
+                  <input
+                    value={allowedAgentIds}
+                    onChange={(event) => setAllowedAgentIds(event.target.value)}
+                    className={inputClassName}
+                    placeholder="profile-xyz"
+                  />
+                </label>
+              </div>
+            </>
+          )}
+
+          <label className="mt-2 block text-[10px] text-neutral-400">
+            Note (optional)
+            <input
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              className={inputClassName}
+              placeholder="Reason / context..."
+            />
+          </label>
+
+          <button
+            onClick={() => void handleSubmit()}
+            disabled={submitting}
+            className="mt-3 rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[10px] text-emerald-200 transition-colors hover:border-emerald-400/70 disabled:opacity-50"
+          >
+            {submitting ? 'Adding...' : kind === 'delegation' && direction === 'request' ? 'Send request' : 'Add'}
+          </button>
+          {kind === 'slots' ? (
+            <p className="mt-2 text-[10px] text-neutral-600">
+              Leave model blank to share every model on the provider. Pinning to one account is available from the account card.
+            </p>
+          ) : null}
         </div>
 
+        {/* Bridge machines (unchanged) */}
         <div className="rounded-lg border border-neutral-800 bg-neutral-900/40">
           <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
             <h3 className="text-xs font-medium text-neutral-200">Bridge Machines</h3>
@@ -776,9 +792,7 @@ export function ProfileView() {
             </span>
           </div>
           {machines.length === 0 ? (
-            <div className="px-3 py-3 text-[11px] text-neutral-500">
-              No bridge machines recorded for this user yet.
-            </div>
+            <div className="px-3 py-3 text-[11px] text-neutral-500">No bridge machines recorded for this user yet.</div>
           ) : (
             <div className="space-y-2 p-3">
               {machines.map((machine) => (
@@ -796,9 +810,7 @@ export function ProfileView() {
                     <code className="text-[10px] text-neutral-200" title={machine.bridge_client_id}>
                       {formatActorLabel({ fallback: machine.bridge_client_id })}
                     </code>
-                    {machine.agent_type ? (
-                      <span className="text-[10px] text-neutral-500">{machine.agent_type}</span>
-                    ) : null}
+                    {machine.agent_type ? <span className="text-[10px] text-neutral-500">{machine.agent_type}</span> : null}
                   </div>
                   <div className="mt-1 text-[10px] text-neutral-500">
                     Last seen: {formatDateTime(machine.last_seen_at)}
@@ -811,28 +823,17 @@ export function ProfileView() {
           )}
         </div>
 
+        {/* Unified ledger across both resource kinds */}
         <div className="grid gap-3 lg:grid-cols-2">
-          <DelegationList
-            title="Delegations Granted By You"
-            emptyLabel="No active or historical delegations granted by you."
-            items={asGrantor}
-            currentUserId={currentUser?.id}
-            actionBusyKey={actionBusyKey}
-            canApprove={canApproveDelegation}
-            canRevoke={canRevokeDelegation}
-            onApprove={handleApproveDelegation}
-            onRevoke={handleRevokeDelegation}
+          <LedgerCard
+            title="Shared By You"
+            emptyLabel="You haven't shared any access yet."
+            rows={rowsByYou}
           />
-          <DelegationList
-            title="Delegations Granted To You"
-            emptyLabel="No delegations requested or granted to you."
-            items={asDelegate}
-            currentUserId={currentUser?.id}
-            actionBusyKey={actionBusyKey}
-            canApprove={canApproveDelegation}
-            canRevoke={canRevokeDelegation}
-            onApprove={handleApproveDelegation}
-            onRevoke={handleRevokeDelegation}
+          <LedgerCard
+            title="Shared With You"
+            emptyLabel="Nothing has been shared with you."
+            rows={rowsToYou}
           />
         </div>
       </div>

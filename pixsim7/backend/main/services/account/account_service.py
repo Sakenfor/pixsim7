@@ -7,14 +7,19 @@ import re
 from typing import Optional, Dict, Any, Callable
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, and_, exists, cast, String
 from sqlalchemy.exc import IntegrityError
 
 from pixsim_logging import get_logger
 from pixsim7.backend.main.services.account_event_service import AccountEventService
 
 from pixsim7.backend.main.domain import AccountStatus, Generation, GenerationStatus
-from pixsim7.backend.main.domain.providers import ProviderAccount, ProviderCredit
+from pixsim7.backend.main.domain.providers import (
+    ProviderAccount,
+    ProviderCredit,
+)
+from pixsim7.backend.main.domain.grants import ResourceGrant, ResourceGrantType
+from pixsim7.backend.main.services.grants import ResourceGrantService
 from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
 from pixsim7.backend.main.shared.errors import (
     NoAccountAvailableError,
@@ -483,14 +488,42 @@ def _total_credits_subquery():
     )
 
 
+# JSON scope accessors for provider-slots ResourceGrant rows.
+_GRANT_SCOPE_PROVIDER = ResourceGrant.scope.op("->>")("provider_id")
+_GRANT_SCOPE_MODEL = ResourceGrant.scope.op("->>")("model")
+_GRANT_SCOPE_ACCOUNT = ResourceGrant.scope.op("->>")("account_id")
+
+
+def _grant_visibility_clause(user_id: int):
+    """SQL EXISTS: an account is reachable by ``user_id`` via a live
+    provider-slots grant when the rule's owner owns the account, the provider
+    matches, and the rule is either pooled (no account in scope) or pinned to
+    this account."""
+    return exists().where(
+        and_(
+            ResourceGrant.recipient_user_id == user_id,
+            ResourceGrant.resource_type == ResourceGrantType.PROVIDER_SLOTS,
+            ResourceGrant.revoked_at.is_(None),
+            ResourceGrant.owner_user_id == ProviderAccount.user_id,
+            _GRANT_SCOPE_PROVIDER == ProviderAccount.provider_id,
+            or_(
+                _GRANT_SCOPE_ACCOUNT.is_(None),
+                _GRANT_SCOPE_ACCOUNT == cast(ProviderAccount.id, String),
+            ),
+        )
+    )
+
+
 def _apply_user_visibility_filter(query, user_id: Optional[int]):
     """Restrict an account query to the rows visible to ``user_id``: their
-    own private accounts plus any shared (non-private) accounts. With no
-    user, only shared accounts are visible."""
+    own accounts, any shared (non-private) accounts, plus accounts reachable
+    through a live provider-slots grant rule. With no user, only shared
+    accounts are visible."""
     if user_id:
         return query.where(
             (ProviderAccount.user_id == user_id)
             | (ProviderAccount.is_private == False)  # noqa: E712
+            | _grant_visibility_clause(user_id)
         )
     return query.where(ProviderAccount.is_private == False)  # noqa: E712
 
@@ -935,6 +968,100 @@ class AccountService:
         """
         now = datetime.now(timezone.utc)
 
+        # Grant-based sharing: a recipient may reach an otherwise-private account
+        # through a live provider-slots ResourceGrant — (provider, model?, slots),
+        # optionally pinned to one account. Each rule caps the recipient's
+        # concurrent jobs within its scope (pooled across the owner's accounts
+        # for the provider, or on the pinned account; optionally per model).
+        #
+        # Fetch the recipient's active rules for this provider plus their current
+        # in-flight usage so the candidate scan can drop rules with no room.
+        grant_rules: list[ResourceGrant] = []
+        # (account_id, model_str) for each of the recipient's in-flight jobs on
+        # this provider — used to compute per-rule usage in Python.
+        grant_inflight: list[tuple[Optional[int], Optional[str]]] = []
+        # account_id -> owner_user_id, to attribute in-flight jobs to a rule owner.
+        provider_account_owner: dict[int, Optional[int]] = {}
+        if user_id:
+            rule_rows = await self.db.execute(
+                select(ResourceGrant).where(
+                    ResourceGrant.recipient_user_id == user_id,
+                    ResourceGrant.resource_type == ResourceGrantType.PROVIDER_SLOTS,
+                    _GRANT_SCOPE_PROVIDER == provider_id,
+                    ResourceGrant.revoked_at.is_(None),
+                )
+            )
+            grant_rules = list(rule_rows.scalars().all())
+            if grant_rules:
+                model_expr = Generation.canonical_params.op("->>")("model")
+                inflight_rows = await self.db.execute(
+                    select(Generation.account_id, model_expr).where(
+                        Generation.user_id == user_id,
+                        Generation.provider_id == provider_id,
+                        Generation.status == GenerationStatus.PROCESSING,
+                    )
+                )
+                grant_inflight = [(row[0], row[1]) for row in inflight_rows.all()]
+                owner_rows = await self.db.execute(
+                    select(ProviderAccount.id, ProviderAccount.user_id).where(
+                        ProviderAccount.provider_id == provider_id
+                    )
+                )
+                provider_account_owner = {aid: oid for aid, oid in owner_rows.all()}
+
+        def _rule_account_id(rule: ResourceGrant) -> Optional[int]:
+            raw = rule.scope_value("account_id")
+            return int(raw) if raw is not None else None
+
+        def _rule_model(rule: ResourceGrant) -> Optional[str]:
+            raw = rule.scope_value("model")
+            return str(raw).strip().lower() if raw else None
+
+        def _rule_has_room(rule: ResourceGrant) -> bool:
+            """Count the recipient's in-flight jobs within this rule's scope and
+            compare to its cap. None cap = uncapped."""
+            if rule.cap is None:
+                return True
+            rule_account = _rule_account_id(rule)
+            rule_model = _rule_model(rule)
+            used = 0
+            for acct_id, gen_model in grant_inflight:
+                if provider_account_owner.get(acct_id) != rule.owner_user_id:
+                    continue
+                if rule_account is not None and acct_id != rule_account:
+                    continue
+                if rule_model is not None:
+                    if not gen_model or gen_model.strip().lower() != rule_model:
+                        continue
+                used += 1
+            return used < rule.cap
+
+        def _rule_matches_request(rule: ResourceGrant, candidate: ProviderAccount) -> bool:
+            rule_account = _rule_account_id(rule)
+            if rule_account is not None and rule_account != candidate.id:
+                return False
+            rule_model = _rule_model(rule)
+            if rule_model is not None and (not model or str(model).strip().lower() != rule_model):
+                return False
+            return True
+
+        def _candidate_allowed_by_grant(candidate: ProviderAccount) -> bool:
+            """Grant-mediated candidates (private, not owned by the recipient)
+            must be permitted by at least one live rule that still has room.
+            Owned and publicly-shared accounts are unaffected."""
+            if candidate.user_id == user_id:
+                return True  # own account
+            if not candidate.is_private:
+                return True  # public share — no per-user cap
+            for rule in grant_rules:
+                if rule.owner_user_id != candidate.user_id:
+                    continue
+                if not _rule_matches_request(rule, candidate):
+                    continue
+                if _rule_has_room(rule):
+                    return True
+            return False
+
         # Status filter: ACTIVE only, or also EXHAUSTED for unlimited models
         if include_exhausted:
             status_filter = ProviderAccount.status.in_([AccountStatus.ACTIVE, AccountStatus.EXHAUSTED])
@@ -1042,6 +1169,13 @@ class AccountService:
             rows = list(result.all())
             if not rows:
                 return [], 0
+
+            # Drop grant-mediated candidates the recipient can't use right now
+            # (no matching rule, or every matching rule is at its slot cap).
+            if grant_rules:
+                rows = [row for row in rows if _candidate_allowed_by_grant(row[0])]
+                if not rows:
+                    return [], 0
 
             if not routing_enabled:
                 # SQL ORDER BY already enforces the contract; return as-is.
@@ -2206,11 +2340,13 @@ class AccountService:
             query = query.where(ProviderAccount.provider_id == provider_id)
 
         if user_id and include_shared:
-            # User's accounts + shared accounts (not other users' private accounts)
+            # User's accounts + shared accounts + accounts reachable via a live
+            # grant rule (not other users' private accounts they have no grant for).
             query = query.where(
                 (ProviderAccount.user_id == user_id) |
                 (ProviderAccount.user_id.is_(None)) |  # System accounts
-                (ProviderAccount.is_private == False)   # Shared user accounts
+                (ProviderAccount.is_private == False) |  # Shared user accounts
+                _grant_visibility_clause(user_id)  # Granted to user
             )
         elif user_id:
             # Only user's accounts
@@ -2223,6 +2359,118 @@ class AccountService:
 
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    # ===== ACCOUNT GRANTS (provider-slot view over the generic ResourceGrant) =====
+    #
+    # These are the provider-slots adapter over the generic ResourceGrant
+    # primitive: they own slot-specific validation (account ownership, provider
+    # match) and build the scope ``{provider_id, model?, account_id?}``; the
+    # generic ``ResourceGrantService`` owns persistence/upsert/revoke. Bridge and
+    # review sharing reuse the same primitive with their own scope + resource_type.
+
+    @staticmethod
+    def _slot_scope(provider_id: str, model: Optional[str], account_id: Optional[int]) -> dict:
+        scope: dict = {"provider_id": provider_id}
+        if model:
+            scope["model"] = model
+        if account_id is not None:
+            scope["account_id"] = account_id
+        return scope
+
+    async def create_or_update_grant(
+        self,
+        *,
+        owner_user_id: int,
+        recipient_user_id: int,
+        provider_id: str,
+        model: Optional[str] = None,
+        account_id: Optional[int] = None,
+        slot_limit: int = 1,
+        note: Optional[str] = None,
+    ) -> ResourceGrant:
+        """Create or update a provider-slots share rule: (provider, model?, slots)
+        for a recipient, optionally pinned to a single account.
+
+        Raises ValueError for invalid ownership / recipient combinations.
+        """
+        if recipient_user_id == owner_user_id:
+            raise ValueError("Cannot grant slots to yourself")
+        if slot_limit < 1:
+            raise ValueError("slot_limit must be >= 1")
+        provider_id = (provider_id or "").strip()
+        if not provider_id:
+            raise ValueError("provider_id is required")
+        model = model.strip() if model and model.strip() else None
+
+        if account_id is not None:
+            account = await self.db.get(ProviderAccount, account_id)
+            if not account:
+                raise ResourceNotFoundError("ProviderAccount", account_id)
+            if account.user_id != owner_user_id:
+                raise ValueError("Not your account")
+            if account.provider_id != provider_id:
+                raise ValueError("Account does not belong to that provider")
+        else:
+            # Pooled rule — owner must actually have an account for the provider.
+            owned = await self.db.execute(
+                select(ProviderAccount.id).where(
+                    ProviderAccount.user_id == owner_user_id,
+                    ProviderAccount.provider_id == provider_id,
+                ).limit(1)
+            )
+            if owned.first() is None:
+                raise ValueError(f"You have no {provider_id} accounts to share")
+
+        return await ResourceGrantService(self.db).create_or_update(
+            owner_user_id=owner_user_id,
+            recipient_user_id=recipient_user_id,
+            resource_type=ResourceGrantType.PROVIDER_SLOTS,
+            scope=self._slot_scope(provider_id, model, account_id),
+            cap=slot_limit,
+            note=note,
+        )
+
+    async def list_grants_issued(self, owner_user_id: int) -> list[ResourceGrant]:
+        """Active provider-slot rules the owner has created (the 'shared by you' ledger)."""
+        return await ResourceGrantService(self.db).list_issued(
+            owner_user_id, ResourceGrantType.PROVIDER_SLOTS
+        )
+
+    async def list_grants_for_account(
+        self, account_id: int, owner_user_id: int
+    ) -> list[ResourceGrant]:
+        """List active rules that touch a given account — pinned to it, or pooled
+        over its provider. Powers the account card's 'shared' view."""
+        account = await self.db.get(ProviderAccount, account_id)
+        if not account:
+            raise ResourceNotFoundError("ProviderAccount", account_id)
+        if account.user_id != owner_user_id:
+            raise ValueError("Not your account")
+        result = await self.db.execute(
+            select(ResourceGrant).where(
+                ResourceGrant.owner_user_id == owner_user_id,
+                ResourceGrant.resource_type == ResourceGrantType.PROVIDER_SLOTS,
+                ResourceGrant.revoked_at.is_(None),
+                _GRANT_SCOPE_PROVIDER == account.provider_id,
+                or_(
+                    _GRANT_SCOPE_ACCOUNT.is_(None),
+                    _GRANT_SCOPE_ACCOUNT == str(account_id),
+                ),
+            ).order_by(ResourceGrant.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def list_grants_received(
+        self, recipient_user_id: int
+    ) -> list[ResourceGrant]:
+        """Active provider-slot rules shared with this recipient (the 'shared with you' ledger)."""
+        return await ResourceGrantService(self.db).list_received(
+            recipient_user_id, ResourceGrantType.PROVIDER_SLOTS
+        )
+
+    async def revoke_grant(self, grant_id: int, owner_user_id: int) -> ResourceGrant:
+        """Soft-revoke a rule. Only the granting owner may revoke."""
+        return await ResourceGrantService(self.db).revoke(grant_id, owner_user_id)
 
     async def check_duplicate(
         self,

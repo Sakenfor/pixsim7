@@ -52,6 +52,36 @@ class AccountUpdate(BaseModel):
     routing_priority_overrides: Optional[Dict[str, int]] = None
 
 
+class GrantCreate(BaseModel):
+    """Create/update a share rule: (provider, model?, slots) for one recipient,
+    optionally pinned to a single account.
+
+    Identify the recipient by ``recipient_user_id`` or ``recipient_username``
+    (at least one required)."""
+    recipient_user_id: Optional[int] = None
+    recipient_username: Optional[str] = None
+    provider_id: str
+    model: Optional[str] = Field(default=None, description="Specific model; omit for all models")
+    account_id: Optional[int] = Field(default=None, description="Pin to one account; omit to pool across the provider")
+    slot_limit: int = Field(default=1, ge=1, description="Max concurrent jobs for the recipient within this rule")
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class GrantResponse(BaseModel):
+    """A share rule (stackable)."""
+    id: int
+    owner_user_id: int
+    recipient_user_id: int
+    recipient_username: Optional[str] = None
+    provider_id: str
+    model: Optional[str] = None
+    account_id: Optional[int] = None
+    slot_limit: int
+    note: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class AccountResponse(BaseModel):
     """Account response - provider-agnostic with normalized credits"""
     id: int
