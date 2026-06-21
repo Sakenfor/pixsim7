@@ -225,14 +225,16 @@ class AnalyzerInstanceListResponse(BaseModel):
 class EmbeddingDaemonStatus(BaseModel):
     """Live status of the image embedding daemon.
 
-    Lets the UI surface which model is actually hosted so a per-instance
+    Lets the UI surface which models are actually hosted so a per-instance
     model_id that the daemon isn't serving (-> 409 at embed time) is visible
     before ingest. `configured_model_id` is what this backend process expects
-    (env), `served_model_id` is what the daemon reports it loaded."""
+    (env); `served_model_id` is the daemon's default; `served_model_ids` is the
+    full allowed set the daemon will serve (load on demand)."""
     reachable: bool
     model_loaded: bool
     configured_model_id: str
     served_model_id: Optional[str] = None
+    served_model_ids: Optional[List[str]] = None
     status: Optional[str] = None
     error: Optional[str] = None
 
@@ -1022,11 +1024,13 @@ async def get_embedding_daemon_status(user: CurrentUser):
         data = resp.json() if resp.content else {}
         if not isinstance(data, dict):
             data = {}
+        served_ids = data.get("model_ids")
         return EmbeddingDaemonStatus(
             reachable=True,
             model_loaded=bool(data.get("model_loaded")) or data.get("status") == "ok",
             configured_model_id=configured,
             served_model_id=data.get("model_id"),
+            served_model_ids=served_ids if isinstance(served_ids, list) else None,
             status=data.get("status"),
             error=data.get("error"),
         )

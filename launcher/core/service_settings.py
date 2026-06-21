@@ -89,10 +89,26 @@ TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
         {
             "key": "model_id",
             "type": "string",
-            "label": "Model ID",
-            "description": "HuggingFace model identifier to load",
+            "label": "Default Model ID",
+            "description": "HuggingFace model warm-loaded at startup and used when a request omits a model",
             "default": "google/siglip2-large-patch16-384",
             "env_map": "PIXSIM_EMBEDDING_MODEL_ID",
+        },
+        {
+            "key": "model_ids",
+            "type": "string",
+            "label": "Additional Model IDs",
+            "description": "Comma-separated extra models the daemon may serve (loaded on demand); the hosted set is the default plus these",
+            "default": "",
+            "env_map": "PIXSIM_EMBEDDING_MODEL_IDS",
+        },
+        {
+            "key": "max_resident",
+            "type": "number",
+            "label": "Max Resident Models",
+            "description": "Max models kept in VRAM at once; the least-recently-used non-default model is evicted past this",
+            "default": 2,
+            "env_map": "PIXSIM_EMBEDDING_MAX_RESIDENT",
         },
         {
             "key": "log_level",

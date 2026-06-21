@@ -26,6 +26,16 @@ def load_model(model_id: str = MODEL_ID):
     return model, processor, device
 
 
+def empty_cuda_cache() -> None:
+    """Return freed VRAM to the allocator after a model is evicted.
+
+    No-op on CPU. The caller must first drop its references to the evicted
+    model so the memory is actually reclaimable; this just hands the cache
+    back to the driver."""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def embed_images(model, processor, device, paths: list[str]) -> list[list[float]]:
     """L2-normalized SigLIP-2 image embeddings for the given paths.
 

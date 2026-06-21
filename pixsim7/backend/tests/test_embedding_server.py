@@ -1,124 +1,211 @@
 """Unit tests for the embedding HTTP service's /health and /embed logic.
 
-Calls the route coroutines directly with a hand-built state so no model load
-(and no GPU / model download) happens. Validates: 503 while loading, 200 once
-ready, 503 'wedged' when an in-flight request is stuck past the threshold, and
-the /embed contract.
+Calls the route coroutines directly with a hand-built registry so no real model
+load (and no GPU / model download) happens — `load_model`/`embed_images` are
+monkeypatched. Validates: 503 while the default loads / errored, 200 once ready,
+503 'wedged' on a stuck in-flight request, default-model selection, allowed-set
+rejection (409), and lazy-load + LRU eviction with the default pinned.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import time
+
+import pytest
 
 from pixsim7.embedding import server as srv
 from pixsim7.embedding.server import EmbedBody
 
 
-def _fresh_state() -> "srv._ServiceState":
-    srv.state = srv._ServiceState()
-    return srv.state
+def _install_registry(monkeypatch, *, default="m/default", allowed=None, capacity=2):
+    """Swap in a fresh registry whose loads are fake (no torch). Returns
+    (registry, loads) where `loads` counts load_model calls per model_id."""
+    allowed_set = set(allowed) if allowed is not None else {default}
+    allowed_set.add(default)
+    loads: dict[str, int] = {}
 
+    def fake_load(model_id):
+        loads[model_id] = loads.get(model_id, 0) + 1
+        return (f"model:{model_id}", "proc", "cpu")
 
-def _run(coro):
-    return asyncio.run(coro)
+    monkeypatch.setattr(srv, "load_model", fake_load)
+    monkeypatch.setattr(
+        srv, "embed_images", lambda m, p, d, paths: [[0.5, 0.6] for _ in paths]
+    )
+    reg = srv._ModelRegistry(
+        default_model_id=default, allowed=allowed_set, capacity=capacity
+    )
+    srv.registry = reg
+    srv.inflight = srv._InFlight()
+    return reg, loads
 
 
 def _resp(jsonresponse):
     return jsonresponse.status_code, json.loads(jsonresponse.body)
 
 
-def test_health_loading() -> None:
-    st = _fresh_state()
-    st.loaded = False
-    code, body = _resp(_run(srv.health()))
+# ── /health ────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_health_loading(monkeypatch) -> None:
+    reg, _ = _install_registry(monkeypatch)
+    code, body = _resp(await srv.health())
     assert code == 503
     assert body["status"] == "loading"
+    # Hosted set is observable even before the default finishes loading.
+    assert body["model_id"] == reg.default_model_id
+    assert reg.default_model_id in body["model_ids"]
 
 
-def test_health_ready() -> None:
-    st = _fresh_state()
-    st.loaded = True
-    res = _run(srv.health())  # plain dict on the happy path
+@pytest.mark.asyncio
+async def test_health_ready(monkeypatch) -> None:
+    reg, _ = _install_registry(monkeypatch)
+    await reg.ensure_default()
+    res = await srv.health()  # plain dict on the happy path
     assert res["status"] == "ok"
     assert res["model_loaded"] is True
-    # The hosted model is observable so the UI can surface it + warn on mismatch.
-    assert res["model_id"] == st.model_id
+    assert res["model_id"] == reg.default_model_id
+    assert reg.default_model_id in res["loaded_model_ids"]
 
 
-def test_health_loading_reports_model_id() -> None:
-    # model_id is known even before load completes (set from env at construction).
-    st = _fresh_state()
-    st.loaded = False
-    code, body = _resp(_run(srv.health()))
-    assert code == 503
-    assert body["model_id"] == st.model_id
-
-
-def test_health_wedged() -> None:
-    st = _fresh_state()
-    st.loaded = True
-    st.in_flight_starts = [time.monotonic() - 10_000]  # ancient in-flight request
-    code, body = _resp(_run(srv.health()))
+@pytest.mark.asyncio
+async def test_health_wedged(monkeypatch) -> None:
+    reg, _ = _install_registry(monkeypatch)
+    await reg.ensure_default()
+    srv.inflight.starts = [time.monotonic() - 10_000]  # ancient in-flight request
+    code, body = _resp(await srv.health())
     assert code == 503
     assert body["status"] == "wedged"
 
 
-def test_health_load_error() -> None:
-    st = _fresh_state()
-    st.load_error = "boom"
-    code, body = _resp(_run(srv.health()))
+@pytest.mark.asyncio
+async def test_health_load_error(monkeypatch) -> None:
+    reg, _ = _install_registry(monkeypatch)
+
+    def boom(_model_id):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(srv, "load_model", boom)
+    await reg.ensure_default()
+    code, body = _resp(await srv.health())
     assert code == 503
     assert body["status"] == "error"
+    assert "boom" in body["error"]
 
 
-def test_embed_roundtrip(monkeypatch) -> None:
-    st = _fresh_state()
-    st.loaded = True
-    st.model, st.processor, st.device = "M", "P", "cpu"
-    monkeypatch.setattr(srv, "embed_images", lambda m, p, d, paths: [[0.5, 0.6] for _ in paths])
+# ── /embed ─────────────────────────────────────────────────────────────
 
-    res = _run(srv.embed(EmbedBody(paths=["/a.jpg", "/b.jpg"])))
+
+@pytest.mark.asyncio
+async def test_embed_default_model(monkeypatch) -> None:
+    # model_id omitted -> the default model.
+    reg, _ = _install_registry(monkeypatch)
+    res = await srv.embed(EmbedBody(paths=["/a.jpg", "/b.jpg"]))
     assert res["embeddings"] == [[0.5, 0.6], [0.5, 0.6]]
     assert res["dim"] == 2
-    assert res["model_id"] == st.model_id
-    # in-flight bookkeeping is cleaned up after the call
-    assert st.in_flight == 0
+    assert res["model_id"] == reg.default_model_id
+    assert srv.inflight.count == 0  # bookkeeping cleaned up
 
 
-def test_embed_model_match(monkeypatch) -> None:
-    # A request whose model_id matches the loaded model is served normally.
-    st = _fresh_state()
-    st.loaded = True
-    st.model, st.processor, st.device = "M", "P", "cpu"
-    monkeypatch.setattr(srv, "embed_images", lambda m, p, d, paths: [[0.1] for _ in paths])
+@pytest.mark.asyncio
+async def test_embed_explicit_allowed_model(monkeypatch) -> None:
+    # A model in the allowed set is lazily loaded and served.
+    reg, loads = _install_registry(
+        monkeypatch, default="m/default", allowed={"m/default", "m/fashion"}
+    )
+    res = await srv.embed(EmbedBody(paths=["/a.jpg"], model_id="m/fashion"))
+    assert res["model_id"] == "m/fashion"
+    assert loads["m/fashion"] == 1
+    assert "m/fashion" in reg.loaded_model_ids
 
-    res = _run(srv.embed(EmbedBody(paths=["/a.jpg"], model_id=st.model_id)))
-    assert res["embeddings"] == [[0.1]]
-    assert res["model_id"] == st.model_id
 
-
-def test_embed_model_mismatch_rejected() -> None:
-    # A request for a model this daemon isn't serving is rejected (409) rather
-    # than silently embedded with the wrong model.
-    st = _fresh_state()
-    st.loaded = True
-    code, body = _resp(_run(srv.embed(EmbedBody(paths=["/a.jpg"], model_id="some/other-model"))))
+@pytest.mark.asyncio
+async def test_embed_model_not_served_rejected(monkeypatch) -> None:
+    # A model outside the allowed set is rejected (409), not silently embedded.
+    reg, _ = _install_registry(
+        monkeypatch, default="m/default", allowed={"m/default", "m/fashion"}
+    )
+    code, body = _resp(await srv.embed(EmbedBody(paths=["/a.jpg"], model_id="m/nope")))
     assert code == 409
     assert body["error"] == "model_not_served"
-    assert body["requested_model_id"] == "some/other-model"
-    assert body["served_model_id"] == st.model_id
+    assert body["requested_model_id"] == "m/nope"
+    assert body["served_model_ids"] == ["m/default", "m/fashion"]
 
 
-def test_embed_empty() -> None:
-    st = _fresh_state()
-    st.loaded = True
-    res = _run(srv.embed(EmbedBody(paths=[])))
+@pytest.mark.asyncio
+async def test_embed_empty_paths_no_load(monkeypatch) -> None:
+    reg, loads = _install_registry(monkeypatch)
+    res = await srv.embed(EmbedBody(paths=[]))
     assert res["embeddings"] == [] and res["dim"] == 0
+    assert res["model_id"] == reg.default_model_id
+    assert loads == {}  # short-circuit must not load anything
 
 
-def test_embed_not_loaded() -> None:
-    st = _fresh_state()
-    st.loaded = False
-    code, body = _resp(_run(srv.embed(EmbedBody(paths=["/a.jpg"]))))
+@pytest.mark.asyncio
+async def test_embed_model_load_failure_is_503(monkeypatch) -> None:
+    # A model in the allowed set that fails to load -> 503 (graceful retry),
+    # not a 500.
+    reg, _ = _install_registry(
+        monkeypatch, default="m/default", allowed={"m/default", "m/bad"}
+    )
+
+    def selective_load(model_id):
+        if model_id == "m/bad":
+            raise RuntimeError("weights missing")
+        return (f"model:{model_id}", "proc", "cpu")
+
+    monkeypatch.setattr(srv, "load_model", selective_load)
+    code, body = _resp(await srv.embed(EmbedBody(paths=["/a.jpg"], model_id="m/bad")))
     assert code == 503
+    assert body["error"] == "model_load_failed"
+    assert body["model_id"] == "m/bad"
+
+
+# ── registry: lazy-load + LRU eviction (default pinned) ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_lru_evicts_non_default(monkeypatch) -> None:
+    reg, loads = _install_registry(
+        monkeypatch,
+        default="m/default",
+        allowed={"m/default", "m/a", "m/b"},
+        capacity=2,
+    )
+    await reg.ensure_default()                      # resident: [default]
+    await reg.acquire("m/a")                         # resident: [default, a]
+    await reg.acquire("m/b")                         # over capacity -> evict a
+    assert reg.loaded_model_ids == ["m/default", "m/b"]
+
+    # 'a' was evicted, so using it again reloads (load count goes 1 -> 2).
+    await reg.acquire("m/a")
+    assert loads["m/a"] == 2
+    # The default is pinned: never evicted despite being the oldest entry.
+    assert "m/default" in reg.loaded_model_ids
+
+
+@pytest.mark.asyncio
+async def test_default_pinned_even_when_oldest(monkeypatch) -> None:
+    # default loaded first (oldest); a pure-LRU policy would evict it, but it's
+    # pinned, so the non-default victim is chosen instead.
+    reg, _ = _install_registry(
+        monkeypatch, default="m/default", allowed={"m/default", "m/a", "m/b"}, capacity=2
+    )
+    await reg.ensure_default()
+    await reg.acquire("m/a")
+    await reg.acquire("m/b")
+    assert "m/default" in reg.loaded_model_ids
+    assert "m/a" not in reg.loaded_model_ids
+
+
+@pytest.mark.asyncio
+async def test_concurrent_first_request_loads_once(monkeypatch) -> None:
+    import asyncio
+
+    reg, loads = _install_registry(
+        monkeypatch, default="m/default", allowed={"m/default", "m/a"}
+    )
+    # Two concurrent acquires for the same cold model must de-dupe to one load.
+    await asyncio.gather(reg.acquire("m/a"), reg.acquire("m/a"))
+    assert loads["m/a"] == 1

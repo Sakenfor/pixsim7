@@ -1671,12 +1671,21 @@ export function AnalyzersSettings() {
     void refreshDaemonStatus();
   }, [isAdmin, refreshDaemonStatus]);
 
-  // The model the daemon actually serves (live), falling back to what it's
-  // configured to host. An instance model_id that doesn't match this is
-  // rejected (409) at embed time until multi-model hosting lands.
-  const hostedModelId = daemonStatus?.served_model_id || daemonStatus?.configured_model_id || '';
+  // The daemon hosts a set of models (loaded on demand); `served_model_ids` is
+  // that allowed set and `served_model_id` is its default. An instance model_id
+  // outside the set is rejected (409) at embed time.
+  const hostedModelIds = daemonStatus?.served_model_ids ?? null;
+  const defaultHostedModelId =
+    daemonStatus?.served_model_id || daemonStatus?.configured_model_id || '';
+  const isModelHosted = useCallback(
+    (modelId: string) =>
+      hostedModelIds ? hostedModelIds.includes(modelId) : modelId === defaultHostedModelId,
+    [hostedModelIds, defaultHostedModelId]
+  );
   const embeddingModelMismatch = Boolean(
-    activeEmbeddingModelId && hostedModelId && activeEmbeddingModelId !== hostedModelId
+    activeEmbeddingModelId &&
+      (hostedModelIds?.length || defaultHostedModelId) &&
+      !isModelHosted(activeEmbeddingModelId)
   );
 
   const persistEmbeddingControls = useCallback(
@@ -2365,10 +2374,15 @@ export function AnalyzersSettings() {
                 {daemonStatus ? (
                   daemonStatus.reachable ? (
                     <>
-                      <span className="font-mono">{hostedModelId || 'unknown'}</span>
+                      {hostedModelIds && hostedModelIds.length > 0 ? (
+                        <span className="font-mono">{hostedModelIds.join(', ')}</span>
+                      ) : (
+                        <span className="font-mono">{defaultHostedModelId || 'unknown'}</span>
+                      )}
                       {' '}
                       <span className="text-neutral-400 dark:text-neutral-500">
-                        ({daemonStatus.model_loaded ? 'loaded' : daemonStatus.status ?? 'not loaded'})
+                        (default {daemonStatus.served_model_id ?? '—'},{' '}
+                        {daemonStatus.model_loaded ? 'ready' : daemonStatus.status ?? 'not loaded'})
                       </span>
                     </>
                   ) : (
@@ -2380,21 +2394,23 @@ export function AnalyzersSettings() {
               </p>
               {embeddingModelMismatch && (
                 <p className="text-[10px] text-amber-600 dark:text-amber-400">
-                  This model isn't the one the daemon hosts — embeds will fail (409) until they match.{' '}
+                  This model isn't in the daemon's hosted set — embeds will fail (409) until it's
+                  added or you pick a hosted one.{' '}
                   <button
                     type="button"
-                    onClick={() => handleEmbeddingModelSave(hostedModelId)}
-                    disabled={isSavingEmbedding}
+                    onClick={() => handleEmbeddingModelSave(defaultHostedModelId)}
+                    disabled={isSavingEmbedding || !defaultHostedModelId}
                     className="underline disabled:opacity-50"
                   >
-                    Use hosted model
+                    Use default model
                   </button>
                 </p>
               )}
               <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                The daemon hosts a single model (launcher setting{' '}
-                <span className="font-mono">PIXSIM_EMBEDDING_MODEL_ID</span>); this instance's
-                model must match it until per-instance multi-model hosting lands.
+                The daemon hosts a set of models (launcher{' '}
+                <span className="font-mono">PIXSIM_EMBEDDING_MODEL_ID</span> +{' '}
+                <span className="font-mono">PIXSIM_EMBEDDING_MODEL_IDS</span>), loading each on
+                demand; this instance's model must be one of them.
               </p>
             </div>
           </div>

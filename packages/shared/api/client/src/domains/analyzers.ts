@@ -98,7 +98,10 @@ export interface EmbeddingDaemonStatus {
   reachable: boolean;
   model_loaded: boolean;
   configured_model_id: string;
+  /** The daemon's default model (used when a request omits model_id). */
   served_model_id?: string | null;
+  /** Full allowed set the daemon will serve (load on demand). */
+  served_model_ids?: string[] | null;
   status?: string | null;
   error?: string | null;
 }
