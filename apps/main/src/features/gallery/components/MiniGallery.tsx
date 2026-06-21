@@ -572,6 +572,49 @@ function MiniGalleryContent({
     return { columns, colWidth, rowHeight, totalHeight, firstIndex, lastIndex };
   }, [displayItems.length, gridViewport.width, gridViewport.height, gridScrollTop, cardSize]);
 
+  // ── Scroll anchoring on live prepend ─────────────────────────────────────
+  // Live generations insert at the FRONT of the sorted list (useAssets.insert-
+  // AssetSorted). With absolute virtualization each card sits at `index*stride`,
+  // so an insert above the viewport pushes every existing card down a row while
+  // scrollTop stays put — the clip you were watching jumps down and the autoplay
+  // election re-fires on the new center card. We pin the viewport instead: after
+  // the list mutates, find the card that was at the top of the viewport and shift
+  // scrollTop by however many rows now sit above it. Cards are uniform squares so
+  // this is exact arithmetic, no DOM measurement. Skipped when the user is pinned
+  // at the very top, where a brand-new top item should ride into view (followLatest).
+  const prevDisplayIdsRef = useRef<Array<string | number>>([]);
+  useLayoutEffect(() => {
+    const ids = displayItems.map((a) => a.id);
+    const prevIds = prevDisplayIdsRef.current;
+    prevDisplayIdsRef.current = ids;
+
+    const el = gridScrollRef.current;
+    const { columns, rowHeight } = gridWindow;
+    if (!el || prevIds.length === 0 || columns <= 0 || rowHeight <= 0) return;
+
+    const stride = rowHeight + GRID_GAP;
+    const oldScrollTop = el.scrollTop;
+    // At/near the top → let followLatest surface the new item naturally.
+    if (oldScrollTop <= stride) return;
+
+    // Anchor = the item occupying the top visible row before the mutation.
+    const topRow = Math.max(0, Math.floor((oldScrollTop - GRID_PAD) / stride));
+    const anchorId = prevIds[topRow * columns];
+    if (anchorId === undefined) return;
+
+    const oldIndex = prevIds.indexOf(anchorId);
+    const newIndex = ids.indexOf(anchorId);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const deltaRows = Math.floor(newIndex / columns) - Math.floor(oldIndex / columns);
+    if (deltaRows === 0) return;
+
+    const nextScrollTop = oldScrollTop + deltaRows * stride;
+    el.scrollTop = nextScrollTop;
+    // Resync virtualization synchronously so the window doesn't paint the wrong slice.
+    setGridScrollTop(nextScrollTop);
+  }, [displayItems, gridWindow]);
+
   // Generation scope stores
   const { useInputStore, useSessionStore, useSettingsStore, id: scopeId } = useGenerationScopeStores();
   const addInput = useInputStore((s) => s.addInput);
