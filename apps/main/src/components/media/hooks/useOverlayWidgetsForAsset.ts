@@ -22,6 +22,7 @@ import { isBackendAssetId } from '@features/assets/lib/backendAssetId';
 import { isFavoriteAsset } from '@features/assets/lib/favoriteTag';
 import { useAssetSets } from '@features/assets/stores/assetSetStore';
 import { useGalleryApplyTargetStore } from '@features/assets/stores/galleryApplyTargetStore';
+import { useSetAddRecencyStore } from '@features/assets/stores/setAddRecencyStore';
 import { useSurfaceSetBadgesExpanded } from '@features/assets/stores/setBadgeExpansionStore';
 
 import { buildMediaCardOverlayData } from '../mediaCardRuntimeWidgetBuilder';
@@ -157,6 +158,8 @@ export function useOverlayWidgetsForAsset({
   // Collapsed/expanded set badges are scoped to this surface ('viewer'), shared
   // across every card in the viewer rather than saved per card.
   const setBadgesExpanded = useSurfaceSetBadgesExpanded('viewer');
+  // Recently-added-to ordering for the set badge row (re-orders as you add).
+  const lastAddedAt = useSetAddRecencyStore((s) => s.lastAddedAt);
 
   // Push semantics: left inset = sum of currently-active tool sidebars in
   // this viewer's EdgeInsetsScope. Used to shift left-anchored badges past
@@ -200,6 +203,7 @@ export function useOverlayWidgetsForAsset({
     for (const widget of buildActiveTargetWidgets(asset.id, activeSets, {
       surfaceKey: 'viewer',
       expanded: setBadgesExpanded,
+      lastAddedAt,
     })) {
       candidates.push(widget as OverlayWidget<MediaCardOverlayData>);
     }
@@ -228,5 +232,5 @@ export function useOverlayWidgetsForAsset({
     });
 
     return { overlayConfig, overlayData };
-  }, [asset, getVisibility, activeSets, leftInset, setBadgesExpanded]);
+  }, [asset, getVisibility, activeSets, leftInset, setBadgesExpanded, lastAddedAt]);
 }

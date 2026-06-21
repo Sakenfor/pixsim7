@@ -20,6 +20,13 @@ interface GalleryApplyTargetState {
   filterSetIds: number[];
   /** Toggle a set's membership in the active-target list (cap-aware, drop-oldest). */
   toggleActiveTarget: (setId: number) => void;
+  /**
+   * Mark an already-flagged target as most-recently-used (moved to the end, the
+   * newest slot). No-op if the set isn't a current target — adding an asset to
+   * a set must never silently flag it. Keeps recently-used sets from being the
+   * one dropped if the {@link MAX_ACTIVE_TARGETS} cap is ever exceeded.
+   */
+  bumpActiveTarget: (setId: number) => void;
   /** Replace the active-target list wholesale (clamped to the cap, deduped). */
   setActiveTargets: (setIds: number[]) => void;
   /** Drop every active target. */
@@ -46,6 +53,11 @@ export const useGalleryApplyTargetStore = create<GalleryApplyTargetState>()(
           ? cur.filter((id) => id !== setId)
           : clampTargets([...cur, setId]);
         set({ activeManualSetIds: next });
+      },
+      bumpActiveTarget: (setId) => {
+        const cur = get().activeManualSetIds;
+        if (!cur.includes(setId)) return; // only re-orders existing targets, never flags
+        set({ activeManualSetIds: [...cur.filter((id) => id !== setId), setId] });
       },
       setActiveTargets: (setIds) => set({ activeManualSetIds: clampTargets(setIds) }),
       clearActiveTargets: () => set({ activeManualSetIds: [] }),

@@ -29,6 +29,9 @@ import {
 
 import type { AssetFilters } from '../hooks/useAssets';
 
+import { useGalleryApplyTargetStore } from './galleryApplyTargetStore';
+import { useSetAddRecencyStore } from './setAddRecencyStore';
+
 // ── Types ──────────────────────────────────────────────────────────────
 
 export type AssetSetKind = 'manual' | 'smart';
@@ -319,6 +322,13 @@ export const useAssetSetStore = create<AssetSetState>()((set, get) => ({
   addAssetsToSet: async (id, assetIds) => {
     const updated = fromResponse(await addAssetSetMembers(id, assetIds));
     set((s) => ({ sets: replaceInList(s.sets, updated) }));
+    // Stamp "recently added-to" so the set floats to the front of the
+    // active-target badge row, and bump it to the newest active-target slot so
+    // a recently-used set survives the cap (no-op if it isn't a flagged target).
+    if (assetIds.length > 0) {
+      useSetAddRecencyStore.getState().markAdded([id]);
+      useGalleryApplyTargetStore.getState().bumpActiveTarget(id);
+    }
   },
 
   removeAssetsFromSet: async (id, assetIds) => {
