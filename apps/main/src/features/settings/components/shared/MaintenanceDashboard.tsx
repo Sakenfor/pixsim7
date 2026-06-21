@@ -1111,6 +1111,9 @@ const SKIP_REASON_LABELS: Record<string, string> = {
   local_missing: 'local file missing',
   no_stored_key: 'no key',
   not_found: 'row vanished',
+  // Restore-only reasons (restore_one statuses).
+  not_archived: 'not archived',
+  archive_missing: 'archive copy missing',
   other: 'other',
 };
 
@@ -2014,6 +2017,65 @@ interface RestoreResult {
   error_ids: number[];
 }
 
+// Background restore job progress (Redis-backed; mirror of RelocateJobProgress).
+// Backend: restore_processor.py + /assets/restore/{start,job,cancel}.
+interface RestoreJobProgress {
+  job_id: string;
+  status: string; // queued | running | completed | cancelled | error | continued | interrupted
+  apply: boolean;
+  cursor: number;
+  processed: number;
+  restored: number;
+  skipped: number;
+  errors: number;
+  restored_bytes: number;
+  restored_human: string;
+  would_bytes: number;
+  would_human: string;
+  error_ids: number[];
+  skipped_reasons?: Record<string, number>;
+}
+
+// Mirrors restore_processor._TERMINAL_STATUSES (incl. crash-retired 'interrupted').
+const RESTORE_JOB_TERMINAL = new Set(['completed', 'cancelled', 'error', 'interrupted']);
+
+// Progress-bar denominator persistence — see RELOCATE_JOB_TOTAL_KEY for the why
+// (the candidate count isn't in the job's Redis payload, so a job adopted on
+// reopen/reload would otherwise lose its %).
+const RESTORE_JOB_TOTAL_KEY = 'maintenance:restore-job-total:v1';
+function readRestoreJobTotal(): { job_id: string; total: number } | null {
+  try {
+    const raw = localStorage.getItem(RESTORE_JOB_TOTAL_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (p && typeof p.job_id === 'string' && typeof p.total === 'number') return p;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+function writeRestoreJobTotal(jobId: string, total: number): void {
+  try {
+    localStorage.setItem(RESTORE_JOB_TOTAL_KEY, JSON.stringify({ job_id: jobId, total }));
+  } catch {
+    /* ignore */
+  }
+}
+
+// Persisted "run in background" toggle. Never auto-runs (a click + confirm is
+// still required), so remembering the mode is safe. Default ON — a restore
+// downloads from the archive over the network and is the kind of long batch the
+// background job exists for.
+const RESTORE_RUN_BG_KEY = 'maintenance:restore-run-bg:v1';
+function readRestoreRunBg(): boolean {
+  try {
+    const raw = localStorage.getItem(RESTORE_RUN_BG_KEY);
+    return raw == null ? true : raw === '1';
+  } catch {
+    return true;
+  }
+}
+
 function RestoreFromArchiveAction({ onChanged }: { onChanged: () => void }) {
   // Seed from the stats cache so a reopen within the cache TTL is instant.
   const [stats, setStats] = useState<RestoreStats | null>(
@@ -2029,7 +2091,18 @@ function RestoreFromArchiveAction({ onChanged }: { onChanged: () => void }) {
   const [verifyHash, setVerifyHash] = useState(true);
   // Also drop the archive copy after restoring. Default OFF — keep the backup.
   const [deleteArchive, setDeleteArchive] = useState(false);
+  // Run the restore as a background job (non-blocking, cancellable) instead of
+  // foreground. Persisted (see RESTORE_RUN_BG_KEY).
+  const [runInBackground, setRunInBackground] = useState(readRestoreRunBg);
   const statsReqIdRef = useRef(0);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(RESTORE_RUN_BG_KEY, runInBackground ? '1' : '0');
+    } catch {
+      /* localStorage unavailable — non-fatal */
+    }
+  }, [runInBackground]);
 
   const { sets } = useAssetSets();
   const manualSets = useMemo(() => sets.filter((s) => s.kind === 'manual'), [sets]);
@@ -2113,6 +2186,105 @@ function RestoreFromArchiveAction({ onChanged }: { onChanged: () => void }) {
       return;
     run(false);
   }, [limit, deleteArchive, run]);
+
+  // --- Background job (drains the WHOLE matching selection without blocking) --
+  const [bgJob, setBgJob] = useState<RestoreJobProgress | null>(null);
+  // Denominator for the progress bar — candidate count captured at start.
+  // Unknown (0) for a job adopted on reopen, where we fall back to counts only.
+  const bgTotalRef = useRef(0);
+  const bgActive = bgJob != null && !RESTORE_JOB_TERMINAL.has(bgJob.status);
+
+  // Adopt an IN-FLIGHT job on mount so progress survives a reload / reopen. A
+  // finished (or crash-interrupted) job is NOT re-surfaced. Latest job = no id.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const j = await maintGet<RestoreJobProgress | null>('/assets/restore/job', SURFACE);
+        if (alive && j && !RESTORE_JOB_TERMINAL.has(j.status)) {
+          const saved = readRestoreJobTotal();
+          if (saved && saved.job_id === j.job_id) bgTotalRef.current = saved.total;
+          setBgJob(j);
+        }
+      } catch {
+        /* no job / surfaced elsewhere */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Poll while a job is running; tears down when it goes terminal.
+  useEffect(() => {
+    if (!bgActive || !bgJob) return;
+    const jobId = bgJob.job_id;
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const j = await maintGet<RestoreJobProgress | null>(
+          `/assets/restore/job?job_id=${encodeURIComponent(jobId)}`,
+          SURFACE,
+        );
+        if (stopped || !j) return;
+        setBgJob(j);
+        if (RESTORE_JOB_TERMINAL.has(j.status)) {
+          onChanged();
+          loadStats();
+        }
+      } catch {
+        /* transient — keep polling */
+      }
+    };
+    const id = window.setInterval(tick, 1500);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [bgActive, bgJob?.job_id, onChanged, loadStats]);
+
+  const startBackground = useCallback(async () => {
+    const count = Math.min(limit, stats?.candidate_count ?? 0);
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `Restore up to ${fmt(count)} archived original(s) back to LOCAL disk${deleteArchive ? ' and delete the archive copy' : ''} in the background? Runs as a job — you can cancel anytime.`,
+      )
+    )
+      return;
+    setResult(null);
+    try {
+      const qs = criteriaQuery();
+      bgTotalRef.current = count;
+      const r = await maintPost<{ job_id: string; status: string }>(
+        `/assets/restore/start?dry_run=false&verify_hash=${verifyHash}&delete_archive=${deleteArchive}&max_assets=${limit}${qs ? `&${qs}` : ''}`,
+        SURFACE,
+      );
+      writeRestoreJobTotal(r.job_id, count); // so the bar resumes on reopen/reload
+      const j = await maintGet<RestoreJobProgress | null>(
+        `/assets/restore/job?job_id=${encodeURIComponent(r.job_id)}`,
+        SURFACE,
+      );
+      setBgJob(
+        j ?? {
+          job_id: r.job_id, status: 'queued', apply: true, cursor: 0,
+          processed: 0, restored: 0, skipped: 0, errors: 0,
+          restored_bytes: 0, restored_human: '0 B', would_bytes: 0, would_human: '0 B', error_ids: [],
+        },
+      );
+    } catch (err) {
+      setResult({ message: extractErrorMessage(err) || 'Failed to start background job', isError: true });
+    }
+  }, [criteriaQuery, verifyHash, deleteArchive, limit, stats]);
+
+  const cancelBackground = useCallback(async () => {
+    if (!bgJob) return;
+    try {
+      await maintPost(`/assets/restore/cancel?job_id=${encodeURIComponent(bgJob.job_id)}`, SURFACE);
+    } catch {
+      /* will reflect on next poll, or surfaced via the row */
+    }
+  }, [bgJob]);
 
   if (!stats) return null;
 
@@ -2202,6 +2374,16 @@ function RestoreFromArchiveAction({ onChanged }: { onChanged: () => void }) {
           />
           Also delete the archive copy (default keeps it as a backup)
         </label>
+        <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={runInBackground}
+            onChange={(e) => setRunInBackground(e.target.checked)}
+            disabled={busy}
+            className="h-3 w-3 disabled:opacity-50"
+          />
+          Run in background (same batch — runs as a cancellable job instead of blocking)
+        </label>
       </div>
 
       {noArchive && !nothing && (
@@ -2227,11 +2409,94 @@ function RestoreFromArchiveAction({ onChanged }: { onChanged: () => void }) {
           <Button onClick={() => run(true)} disabled={busy} variant="outline" size="sm">
             {busy ? <Spinner className="w-3 h-3" /> : 'Preview'}
           </Button>
-          <Button onClick={onApply} disabled={busy || noArchive} variant="primary" size="sm">
-            Restore {fmt(Math.min(limit, stats.candidate_count))}
+          <Button
+            onClick={runInBackground ? startBackground : onApply}
+            disabled={busy || noArchive || (runInBackground && bgActive)}
+            variant="primary"
+            size="sm"
+            title={runInBackground ? 'Restore this batch as a background job (cancellable)' : undefined}
+          >
+            {runInBackground && bgActive
+              ? 'Running…'
+              : `Restore ${fmt(Math.min(limit, stats.candidate_count))}`}
           </Button>
         </div>
       )}
+
+      {bgJob && (
+        <div className="pl-5 space-y-1">
+          {bgActive ? (
+            <>
+              <div className="flex items-center gap-2 text-[11px]">
+                <Spinner className="w-3 h-3" />
+                <span className="text-muted-foreground flex-1">
+                  {bgJob.status === 'queued' ? (
+                    'Background restore — queued… (waiting for the Media Archive worker)'
+                  ) : (
+                    <>
+                      Background restore — {fmt(bgJob.restored)} restored
+                      {bgJob.skipped ? `, ${fmt(bgJob.skipped)} skipped${formatSkipReasons(bgJob.skipped_reasons)}` : ''}
+                      {bgJob.errors ? (
+                        <span title={bgJob.error_ids.join(', ')}>{`, ${fmt(bgJob.errors)} errors`}</span>
+                      ) : ''}
+                      {bgJob.restored_bytes > 0 ? ` (${bgJob.restored_human} added locally)` : ''}
+                    </>
+                  )}
+                </span>
+                {bgTotalRef.current > 0 && bgJob.status !== 'queued' && (
+                  <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                    {Math.min(100, Math.round((bgJob.processed / bgTotalRef.current) * 100))}%
+                  </span>
+                )}
+                <Button onClick={cancelBackground} variant="outline" size="sm">
+                  Cancel
+                </Button>
+              </div>
+              {bgTotalRef.current > 0 ? (
+                <div className="h-1.5 bg-muted rounded overflow-hidden">
+                  <div
+                    className="h-full bg-accent transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.round((bgJob.processed / bgTotalRef.current) * 100))}%`,
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="h-1.5 bg-muted rounded overflow-hidden">
+                  <div className="h-full w-1/3 bg-accent/60 animate-pulse" />
+                </div>
+              )}
+            </>
+          ) : (
+            <div
+              className={`flex items-center gap-1.5 text-[11px] ${
+                bgJob.status === 'error' || bgJob.errors > 0
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-green-600 dark:text-green-400'
+              }`}
+            >
+              <Icon
+                name={bgJob.status === 'cancelled' ? 'x' : bgJob.status === 'error' ? 'alertCircle' : 'check'}
+                size={12}
+              />
+              {bgJob.status === 'cancelled' ? 'Cancelled' : bgJob.status === 'error' ? 'Failed' : 'Done'}
+              {` — ${fmt(bgJob.restored)} restored${bgJob.restored_bytes > 0 ? `, ${bgJob.restored_human} added locally` : ''}`}
+              {bgJob.skipped ? `, ${fmt(bgJob.skipped)} skipped${formatSkipReasons(bgJob.skipped_reasons)}` : ''}
+              {bgJob.errors ? (
+                <span title={bgJob.error_ids.join(', ')}>{`, ${fmt(bgJob.errors)} errors`}</span>
+              ) : ''}
+              <button
+                type="button"
+                className="ml-2 text-muted-foreground hover:text-foreground underline"
+                onClick={() => setBgJob(null)}
+              >
+                dismiss
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {result && (
         <div
           className={`flex items-center gap-1.5 text-[11px] pl-5 ${
