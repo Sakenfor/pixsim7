@@ -110,8 +110,17 @@ function statusTone(status: string): StatusTone {
 }
 
 // ============================================================================
-// Lane palette (deterministic hash → hue)
+// Grouping axis — one primary cluster dimension at a time
 // ============================================================================
+
+/** The axis nodes cluster on. 'hierarchy' = no clusters (pure parent/dep DAG). */
+type GroupMode = 'hierarchy' | 'lane' | 'stage';
+
+const GROUP_MODES: { value: GroupMode; label: string }[] = [
+  { value: 'hierarchy', label: 'Hierarchy' },
+  { value: 'lane', label: 'Lane' },
+  { value: 'stage', label: 'Stage' },
+];
 
 function laneFromTags(tags: string[]): string | null {
   for (const t of tags) {
@@ -120,9 +129,17 @@ function laneFromTags(tags: string[]): string | null {
   return null;
 }
 
-function laneStyle(lane: string): StatusStyle {
+/** The cluster key for a node under the active grouping axis (null = ungrouped). */
+function groupKeyOf(node: PlanGraphNode, mode: GroupMode): string | null {
+  if (mode === 'lane') return laneFromTags(node.tags);
+  if (mode === 'stage') return node.stage || null;
+  return null;
+}
+
+/** Deterministic hash → hue, so a cluster key always gets the same color. */
+function groupStyle(key: string): StatusStyle {
   let h = 0;
-  for (let i = 0; i < lane.length; i++) h = (h * 31 + lane.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
   const hue = h % 360;
   return {
     border: `hsla(${hue}, 60%, 55%, 0.45)`,
@@ -143,12 +160,14 @@ interface BuildOptions {
   showDepEdges: boolean;
   showDocEdges: boolean;
   collapsedIds: Set<string>;
+  groupBy: GroupMode;
 }
 
 interface PlanGraphResult {
   nodes: Node[];
   edges: Edge[];
-  lanes: string[];
+  /** distinct cluster keys under the active grouping axis */
+  groups: string[];
   /** plan id → number of descendants in its subtree */
   descendantCount: Map<string, number>;
 }
@@ -217,12 +236,12 @@ function buildPlanGraph(
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: 'TB', nodesep: 28, ranksep: 90, marginx: 30, marginy: 30 });
 
-  const lanesUsed = new Set<string>();
+  const groupsUsed = new Set<string>();
   for (const n of visible) {
-    const lane = laneFromTags(n.tags);
-    if (lane) lanesUsed.add(lane);
+    const key = groupKeyOf(n, opts.groupBy);
+    if (key) groupsUsed.add(key);
   }
-  for (const lane of lanesUsed) g.setNode(`lane-${lane}`, {});
+  for (const key of groupsUsed) g.setNode(`group-${key}`, {});
 
   const planNodes: Node[] = [];
   for (const n of visible) {
@@ -232,8 +251,8 @@ function buildPlanGraph(
     const nodeId = `plan-${n.id}`;
     g.setNode(nodeId, { width: w, height: h });
 
-    const lane = laneFromTags(n.tags);
-    if (lane) g.setParent(nodeId, `lane-${lane}`);
+    const key = groupKeyOf(n, opts.groupBy);
+    if (key) g.setParent(nodeId, `group-${key}`);
 
     planNodes.push({
       id: nodeId,
@@ -313,10 +332,11 @@ function buildPlanGraph(
     return { ...n, position: { x: p.x - w / 2, y: p.y - h / 2 } };
   });
 
+  const labelPrefix = opts.groupBy === 'lane' ? 'lane:' : '';
   const groupNodes: Node[] = [];
-  for (const lane of lanesUsed) {
+  for (const key of groupsUsed) {
     const childIds = visible
-      .filter((n) => laneFromTags(n.tags) === lane)
+      .filter((n) => groupKeyOf(n, opts.groupBy) === key)
       .map((n) => `plan-${n.id}`);
     const positions = childIds.map((id) => g.node(id)).filter(Boolean);
     if (positions.length === 0) continue;
@@ -328,10 +348,10 @@ function buildPlanGraph(
     const maxY = Math.max(...positions.map((p) => p.y + NODE_H / 2)) + GROUP_PAD;
 
     groupNodes.push({
-      id: `lane-${lane}`,
-      type: 'laneGroup',
+      id: `group-${key}`,
+      type: 'groupNode',
       position: { x: minX, y: minY },
-      data: { label: `lane:${lane} (${childIds.length})`, lane },
+      data: { label: `${labelPrefix}${key} (${childIds.length})`, groupKey: key },
       style: { width: maxX - minX, height: maxY - minY },
       selectable: false,
       draggable: false,
@@ -342,7 +362,7 @@ function buildPlanGraph(
   return {
     nodes: [...groupNodes, ...positioned],
     edges,
-    lanes: [...lanesUsed].sort(),
+    groups: [...groupsUsed].sort(),
     descendantCount,
   };
 }
@@ -439,13 +459,13 @@ function PlanNode({ data, selected }: { data: PlanNodeData; selected?: boolean }
   );
 }
 
-interface LaneGroupData {
+interface GroupNodeData {
   label: string;
-  lane: string;
+  groupKey: string;
 }
 
-function LaneGroup({ data }: { data: LaneGroupData }) {
-  const lStyle = laneStyle(data.lane);
+function GroupNode({ data }: { data: GroupNodeData }) {
+  const lStyle = groupStyle(data.groupKey);
   return (
     <div
       className="w-full h-full rounded-xl pointer-events-none relative"
@@ -676,6 +696,7 @@ export function PlansGraphPanel() {
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
   const [showDepEdges, setShowDepEdges] = useState(true);
   const [showDocEdges, setShowDocEdges] = useState(true);
+  const [groupBy, setGroupBy] = useState<GroupMode>('lane');
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -710,15 +731,20 @@ export function PlansGraphPanel() {
     return allNodes.filter((n) => !statusFilter.has(n.status));
   }, [allNodes, statusFilter]);
 
-  const { graphNodes, graphEdges, lanes, descendantCount } = useMemo(() => {
-    const result = buildPlanGraph(filteredNodes, allEdges, { showDepEdges, showDocEdges, collapsedIds });
+  const { graphNodes, graphEdges, groups, descendantCount } = useMemo(() => {
+    const result = buildPlanGraph(filteredNodes, allEdges, {
+      showDepEdges,
+      showDocEdges,
+      collapsedIds,
+      groupBy,
+    });
     return {
       graphNodes: result.nodes,
       graphEdges: result.edges,
-      lanes: result.lanes,
+      groups: result.groups,
       descendantCount: result.descendantCount,
     };
-  }, [filteredNodes, allEdges, showDepEdges, showDocEdges, collapsedIds]);
+  }, [filteredNodes, allEdges, showDepEdges, showDocEdges, collapsedIds, groupBy]);
 
   // Plans that have a subtree to fold (drives the collapse-all control).
   const umbrellaIds = useMemo(() => [...descendantCount.keys()], [descendantCount]);
@@ -816,7 +842,7 @@ export function PlansGraphPanel() {
     onEdgesChange(displayEdges.map((e) => ({ type: 'reset' as const, item: e })));
   }, [displayNodes, displayEdges, onNodesChange, onEdgesChange]);
 
-  const nodeTypes = useMemo<NodeTypes>(() => ({ planNode: PlanNode, laneGroup: LaneGroup }), []);
+  const nodeTypes = useMemo<NodeTypes>(() => ({ planNode: PlanNode, groupNode: GroupNode }), []);
 
   const onNodeClick = useCallback((_e: React.MouseEvent, node: Node) => {
     if (node.type !== 'planNode') return;
@@ -901,6 +927,24 @@ export function PlansGraphPanel() {
           <span className="text-neutral-600 dark:text-neutral-400">Doc links</span>
         </label>
         <div className="h-4 border-l border-neutral-300 dark:border-neutral-600" />
+        <span className="text-neutral-500 dark:text-neutral-400">Group</span>
+        <div className="flex rounded border border-neutral-300 dark:border-neutral-600 overflow-hidden">
+          {GROUP_MODES.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              onClick={() => setGroupBy(m.value)}
+              className={`px-2 py-0.5 transition-colors ${
+                groupBy === m.value
+                  ? 'bg-neutral-700 text-white dark:bg-neutral-200 dark:text-neutral-900'
+                  : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div className="h-4 border-l border-neutral-300 dark:border-neutral-600" />
         {umbrellaIds.length > 0 && (
           <Button
             size="sm"
@@ -914,11 +958,12 @@ export function PlansGraphPanel() {
             {collapsedIds.size >= umbrellaIds.length ? 'Expand all' : 'Collapse umbrellas'}
           </Button>
         )}
-        {lanes.length > 0 && (
+        {groupBy !== 'hierarchy' && groups.length > 0 && (
           <>
             <div className="h-4 border-l border-neutral-300 dark:border-neutral-600" />
             <span className="font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
-              {lanes.length} {lanes.length === 1 ? 'lane' : 'lanes'}
+              {groups.length} {groupBy}
+              {groups.length === 1 ? '' : 's'}
             </span>
           </>
         )}
@@ -955,7 +1000,7 @@ export function PlansGraphPanel() {
             <Controls />
             <MiniMap
               nodeColor={(node) => {
-                if (node.type === 'laneGroup') return 'transparent';
+                if (node.type === 'groupNode') return 'transparent';
                 if (node.type === 'planNode') {
                   return statusStyle((node.data as PlanNodeData).plan.status).border;
                 }
