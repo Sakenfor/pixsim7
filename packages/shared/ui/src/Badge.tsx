@@ -5,6 +5,8 @@ export interface BadgeProps {
   color?: 'blue' | 'green' | 'red' | 'gray' | 'purple' | 'pink' | 'orange' | 'yellow' | 'accent';
   children: React.ReactNode;
   className?: string;
+  /** Native tooltip text (also used as the accessible label). */
+  title?: string;
 }
 
 const colorMap: Record<string, string> = {
@@ -19,9 +21,13 @@ const colorMap: Record<string, string> = {
   accent: 'bg-accent-subtle text-accent',
 };
 
-export function Badge({ color = 'gray', children, className }: BadgeProps) {
+export function Badge({ color = 'gray', children, className, title }: BadgeProps) {
   return (
-    <span className={clsx('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', colorMap[color], className)}>
+    <span
+      className={clsx('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', colorMap[color], className)}
+      title={title}
+      aria-label={title}
+    >
       {children}
     </span>
   );
