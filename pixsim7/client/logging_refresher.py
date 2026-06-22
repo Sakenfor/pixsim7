@@ -60,10 +60,21 @@ async def _fetch_and_apply(http_base: str, token: Optional[str]) -> bool:
                 headers=headers,
             )
         if resp.status_code != 200:
+            logger.debug(
+                "client_logging_config_fetch_non_200",
+                source=http_base,
+                status_code=resp.status_code,
+            )
             return False
         _apply_config(resp.json())
         return True
-    except Exception:
+    except Exception as e:
+        logger.debug(
+            "client_logging_config_fetch_failed",
+            source=http_base,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return False
 
 
