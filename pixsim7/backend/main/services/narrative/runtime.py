@@ -893,6 +893,63 @@ class NarrativeRuntimeEngine:
             changes = InventoryChanges(**effects.inventory)
             await apply_inventory_changes(session, changes)
 
+        # Arc / quest / event effects route through the canonical apply_flag_changes
+        # fields (arc_stages / quest_updates / trigger_events / end_events) — the same
+        # writer the interaction-execution outcome path uses (flags.arcs / .quests /
+        # .events). Ported from the retired frontend effectApplicator so the backend
+        # NarrativeRuntimeEngine covers every StateEffects category.
+        progression_changes: Dict[str, Any] = {}
+
+        if effects.arcs:
+            arc_stages: Dict[str, int] = {}
+            for arc_id, stage in effects.arcs.items():
+                try:
+                    arc_stages[arc_id] = int(stage)
+                except (TypeError, ValueError):
+                    # Named (non-numeric) stage: store directly, mirroring the
+                    # frontend's stage=0 + stageName fallback so it survives.
+                    arcs = session.flags.get("arcs", {})
+                    existing = arcs.get(arc_id) or {}
+                    existing["stageName"] = str(stage)
+                    existing.setdefault("stage", 0)
+                    arcs[arc_id] = existing
+                    session.flags["arcs"] = arcs
+            if arc_stages:
+                progression_changes["arc_stages"] = arc_stages
+
+        if effects.quests:
+            progression_changes["quest_updates"] = dict(effects.quests)
+
+        if effects.events:
+            trigger = effects.events.get("trigger")
+            end = effects.events.get("end")
+            if trigger:
+                progression_changes["trigger_events"] = list(trigger)
+            if end:
+                progression_changes["end_events"] = list(end)
+
+        if progression_changes:
+            await apply_flag_changes(session, FlagChanges(**progression_changes))
+
+        # ECS component effects upsert onto the canonical npc GameObject (shallow
+        # merge over existing component data), mirroring the frontend applicator.
+        if effects.components:
+            from pixsim7.backend.main.services.game.game_object_store import (
+                get_npc_component,
+                set_npc_component,
+            )
+
+            for component_type, component_data in effects.components.items():
+                new_data = component_data if isinstance(component_data, dict) else {}
+                existing = get_npc_component(
+                    session.flags, session.world_id, npc_id, component_type
+                )
+                existing_data = (existing.get("data") if existing else None) or {}
+                merged = {**existing_data, **new_data}
+                set_npc_component(
+                    session.flags, session.world_id, npc_id, component_type, merged
+                )
+
     async def _wait(self, duration_ms: int) -> None:
         """Wait for a duration (in practice, just note the delay)."""
         # In a real implementation, this might pause execution
