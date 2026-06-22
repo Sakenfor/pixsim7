@@ -1250,8 +1250,21 @@ async def load_children(db: AsyncSession, parent_id: str) -> List[PlanBundle]:
 
 
 async def list_plan_bundles(db: AsyncSession) -> List[PlanBundle]:
-    """List all plans from DB as bundles. If DB is empty, runs initial bootstrap."""
-    rows = (await db.execute(select(PlanRegistry))).scalars().all()
+    """List all plans from DB as bundles. If DB is empty, runs initial bootstrap.
+
+    Ordered most-recently-updated first (id as a stable tiebreaker) so callers
+    that page the result (``GET /dev/plans?limit=…``) get a deterministic
+    boundary — without an explicit order the heap scan can drop active plans
+    from the first page at random, making them unreachable in the UI.
+    """
+    rows = (
+        await db.execute(
+            select(PlanRegistry).order_by(
+                PlanRegistry.updated_at.desc().nulls_last(),
+                PlanRegistry.id.asc(),
+            )
+        )
+    ).scalars().all()
 
     if rows:
         # Batch-load all documents

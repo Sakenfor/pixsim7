@@ -30,7 +30,12 @@ export function usePlanTitles(): Map<string, string> {
 
     const fetchTitles = async () => {
       try {
-        const res = await pixsimClient.get<{ plans: PlanIndexEntry[] }>('/dev/plans');
+        // compact + high limit: this map must cover every plan or grouped tabs
+        // for plans past the default 100-row page render as dead links. compact
+        // keeps it cheap (id + title is all we need here).
+        const res = await pixsimClient.get<{ plans: PlanIndexEntry[] }>(
+          '/dev/plans?compact=true&limit=500',
+        );
         if (cancelled) return;
         const next = new Map<string, string>();
         for (const p of res.plans ?? []) {

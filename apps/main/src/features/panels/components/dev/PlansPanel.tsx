@@ -108,7 +108,10 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     setLoading(true);
     setError('');
     try {
-      const res = await pixsimClient.get<PlansIndexResponse>('/dev/plans');
+      // limit=500 (endpoint max): the sidebar — and the "is this plan
+      // available?" check downstream — must see every plan, not just the
+      // default first 100, or plans past that page show "unavailable" on open.
+      const res = await pixsimClient.get<PlansIndexResponse>('/dev/plans?limit=500');
       const canonicalPlans = res.plans.filter((p) => isCanonicalPlanId(p.id));
       if (canonicalPlans.length !== res.plans.length) {
         console.warn('PlansPanel: dropped non-canonical plan IDs from sidebar list');
