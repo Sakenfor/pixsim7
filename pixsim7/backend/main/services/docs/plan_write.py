@@ -88,6 +88,9 @@ def _validate_checkpoints(raw: list) -> list[dict]:
     Returns a list of validated dicts (round-tripped through model_validate).
     """
     from pixsim7.backend.main.api.v1.plans.schemas import Checkpoint
+    from pixsim7.backend.main.services.docs.plan_authoring_policy import (
+        promote_silent_done,
+    )
 
     validated = []
     for i, cp in enumerate(raw):
@@ -96,9 +99,16 @@ def _validate_checkpoints(raw: list) -> list[dict]:
         if "id" not in cp:
             raise ValueError(f"Invalid checkpoint at index {i}: missing required 'id'")
         try:
-            validated.append(Checkpoint.model_validate(cp).model_dump(by_alias=False, exclude_none=True))
+            cp_dict = Checkpoint.model_validate(cp).model_dump(by_alias=False, exclude_none=True)
         except Exception as exc:
             raise ValueError(f"Invalid checkpoint '{cp.get('id', f'index {i}')}': {exc}") from exc
+        # Canonicalize the inverse status/points lie at the write choke-point:
+        # a checkpoint that is complete by points/steps but whose status was
+        # never flipped gets auto-promoted to 'done'. (The forward lie —
+        # status='done' while underwater — is hard-rejected upstream by the
+        # status_points_consistent policy rule before we get here.)
+        promote_silent_done(cp_dict)
+        validated.append(cp_dict)
     return validated
 
 _PLAN_NOTIFICATION_SYSTEM_ID = "plan"

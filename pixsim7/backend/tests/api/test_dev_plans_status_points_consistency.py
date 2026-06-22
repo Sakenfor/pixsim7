@@ -8,6 +8,15 @@ work from every read-side surfacing. The Phase 1c checkpoint on
 ``automation-package-extraction`` (6/8 marked done) is the live example
 that motivated this rule.
 
+This rule is now ENFORCED, not just warned (plan
+``checkpoint-consistency-enforcement``):
+- Full-array create/update writes hard-reject a status='done' checkpoint
+  whose points are underwater (the array-scan rule is promoted to a policy
+  violation).
+- The incremental ``plans.progress`` path auto-canonicalizes instead — an
+  explicit status='done' completes the points/steps, and completing the
+  points auto-promotes the status to 'done' (the inverse SILENT-DONE rule).
+
 Coverage:
 - Unit tests of ``check_checkpoint_status_points_consistent`` (helper).
 - Unit tests of the array-scanning constraint validator (create/update path).
@@ -45,6 +54,9 @@ try:
     from pixsim7.backend.main.api.v1.dev_plans import router
     from pixsim7.backend.main.services.docs.plan_authoring_policy import (
         check_checkpoint_status_points_consistent,
+        check_checkpoint_silent_done,
+        complete_underwater_done,
+        promote_silent_done,
         _constraint_checkpoint_status_points_consistent,
     )
     from pixsim7.backend.main.shared.actor import RequestPrincipal
@@ -239,10 +251,12 @@ def _client(app):
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
 class TestProgressEndpointConsistency:
     @pytest.mark.asyncio
-    async def test_setting_status_done_while_underwater_emits_warning(self):
-        """Regression test for the Phase 1c trap as a write-time event: a
-        progress call that explicitly sets status='done' on an underwater
-        checkpoint must surface the divergence in response.warnings."""
+    async def test_setting_status_done_while_underwater_auto_completes(self):
+        """Enforcement (was: warning). A progress call that explicitly sets
+        status='done' on an underwater checkpoint is a completion gesture —
+        the endpoint auto-completes the points to the budget rather than
+        persisting the status/points lie. The merged checkpoint comes back
+        complete, and a transparency note explains the auto-fix."""
         app = _app()
         bundle = SimpleNamespace(
             plan=SimpleNamespace(checkpoints=[
@@ -256,8 +270,8 @@ class TestProgressEndpointConsistency:
         )
         payload = {
             "checkpoint_id": "cp1",
-            "status": "done",  # <-- the lie
-            # No points_delta / points_done — leaves points at 1/5.
+            "status": "done",
+            # No points_delta / points_done — the endpoint completes them.
         }
         with (
             patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle",
@@ -270,9 +284,77 @@ class TestProgressEndpointConsistency:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert any("cp1" in w and "points_done" in w for w in body["warnings"]), (
-            f"Expected consistency warning, got: {body['warnings']}"
+        cp = body["checkpoint"]
+        assert cp["status"] == "done"
+        assert cp["points_done"] == 5 and cp["points_total"] == 5, cp
+        assert any("auto-completed points" in w for w in body["warnings"]), (
+            f"Expected an auto-complete note, got: {body['warnings']}"
         )
+
+    @pytest.mark.asyncio
+    async def test_setting_status_done_on_stepped_completes_steps(self):
+        """Stepped checkpoint: points derive from steps, so status='done'
+        auto-marks every remaining step done (the only way to raise points)."""
+        app = _app()
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(checkpoints=[
+                {"id": "cp1", "label": "C1", "status": "active",
+                 "steps": [
+                     {"id": "s1", "done": True},
+                     {"id": "s2", "done": False},
+                     {"id": "s3", "done": False},
+                 ]},
+            ]),
+            doc=SimpleNamespace(title="Plan A"),
+        )
+        update_result = SimpleNamespace(
+            plan_id="p", changes=[], revision=None, commit_sha=None, new_scope=None,
+        )
+        payload = {"checkpoint_id": "cp1", "status": "done"}
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle",
+                  new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan",
+                  new=AsyncMock(return_value=update_result)),
+        ):
+            async with _client(app) as c:
+                resp = await c.post("/api/v1/dev/plans/progress/p", json=payload)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        cp = body["checkpoint"]
+        assert cp["status"] == "done"
+        assert all(s["done"] for s in cp["steps"]), cp
+        assert any("auto-completed" in w and "step" in w for w in body["warnings"])
+
+    @pytest.mark.asyncio
+    async def test_silent_done_auto_promotes_status(self):
+        """Inverse rule: bumping points to the budget without touching status
+        auto-promotes the checkpoint to 'done' (no silent-open lie)."""
+        app = _app()
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(checkpoints=[
+                {"id": "cp1", "label": "C1", "status": "active",
+                 "points_done": 4, "points_total": 5},
+            ]),
+            doc=SimpleNamespace(title="Plan A"),
+        )
+        update_result = SimpleNamespace(
+            plan_id="p", changes=[], revision=None, commit_sha=None, new_scope=None,
+        )
+        payload = {"checkpoint_id": "cp1", "points_delta": 1}  # -> 5/5, no status
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle",
+                  new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan",
+                  new=AsyncMock(return_value=update_result)),
+        ):
+            async with _client(app) as c:
+                resp = await c.post("/api/v1/dev/plans/progress/p", json=payload)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["checkpoint"]["status"] == "done", body["checkpoint"]
 
     @pytest.mark.asyncio
     async def test_setting_status_done_with_full_points_no_warning(self):

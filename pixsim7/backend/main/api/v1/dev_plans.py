@@ -80,7 +80,8 @@ from pixsim7.backend.main.services.docs.plan_authoring_policy import (
     evaluate_plan_create_policy,
     evaluate_plan_update_policy,
     evaluate_plan_progress_policy,
-    check_checkpoint_status_points_consistent,
+    complete_underwater_done,
+    promote_silent_done,
 )
 from pixsim_logging import get_logger
 
@@ -1656,14 +1657,21 @@ async def log_plan_progress(
             raise HTTPException(status_code=400, detail="blockers must be list[object]")
         checkpoint["blockers"] = payload.blockers
 
-    # Status/points consistency check on the MERGED final state. Done here
-    # (not in evaluate_plan_progress_policy) because the policy validator
-    # sees only the request payload — the actual divergence shows up only
-    # after the request is merged into the existing checkpoint dict above.
-    # Same helper as the create/update array-scan rule, applied to one row.
-    consistency_warning = check_checkpoint_status_points_consistent(checkpoint)
-    if consistency_warning:
-        progress_policy_warnings.append(consistency_warning)
+    # Status/points consistency on the MERGED final state. Enforce, don't just
+    # warn (plan checkpoint-consistency-enforcement). Done here (not in
+    # evaluate_plan_progress_policy) because the policy validator sees only the
+    # request payload — the divergence shows up only after the merge above.
+    # On this incremental path both lies are auto-canonicalized rather than
+    # rejected (full-array create/update writes hard-reject instead):
+    #   - status='done' while underwater -> auto-complete points/steps;
+    #   - points/steps complete but status not flipped -> auto-promote to done.
+    # The two conditions are mutually exclusive, so calling both is safe.
+    for _canon in (
+        complete_underwater_done(checkpoint),
+        promote_silent_done(checkpoint),
+    ):
+        if _canon:
+            progress_policy_warnings.append(_canon)
 
     # ── Collect all commit SHAs from the various sources ───────────
     collected_shas: list[str] = []

@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from pixsim_logging import get_logger
 
-PLAN_AUTHORING_CONTRACT_VERSION = "2026-05-17.2"
+PLAN_AUTHORING_CONTRACT_VERSION = "2026-06-22.1"
 PLAN_AUTHORING_CONTRACT_ENDPOINT = "/api/v1/dev/plans/meta/authoring-contract"
 PLAN_SUMMARY_MAX_LENGTH = 280
 logger = get_logger()
@@ -177,31 +177,35 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
         "id": "plans.create.checkpoints.status_points_consistent",
         "endpoint_id": "plans.create",
         "field": "checkpoints",
-        "level": "suggested",
+        "level": "required",
         "applies_to_principal_types": ["agent", "service", "user"],
         "description": (
-            "A checkpoint with status='done' should also have points_done >= "
+            "A checkpoint with status='done' must also have points_done >= "
             "points_total. The points field is the operational source of truth "
             "used by plans.todo_summary and the openSummary block on plans.detail "
-            "— a status/points mismatch creates a data lie where the checkpoint "
-            "appears done in the UI but keeps surfacing as open work."
+            "— a status/points mismatch is a data lie where the checkpoint "
+            "appears done in the UI but keeps surfacing as open work. Enforced "
+            "as a hard rejection on full-array writes (create/update): fix the "
+            "points or the status before saving. (The incremental plans.progress "
+            "path auto-completes instead — an explicit status='done' there is a "
+            "completion gesture.)"
         ),
         "constraint": {"type": "checkpoint_status_points_consistent"},
-        "message": "Checkpoint status/points mismatch — see warnings for specifics.",
+        "message": "Checkpoint status/points mismatch — see errors for specifics.",
     },
     {
         "id": "plans.update.checkpoints.status_points_consistent",
         "endpoint_id": "plans.update",
         "field": "checkpoints",
-        "level": "suggested",
+        "level": "required",
         "applies_to_principal_types": ["agent", "service", "user"],
         "description": (
             "Same rule as plans.create — applies only when the PATCH payload "
             "includes a checkpoints array. Skipped silently for partial updates "
-            "that don't touch checkpoints."
+            "that don't touch checkpoints. Hard rejection on the full-array write."
         ),
         "constraint": {"type": "checkpoint_status_points_consistent"},
-        "message": "Checkpoint status/points mismatch — see warnings for specifics.",
+        "message": "Checkpoint status/points mismatch — see errors for specifics.",
     },
     {
         "id": "plans.progress.evidence.test_suite_refs_registered_for_automation",
@@ -259,6 +263,7 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
             "Consider POST /dev/plans/{plan_id}/claim at session start for "
             "live multi-agent visibility (soft, auto-released on run end)."
         ),
+        "since_version": "2026-05-17.2",
     },
 ]
 
@@ -516,6 +521,91 @@ def check_checkpoint_status_points_consistent(cp: Dict[str, Any]) -> Optional[st
         f"change status — the points field is the operational truth and "
         f"this checkpoint will keep showing as open in plans.todo_summary "
         f"and the openSummary block on plans.detail."
+    )
+
+
+def check_checkpoint_silent_done(cp: Dict[str, Any]) -> Optional[str]:
+    """Return a message when a checkpoint is complete by points/steps but its
+    status was never flipped to 'done' (the inverse of the done-rule), else
+    None.
+
+    The trap this catches: a checkpoint whose points reach points_total (or
+    all of whose steps are done) but whose ``status`` still reads 'pending' /
+    'active'. The points field is the operational truth, so the work is done —
+    but every status-driven surface still renders it as open, and the plan
+    never closes. The fix is to make the status agree (auto-promoted on write
+    by ``promote_silent_done``).
+    """
+    status = str(cp.get("status") or "").strip().lower()
+    if status == "done":
+        return None
+    done, total = _derive_points_for_consistency_check(cp)
+    if done is None or total is None or total <= 0:
+        return None
+    if done < total:
+        return None
+    cp_id = str(cp.get("id") or "?")
+    return (
+        f"Checkpoint '{cp_id}': points_done ({done}) >= points_total ({total}) "
+        f"but status is '{status or 'pending'}', not 'done'. The work is "
+        f"complete by points/steps yet the checkpoint keeps showing as open."
+    )
+
+
+def promote_silent_done(cp: Dict[str, Any]) -> Optional[str]:
+    """Canonicalize a SILENT-DONE checkpoint in place: flip status -> 'done'.
+
+    Returns a human-readable change note when a change was made, else None.
+    Points/steps are the operational truth; when they say fully-complete we
+    make the status agree rather than persisting a status/points lie. No-op
+    for any checkpoint that isn't silent-done.
+    """
+    if check_checkpoint_silent_done(cp) is None:
+        return None
+    prev = str(cp.get("status") or "pending")
+    cp["status"] = "done"
+    cp_id = str(cp.get("id") or "?")
+    return (
+        f"Checkpoint '{cp_id}': auto-promoted status {prev!r} -> 'done' "
+        f"(points/steps already complete)."
+    )
+
+
+def complete_underwater_done(cp: Dict[str, Any]) -> Optional[str]:
+    """Canonicalize a FALSE-DONE checkpoint in place: the caller asserted
+    status='done', so complete the underlying progress to match.
+
+    - Stepped checkpoint: mark every remaining step done (steps are the
+      points source, so the points can't be raised any other way).
+    - Pointed checkpoint: raise points_done (and points_total) to the budget.
+
+    Returns a change note when a change was made, else None. This is the
+    incremental ``plans.progress`` resolution where an explicit status='done'
+    is a completion gesture — full-array create/update writes hard-reject the
+    same condition instead.
+    """
+    if check_checkpoint_status_points_consistent(cp) is None:
+        return None
+    cp_id = str(cp.get("id") or "?")
+    steps = cp.get("steps")
+    if isinstance(steps, list) and steps:
+        remaining = 0
+        for step in steps:
+            if isinstance(step, dict) and not bool(step.get("done")):
+                step["done"] = True
+                remaining += 1
+        return (
+            f"Checkpoint '{cp_id}': status='done' — auto-completed "
+            f"{remaining} remaining step(s) so points agree."
+        )
+    _done, total = _derive_points_for_consistency_check(cp)
+    if total is None:
+        return None
+    cp["points_done"] = total
+    cp["points_total"] = total
+    return (
+        f"Checkpoint '{cp_id}': status='done' — auto-completed points to "
+        f"{total}/{total}."
     )
 
 

@@ -303,6 +303,144 @@ def test_self_assign_on_start_rule_present_and_advisory() -> None:
     assert rule["severity"] == "warning"  # derived from level
     assert rule["constraint"] == {"type": "advisory"}
     assert "agent" in rule["applies_to_principal_types"]
-    # New rule ships at the bumped contract version.
-    assert policy.PLAN_AUTHORING_CONTRACT_VERSION == "2026-05-17.2"
+    # The claim rule shipped at 2026-05-17.2 and is pinned there even as the
+    # global contract version advances.
+    assert policy.PLAN_AUTHORING_CONTRACT_VERSION == "2026-06-22.1"
     assert rule["since_version"] == "2026-05-17.2"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Status/points consistency — enforcement (was warning, now hard reject)
+# ──────────────────────────────────────────────────────────────────────
+
+def test_create_rejects_false_done_checkpoint() -> None:
+    """status='done' while underwater is now a hard violation on the
+    full-array create write, not just a warning."""
+    payload = SimpleNamespace(
+        id="lie-plan",
+        checkpoints=[
+            {"id": "cp1", "label": "C1", "status": "done",
+             "points_done": 6, "points_total": 8},
+        ],
+        summary="ok", companions=[], code_paths=["src/"],
+    )
+    principal = SimpleNamespace(principal_type="user", source="user:1")
+
+    violations, _warnings = policy.validate_policy("plans.create", payload, principal)
+
+    assert any("cp1" in v and "points_done" in v for v in violations), violations
+
+
+def test_update_rejects_false_done_checkpoint_when_array_present() -> None:
+    payload = {
+        "checkpoints": [
+            {"id": "cp1", "label": "C1", "status": "done",
+             "points_done": 1, "points_total": 5},
+        ],
+    }
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    violations = policy.validate_plan_update_policy(payload, principal)
+
+    assert any("cp1" in v for v in violations), violations
+
+
+def test_update_skips_consistency_rule_when_checkpoints_absent() -> None:
+    """Partial PATCH that doesn't touch checkpoints must not fire the rule."""
+    payload = {"status": "active"}
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    violations = policy.validate_plan_update_policy(payload, principal)
+
+    assert not any("status/points" in v.lower() or "points_done" in v for v in violations)
+
+
+def test_honest_done_checkpoint_passes_create() -> None:
+    payload = SimpleNamespace(
+        id="honest-plan",
+        checkpoints=[
+            {"id": "cp1", "label": "C1", "status": "done",
+             "points_done": 5, "points_total": 5},
+        ],
+        summary="ok", companions=[], code_paths=["src/"],
+    )
+    principal = SimpleNamespace(principal_type="user", source="user:1")
+
+    violations, _warnings = policy.validate_policy("plans.create", payload, principal)
+
+    assert not any("points_done" in v for v in violations)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Inverse rule (SILENT-DONE) + canonicalizers
+# ──────────────────────────────────────────────────────────────────────
+
+def test_check_silent_done_detects_complete_but_not_done() -> None:
+    msg = policy.check_checkpoint_silent_done({
+        "id": "cp1", "status": "active", "points_done": 5, "points_total": 5,
+    })
+    assert msg is not None
+    assert "cp1" in msg
+
+
+def test_check_silent_done_silent_when_already_done() -> None:
+    assert policy.check_checkpoint_silent_done({
+        "id": "cp1", "status": "done", "points_done": 5, "points_total": 5,
+    }) is None
+
+
+def test_check_silent_done_silent_when_underwater() -> None:
+    assert policy.check_checkpoint_silent_done({
+        "id": "cp1", "status": "active", "points_done": 2, "points_total": 5,
+    }) is None
+
+
+def test_check_silent_done_uses_steps_tally() -> None:
+    msg = policy.check_checkpoint_silent_done({
+        "id": "cp1", "status": "pending",
+        "steps": [{"id": "s1", "done": True}, {"id": "s2", "done": True}],
+    })
+    assert msg is not None
+
+
+def test_promote_silent_done_flips_status_in_place() -> None:
+    cp = {"id": "cp1", "status": "active", "points_done": 5, "points_total": 5}
+    note = policy.promote_silent_done(cp)
+    assert note is not None
+    assert cp["status"] == "done"
+
+
+def test_promote_silent_done_noop_when_consistent() -> None:
+    cp = {"id": "cp1", "status": "active", "points_done": 2, "points_total": 5}
+    assert policy.promote_silent_done(cp) is None
+    assert cp["status"] == "active"
+
+
+def test_complete_underwater_done_bumps_points_in_place() -> None:
+    cp = {"id": "cp1", "status": "done", "points_done": 6, "points_total": 8}
+    note = policy.complete_underwater_done(cp)
+    assert note is not None
+    assert cp["points_done"] == 8
+    assert cp["points_total"] == 8
+
+
+def test_complete_underwater_done_marks_steps_in_place() -> None:
+    cp = {
+        "id": "cp1", "status": "done",
+        "steps": [
+            {"id": "s1", "done": True},
+            {"id": "s2", "done": False},
+            {"id": "s3", "done": False},
+        ],
+    }
+    note = policy.complete_underwater_done(cp)
+    assert note is not None
+    assert all(s["done"] for s in cp["steps"])
+    # Re-deriving now reports a consistent, complete checkpoint.
+    assert policy.check_checkpoint_status_points_consistent(cp) is None
+
+
+def test_complete_underwater_done_noop_when_consistent() -> None:
+    cp = {"id": "cp1", "status": "active", "points_done": 2, "points_total": 5}
+    assert policy.complete_underwater_done(cp) is None
+    assert cp["points_done"] == 2
