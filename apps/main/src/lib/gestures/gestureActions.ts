@@ -60,6 +60,18 @@ export type ViewerGestureActionId = (typeof VIEWER_GESTURE_ACTIONS)[number]['id'
 /** All actions available in viewer context (shared + viewer-specific). */
 export const ALL_VIEWER_ACTIONS = [...GESTURE_ACTIONS, ...VIEWER_GESTURE_ACTIONS] as const;
 
+// ─── Input-slot-specific gesture actions ─────────────────────────────────────
+// Plan: `media-card-input-time-nav`. Available only when the slot is wired
+// via `useCardGestures({ surfaceId: 'input-slot', ... })`.
+
+export const INPUT_SLOT_GESTURE_ACTIONS = [
+  { id: 'inputTimeNavPrev', label: 'Previous Asset (time)', actionKey: 'onInputTimeNavPrev' },
+  { id: 'inputTimeNavNext', label: 'Next Asset (time)', actionKey: 'onInputTimeNavNext' },
+] as const satisfies readonly GestureActionDef[];
+
+/** All actions available in input-slot context (shared + input-slot-specific). */
+export const ALL_INPUT_SLOT_ACTIONS = [...GESTURE_ACTIONS, ...INPUT_SLOT_GESTURE_ACTIONS] as const;
+
 export type GestureActionId = (typeof GESTURE_ACTIONS)[number]['id'];
 
 /**

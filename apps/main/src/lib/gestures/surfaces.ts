@@ -7,7 +7,11 @@
  * consumer having to remember.
  */
 
-import { ALL_VIEWER_ACTIONS, GESTURE_ACTIONS } from './gestureActions';
+import {
+  ALL_INPUT_SLOT_ACTIONS,
+  ALL_VIEWER_ACTIONS,
+  GESTURE_ACTIONS,
+} from './gestureActions';
 import { registerGestureSurface } from './gestureSurfaces';
 
 registerGestureSurface({
@@ -79,6 +83,30 @@ registerGestureSurface({
   },
   actionPool: GESTURE_ACTIONS,
   allowMirrorFrom: ['gallery', 'viewer'],
+});
+
+registerGestureSurface({
+  id: 'input-slot',
+  label: 'Input Slot',
+  icon: '↔️',
+  order: 35,
+  description: 'Swipe on an input-slot card in the asset panel to walk the time axis (prev/next) — same swap as the edge chevrons.',
+  defaults: {
+    enabled: true,
+    threshold: 35,
+    edgeInset: 0.15,
+    cascadeStepPixels: 50,
+    gestureUp: ['none'],
+    gestureDown: ['none'],
+    gestureLeft: ['inputTimeNavNext'],
+    gestureRight: ['inputTimeNavPrev'],
+    chainUp: 'none',
+    chainDown: 'none',
+    chainLeft: 'none',
+    chainRight: 'none',
+  },
+  actionPool: ALL_INPUT_SLOT_ACTIONS,
+  allowMirrorFrom: ['gallery'],
 });
 
 registerGestureSurface({
