@@ -2,8 +2,14 @@
  * PlansGraphPanel - Network view of the plan registry.
  *
  * Nodes = plans (color by status, icon by planType, umbrellas larger).
- * Edges = parentId (solid) + dependsOn (dashed colored, off by default).
+ * Edges = parentId (solid grey) + dependsOn (dashed, colored by target status)
+ *         + companions/handoffs (doc links, dotted). Dep + doc edges on by default.
  * Lane clusters = lane:* tag.
+ *
+ * Umbrellas with children carry a collapse toggle: collapsing hides the whole
+ * descendant subtree and reroutes any edges that crossed into it onto the
+ * umbrella, so cross-cutting structure survives the fold. A "+N" badge shows
+ * how many descendants are tucked away.
  *
  * Click a node → select; right detail pane shows summary + relations.
  * Double-click → navigate to the plan in PlansPanel.
@@ -126,17 +132,70 @@ function truncate(s: string, n: number): string {
 
 interface BuildOptions {
   showDepEdges: boolean;
+  showDocEdges: boolean;
+  collapsedIds: Set<string>;
 }
 
 interface PlanGraphResult {
   nodes: Node[];
   edges: Edge[];
   lanes: string[];
+  /** plan id → number of descendants hidden underneath it while collapsed */
+  descendantCount: Map<string, number>;
 }
 
+/** Doc-link edge palette — companions vs handoffs read as distinct strokes. */
+const COMPANION_STROKE = '#a855f7'; // purple
+const HANDOFF_STROKE = '#14b8a6'; // teal
+
 function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResult {
-  const visible = plans.filter((p) => !HIDDEN_STATUSES.has(p.status));
-  const planById = new Map(visible.map((p) => [p.id, p]));
+  const visibleAll = plans.filter((p) => !HIDDEN_STATUSES.has(p.status));
+  const planById = new Map(visibleAll.map((p) => [p.id, p]));
+
+  // Parent → direct children, restricted to plans actually in the graph.
+  const childrenByParent = new Map<string, string[]>();
+  for (const p of visibleAll) {
+    if (p.parentId && planById.has(p.parentId)) {
+      const arr = childrenByParent.get(p.parentId);
+      if (arr) arr.push(p.id);
+      else childrenByParent.set(p.parentId, [p.id]);
+    }
+  }
+
+  const collectDescendants = (id: string, acc: string[] = []): string[] => {
+    for (const kid of childrenByParent.get(id) ?? []) {
+      acc.push(kid);
+      collectDescendants(kid, acc);
+    }
+    return acc;
+  };
+
+  // Total descendant count per plan (for the "+N" collapse badge) and the set of
+  // nodes hidden because some ancestor is collapsed.
+  const descendantCount = new Map<string, number>();
+  const hidden = new Set<string>();
+  for (const p of visibleAll) {
+    const desc = collectDescendants(p.id);
+    if (desc.length) descendantCount.set(p.id, desc.length);
+  }
+  for (const cid of opts.collapsedIds) {
+    if (!planById.has(cid)) continue;
+    for (const d of collectDescendants(cid)) hidden.add(d);
+  }
+
+  const visible = visibleAll.filter((p) => !hidden.has(p.id));
+
+  // Nearest non-hidden ancestor — edges crossing into a collapsed subtree
+  // reroute here so cross-cutting relationships stay visible on the umbrella.
+  const visibleAnchor = (id: string): string | null => {
+    let cur: string | undefined = id;
+    const seen = new Set<string>();
+    while (cur && hidden.has(cur) && !seen.has(cur)) {
+      seen.add(cur);
+      cur = planById.get(cur)?.parentId ?? undefined;
+    }
+    return cur && planById.has(cur) ? cur : null;
+  };
 
   const g = new dagre.graphlib.Graph({ compound: true });
   g.setDefaultEdgeLabel(() => ({}));
@@ -170,6 +229,7 @@ function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResu
 
   const edges: Edge[] = [];
   const dagreEdgeSet = new Set<string>();
+  const edgeIdSet = new Set<string>();
   const addDagreEdge = (from: string, to: string) => {
     const k = `${from}->${to}`;
     if (dagreEdgeSet.has(k)) return;
@@ -177,32 +237,46 @@ function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResu
     g.setEdge(from, to);
   };
 
+  // Resolve a raw plan id to the visible node id it should connect to (itself,
+  // or its collapsed ancestor). Returns null when the target isn't a plan node.
+  const anchorNodeId = (rawId: string): string | null => {
+    if (planById.has(rawId) && !hidden.has(rawId)) return `plan-${rawId}`;
+    const anchor = visibleAnchor(rawId);
+    return anchor ? `plan-${anchor}` : null;
+  };
+
   for (const p of visible) {
     const fromId = `plan-${p.id}`;
 
-    if (p.parentId && planById.has(p.parentId)) {
-      const toId = `plan-${p.parentId}`;
-      edges.push({
-        id: `parent-${p.id}`,
-        source: toId,
-        target: fromId,
-        type: 'smoothstep',
-        style: { stroke: '#94a3b8', opacity: 0.55, strokeWidth: 1.5 },
-      });
-      addDagreEdge(toId, fromId);
+    if (p.parentId) {
+      const toId = anchorNodeId(p.parentId);
+      if (toId && toId !== fromId) {
+        edges.push({
+          id: `parent-${p.id}`,
+          source: toId,
+          target: fromId,
+          type: 'smoothstep',
+          style: { stroke: '#94a3b8', opacity: 0.55, strokeWidth: 1.5 },
+        });
+        addDagreEdge(toId, fromId);
+      }
     }
 
     if (opts.showDepEdges) {
       for (const dep of p.dependsOn ?? []) {
-        const target = planById.get(dep);
-        if (!target) continue;
-        const style = statusStyle(target.status);
+        const toId = anchorNodeId(dep);
+        if (!toId || toId === fromId) continue;
+        const id = `dep-${p.id}-${dep}`;
+        if (edgeIdSet.has(id)) continue;
+        edgeIdSet.add(id);
+        const targetPlan = planById.get(dep) ?? planById.get(toId.replace(/^plan-/, ''));
+        const style = statusStyle(targetPlan?.status ?? 'parked');
         edges.push({
-          id: `dep-${p.id}-${dep}`,
+          id,
           source: fromId,
-          target: `plan-${dep}`,
+          target: toId,
           type: 'smoothstep',
-          animated: target.status === 'active',
+          animated: targetPlan?.status === 'active',
           style: {
             stroke: style.border,
             opacity: 0.7,
@@ -210,7 +284,37 @@ function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResu
             strokeDasharray: '5 4',
           },
         });
-        addDagreEdge(fromId, `plan-${dep}`);
+        addDagreEdge(fromId, toId);
+      }
+    }
+
+    if (opts.showDocEdges) {
+      const docLinks: { ids: string[]; kind: string; stroke: string }[] = [
+        { ids: p.companions ?? [], kind: 'companion', stroke: COMPANION_STROKE },
+        { ids: p.handoffs ?? [], kind: 'handoff', stroke: HANDOFF_STROKE },
+      ];
+      for (const { ids, kind, stroke } of docLinks) {
+        for (const ref of ids) {
+          const toId = anchorNodeId(ref);
+          if (!toId || toId === fromId) continue;
+          const id = `${kind}-${p.id}-${ref}`;
+          if (edgeIdSet.has(id)) continue;
+          edgeIdSet.add(id);
+          edges.push({
+            id,
+            source: fromId,
+            target: toId,
+            type: 'smoothstep',
+            style: {
+              stroke,
+              opacity: 0.6,
+              strokeWidth: 1.25,
+              strokeDasharray: '2 3',
+            },
+          });
+          // Don't feed doc links to dagre — they're cross-cutting and would
+          // distort the parent/dep rank layout.
+        }
       }
     }
   }
@@ -255,6 +359,7 @@ function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResu
     nodes: [...groupNodes, ...positioned],
     edges,
     lanes: [...lanesUsed].sort(),
+    descendantCount,
   };
 }
 
@@ -265,12 +370,17 @@ function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResu
 interface PlanNodeData {
   plan: PlanSummary;
   isUmbrella: boolean;
+  /** descendants in the subtree (drives collapse affordance + badge) */
+  descendants?: number;
+  collapsed?: boolean;
+  onToggleCollapse?: (planId: string) => void;
 }
 
 function PlanNode({ data, selected }: { data: PlanNodeData; selected?: boolean }) {
-  const { plan, isUmbrella } = data;
+  const { plan, isUmbrella, descendants = 0, collapsed = false, onToggleCollapse } = data;
   const sStyle = statusStyle(plan.status);
   const iconName = PLAN_TYPE_ICONS[plan.planType] ?? 'fileText';
+  const canCollapse = descendants > 0 && !!onToggleCollapse;
 
   return (
     <div
@@ -278,7 +388,7 @@ function PlanNode({ data, selected }: { data: PlanNodeData; selected?: boolean }
       style={{
         width: isUmbrella ? UMBRELLA_W : NODE_W,
         height: isUmbrella ? UMBRELLA_H : NODE_H,
-        border: `${isUmbrella ? '2.5px' : '1.5px'} solid ${sStyle.border}`,
+        border: `${isUmbrella ? '2.5px' : '1.5px'} ${collapsed ? 'double' : 'solid'} ${sStyle.border}`,
         backgroundColor: sStyle.bg,
         padding: '6px 10px',
         boxSizing: 'border-box',
@@ -289,6 +399,21 @@ function PlanNode({ data, selected }: { data: PlanNodeData; selected?: boolean }
       <Handle type="target" position={Position.Top} style={{ background: sStyle.border }} />
       <Handle type="source" position={Position.Bottom} style={{ background: sStyle.border }} />
       <div className="flex items-center gap-1.5 mb-0.5">
+        {canCollapse && (
+          <button
+            type="button"
+            className="flex-none rounded hover:bg-black/10 dark:hover:bg-white/10 -ml-1"
+            style={{ color: sStyle.text, lineHeight: 0, padding: 1 }}
+            title={collapsed ? `Expand ${descendants} descendants` : 'Collapse subtree'}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleCollapse?.(plan.id);
+            }}
+          >
+            <Icon name={collapsed ? 'chevronRight' : 'chevronDown'} size={isUmbrella ? 14 : 12} />
+          </button>
+        )}
         <Icon name={iconName} size={isUmbrella ? 14 : 12} />
         <div
           className="font-semibold truncate"
@@ -296,6 +421,15 @@ function PlanNode({ data, selected }: { data: PlanNodeData; selected?: boolean }
         >
           {truncate(plan.title, 40)}
         </div>
+        {collapsed && descendants > 0 && (
+          <span
+            className="flex-none rounded-full px-1.5 text-[9px] font-bold"
+            style={{ backgroundColor: sStyle.border, color: '#fff' }}
+            title={`${descendants} hidden`}
+          >
+            +{descendants}
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-1 text-[9px] text-neutral-500 dark:text-neutral-400">
         <span className="font-mono">{plan.id}</span>
@@ -327,6 +461,27 @@ function LaneGroup({ data }: { data: LaneGroupData }) {
         {data.label}
       </div>
     </div>
+  );
+}
+
+function EdgeLegendItem({
+  color,
+  dash,
+  label,
+}: {
+  color: string;
+  dash: 'solid' | 'dashed' | 'dotted';
+  label: string;
+}) {
+  return (
+    <span className="flex items-center gap-1">
+      <span
+        className="inline-block w-4"
+        style={{ borderTop: `2px ${dash} ${color}` }}
+        aria-hidden
+      />
+      {label}
+    </span>
   );
 }
 
@@ -428,6 +583,30 @@ function PlanDetail({ plan, allPlans, onSelect }: PlanDetailProps) {
           onSelect={onSelect}
         />
       )}
+      {(() => {
+        const companionPlans = (plan.companions ?? [])
+          .map((id) => planById.get(id))
+          .filter((p): p is PlanSummary => !!p);
+        return companionPlans.length > 0 ? (
+          <RelationList
+            label={`Companions (${companionPlans.length})`}
+            plans={companionPlans}
+            onSelect={onSelect}
+          />
+        ) : null;
+      })()}
+      {(() => {
+        const handoffPlans = (plan.handoffs ?? [])
+          .map((id) => planById.get(id))
+          .filter((p): p is PlanSummary => !!p);
+        return handoffPlans.length > 0 ? (
+          <RelationList
+            label={`Handoffs (${handoffPlans.length})`}
+            plans={handoffPlans}
+            onSelect={onSelect}
+          />
+        ) : null;
+      })()}
 
       <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700">
         <Button size="sm" onClick={() => navigateToPlan(plan.id)} className="w-full">
@@ -483,8 +662,19 @@ export function PlansGraphPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
-  const [showDepEdges, setShowDepEdges] = useState(false);
+  const [showDepEdges, setShowDepEdges] = useState(true);
+  const [showDocEdges, setShowDocEdges] = useState(true);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const toggleCollapse = useCallback((planId: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(planId)) next.delete(planId);
+      else next.add(planId);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -503,14 +693,18 @@ export function PlansGraphPanel() {
     return plans.filter((p) => !statusFilter.has(p.status));
   }, [plans, statusFilter]);
 
-  const { graphNodes, graphEdges, lanes } = useMemo(() => {
-    const result = buildPlanGraph(filtered, { showDepEdges });
+  const { graphNodes, graphEdges, lanes, descendantCount } = useMemo(() => {
+    const result = buildPlanGraph(filtered, { showDepEdges, showDocEdges, collapsedIds });
     return {
       graphNodes: result.nodes,
       graphEdges: result.edges,
       lanes: result.lanes,
+      descendantCount: result.descendantCount,
     };
-  }, [filtered, showDepEdges]);
+  }, [filtered, showDepEdges, showDocEdges, collapsedIds]);
+
+  // Plans that have a subtree to fold (drives the collapse-all control).
+  const umbrellaIds = useMemo(() => [...descendantCount.keys()], [descendantCount]);
 
   // Compute focus neighborhood for the selected plan.
   const neighborIds = useMemo<Set<string> | null>(() => {
@@ -531,16 +725,23 @@ export function PlansGraphPanel() {
   const displayNodes = useMemo(() => {
     return graphNodes.map((n) => {
       if (n.type !== 'planNode') return n;
-      const planId = (n.data as PlanNodeData).plan.id;
+      const data = n.data as PlanNodeData;
+      const planId = data.plan.id;
       const isSelected = planId === selectedId;
       const dimmed = neighborIds && !neighborIds.has(planId);
       return {
         ...n,
         selected: isSelected,
+        data: {
+          ...data,
+          descendants: descendantCount.get(planId) ?? 0,
+          collapsed: collapsedIds.has(planId),
+          onToggleCollapse: toggleCollapse,
+        },
         style: { ...(n.style ?? {}), opacity: dimmed ? FOCUS_DIM_OPACITY : 1 },
       };
     });
-  }, [graphNodes, neighborIds, selectedId]);
+  }, [graphNodes, neighborIds, selectedId, descendantCount, collapsedIds, toggleCollapse]);
 
   const displayEdges = useMemo(() => {
     if (!neighborIds) return graphEdges;
@@ -645,8 +846,26 @@ export function PlansGraphPanel() {
         <div className="h-4 border-l border-neutral-300 dark:border-neutral-600" />
         <label className="flex items-center gap-1.5 cursor-pointer">
           <Switch checked={showDepEdges} onCheckedChange={setShowDepEdges} size="sm" />
-          <span className="text-neutral-600 dark:text-neutral-400">Dep edges</span>
+          <span className="text-neutral-600 dark:text-neutral-400">Dependencies</span>
         </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <Switch checked={showDocEdges} onCheckedChange={setShowDocEdges} size="sm" />
+          <span className="text-neutral-600 dark:text-neutral-400">Doc links</span>
+        </label>
+        <div className="h-4 border-l border-neutral-300 dark:border-neutral-600" />
+        {umbrellaIds.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              setCollapsedIds((prev) =>
+                prev.size >= umbrellaIds.length ? new Set() : new Set(umbrellaIds),
+              )
+            }
+          >
+            {collapsedIds.size >= umbrellaIds.length ? 'Expand all' : 'Collapse umbrellas'}
+          </Button>
+        )}
         {lanes.length > 0 && (
           <>
             <div className="h-4 border-l border-neutral-300 dark:border-neutral-600" />
@@ -655,8 +874,18 @@ export function PlansGraphPanel() {
             </span>
           </>
         )}
-        <div className="ml-auto text-[10px] text-neutral-500 dark:text-neutral-400">
-          {filtered.length}/{plans.length} plans · {graphEdges.length} edges
+        <div className="ml-auto flex items-center gap-2.5 text-[10px] text-neutral-500 dark:text-neutral-400">
+          <EdgeLegendItem color="#94a3b8" dash="solid" label="parent" />
+          {showDepEdges && <EdgeLegendItem color="#10b981" dash="dashed" label="depends on" />}
+          {showDocEdges && (
+            <>
+              <EdgeLegendItem color={COMPANION_STROKE} dash="dotted" label="companion" />
+              <EdgeLegendItem color={HANDOFF_STROKE} dash="dotted" label="handoff" />
+            </>
+          )}
+          <span className="pl-1.5 border-l border-neutral-300 dark:border-neutral-600">
+            {filtered.length}/{plans.length} plans · {graphEdges.length} edges
+          </span>
         </div>
       </div>
 

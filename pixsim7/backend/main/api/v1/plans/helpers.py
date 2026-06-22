@@ -151,13 +151,15 @@ def _bundle_to_summary(
             )
             for c in children
         ]
-    # Compact mode preserves graph-topology fields (tags, depends_on) so list calls
-    # can drive the plan-graph view without a second round-trip. Heavyweight fields
-    # (checkpoints, code_paths, companions, handoffs, phases, target, children) are
-    # still stripped.
+    # Compact mode preserves graph-topology fields (tags, depends_on, companions,
+    # handoffs) so list calls can drive the plan-graph view without a second
+    # round-trip. The remaining heavyweight fields (checkpoints, code_paths,
+    # phases, target, children) are still stripped.
+    _COMPACT_GRAPH_FIELDS = ("depends_on", "companions", "handoffs")
     if compact:
         list_fields = {f: [] for f in PLAN_LIST_FIELDS}
-        list_fields["depends_on"] = list(plan.depends_on or [])
+        for f in _COMPACT_GRAPH_FIELDS:
+            list_fields[f] = list(getattr(plan, f, None) or [])
     else:
         list_fields = {f: getattr(plan, f, None) or [] for f in PLAN_LIST_FIELDS}
     # Always populate open_summary — small payload, high-leverage signal.
@@ -210,11 +212,14 @@ def _bundle_to_registry_entry(b: PlanBundle, *, compact: bool = False) -> dict:
         "namespace": doc.namespace,
     }
     if compact:
-        # Preserve graph-topology fields (tags, depends_on) for the plan-graph view.
+        # Preserve graph-topology fields (tags, depends_on, companions, handoffs)
+        # for the plan-graph view.
         return {
             **base,
             "tags": doc.tags or [],
             "depends_on": list(plan.depends_on or []),
+            "companions": list(plan.companions or []),
+            "handoffs": list(plan.handoffs or []),
         }
     list_fields = {f: getattr(plan, f, None) or [] for f in PLAN_LIST_FIELDS}
     return {

@@ -169,12 +169,12 @@ class TestDevPlansListEndpoint:
         # Heavyweight fields stripped:
         assert plan["checkpoints"] is None
         assert plan["codePaths"] == []
-        assert plan["companions"] == []
-        assert plan["handoffs"] == []
         assert plan["phases"] == []
         # Graph-topology fields preserved (needed by plan-graph view):
         assert plan["tags"] == ["policy"]
         assert plan["dependsOn"] == ["plan-dep"]
+        assert plan["companions"] == ["docs/plans/a.md"]
+        assert plan["handoffs"] == ["handoff-1"]
 
     @pytest.mark.asyncio
     async def test_q_matches_checkpoint_label(self):
@@ -358,10 +358,10 @@ class TestDevPlansListEndpoint:
         assert entry["id"] == "plan-policy-v2"
         # Heavyweight fields stripped from compact registry entries:
         assert entry["codePaths"] == []
-        assert entry["companions"] == []
-        assert entry["handoffs"] == []
         assert entry["phases"] == []
         assert entry["manifestHash"] == ""
         # Graph-topology fields preserved:
         assert entry["tags"] == []
         assert entry["dependsOn"] == ["plan-dep"]
+        assert entry["companions"] == ["docs/plans/a.md"]
+        assert entry["handoffs"] == ["handoff-1"]
