@@ -120,6 +120,9 @@ export function ServicesPanel({ onServiceOpen }: { onServiceOpen?: (key: string)
         {loading && services.length === 0 && <div className="text-[11px] text-gray-500 p-2">Loading...</div>}
         {groups.map(({ category, label, services: groupServices }) => {
           const isCollapsed = collapsed.has(category)
+          // Config-only groups (e.g. Platform) have no processes — a running
+          // count would just read a misleading "0/1".
+          const isConfigGroup = category === 'platform'
           const runningCount = groupServices.filter((s) => s.status === 'running' || s.status === 'starting').length
           return (
             <div key={category} className="mb-1.5">
@@ -129,7 +132,7 @@ export function ServicesPanel({ onServiceOpen }: { onServiceOpen?: (key: string)
               >
                 <span className={`text-[8px] transition-transform ${isCollapsed ? '' : 'rotate-90'}`}>&#9654;</span>
                 <span className="font-semibold uppercase tracking-wide">{label}</span>
-                <span className="text-gray-600">{runningCount}/{groupServices.length}</span>
+                {!isConfigGroup && <span className="text-gray-600">{runningCount}/{groupServices.length}</span>}
               </button>
               {!isCollapsed && (
                 <div className="space-y-1 mt-0.5">

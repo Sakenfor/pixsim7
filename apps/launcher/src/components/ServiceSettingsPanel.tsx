@@ -129,6 +129,8 @@ function SettingFieldControl({
   value: unknown
   onChange: (value: unknown) => void
 }) {
+  // Nudge when a secret is still its shipped placeholder default.
+  const isInsecureSecret = field.env_export === 'SECRET_KEY' && (!value || value === field.default)
   return (
     <div className="space-y-0.5">
       <div className="flex items-center gap-2">
@@ -139,6 +141,9 @@ function SettingFieldControl({
       </div>
       {field.description && (
         <div className="text-[9px] text-gray-600 leading-relaxed">{field.description}</div>
+      )}
+      {isInsecureSecret && (
+        <div className="text-[9px] text-amber-400/90 leading-relaxed">⚠ Still the default key — change before any non-local use.</div>
       )}
       <div className="mt-0.5">
         {field.type === 'boolean' && (
