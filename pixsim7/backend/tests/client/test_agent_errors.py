@@ -226,6 +226,18 @@ class TestErrorFieldShapes:
 
 
 class TestFallback:
+    def test_session_limit_text_is_rate_limited(self):
+        raw = {
+            "type": "result",
+            "is_error": True,
+            "subtype": "success",
+            "result": "You've hit your session limit - resets 5:20am (Europe/Belgrade)",
+        }
+        err = _classify_claude_error(raw)
+        assert err.category == "rate_limited"
+        assert err.retryable is True
+        assert wire_error_code(err.category) == "agent_rate_limited"
+
     def test_stop_reason_only(self):
         raw = {
             "type": "result",

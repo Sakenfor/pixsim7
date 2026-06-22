@@ -148,6 +148,60 @@ def _dict_message(d: dict) -> str:
     return ""
 
 
+_FREEFORM_SIGNATURE_CATEGORY: tuple[tuple[tuple[str, ...], str], ...] = (
+    (
+        (
+            "session limit",
+            "rate limit",
+            "rate-limit",
+            "too many requests",
+            "quota",
+            "you've hit",
+            "you have hit",
+            "usage limit",
+        ),
+        "rate_limited",
+    ),
+    (
+        (
+            "unauthorized",
+            "not authenticated",
+            "authentication failed",
+            "not logged in",
+            "please log in",
+            "invalid api key",
+            "token expired",
+            "session expired",
+            "login again",
+        ),
+        "auth",
+    ),
+    (
+        (
+            "model not found",
+            "unknown model",
+            "model unavailable",
+            "no such model",
+            "model does not exist",
+        ),
+        "model_not_found",
+    ),
+    (("overloaded", "temporarily unavailable", "try again later"), "overloaded"),
+    (("internal server error", "server error"), "server_error"),
+    (("invalid request", "bad request"), "client_error"),
+)
+
+
+def _category_from_freeform_message(message: str) -> str:
+    low = (message or "").lower()
+    if not low:
+        return ""
+    for needles, category in _FREEFORM_SIGNATURE_CATEGORY:
+        if any(needle in low for needle in needles):
+            return category
+    return ""
+
+
 # ── Public API ──────────────────────────────────────────────────────
 
 
@@ -238,6 +292,10 @@ def classify_claude_error(raw: dict) -> AgentError:
 
     http_status = first_err_status or parsed_api_status or api_status
 
+    signature_category = _category_from_freeform_message(
+        " ".join(part for part in (first_err_msg, result_text) if part)
+    )
+
     # ----- Category resolution -----
     if subtype == "error_max_turns":
         category = "max_turns"
@@ -247,6 +305,8 @@ def classify_claude_error(raw: dict) -> AgentError:
         category = _category_from_http_status(http_status)
     elif error_label in _ERROR_TYPE_CATEGORY:
         category = _ERROR_TYPE_CATEGORY[error_label]
+    elif signature_category:
+        category = signature_category
     elif subtype == "error_during_execution":
         category = "server_error"
     else:
@@ -289,18 +349,7 @@ _CODEX_STATUS_RE = re.compile(
 # Ordered signature → category table (first match wins). Word-based, NOT bare
 # numbers, so a digit in a normal sentence can't trip a category. Matched
 # against the lower-cased message.
-_CODEX_SIGNATURE_CATEGORY: tuple[tuple[tuple[str, ...], str], ...] = (
-    (("session limit", "rate limit", "rate-limit", "too many requests",
-      "quota", "you've hit", "you have hit", "usage limit"), "rate_limited"),
-    (("unauthorized", "not authenticated", "authentication failed",
-      "not logged in", "please log in", "invalid api key", "token expired",
-      "session expired", "login again"), "auth"),
-    (("model not found", "unknown model", "model unavailable",
-      "no such model", "model does not exist"), "model_not_found"),
-    (("overloaded", "temporarily unavailable", "try again later"), "overloaded"),
-    (("internal server error", "server error"), "server_error"),
-    (("invalid request", "bad request"), "client_error"),
-)
+_CODEX_SIGNATURE_CATEGORY = _FREEFORM_SIGNATURE_CATEGORY
 
 
 def classify_codex_error(message: str, raw: dict | None = None) -> AgentError:
