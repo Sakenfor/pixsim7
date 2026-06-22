@@ -1756,13 +1756,19 @@ export function AnalyzersSettings() {
         }
 
         await fetchData();
+        // The save pushed the derived hosted set + default to the daemon.
+        // Refresh the status so the "Daemon hosting" line reflects it; the
+        // default is a background warm-load on the daemon, so re-check once
+        // more shortly after to catch the flip.
+        void refreshDaemonStatus();
+        window.setTimeout(() => void refreshDaemonStatus(), 1500);
       } catch (err) {
         setEmbeddingError(err instanceof Error ? err.message : 'Failed to update embedding controls');
       } finally {
         setIsSavingEmbedding(false);
       }
     },
-    [activeEmbeddingInstance, fetchData]
+    [activeEmbeddingInstance, fetchData, refreshDaemonStatus]
   );
 
   const handleEmbeddingEnabledChange = useCallback(
