@@ -19,15 +19,17 @@
  * `showsSiblingBadges`. See plan `media-card-sibling-badges`.
  */
 import { useHoverExpand, PortalFloat } from '@pixsim7/shared.ui';
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { openSimilarityGallery } from '@lib/dockview/contextMenu/actions/assetActions';
 import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import { BADGE_SLOT, BADGE_PRIORITY } from '@lib/ui/overlay';
 
+import { useAppearanceStore } from '@features/appearance';
 import { type AssetModel } from '@features/assets';
 
+import { FacetCube } from './FacetCube';
 import type { MediaCardResolvedProps } from './MediaCard';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
 import {
@@ -46,6 +48,18 @@ const FACET_META: { key: keyof SiblingFacets; label: string; icon: string }[] = 
 
 const CHIP_BASE =
   'cq-badge inline-flex items-center gap-1 rounded-full !bg-black/65 !text-white text-[10px] font-medium backdrop-blur-sm shadow-sm px-1.5 py-0.5 cursor-pointer hover:animate-hover-pop';
+
+/**
+ * Touch-only device (no hover). Mirrors the detection in
+ * {@link adaptVisibilityForTouch}: on these devices there is no mouse hover, so
+ * the chip's hover-expand popup never opens — tapping a chip must open the
+ * editor popup instead of jumping straight to the mini-gallery. The popup keeps
+ * a "View" button so navigating to the gallery stays one tap away.
+ */
+const IS_TOUCH_ONLY =
+  typeof window !== 'undefined' &&
+  'ontouchstart' in window &&
+  !window.matchMedia('(hover: hover)').matches;
 
 /** Which facets the asset actually carries (lens facets it lacks are dropped). */
 function presentFacets(asset: AssetModel): SiblingFacets {
@@ -122,8 +136,27 @@ function SimilarityChip({
   const removeLens = useSiblingFacetStore((s) => s.removeLens);
   const addLens = useSiblingFacetStore((s) => s.addLens);
   const atCap = useSiblingFacetStore((s) => s.lenses.length >= MAX_LENSES);
+  const badgeSkin = useAppearanceStore((s) => s.badgeSkin);
   const { isExpanded, handlers } = useHoverExpand({ expandDelay: 120, collapseDelay: 200 });
   const triggerRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  // Touch devices have no hover, so the popup is opened by tapping the chip.
+  const [touchOpen, setTouchOpen] = useState(false);
+  const open = isExpanded || touchOpen;
+
+  // Dismiss the touch-opened popup on an outside tap (synthesised mousedown).
+  // Mirrors the close-on-outside pattern used by the status / info popovers.
+  useEffect(() => {
+    if (!touchOpen) return;
+    const handler = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t)) return;
+      if (popoverRef.current?.contains(t)) return;
+      setTouchOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [touchOpen]);
 
   const counts = data.cohortCounts ?? {};
   const present = presentFacets(asset);
@@ -139,15 +172,16 @@ function SimilarityChip({
   const hasCohort = count >= 2;
 
   const litLabels = FACET_META.filter((f) => effective[f.key]).map((f) => f.label.toLowerCase());
+  const editHint = IS_TOUCH_ONLY ? 'tap to edit' : 'hover to edit';
   const tip = litLabels.length
-    ? `${count} sharing ${litLabels.join(' + ')} — hover to edit`
-    : 'No facet applies to this asset — hover to edit';
+    ? `${count} sharing ${litLabels.join(' + ')} — ${editHint}`
+    : `No facet applies to this asset — ${editHint}`;
 
   // Only render where this lens actually has a cohort (>= 2). The old dimmed
   // icon-only handle on every card was redundant — editing + "Add badge" are
   // reachable from any visible badge's popup. Stay mounted while the editor is
   // open so toggling facets down to no-cohort mid-edit doesn't unmount the popup.
-  if (!hasCohort && !isExpanded) return null;
+  if (!hasCohort && !open) return null;
 
   return (
     <>
@@ -158,13 +192,25 @@ function SimilarityChip({
         title={tip}
         onClick={(e) => {
           e.stopPropagation();
+          // Touch devices can't hover, so a tap opens the editor popup (facet
+          // toggles + "Add badge" + a "View" button) instead of jumping
+          // straight to the mini-gallery — otherwise the editor is unreachable
+          // on mobile. Mouse keeps click-to-view since hover reveals the popup.
+          if (IS_TOUCH_ONLY) {
+            setTouchOpen((v) => !v);
+            return;
+          }
           openSimilarityGallery(asset, lens.facets);
         }}
       >
-        <FacetGlyph facets={lens.facets} />
+        {badgeSkin === 'cube' ? (
+          <FacetCube facets={lens.facets} />
+        ) : (
+          <FacetGlyph facets={lens.facets} />
+        )}
         {hasCohort && <span className="whitespace-nowrap">{count}</span>}
       </div>
-      {isExpanded && (
+      {open && (
         <PortalFloat
           anchor={triggerRef.current}
           placement="top"
@@ -173,7 +219,18 @@ function SimilarityChip({
           onMouseEnter={handlers.onMouseEnter}
           onMouseLeave={handlers.onMouseLeave}
         >
-          <div className="min-w-[170px] rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-xl p-1.5 ring-1 ring-white/10">
+          {/* `data-overlay-interactive` marks this portaled popup as a real
+              control. PortalFloat renders to <body>, but its clicks still bubble
+              through the React tree to MediaCard's onClickCapture/pointer-down
+              guards — without this attribute the DOM-based `closest()` check
+              there finds nothing, so the card eats the tap (revealing its button
+              group) instead of letting "Add badge"/facet toggles fire. Mirrors
+              the generation submenu's `data-gen-action-popover` marker. */}
+          <div
+            ref={popoverRef}
+            data-overlay-interactive="true"
+            className="min-w-[170px] rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-xl p-1.5 ring-1 ring-white/10"
+          >
             <div className="flex items-center justify-between px-1 pb-1">
               <span className="text-[10px] uppercase tracking-wide text-white/50">Similar by</span>
               <button
@@ -228,6 +285,7 @@ function SimilarityChip({
               onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
+                setTouchOpen(false);
                 openSimilarityGallery(asset, lens.facets);
               }}
               disabled={!hasCohort}
