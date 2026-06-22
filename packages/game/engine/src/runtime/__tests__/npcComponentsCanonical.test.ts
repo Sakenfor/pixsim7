@@ -5,13 +5,15 @@
  * ECS components from narrative effects) off the legacy `flags.npcs[*].components`
  * map onto the canonical npc-kind GameObject `components[]` array.
  *
- * Three layers:
+ * Two layers:
  *  1. store helpers (getNpcComponentData / upsertNpcComponent / removeNpcComponent)
  *  2. narrative ecsHelpers (get/set/clearNarrativeState, in-place contract)
- *  3. effectApplicator component effects (immutable)
+ *
+ * Note: component-effect application is now owned by the backend
+ * NarrativeRuntimeEngine (services/narrative/runtime.py _apply_effects); the
+ * retired frontend effectApplicator coverage was removed with it.
  */
 import type { GameSessionDTO } from '@pixsim7/shared.types';
-import type { StateEffects } from '@pixsim7/shared.types';
 import { describe, expect, it } from 'vitest';
 import {
   getNpcComponentData,
@@ -24,7 +26,6 @@ import {
   setNarrativeState,
   startProgram,
 } from '../../narrative/ecsHelpers';
-import { applyEffects } from '../../narrative/effectApplicator';
 
 function createTestSession(): GameSessionDTO {
   return {
@@ -151,35 +152,5 @@ describe('narrative ecsHelpers on canonical store', () => {
 
     expect(canonicalComponent(session, npcId, 'narrative')).toBeUndefined();
     expect(getNarrativeState(session, npcId).activeProgramId).toBeNull();
-  });
-});
-
-describe('effectApplicator component effects on canonical store', () => {
-  const npcId = 1;
-
-  it('writes component effects onto the canonical npc GameObject', () => {
-    const session = createTestSession();
-    const effects: StateEffects = { components: { mood: { happiness: 80, energy: 60 } } };
-
-    const result = applyEffects(effects, session, npcId);
-
-    expect((result.session.flags as Record<string, any>).npcs).toBeUndefined();
-    expect(canonicalComponent(result.session, npcId, 'mood')?.data).toEqual({
-      happiness: 80,
-      energy: 60,
-    });
-    // applyEffects is immutable — the source session is untouched.
-    expect((session.flags as Record<string, any>).gameObjects).toBeUndefined();
-  });
-
-  it('merges component effects with existing canonical data', () => {
-    const session = createTestSession();
-    let result = applyEffects({ components: { mood: { happiness: 80 } } }, session, npcId);
-    result = applyEffects({ components: { mood: { energy: 60 } } }, result.session, npcId);
-
-    expect(canonicalComponent(result.session, npcId, 'mood')?.data).toEqual({
-      happiness: 80,
-      energy: 60,
-    });
   });
 });

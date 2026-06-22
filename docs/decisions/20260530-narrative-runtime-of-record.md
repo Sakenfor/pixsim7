@@ -1,7 +1,7 @@
 # ADR: Narrative Runtime-of-Record (Backend `NarrativeRuntimeEngine`)
 
 - **Date:** 2026-05-30
-- **Status:** Accepted
+- **Status:** Accepted — `delete-loser` executed 2026-06-22 (see Resolution)
 - **Authors:** sakenfor (via Claude)
 
 ---
@@ -144,6 +144,44 @@ API; they do not run the program graph.
   re-exports from `packages/game/engine/src/narrative/index.ts`; confirm via grep
   that nothing in `apps/` or the engine's non-narrative code imports them. Gated on
   owner sign-off.
+
+---
+
+## Resolution (2026-06-22)
+
+`delete-loser` executed, but **only after closing the two capability gaps** the
+closer engine comparison flagged — so the deletion shelved no real capability:
+
+1. **Capability port first** (commit `3c82bc73f`). The backend was made the
+   capability superset before anything was removed:
+   - Condition evaluator: `domain/narrative/programs.py` `ConditionExpression`
+     rewritten from a left-to-right `&&`/`||` string-splitter into a
+     recursive-descent parser — parentheses, `!`/NOT, AND-binds-tighter-than-OR
+     precedence, BETWEEN, and nested dot-path resolution (`flags.hasMet`). Backs
+     both prompt-program selectors and narrative branch/choice/edge conditions.
+   - Effects: `services/narrative/runtime.py` `_apply_effects` now routes
+     `StateEffects.arcs/quests/events` through the canonical `apply_flag_changes`
+     fields and `components` through `set_npc_component`. Previously only
+     relationship/flags/inventory were applied.
+
+2. **Deletion.** Removed `packages/game/engine/src/narrative/`: `executor`,
+   `runtimeIntegration`, `sceneIntegration`, `nodeHandlers`, `conditionEvaluator`,
+   `effectApplicator`, `logging`, `participantResolver`, the `generation/` bridge
+   subtree, the barrel `index.ts`, and the three narrative `__tests__/` files.
+
+3. **Deliberately kept: `ecsHelpers.ts`.** The original audit deletion set listed
+   it, but verification showed it is **not** part of the executor — it is the
+   shared narrative-ECS *state accessor* (`get/set/clearNarrativeState`,
+   `startProgram`, …), is re-exported from the engine root
+   (`packages/game/engine/src/index.ts`), depends only on `shared.types` +
+   `runtime/gameObjectStore`, and is exercised by the canonical-store regression
+   suite. It mirrors the backend canonical narrative component and stays as the
+   shared session-state contract. The retired `effectApplicator` block was trimmed
+   from `runtime/__tests__/npcComponentsCanonical.test.ts`.
+
+Verification: full engine vitest suite green (16 files / 177 tests); engine
+typecheck clean of narrative references (one pre-existing unrelated `NpcSummary`
+error in `shared/types` only).
 
 ---
 
