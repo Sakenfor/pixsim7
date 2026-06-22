@@ -12,7 +12,8 @@ import {
   type LogMeta, type CompiledField, type FilterPreset,
 } from '../api/logMeta'
 import { Input, Select } from '@pixsim7/shared.ui'
-import { LogLine, matchesSearch } from './log'
+import { LogLine, matchesSearch, routeFieldClick, useStickyScroll, LEVEL_OPTIONS } from './log'
+import { Refresh } from './icons'
 
 export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, value: string) => void }) {
   const [entries, setEntries] = useState<LogEntry[]>([])
@@ -32,9 +33,8 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
   const [autoRefresh, setAutoRefresh] = useState(0)
   const [activePreset, setActivePreset] = useState<string>('')
 
-  const containerRef = useRef<HTMLDivElement>(null)
-  const autoScroll = useRef(true)
   const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const { containerRef, onScroll, stickToBottom } = useStickyScroll()
 
   useEffect(() => {
     getLogMeta().then(setMeta)
@@ -114,17 +114,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
   }, [autoRefresh, fetchLogs])
 
   // Auto-scroll
-  useEffect(() => {
-    if (autoScroll.current && containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
-    }
-  }, [entries.length, search])
-
-  const handleScroll = useCallback(() => {
-    const el = containerRef.current
-    if (!el) return
-    autoScroll.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-  }, [])
+  useEffect(() => { stickToBottom() }, [entries.length, search, stickToBottom])
 
   // Client-side operator search (| !) on rendered lines
   const displayEntries = useMemo(() => {
@@ -138,7 +128,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
       {/* Filter toolbar */}
       <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5 border-b border-border shrink-0">
         <button onClick={fetchLogs} className="p-1 rounded text-gray-400 hover:text-gray-200 hover:bg-surface-hover mr-0.5" title="Refresh">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /></svg>
+          <Refresh size={12} />
         </button>
 
         {/* Presets dropdown */}
@@ -157,7 +147,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
         )}
 
         <Select value={level} onChange={(e) => setLevel(e.target.value)} size="xs" width="auto" className="text-gray-100">
-          {(filters?.level_options ?? ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG']).map((l) => (
+          {(filters?.level_options ?? LEVEL_OPTIONS).map((l) => (
             <option key={l} value={l}>{l || 'All levels'}</option>
           ))}
         </Select>
@@ -203,7 +193,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
         <div className="px-3 py-1 bg-red-900/30 text-red-400 text-[11px] border-b border-red-800/30 select-text whitespace-pre-wrap break-words">{error}</div>
       )}
 
-      <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-auto bg-surface">
+      <div ref={containerRef} onScroll={onScroll} className="flex-1 overflow-auto bg-surface">
         {displayEntries.length === 0 && !loading && (
           <div className="text-gray-500 text-sm text-center py-8">
             {error ? 'Failed to load — is the backend running?' : 'No logs match the current filters'}
@@ -211,14 +201,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
         )}
         {displayEntries.map((entry) => (
           <LogLine key={entry.id} line={logEntryToLine(entry)} meta={meta} fields={fields}
-            onFieldClick={(name, value) => {
-              const traceableFields = new Set(['request_id', 'job_id', 'provider_id', 'generation_id', 'user_id', 'submission_id'])
-              if (traceableFields.has(name) && onFieldClick) {
-                onFieldClick(name, value)
-              } else {
-                setSearch(`${name}=${value}`)
-              }
-            }} />
+            onFieldClick={(name, value) => routeFieldClick(name, value, setSearch, onFieldClick)} />
         ))}
       </div>
     </div>

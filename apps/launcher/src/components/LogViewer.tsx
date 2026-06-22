@@ -3,7 +3,7 @@ import { Input, Select } from '@pixsim7/shared.ui'
 import { useLogsStore } from '../stores/logs'
 import { useServicesStore } from '../stores/services'
 import { getLogMeta, getCompiledFields, parseLine, type LogMeta, type CompiledField } from '../api/logMeta'
-import { VirtualLogList, matchesSearch } from './log'
+import { VirtualLogList, matchesSearch, LogControlButtons, routeFieldClick, LEVEL_OPTIONS } from './log'
 import { usePollWhenVisible } from '../hooks/usePollWhenVisible'
 
 const POLL_INTERVAL = 2000
@@ -109,22 +109,15 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
     <div className="h-full flex flex-col overflow-hidden">
       {/* Filter toolbar */}
       <div className="flex items-center gap-1.5 px-3 py-1 border-b border-border text-[11px] shrink-0 flex-wrap">
-        <div className="flex items-center gap-0.5 mr-1">
-          <button onClick={() => setPaused(!paused)} className={`p-1 rounded ${paused ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-gray-200 hover:bg-surface-hover'}`} title={paused ? 'Resume' : 'Pause'}>
-            {paused
-              ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,4 20,12 6,20" /></svg>
-              : <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="4" width="4" height="16" /><rect x="15" y="4" width="4" height="16" /></svg>}
-          </button>
-          <button onClick={() => selectedKey && fetchLogs(selectedKey)} className="p-1 rounded text-gray-400 hover:text-gray-200 hover:bg-surface-hover" title="Refresh">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /></svg>
-          </button>
-          <button onClick={() => selectedKey && clearLogs(selectedKey)} className="p-1 rounded text-gray-400 hover:text-gray-200 hover:bg-surface-hover" title="Clear">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6" /></svg>
-          </button>
-        </div>
+        <LogControlButtons
+          paused={paused}
+          onTogglePause={() => setPaused(!paused)}
+          onRefresh={() => selectedKey && fetchLogs(selectedKey)}
+          onClear={() => selectedKey && clearLogs(selectedKey)}
+        />
 
         <Select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} size="xs" width="auto" className="text-gray-100">
-          {(filters?.level_options ?? ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG']).map((l) => (
+          {(filters?.level_options ?? LEVEL_OPTIONS).map((l) => (
             <option key={l} value={l}>{l || 'All levels'}</option>
           ))}
         </Select>
@@ -160,16 +153,7 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
             lines={filteredLines}
             meta={meta}
             fields={fields}
-            onFieldClick={(name, value) => {
-              // Traceable fields (request_id, job_id, etc.) → open trace panel
-              const traceableFields = new Set(['request_id', 'job_id', 'provider_id', 'generation_id', 'user_id', 'submission_id'])
-              if (traceableFields.has(name) && onFieldClick) {
-                onFieldClick(name, value)
-              } else {
-                // Other fields → filter in search
-                setSearchFilter(`${name}=${value}`)
-              }
-            }}
+            onFieldClick={(name, value) => routeFieldClick(name, value, setSearchFilter, onFieldClick)}
           />
         )}
       </div>

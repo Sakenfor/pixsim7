@@ -6,11 +6,11 @@
  * Filters fetched from /logs/meta (pixsim_logging).
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { getLogs, clearLogs } from '../api/client'
 import { getLogMeta, getCompiledFields, type LogMeta, type CompiledField } from '../api/logMeta'
 import { Input, Select } from '@pixsim7/shared.ui'
-import { LogLine, matchesSearch } from './log'
+import { LogLine, matchesSearch, LogControlButtons, useStickyScroll, LEVEL_OPTIONS } from './log'
 import { usePollWhenVisible } from '../hooks/usePollWhenVisible'
 
 const MAX_LINES = 2000
@@ -24,8 +24,7 @@ export function EmbeddedLogViewer() {
   const [levelFilter, setLevelFilter] = useState('')
   const [searchFilter, setSearchFilter] = useState('')
   const [paused, setPaused] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const autoScroll = useRef(true)
+  const { containerRef, onScroll, stickToBottom } = useStickyScroll()
 
   useEffect(() => {
     const onHash = () => setServiceKey(location.hash.slice(1))
@@ -59,17 +58,7 @@ export function EmbeddedLogViewer() {
   // Polling: pauses automatically when window is hidden
   usePollWhenVisible(fetchLogs, POLL_INTERVAL, !paused && !!serviceKey)
 
-  useEffect(() => {
-    if (autoScroll.current && containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
-    }
-  }, [lines.length])
-
-  const handleScroll = useCallback(() => {
-    const el = containerRef.current
-    if (!el) return
-    autoScroll.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-  }, [])
+  useEffect(() => { stickToBottom() }, [lines.length, stickToBottom])
 
   // Client-side filtering
   const filteredLines = lines.filter((line) => {
@@ -93,22 +82,15 @@ export function EmbeddedLogViewer() {
     <div className="h-screen flex flex-col bg-surface text-gray-100">
       {/* Toolbar with filters */}
       <div className="flex items-center gap-1.5 px-3 py-1 border-b border-border text-[11px] shrink-0">
-        <div className="flex items-center gap-0.5 mr-1">
-          <button onClick={() => setPaused(!paused)} className={`p-1 rounded ${paused ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-gray-200 hover:bg-surface-hover'}`} title={paused ? 'Resume' : 'Pause'}>
-            {paused
-              ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,4 20,12 6,20" /></svg>
-              : <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="4" width="4" height="16" /><rect x="15" y="4" width="4" height="16" /></svg>}
-          </button>
-          <button onClick={fetchLogs} className="p-1 rounded text-gray-400 hover:text-gray-200 hover:bg-surface-hover" title="Refresh">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /></svg>
-          </button>
-          <button onClick={() => { clearLogs(serviceKey); setLines([]) }} className="p-1 rounded text-gray-400 hover:text-gray-200 hover:bg-surface-hover" title="Clear">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6" /></svg>
-          </button>
-        </div>
+        <LogControlButtons
+          paused={paused}
+          onTogglePause={() => setPaused(!paused)}
+          onRefresh={fetchLogs}
+          onClear={() => { clearLogs(serviceKey); setLines([]) }}
+        />
 
         <Select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} size="xs" width="auto" className="text-gray-100">
-          {(filters?.level_options ?? ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG']).map((l) => (
+          {(filters?.level_options ?? LEVEL_OPTIONS).map((l) => (
             <option key={l} value={l}>{l || 'All levels'}</option>
           ))}
         </Select>
@@ -122,7 +104,7 @@ export function EmbeddedLogViewer() {
       </div>
 
       {/* Log lines */}
-      <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-auto bg-surface">
+      <div ref={containerRef} onScroll={onScroll} className="flex-1 overflow-auto bg-surface">
         {filteredLines.map((line, i) => (
           <LogLine key={i} line={line} meta={meta} fields={fields}
             onFieldClick={(name, value) => setSearchFilter(`${name}=${value}`)} />

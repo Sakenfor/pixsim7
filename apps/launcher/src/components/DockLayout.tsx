@@ -20,54 +20,25 @@ import { WorkersPanel } from './WorkersPanel'
 import { StatusBar } from './StatusBar'
 import { ServiceSettingsPanel } from './ServiceSettingsPanel'
 import { AccountPanel } from './AccountPanel'
+import { CollapsiblePanel } from './CollapsiblePanel'
+import { SERVICE_ICON_MAP, Server, Terminal, Database, Info, Wrench, Cpu, Bug, Activity, User, type IconComponent } from './icons'
 import { useServicesStore } from '../stores/services'
 import { checkWindowAvailable, applyHookConfig } from '../api/client'
 import type { ServiceState } from '../api/client'
 
-// ── Tab icons (14px stroke icons for the flexlayout tab bar) ──
+// ── Tab icons (rendered at 14px in the flexlayout tab bar) ──
 
-const ti = { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, stroke: 'currentColor' }
-
-function IcoServer() { return <svg {...ti}><rect x="2" y="2" width="20" height="8" rx="2" /><rect x="2" y="14" width="20" height="8" rx="2" /><circle cx="6" cy="6" r="1" fill="currentColor" stroke="none" /><circle cx="6" cy="18" r="1" fill="currentColor" stroke="none" /></svg> }
-function IcoTerminal() { return <svg {...ti}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M6 10l4 2-4 2" /><path d="M12 16h4" /></svg> }
-function IcoDatabase() { return <svg {...ti}><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5" /><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3" /></svg> }
-function IcoInfo() { return <svg {...ti}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg> }
-function IcoWrench() { return <svg {...ti}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" /></svg> }
-function IcoBug() { return <svg {...ti}><path d="M8 2l1.88 1.88" /><path d="M14.12 3.88L16 2" /><path d="M9 7.13v-1a3 3 0 0 1 6 0v1" /><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" /><path d="M12 20v-9" /><path d="M6.53 9C4.6 8.8 3 7.1 3 5" /><path d="M6 13H2" /><path d="M3 21c0-2.1 1.7-3.9 3.8-4" /><path d="M17.47 9c1.93-.2 3.53-1.9 3.53-4" /><path d="M18 13h4" /><path d="M21 21c0-2.1-1.7-3.9-3.8-4" /></svg> }
-function IcoActivity() { return <svg {...ti}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg> }
-function IcoUser() { return <svg {...ti}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg> }
-function IcoGlobe() { return <svg {...ti}><circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg> }
-function IcoCog() { return <svg {...ti}><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z" /><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="M4.93 4.93l1.41 1.41" /><path d="M17.66 17.66l1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="M4.93 19.07l1.41-1.41" /><path d="M17.66 6.34l1.41-1.41" /></svg> }
-function IcoBot() { return <svg {...ti}><rect x="3" y="11" width="18" height="10" rx="2" /><circle cx="12" cy="5" r="2" /><path d="M12 7v4" /><circle cx="8" cy="16" r="1" fill="currentColor" stroke="none" /><circle cx="16" cy="16" r="1" fill="currentColor" stroke="none" /></svg> }
-function IcoSparkles() { return <svg {...ti}><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z" /><path d="M18 14l.7 2.3L21 17l-2.3.7L18 20l-.7-2.3L15 17l2.3-.7L18 14z" /></svg> }
-function IcoGamepad() { return <svg {...ti}><path d="M6 11h4" /><path d="M8 9v4" /><circle cx="15" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="18" cy="10" r="1" fill="currentColor" stroke="none" /><rect x="2" y="6" width="20" height="12" rx="4" /></svg> }
-function IcoCpu() { return <svg {...ti}><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 2v2" /><path d="M15 2v2" /><path d="M9 20v2" /><path d="M15 20v2" /><path d="M2 9h2" /><path d="M2 15h2" /><path d="M20 9h2" /><path d="M20 15h2" /></svg> }
-
-/** Static tab icon by component ID. */
-const TAB_ICONS: Record<string, () => React.ReactNode> = {
-  'services': IcoServer,
-  'console': IcoTerminal,
-  'db-logs': IcoDatabase,
-  'service-detail': IcoInfo,
-  'tools': IcoWrench,
-  'workers': IcoCpu,
-  'debug': IcoBug,
-  'trace': IcoActivity,
-  'account': IcoUser,
-}
-
-/** Service key → tab icon (mirrors ServiceIcon mapping). */
-const SERVICE_TAB_ICONS: Record<string, () => React.ReactNode> = {
-  'db': IcoDatabase,
-  'main-api': IcoServer,
-  'launcher-api': IcoTerminal,
-  'launcher-dev': IcoTerminal,
-  'frontend': IcoGlobe,
-  'worker': IcoCog,
-  'simulation-worker': IcoGamepad,
-  'generation-api': IcoSparkles,
-  'ai-client': IcoBot,
-  'embedding-daemon': IcoCpu,
+/** Static tab icon by component ID. Service-contextual tabs use SERVICE_ICON_MAP. */
+const TAB_ICONS: Record<string, IconComponent> = {
+  'services': Server,
+  'console': Terminal,
+  'db-logs': Database,
+  'service-detail': Info,
+  'tools': Wrench,
+  'workers': Cpu,
+  'debug': Bug,
+  'trace': Activity,
+  'account': User,
 }
 
 /** Tabs whose icon should reflect the currently selected service. */
@@ -196,8 +167,11 @@ export function ServiceInfoPanel() {
 
   return (
     <div className="p-3 space-y-3 overflow-y-auto h-full text-xs">
-      <div className="bg-surface-secondary rounded border border-border p-3 space-y-1.5">
-        <div className="text-[11px] font-semibold text-gray-300 mb-2">{service.title}</div>
+      <CollapsiblePanel
+        title={service.title}
+        persistKey={`launcher:service:${service.key}:overview`}
+        contentClassName="space-y-1.5"
+      >
         <SvcInfoRow label="Key" value={service.key} />
         <SvcInfoRow label="Status" value={service.status} />
         <SvcInfoRow label="Health" value={service.health} />
@@ -205,7 +179,8 @@ export function ServiceInfoPanel() {
         {service.url && <SvcInfoRow label="URL" value={service.url} mono />}
         {service.category && <SvcInfoRow label="Category" value={service.category} />}
         {service.dev_peer_of && <SvcInfoRow label="Dev peer of" value={service.dev_peer_of} />}
-      </div>
+        {service.supports_recreate && <RecreateContainerButton serviceKey={service.key} />}
+      </CollapsiblePanel>
 
       {selectedSection !== 'Sessions' && (
         <ServiceSettingsPanel
@@ -242,6 +217,52 @@ function SvcInfoRow({ label, value, mono }: { label: string; value: string; mono
     <div className="flex items-center gap-2 text-[11px]">
       <span className="text-gray-500 w-20 shrink-0">{label}</span>
       <span className={`text-gray-300 truncate ${mono ? 'font-mono' : ''}`}>{value}</span>
+    </div>
+  )
+}
+
+/**
+ * "Recreate container" action for compose-backed services (e.g. the DB stack).
+ * Runs `compose up -d` — recreating only containers whose definition changed
+ * and leaving the rest running — so a compose edit (e.g. postgres
+ * max_connections) applies without the full-stack outage a restart causes.
+ * Two-click confirm since it briefly drops the changed container's connections.
+ */
+function RecreateContainerButton({ serviceKey }: { serviceKey: string }) {
+  const recreateService = useServicesStore((s) => s.recreateService)
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const run = async () => {
+    setBusy(true)
+    try {
+      await recreateService(serviceKey)
+    } finally {
+      setBusy(false)
+      setConfirming(false)
+    }
+  }
+
+  return (
+    <div className="pt-1.5 mt-1 border-t border-gray-800 space-y-1">
+      {confirming ? (
+        <div className="flex items-center gap-1.5">
+          <Button size="xs" variant="danger" onClick={run} disabled={busy}>
+            {busy ? 'Recreating…' : 'Confirm recreate'}
+          </Button>
+          <Button size="xs" variant="secondary" onClick={() => setConfirming(false)} disabled={busy}>
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <Button size="xs" variant="secondary" onClick={() => setConfirming(true)}>
+          Recreate container
+        </Button>
+      )}
+      <div className="text-[9px] text-gray-600 leading-relaxed">
+        Applies compose changes via <span className="font-mono">up -d</span> — rebuilds only changed
+        containers, leaves the rest running. Briefly drops the changed container's connections.
+      </div>
     </div>
   )
 }
@@ -359,9 +380,12 @@ function BridgeSessionsPanel({ bridgeStatus }: { bridgeStatus: Record<string, un
   const scopeMismatch = sharedFlag && userId !== null  // flag says shared, runtime says authed
 
   return (
-    <div className="bg-surface-secondary rounded border border-border p-3 space-y-2.5">
-      <div className="flex items-center gap-2">
-        <div className="text-[11px] font-semibold text-gray-300">Bridge Sessions</div>
+    <CollapsiblePanel
+      title="Bridge Sessions"
+      persistKey="launcher:service:ai-client:bridge-sessions"
+      contentClassName="space-y-2.5"
+      badge={
+        <span className="flex items-center gap-2">
         <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
           connected ? 'bg-green-900/40 text-green-400 border border-green-700/50' : 'bg-gray-800 text-gray-500 border border-gray-700'
         }`}>
@@ -385,7 +409,9 @@ function BridgeSessionsPanel({ bridgeStatus }: { bridgeStatus: Record<string, un
             {scopeLabel}
           </span>
         )}
-      </div>
+        </span>
+      }
+    >
 
       {/* Bridge summary */}
       <div className="space-y-0.5 text-[10px]">
@@ -450,7 +476,7 @@ function BridgeSessionsPanel({ bridgeStatus }: { bridgeStatus: Record<string, un
           })}
         </div>
       )}
-    </div>
+    </CollapsiblePanel>
   )
 }
 
@@ -667,17 +693,17 @@ export function DockLayout({ onShowSetup, onIdentityCreated }: { onShowSetup?: (
   const onRenderTab = useCallback((node: TabNode, renderValues: ITabRenderValues) => {
     const component = node.getComponent() ?? ''
     const isContextual = SERVICE_CONTEXTUAL_TABS.has(component) && selectedKey
-    let Icon: (() => React.ReactNode) | undefined
+    let Icon: IconComponent | undefined
 
     if (isContextual) {
-      Icon = SERVICE_TAB_ICONS[selectedKey!]
+      Icon = SERVICE_ICON_MAP[selectedKey!]
     }
     if (!Icon) {
       Icon = TAB_ICONS[component]
     }
     if (Icon) {
       const colorCls = isContextual ? (HEALTH_TAB_COLOR[selectedHealth] ?? 'text-gray-500') : 'opacity-60'
-      renderValues.leading = <span className={`mr-0.5 flex items-center ${colorCls}`}><Icon /></span>
+      renderValues.leading = <span className={`mr-0.5 flex items-center ${colorCls}`}><Icon size={14} strokeWidth={2} /></span>
     }
   }, [selectedKey, selectedHealth])
 

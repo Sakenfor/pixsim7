@@ -2,17 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { useServicesStore } from './stores/services'
 import { useWsStore } from './stores/websocket'
 import { DockLayout } from './components/DockLayout'
-import { MobileLayout } from './components/MobileLayout'
 import { SetupPage } from './components/SetupPage'
 import { getIdentity } from './api/client'
 import { usePollWhenVisible } from './hooks/usePollWhenVisible'
-import { useIsMobile } from './hooks/useIsMobile'
 
 export function App() {
   const { loadServices } = useServicesStore()
   const { connect } = useWsStore()
   const connected = useWsStore((s) => s.connected)
-  const isMobile = useIsMobile()
 
   const [identityChecked, setIdentityChecked] = useState(false)
   const [identityExists, setIdentityExists] = useState(false)
@@ -70,7 +67,5 @@ export function App() {
     return <SetupPage onComplete={handleIdentityCreated} />
   }
 
-  return isMobile
-    ? <MobileLayout onIdentityCreated={handleIdentityCreated} />
-    : <DockLayout onIdentityCreated={handleIdentityCreated} />
+  return <DockLayout onIdentityCreated={handleIdentityCreated} />
 }
