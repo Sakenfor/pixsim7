@@ -1098,7 +1098,7 @@ function MatrixGrid({
                   title={`${col} — total: ${total}`}
                 >
                   <div className="flex items-center justify-center gap-1">
-                    {query.col_key === 'composition_role' && (
+                    {data.col_key === 'composition_role' && (
                       <Icon
                         name={getRoleIcon(col)}
                         size={11}
@@ -1141,7 +1141,7 @@ function MatrixGrid({
                   title={`${row} — total: ${rowTotal}`}
                 >
                   <div className="flex items-center gap-2">
-                    {query.row_key === 'composition_role' && (
+                    {data.row_key === 'composition_role' && (
                       <Icon
                         name={getRoleIcon(row)}
                         size={11}

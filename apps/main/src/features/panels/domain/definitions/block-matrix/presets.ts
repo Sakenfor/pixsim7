@@ -16,7 +16,10 @@ function parsePresetQuery(value: unknown): Partial<BlockMatrixQuery> | null {
   if (!isRecord(value)) return null;
   const out: Partial<BlockMatrixQuery> = {};
 
-  const strFields: Array<keyof BlockMatrixQuery> = [
+  // Plain `string[]`: `value` is an untrusted `Record<string, unknown>` and
+  // `'role'` is an accepted alias that `BlockMatrixPanel` later maps onto
+  // `composition_role`, so these aren't all `keyof BlockMatrixQuery`.
+  const strFields: string[] = [
     'row_key',
     'col_key',
     'composition_role',
@@ -30,18 +33,19 @@ function parsePresetQuery(value: unknown): Partial<BlockMatrixQuery> | null {
     'expected_row_values',
     'expected_col_values',
   ];
+  const outRecord = out as Record<string, unknown>;
   for (const key of strFields) {
     const v = value[key];
     if (typeof v === 'string') {
-      (out as Record<string, unknown>)[key] = v;
+      outRecord[key] = v;
     }
   }
 
-  const numFields: Array<keyof BlockMatrixQuery> = ['limit', 'sample_per_cell'];
+  const numFields: string[] = ['limit', 'sample_per_cell'];
   for (const key of numFields) {
     const v = value[key];
     if (typeof v === 'number' && Number.isFinite(v)) {
-      (out as Record<string, unknown>)[key] = v;
+      outRecord[key] = v;
     }
   }
 

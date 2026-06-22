@@ -16,7 +16,7 @@ export default definePanel({
   id: 'block-matrix',
   title: 'Block Matrix',
   component: BlockMatrixPanel,
-  category: 'prompts',
+  category: 'generation',
   tags: ['blocks', 'prompts', 'content-packs', 'matrix', 'coverage', 'analysis'],
   icon: 'barChart',
   description: 'Explore prompt block coverage with 2D matrix views',
