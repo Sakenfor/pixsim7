@@ -130,6 +130,11 @@ function truncate(s: string, n: number): string {
 // Layout
 // ============================================================================
 
+interface PlanProgress {
+  done: number;
+  total: number;
+}
+
 interface BuildOptions {
   showDepEdges: boolean;
   showDocEdges: boolean;
@@ -208,6 +213,27 @@ function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResu
   }
   for (const lane of lanesUsed) g.setNode(`lane-${lane}`, {});
 
+  // Own points-done/total for one plan (from the always-present open_summary).
+  const pointsOf = (p: PlanSummary): PlanProgress => {
+    const total = p.openSummary?.totalPoints ?? 0;
+    const open = p.openSummary?.openPoints ?? 0;
+    return { done: Math.max(0, total - open), total };
+  };
+  // A collapsed umbrella rolls up its whole hidden subtree; otherwise own work.
+  const progressOf = (p: PlanSummary): PlanProgress => {
+    if (!opts.collapsedIds.has(p.id)) return pointsOf(p);
+    let done = 0;
+    let total = 0;
+    for (const id of [p.id, ...collectDescendants(p.id)]) {
+      const cp = planById.get(id);
+      if (!cp) continue;
+      const pt = pointsOf(cp);
+      done += pt.done;
+      total += pt.total;
+    }
+    return { done, total };
+  };
+
   const planNodes: Node[] = [];
   for (const p of visible) {
     const isUmbrella = p.planType === 'umbrella';
@@ -223,7 +249,7 @@ function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResu
       id: nodeId,
       type: 'planNode',
       position: { x: 0, y: 0 },
-      data: { plan: p, isUmbrella },
+      data: { plan: p, isUmbrella, progress: progressOf(p) },
     });
   }
 
@@ -373,18 +399,23 @@ interface PlanNodeData {
   /** descendants in the subtree (drives collapse affordance + badge) */
   descendants?: number;
   collapsed?: boolean;
+  /** points done/total — collapsed umbrellas roll up their subtree */
+  progress?: PlanProgress;
   onToggleCollapse?: (planId: string) => void;
 }
 
 function PlanNode({ data, selected }: { data: PlanNodeData; selected?: boolean }) {
-  const { plan, isUmbrella, descendants = 0, collapsed = false, onToggleCollapse } = data;
+  const { plan, isUmbrella, descendants = 0, collapsed = false, progress, onToggleCollapse } = data;
   const sStyle = statusStyle(plan.status);
   const iconName = PLAN_TYPE_ICONS[plan.planType] ?? 'fileText';
   const canCollapse = descendants > 0 && !!onToggleCollapse;
+  const total = progress?.total ?? 0;
+  const done = progress?.done ?? 0;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   return (
     <div
-      className="rounded-md cursor-pointer transition-shadow"
+      className="rounded-md cursor-pointer transition-shadow relative"
       style={{
         width: isUmbrella ? UMBRELLA_W : NODE_W,
         height: isUmbrella ? UMBRELLA_H : NODE_H,
@@ -433,8 +464,22 @@ function PlanNode({ data, selected }: { data: PlanNodeData; selected?: boolean }
       </div>
       <div className="flex items-center gap-1 text-[9px] text-neutral-500 dark:text-neutral-400">
         <span className="font-mono">{plan.id}</span>
-        <span className="ml-auto uppercase tracking-wide">{plan.stage}</span>
+        {total > 0 && <span className="ml-auto tabular-nums">{done}/{total}pt</span>}
+        <span className={`uppercase tracking-wide ${total > 0 ? 'ml-1' : 'ml-auto'}`}>
+          {plan.stage}
+        </span>
       </div>
+      {total > 0 && (
+        <div
+          className="absolute bottom-0 left-0 right-0 h-[3px] rounded-b overflow-hidden bg-neutral-200 dark:bg-neutral-700"
+          title={`${done}/${total} points done (${pct}%)`}
+        >
+          <div
+            className="h-full"
+            style={{ width: `${pct}%`, backgroundColor: sStyle.border }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -706,17 +751,38 @@ export function PlansGraphPanel() {
   // Plans that have a subtree to fold (drives the collapse-all control).
   const umbrellaIds = useMemo(() => [...descendantCount.keys()], [descendantCount]);
 
-  // Compute focus neighborhood for the selected plan.
+  // Focus neighborhood for the selected plan: immediate hierarchy plus the
+  // *transitive* dependency chain in both directions (everything it depends on,
+  // recursively, and everything that recursively depends on it).
   const neighborIds = useMemo<Set<string> | null>(() => {
     if (!selectedId) return null;
     const ids = new Set<string>([selectedId]);
-    const sel = plans.find((p) => p.id === selectedId);
+    const byId = new Map(plans.map((p) => [p.id, p]));
+    const sel = byId.get(selectedId);
     if (!sel) return ids;
+
+    // Immediate hierarchy (one hop — the chain we trace is dependencies).
     if (sel.parentId) ids.add(sel.parentId);
-    for (const dep of sel.dependsOn ?? []) ids.add(dep);
-    for (const p of plans) {
-      if (p.parentId === selectedId) ids.add(p.id);
-      if ((p.dependsOn ?? []).includes(selectedId)) ids.add(p.id);
+    for (const p of plans) if (p.parentId === selectedId) ids.add(p.id);
+
+    // Downstream: what the selection (transitively) depends on.
+    const down = [...(sel.dependsOn ?? [])];
+    while (down.length) {
+      const cur = down.pop()!;
+      if (ids.has(cur)) continue;
+      ids.add(cur);
+      for (const d of byId.get(cur)?.dependsOn ?? []) if (!ids.has(d)) down.push(d);
+    }
+
+    // Upstream: what (transitively) depends on the selection.
+    const up = plans.filter((p) => (p.dependsOn ?? []).includes(selectedId)).map((p) => p.id);
+    while (up.length) {
+      const cur = up.pop()!;
+      if (ids.has(cur)) continue;
+      ids.add(cur);
+      for (const p of plans) {
+        if ((p.dependsOn ?? []).includes(cur) && !ids.has(p.id)) up.push(p.id);
+      }
     }
     return ids;
   }, [selectedId, plans]);
@@ -927,7 +993,7 @@ export function PlansGraphPanel() {
             <div className="p-3">
               <EmptyState
                 message="Click a plan to see details"
-                description="Single-click selects (and dims non-neighbors). Double-click opens it in the Plans panel."
+                description="Single-click traces its full dependency chain (up + down) and dims the rest. Double-click opens it in the Plans panel."
               />
             </div>
           )}

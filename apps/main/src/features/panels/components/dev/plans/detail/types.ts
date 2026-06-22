@@ -25,6 +25,17 @@ export interface PlanChildSummary {
   priority: string;
 }
 
+/**
+ * Aggregate open-work signal for a plan. Always populated (even in compact
+ * list responses) so progress is derivable without the full checkpoint list.
+ * "Done" points = totalPoints - openPoints.
+ */
+export interface PlanOpenSummary {
+  openPoints: number;
+  totalPoints: number;
+  openCheckpointCount: number;
+}
+
 export interface PlanSummary {
   id: string;
   documentId: string | null;
@@ -37,6 +48,7 @@ export interface PlanSummary {
   priority: string;
   summary: string;
   scope: string;
+  openSummary?: PlanOpenSummary | null;
   planType: string;
   visibility: string;
   target: PlanTarget | null;
