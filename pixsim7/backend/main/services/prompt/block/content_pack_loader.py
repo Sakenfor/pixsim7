@@ -1168,10 +1168,10 @@ async def get_content_pack_inventory(db: AsyncSession) -> Dict[str, Any]:
 
     Returns a dict with:
       - disk_packs: list of pack names found on disk
-      - packs: {name: {status, category, blocks, templates, characters}}
+      - packs: {name: {status, category, icon, blocks, templates, characters}}
       - summary: {orphaned_packs, total_orphaned_entities, ...}
 
-    `category` is read from each disk pack's root manifest.yaml via
+    `category`/`icon` are read from each disk pack's root manifest.yaml via
     `read_pack_manifest_header`. Orphaned packs (no longer on disk) get None.
     Scope: prompt content packs only (CONTENT_PACKS_DIR). Primitives packs
     are inventoried elsewhere.
@@ -1254,20 +1254,23 @@ async def get_content_pack_inventory(db: AsyncSession) -> Dict[str, Any]:
         else:
             status = "disk_only"
 
-        # Pack-level category from disk manifest (None when orphaned or no manifest).
+        # Pack-level metadata from disk manifest (None when orphaned or no manifest).
         category: Optional[str] = None
+        icon: Optional[str] = None
         if on_disk:
             try:
                 header = read_pack_manifest_header(CONTENT_PACKS_DIR / name)
                 if header is not None:
                     category = header.category
+                    icon = header.icon
             except Exception:
                 # Manifest is malformed — surface as no-category rather than
                 # break the whole inventory call. The /meta/content-packs/manifests
                 # endpoint will report the structured error separately.
                 category = None
+                icon = None
 
-        packs[name] = {"status": status, "category": category, **counts}
+        packs[name] = {"status": status, "category": category, "icon": icon, **counts}
 
     return {
         "disk_packs": sorted(disk_packs),
