@@ -139,6 +139,7 @@ export function PromptBlockGraphSurface({
         <Background />
         <Controls />
         <MiniMap
+          style={{ width: 110, height: 72 }}
           nodeColor={(node) => {
             if (node.type === 'promptNode') return '#6366f1'; // indigo-500
             if (node.type === 'candidateNode') {

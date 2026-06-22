@@ -194,6 +194,7 @@ export function ActionBlockGraphSurface({
         <Background />
         <Controls />
         <MiniMap
+          style={{ width: 110, height: 72 }}
           nodeColor={(node) => {
             if (node.type === 'actionBlockNode') {
               const nodeData = node.data as ActionBlockNodeData;
