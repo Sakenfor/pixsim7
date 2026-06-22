@@ -23,6 +23,8 @@ MultiVectorTableStorage. See the plan's Phase C notes.
 from __future__ import annotations
 
 import logging
+import math
+from collections import OrderedDict
 from typing import Any, Sequence
 from uuid import UUID
 
@@ -53,6 +55,22 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 64
 EXPECTED_DIMENSIONS = 768
+
+# Process-wide LRU of query text → vector, shared across requests (each request
+# builds a fresh service instance). Bounds the cost of re-embedding the same
+# similar-search query on control refinements. ~256 * 768 floats ≈ 1.5 MB.
+_QUERY_VECTOR_CACHE: "OrderedDict[tuple[str, str], list[float]]" = OrderedDict()
+_QUERY_VECTOR_CACHE_MAX = 256
+
+# Hybrid re-rank (rank="hybrid"): nudge semantically-similar prompts that have
+# actually produced successful generations toward the top. We over-fetch a
+# candidate pool, blend each one's semantic similarity with a saturating boost
+# from its successful_assets count, then trim to the requested limit. Similarity
+# stays dominant — the boost only reorders within an already-relevant pool.
+_HYBRID_SUCCESS_WEIGHT = 0.30        # max share of the blended score the boost contributes
+_HYBRID_SUCCESS_SATURATION = 12      # successful_assets at which the boost ~saturates to 1.0
+_HYBRID_OVERFETCH = 4                # candidate pool = limit * this, before re-rank
+_HYBRID_MAX_CANDIDATES = 60          # hard cap on the candidate pool
 
 __all__ = [
     "PromptEmbeddingService",
@@ -99,14 +117,32 @@ class PromptEmbeddingService(EntityEmbeddingService[PromptVersion]):
         )
 
     async def _embed_query(self, query: Any, *, model_id: str) -> list[float]:
+        # Cache query vectors (deterministic per model+text). The default text
+        # embedder (cmd:embedding-default) spawns a one-shot subprocess that
+        # reloads the model each call (~15-25s), so re-embedding the same query
+        # — which happens on every threshold/limit/family/rank refinement of a
+        # similar search — would otherwise repeatedly hit that cost (and the
+        # request timeout). See plan analyzer-preset-driven-embedder-config for
+        # the persistent-daemon fix that removes the per-call load entirely.
+        text = str(query)
+        key = (model_id, text)
+        cached = _QUERY_VECTOR_CACHE.get(key)
+        if cached is not None:
+            _QUERY_VECTOR_CACHE.move_to_end(key)
+            return cached
         result = await get_embedding_service().embed_texts(
-            EmbedTextRequest(texts=[str(query)], model_id=model_id)
+            EmbedTextRequest(texts=[text], model_id=model_id)
         )
-        return _validate_embeddings(
+        vector = _validate_embeddings(
             result.vectors,
             expected_count=1,
             expected_dimensions=EXPECTED_DIMENSIONS,
         )[0]
+        _QUERY_VECTOR_CACHE[key] = vector
+        _QUERY_VECTOR_CACHE.move_to_end(key)
+        while len(_QUERY_VECTOR_CACHE) > _QUERY_VECTOR_CACHE_MAX:
+            _QUERY_VECTOR_CACHE.popitem(last=False)
+        return vector
 
     async def _resolve_model_id(self, model_id: str | None) -> str:
         if model_id:
@@ -159,6 +195,10 @@ class PromptEmbeddingService(EntityEmbeddingService[PromptVersion]):
             "prompt_text": version.prompt_text,
             "similarity_score": round(similarity, 4),
             "commit_message": version.commit_message,
+            # Provenance signals so callers can show why a match ranks (and so
+            # the hybrid re-rank is observable in the UI).
+            "successful_assets": version.successful_assets,
+            "generation_count": version.generation_count,
         }
 
     # ===== public facade =====
@@ -226,16 +266,55 @@ class PromptEmbeddingService(EntityEmbeddingService[PromptVersion]):
         family_id: UUID | None = None,
         limit: int = 10,
         min_similarity: float | None = None,
+        rank: str = "similarity",
     ) -> list[dict]:
-        """Find prompt versions similar to arbitrary text."""
+        """Find prompt versions similar to arbitrary text.
+
+        rank:
+            - "similarity" (default): pure semantic nearest-neighbor order.
+            - "hybrid": re-rank an over-fetched candidate pool by a blend of
+              semantic similarity and a saturating successful_assets boost, so
+              prompts that have actually produced good generations surface first
+              among comparably-similar matches.
+        """
+        hybrid = rank == "hybrid"
+        # Over-fetch when re-ranking so the boost can pull a proven-but-slightly-
+        # less-similar prompt above a closer one that never produced anything.
+        fetch_limit = (
+            min(_HYBRID_MAX_CANDIDATES, max(limit, limit * _HYBRID_OVERFETCH))
+            if hybrid
+            else limit
+        )
         results = await self.find_similar_by_query(
             text,
             model_id=model_id,
             family_id=family_id,
-            limit=limit,
+            limit=fetch_limit,
             threshold=_distance_threshold(min_similarity),
         )
+        if hybrid:
+            results = sorted(
+                results,
+                key=lambda r: _hybrid_score(r.distance, r.entity.successful_assets),
+                reverse=True,
+            )[:limit]
         return [self._shape(r) for r in results]
+
+
+def _success_boost(successful_assets: int) -> float:
+    """Map a successful_assets count to a [0, 1] boost, saturating so a high-
+    volume prompt doesn't dominate purely on count."""
+    if successful_assets <= 0:
+        return 0.0
+    return min(1.0, math.log1p(successful_assets) / math.log1p(_HYBRID_SUCCESS_SATURATION))
+
+
+def _hybrid_score(distance: float, successful_assets: int) -> float:
+    """Blend semantic similarity (1 - cosine distance) with the success boost.
+    Similarity carries (1 - weight); the boost carries weight."""
+    similarity = 1.0 - distance
+    boost = _success_boost(successful_assets)
+    return (1.0 - _HYBRID_SUCCESS_WEIGHT) * similarity + _HYBRID_SUCCESS_WEIGHT * boost
 
 
 def _distance_threshold(min_similarity: float | None) -> float | None:

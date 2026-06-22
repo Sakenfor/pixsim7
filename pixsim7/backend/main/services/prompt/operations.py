@@ -282,6 +282,7 @@ class PromptOperationsService:
         threshold: float = 0.5,
         family_id: Optional[UUID] = None,
         mode: str = "text",
+        rank: str = "similarity",
     ) -> List[Dict[str, Any]]:
         """Find similar prompts.
 
@@ -292,6 +293,9 @@ class PromptOperationsService:
             family_id: Optional family filter
             mode: "text" (in-memory lexical similarity, default) or "vector"
                 (pgvector semantic search over PromptVersion embeddings).
+            rank: "similarity" (default) or "hybrid" — only applies in vector
+                mode; re-ranks by semantic similarity blended with a
+                successful_assets boost.
 
         Returns:
             List of similar versions with similarity scores (same shape for
@@ -308,6 +312,7 @@ class PromptOperationsService:
                 family_id=family_id,
                 limit=limit,
                 min_similarity=threshold,
+                rank=rank,
             )
 
         from .utils.similarity import calculate_text_similarity
