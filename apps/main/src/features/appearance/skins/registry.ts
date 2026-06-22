@@ -16,7 +16,15 @@
  * `rgb(var(--token) / <alpha-value>)` consumption form.
  */
 
-export type SkinId = 'default' | 'terminal' | 'paper' | 'solarized' | 'nord' | 'synthwave';
+export type SkinId =
+  | 'default'
+  | 'terminal'
+  | 'paper'
+  | 'solarized'
+  | 'nord'
+  | 'synthwave'
+  | 'azure'
+  | 'crt';
 
 /** CSS custom-property map (token name → value). */
 export type SkinVars = Record<string, string>;
@@ -177,6 +185,33 @@ export const SKINS: Record<SkinId, PanelSkin> = {
       ['76 86 106', '59 66 82'],
       { base: '136 192 208', hover: '143 188 187', deep: '94 129 172', subtle: '59 66 82', muted: '129 161 193', text: '46 52 64' },
       { success: '163 190 140', warning: '235 203 139', error: '191 97 106', info: '136 192 208' },
+    ),
+  },
+
+  azure: {
+    id: 'azure',
+    label: 'Azure',
+    blurb: 'Calm deep-blue surfaces with a bright cyan accent.',
+    vars: skinVars(
+      ['15 23 42', '23 34 58', '30 44 74', '10 17 33'],
+      ['226 235 248', '170 190 220', '120 142 178'],
+      ['44 62 96', '32 46 72'],
+      { base: '56 165 245', hover: '96 188 252', deep: '40 128 200', subtle: '23 34 58', muted: '110 178 232', text: '8 14 26' },
+      { success: '92 200 160', warning: '236 196 120', error: '236 110 120', info: '56 165 245' },
+    ),
+  },
+
+  crt: {
+    id: 'crt',
+    label: 'Old TV',
+    blurb: 'Vintage cathode-ray glow. Turn on the scanlines.',
+    supportsEffects: true,
+    vars: skinVars(
+      ['18 22 20', '26 31 28', '32 38 34', '12 15 13'],
+      ['208 224 210', '150 176 156', '104 128 110'],
+      ['46 58 50', '34 44 38'],
+      { base: '120 214 196', hover: '156 234 218', deep: '84 168 152', subtle: '24 34 30', muted: '110 180 168', text: '10 16 14' },
+      { success: '140 220 150', warning: '232 200 120', error: '236 124 108', info: '120 214 196' },
     ),
   },
 
