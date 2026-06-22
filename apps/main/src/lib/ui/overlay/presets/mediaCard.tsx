@@ -95,9 +95,9 @@ export const compactPreset: OverlayPreset = {
  *
  * Maximum information display. Keeps the generation button group as a
  * fundamental card control and surfaces extra provenance through the top-left
- * sibling-count badges (same-input-assets + same-prompt-family) rather than a
+ * similarity granularity badge (collapsed chip + hover rows) rather than a
  * panel — the old bottom-center metadata panel collided with the button group
- * at the same anchor, so it was removed. See plan media-card-sibling-badges.
+ * at the same anchor, so it was removed.
  */
 export const detailedPreset: OverlayPreset = {
   id: 'media-card-detailed',
@@ -115,7 +115,7 @@ export const detailedPreset: OverlayPreset = {
     description: 'Maximum information with all available data',
     spacing: 'normal',
     // All widgets come from the runtime set (primary icon, status, duration,
-    // generation button group, sibling-count badges, …).
+    // generation button group, similarity granularity badge, …).
     widgets: [],
   },
 };

@@ -8,9 +8,14 @@ export {
   BADGE_SLOT,
   BADGE_PRIORITY,
   createBadgeWidget,
+  createExpandableBadge,
   BadgePresets,
 } from './BadgeWidget';
-export type { BadgeWidgetConfig } from './BadgeWidget';
+export type {
+  BadgeWidgetConfig,
+  ExpandableBadgeConfig,
+  ExpandableBadgeItem,
+} from './BadgeWidget';
 
 export { createButtonWidget } from './ButtonWidget';
 export type { ButtonWidgetConfig } from './ButtonWidget';
