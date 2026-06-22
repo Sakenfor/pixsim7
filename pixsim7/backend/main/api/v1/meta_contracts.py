@@ -1782,13 +1782,18 @@ async def _resolve_send_context(
         else:
             profile_prompt = payload.custom_instructions
 
-    # Build system prompt with focus filtering
-    system_prompt = build_user_system_prompt(focus=payload.focus)
-
     # Resolve provider, model, and delivery method
     provider_id, model_id, method = await _resolve_assistant_provider(user_id)
     if payload.engine == "api":
         method = "api"
+
+    # Build system prompt with focus filtering. The direct "api" method has no
+    # tools, so the dev/coding-agent workflow bullets (Bash polling, tab
+    # branding, plan claiming) are pure noise there — include them only for the
+    # bridge path, whose agents can actually act on them.
+    system_prompt = build_user_system_prompt(
+        focus=payload.focus, include_agent_workflow=(method != "api")
+    )
 
     return _SendContext(
         user_id=user_id, raw_token=raw_token,
@@ -2207,6 +2212,7 @@ async def register_chat_session(
 async def get_system_prompt_preview(
     profile_id: Optional[str] = Query(None, description="Profile ID to include persona"),
     focus: Optional[str] = Query(None, description="Comma-separated focus capability tags to filter the prompt"),
+    engine: Optional[str] = Query(None, description="Delivery engine the chat will use (e.g. 'api', 'claude', 'codex'); mirrors send-message so the preview matches what is actually sent"),
     user: Optional[Any] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_database),
 ) -> Dict[str, Any]:
@@ -2215,9 +2221,22 @@ async def get_system_prompt_preview(
     Combines the base assistant prompt with the profile persona (if any).
     Also returns the focus areas from the user.assistant contract so the
     frontend can render toggleable category chips.
+
+    The base prompt is resolved identically to ``send-message``: the
+    dev/coding-agent workflow bullets are included only when the resolved
+    delivery method is the tool-capable bridge (not the direct ``api`` path),
+    so the preview reflects exactly what will be sent.
     """
     focus_list = [f.strip() for f in focus.split(",") if f.strip()] if focus else None
-    base = build_user_system_prompt(focus=focus_list)
+
+    # Mirror send-message's method resolution so include_agent_workflow matches.
+    _provider_id, _model_id, method = await _resolve_assistant_provider(user.id if user else None)
+    if engine == "api":
+        method = "api"
+
+    base = build_user_system_prompt(
+        focus=focus_list, include_agent_workflow=(method != "api")
+    )
     persona: Optional[str] = None
 
     if profile_id:
@@ -3382,7 +3401,10 @@ async def _resolve_asset_image_paths(
 # =============================================================================
 
 
-def build_user_system_prompt(focus: Optional[List[str]] = None) -> str:
+def build_user_system_prompt(
+    focus: Optional[List[str]] = None,
+    include_agent_workflow: bool = True,
+) -> str:
     """Build a system prompt for the user-facing AI assistant.
 
     Args:
@@ -3392,6 +3414,12 @@ def build_user_system_prompt(focus: Optional[List[str]] = None) -> str:
                capabilities are included; this steers the agent toward the
                relevant tools without dumping the full endpoint catalog.
                When ``None``, all endpoints are included.
+        include_agent_workflow: When ``True`` (default), append the
+               dev/coding-agent workflow bullets (foreground-poll, tab
+               branding, plan claiming). User-facing chat surfaces — whose
+               focus vocabulary is purely asset/generation/game/prompt and
+               which can't act on Bash/plans tools — pass ``False`` to drop
+               this noise.
 
     The function walks the ``relates_to`` graph from ``user.assistant`` so
     that related contracts (e.g. ``game.authoring``) contribute their
@@ -3455,15 +3483,18 @@ def build_user_system_prompt(focus: Optional[List[str]] = None) -> str:
 
     lines.extend([
         "Guidelines:",
-        "- When the user asks about status, counts, or lists — use the appropriate tool to fetch live data.",
-        "- When the user asks to create or modify something — use tools, then confirm the result.",
-        "- Always confirm before making destructive changes.",
+        "- Use tools to fetch live data for status/counts/lists; don't guess.",
+        "- Use tools to create or modify, then confirm. Always confirm before destructive changes.",
         "- If a tool call fails, report the error clearly.",
-        "- If you start a command/test/build whose outcome you intend to report (e.g. \"I'll run the tests and tell you the result\"), keep your turn OPEN and wait for it within this turn — run it in the foreground, or if backgrounded, poll BashOutput in a loop until it finishes, then report. Do NOT end your turn promising an async follow-up: nothing re-invokes you when a background task later completes, so that report would never reach the user. Only fire-and-forget a background task when you genuinely will not report on it.",
-        "- Brand THIS chat tab at the start of substantive work: call set_tab_identity with an @lib/icons name and a short subtitle (e.g. icon='wrench', subtitle='refactoring auth'). It's idempotent — re-call as the focus shifts. Don't skip it; without an icon the tab is indistinguishable from every other one in the sidebar.",
-        "- When working on a dev plan, claim it via plans.claim (with checkpoint_id when known) so the roster reflects who's where. For plan-bound tabs, mutating endpoints (plans.update/progress) auto-claim too — but an explicit claim returns a structured {icon, subtitle} suggestion you can pass straight to set_tab_identity.",
         "- Be concise and helpful.",
     ])
+
+    if include_agent_workflow:
+        lines.extend([
+            "- If you start a command/test/build whose outcome you intend to report (e.g. \"I'll run the tests and tell you the result\"), keep your turn OPEN and wait for it within this turn — run it in the foreground, or if backgrounded, poll BashOutput in a loop until it finishes, then report. Do NOT end your turn promising an async follow-up: nothing re-invokes you when a background task later completes, so that report would never reach the user. Only fire-and-forget a background task when you genuinely will not report on it.",
+            "- Brand THIS chat tab at the start of substantive work: call set_tab_identity with an @lib/icons name and a short subtitle (e.g. icon='wrench', subtitle='refactoring auth'). It's idempotent — re-call as the focus shifts. Don't skip it; without an icon the tab is indistinguishable from every other one in the sidebar.",
+            "- When working on a dev plan, claim it via plans.claim (with checkpoint_id when known) so the roster reflects who's where. For plan-bound tabs, mutating endpoints (plans.update/progress) auto-claim too — but an explicit claim returns a structured {icon, subtitle} suggestion you can pass straight to set_tab_identity.",
+        ])
 
     return "\n".join(lines)
 

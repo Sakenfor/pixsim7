@@ -1651,12 +1651,13 @@ export const QUICK_SHORTCUTS = [
 
 interface FocusAreaEntry { id: string; label: string; children?: FocusAreaEntry[] }
 
-export function SystemPromptPreview({ profileId, customInstructions, onChangeInstructions, focusAreas, onChangeFocus }: {
+export function SystemPromptPreview({ profileId, customInstructions, onChangeInstructions, focusAreas, onChangeFocus, engine }: {
   profileId: string | null;
   customInstructions: string;
   onChangeInstructions: (text: string) => void;
   focusAreas: string[];
   onChangeFocus: (areas: string[]) => void;
+  engine?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [basePrompt, setBasePrompt] = useState<string | null>(null);
@@ -1668,10 +1669,11 @@ export function SystemPromptPreview({ profileId, customInstructions, onChangeIns
     const params: Record<string, string> = {};
     if (profileId) params.profile_id = profileId;
     if (focusAreas.length > 0) params.focus = focusAreas.join(',');
+    if (engine) params.engine = engine;
     pixsimClient.get<{ base_prompt: string; persona: string | null; focus_areas: FocusAreaEntry[] }>('/meta/agents/system-prompt-preview', { params })
       .then((r) => { setBasePrompt(r.base_prompt); setPersona(r.persona); setAvailableFocus(r.focus_areas || []); })
       .catch(() => {});
-  }, [profileId, focusAreas]);
+  }, [profileId, focusAreas, engine]);
 
   const toggleFocus = useCallback((id: string, children?: FocusAreaEntry[]) => {
     const isActive = focusAreas.includes(id);

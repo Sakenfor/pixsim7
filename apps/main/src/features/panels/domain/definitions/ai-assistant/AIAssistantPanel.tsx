@@ -899,6 +899,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
               onChangeInstructions={(text) => onUpdateTab({ customInstructions: text })}
               focusAreas={tab.focusAreas}
               onChangeFocus={(areas) => onUpdateTab({ focusAreas: areas })}
+              engine={tab.engine}
             />
             <EmptyState message="Ask anything or pick an action" size="sm" />
             <div className={`flex flex-wrap justify-center ${isMobile ? 'gap-1' : 'gap-1.5'}`}>
