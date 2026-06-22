@@ -14,6 +14,12 @@ from pydantic import BaseModel, Field, model_validator
 from enum import Enum
 
 from pixsim7.backend.main.lib.registry import SimpleRegistry
+from pixsim7.backend.main.services.media.embedding_input_config import (
+    EMBEDDING_INPUT_CONFIG_DEFAULTS,
+    IMAGE_SOURCES,
+    VIDEO_FRAME_AGGREGATIONS,
+    VIDEO_FRAME_STRATEGIES,
+)
 
 
 class AnalyzerKind(str, Enum):
@@ -105,6 +111,12 @@ class InstanceOptionDescriptor(BaseModel):
     description: str = ""
     default: Any = None
     storage: str = "config"  # "config" or "column"
+    # Optional UI/validation hints. ``options`` enumerates allowed values for
+    # type="select"; ``min``/``max`` bound type="number". All optional so
+    # existing bool/string descriptors are unaffected.
+    options: Optional[List[Any]] = None
+    min: Optional[float] = None
+    max: Optional[float] = None
 
 
 SHARED_INSTANCE_OPTIONS: Dict[AnalyzerTarget, List[InstanceOptionDescriptor]] = {
@@ -120,6 +132,57 @@ SHARED_INSTANCE_OPTIONS: Dict[AnalyzerTarget, List[InstanceOptionDescriptor]] = 
     ],
     AnalyzerTarget.PROMPT: [],
 }
+
+
+def _embedding_instance_options() -> List["InstanceOptionDescriptor"]:
+    """Tunable embedding-input controls for the ``asset:embedding`` analyzer.
+
+    storage="config" so per-instance overrides land in
+    ``ProviderInstanceConfig.config`` and feed ``effective_config_hash`` —
+    changing a strategy re-embeds cleanly (plan
+    ``embedding-input-selection-media-aware`` c2). Defaults come from the shared
+    :data:`EMBEDDING_INPUT_CONFIG_DEFAULTS` source of truth.
+    """
+    d = EMBEDDING_INPUT_CONFIG_DEFAULTS
+    return [
+        InstanceOptionDescriptor(
+            id="image_source", type="select", label="Image source",
+            description="Which derivative to embed for images. The original "
+                        "embeds sharpest; the 320px thumbnail is upscaled.",
+            default=d["image_source"], options=list(IMAGE_SOURCES),
+        ),
+        InstanceOptionDescriptor(
+            id="video_frame_strategy", type="select", label="Video frame strategy",
+            description="How to pick frame(s) for video. multi = N evenly-spaced "
+                        "frames mean-pooled; never the raw .mp4.",
+            default=d["video_frame_strategy"], options=list(VIDEO_FRAME_STRATEGIES),
+        ),
+        InstanceOptionDescriptor(
+            id="video_frame_count", type="number", label="Video frame count",
+            description="Frames to embed for the 'multi' strategy.",
+            default=d["video_frame_count"], min=1, max=16,
+        ),
+        InstanceOptionDescriptor(
+            id="video_frame_timestamp", type="number", label="Video frame timestamp (s)",
+            description="Seconds into the clip for the 'timestamp' strategy.",
+            default=d["video_frame_timestamp"], min=0,
+        ),
+        InstanceOptionDescriptor(
+            id="video_frame_fraction", type="number", label="Video frame fraction",
+            description="Position as a 0..1 fraction of duration for the 'fraction' strategy.",
+            default=d["video_frame_fraction"], min=0, max=1,
+        ),
+        InstanceOptionDescriptor(
+            id="video_embed_resolution", type="number", label="Video embed resolution",
+            description="Frame grab resolution. Defaults to model res (384), not the 320 thumb.",
+            default=d["video_embed_resolution"], min=64, max=1024,
+        ),
+        InstanceOptionDescriptor(
+            id="video_frame_aggregation", type="select", label="Video frame aggregation",
+            description="How to combine multi-frame vectors into one asset vector.",
+            default=d["video_frame_aggregation"], options=list(VIDEO_FRAME_AGGREGATIONS),
+        ),
+    ]
 
 
 class AnalyzerInfo(BaseModel):
@@ -309,6 +372,13 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
             target=AnalyzerTarget.ASSET,
             source_plugin_id="core",
             enabled=True,
+            # Media-type-aware input selection: images embed the original,
+            # videos embed N frames at model res (never the raw .mp4). Defaults
+            # feed analyzer_config in effective_config_hash; per-instance
+            # overrides via instance_options feed instance_config. Plan
+            # embedding-input-selection-media-aware (c2/c3).
+            config=dict(EMBEDDING_INPUT_CONFIG_DEFAULTS),
+            instance_options=_embedding_instance_options(),
         ))
         # Text embedder for prompt/block similarity (plan:
         # analyzer-preset-driven-embedder-config). Carries the canonical
