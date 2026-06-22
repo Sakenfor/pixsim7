@@ -7,10 +7,12 @@
  * the `triage-toolbar` checkpoint; lives here for now.
  */
 
-import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
+import { Dropdown, DropdownDivider, DropdownItem, useToast } from '@pixsim7/shared.ui';
 import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { Icons } from '@lib/icons';
+
+import { useProviderCapabilities } from '@features/providers/hooks/useProviderCapabilities';
 
 import type { LocalFoldersController } from '@/types/localSources';
 
@@ -22,6 +24,7 @@ import {
 } from '../../lib/localAssetState';
 import { hasValidStoredHash } from '../../lib/localHashing';
 import { getUploadCapableProviders } from '../../lib/resolveUploadTarget';
+import { resolveProviderLabel } from '../../lib/uploadActions';
 import type { LocalAssetModel } from '../../types/localFolderMeta';
 
 export interface LocalBatchToolsButtonProps {
@@ -35,7 +38,11 @@ export interface LocalBatchToolsButtonProps {
   hashAssets: (keys: string[]) => void;
   recheckBackend: () => void;
   onUpload: (asset: LocalAssetModel) => void;
-  onUploadToProvider: (asset: LocalAssetModel, providerId: string) => Promise<void>;
+  onUploadToProvider: (
+    asset: LocalAssetModel,
+    providerId: string,
+    opts?: { silent?: boolean },
+  ) => Promise<void>;
 }
 
 export function LocalBatchToolsButton({
@@ -49,6 +56,7 @@ export function LocalBatchToolsButton({
   onUpload,
   onUploadToProvider,
 }: LocalBatchToolsButtonProps) {
+  const toast = useToast();
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsBtnRef = useRef<HTMLButtonElement>(null);
   const batchUploadingRef = useRef(false);
@@ -102,7 +110,13 @@ export function LocalBatchToolsButton({
     setToolsOpen(false);
   }, [hashAssets, pageUnhashedKeys]);
 
-  const uploadCapableProviders = useMemo(() => getUploadCapableProviders(), []);
+  // Subscribe to the capability registry so the provider rows appear once the
+  // (async, fire-and-forget) /providers fetch resolves. A bare useMemo([], …)
+  // here froze an empty snapshot whenever this toolbar mounted before the
+  // registry was warm — "Upload to library" still showed (registry-independent)
+  // but per-provider upload rows (pixverse/sora) silently never rendered.
+  const { capabilities } = useProviderCapabilities();
+  const uploadCapableProviders = useMemo(() => getUploadCapableProviders(), [capabilities]);
 
   const handleBatchUpload = useCallback(async (target: 'library' | string) => {
     if (batchUploadingRef.current) return;
@@ -123,8 +137,15 @@ export function LocalBatchToolsButton({
       return !uploadedToSelectedProvider;
     });
 
+    if (pending.length === 0) {
+      batchUploadingRef.current = false;
+      return;
+    }
+
     const CONCURRENCY = 3;
     let cursor = 0;
+    let succeeded = 0;
+    let failed = 0;
 
     const runWorker = async () => {
       while (cursor < pending.length) {
@@ -133,20 +154,65 @@ export function LocalBatchToolsButton({
           if (target === 'library') {
             await onUpload(asset);
           } else {
-            await onUploadToProvider(asset, target);
+            // silent: suppress per-item toasts so the batch emits a single
+            // summary instead of one toast per file.
+            await onUploadToProvider(asset, target, { silent: true });
           }
-        } catch { /* individual errors handled inside */ }
+          succeeded++;
+        } catch {
+          failed++;
+        }
       }
     };
 
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, pending.length) }, runWorker));
     batchUploadingRef.current = false;
-  }, [visibleItems, uploadStatus, onUpload, onUploadToProvider]);
+
+    // One summary toast on finish rather than spamming per item.
+    const label = target === 'library' ? 'library' : resolveProviderLabel(target);
+    if (failed === 0) {
+      toast.success(`Uploaded ${succeeded} to ${label}`);
+    } else if (succeeded === 0) {
+      toast.error(`Failed to upload ${failed} to ${label}`);
+    } else {
+      toast.warning(`Uploaded ${succeeded} to ${label}, ${failed} failed`);
+    }
+  }, [visibleItems, uploadStatus, onUpload, onUploadToProvider, toast]);
 
   const uploadActionCount = pendingUploadCount + failedUploadCount;
+
+  // Per-provider pending count, independent of the library upload count.
+  // "Uploaded to library" is NOT "uploaded to pixverse" — once a folder has been
+  // pushed to the library, last_upload_status flips to 'success' and the library
+  // count drops to 0, but those same items still need a separate cross-upload to
+  // each provider. Mirror the pending-set rule in handleBatchUpload so the row's
+  // count matches what the action will actually process.
+  const providerPendingCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const provider of uploadCapableProviders) {
+      const target = provider.providerId.trim().toLowerCase();
+      let pending = 0;
+      for (const asset of visibleItems) {
+        const status = resolveLocalUploadState(asset, uploadStatus);
+        if (status === 'uploading') continue;
+        const lastProviderId = String(asset.last_upload_provider_id || '').trim().toLowerCase();
+        const uploadedToSelectedProvider = status === 'success' && lastProviderId === target;
+        if (!uploadedToSelectedProvider) pending++;
+      }
+      counts[provider.providerId] = pending;
+    }
+    return counts;
+  }, [uploadCapableProviders, visibleItems, uploadStatus]);
+
+  const maxProviderPending = useMemo(
+    () => Object.values(providerPendingCounts).reduce((max, n) => Math.max(max, n), 0),
+    [providerPendingCounts],
+  );
+  const hasProviderUploads = maxProviderPending > 0;
+
   const hashedCount = visibleItems.length - unhashedCount;
-  const hasToolActions = unhashedCount > 0 || uploadActionCount > 0 || hashedCount > 0;
-  const toolsBadgeCount = unhashedCount + uploadActionCount;
+  const hasToolActions = unhashedCount > 0 || uploadActionCount > 0 || hasProviderUploads || hashedCount > 0;
+  const toolsBadgeCount = unhashedCount + Math.max(uploadActionCount, maxProviderPending);
   const hashRun = hashingProgress;
   const hashRunPaused = !!hashRun && hashingPaused;
   const hashRunActive = !!hashRun && !hashingPaused;
@@ -226,7 +292,7 @@ export function LocalBatchToolsButton({
         >
           Check library
         </DropdownItem>
-        {uploadActionCount > 0 && (
+        {(uploadActionCount > 0 || hasProviderUploads) && (
           <DropdownDivider />
         )}
         {uploadActionCount > 0 && (
@@ -238,16 +304,20 @@ export function LocalBatchToolsButton({
             Upload to library ({uploadActionCount})
           </DropdownItem>
         )}
-        {uploadActionCount > 0 && uploadCapableProviders.map((provider) => (
-          <DropdownItem
-            key={provider.providerId}
-            icon={<Icons.upload size={12} />}
-            onClick={() => handleBatchUpload(provider.providerId)}
-            disabled={batchUploadingRef.current}
-          >
-            Upload to {provider.name} ({uploadActionCount})
-          </DropdownItem>
-        ))}
+        {uploadCapableProviders.map((provider) => {
+          const count = providerPendingCounts[provider.providerId] ?? 0;
+          if (count === 0) return null;
+          return (
+            <DropdownItem
+              key={provider.providerId}
+              icon={<Icons.upload size={12} />}
+              onClick={() => handleBatchUpload(provider.providerId)}
+              disabled={batchUploadingRef.current}
+            >
+              Upload to {provider.name} ({count})
+            </DropdownItem>
+          );
+        })}
       </Dropdown>
     </div>
   );

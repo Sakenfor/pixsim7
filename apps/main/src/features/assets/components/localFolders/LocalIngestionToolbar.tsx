@@ -39,26 +39,20 @@ export function LocalIngestionToolbar({ controller }: LocalIngestionToolbarProps
     return 'reading';
   }, [controller.hashingProgress?.phase]);
 
+  // The "Local Folders" header + "Add Folder" button moved into the gallery
+  // toolbar row (see LocalFoldersContent's leadingToolbarSlot). This component
+  // now only renders the transient ingestion banners; when none are active it
+  // collapses entirely so it claims no vertical space.
+  const hasBanner = controller.scanning !== null
+    || controller.hashingProgress !== null
+    || !controller.supported
+    || !!controller.error
+    || controller.missingFolderNames.length > 0;
+
+  if (!hasBanner) return null;
+
   return (
     <div className="flex-shrink-0 mb-3 px-6 space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <h2 className="text-lg font-semibold truncate">Local Folders</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Add Folder button */}
-          <button
-            type="button"
-            className="px-3 py-1.5 border rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:bg-neutral-400 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center justify-center gap-2"
-            onClick={controller.addFolder}
-            disabled={controller.adding || controller.scanning !== null || !controller.supported}
-          >
-            <Icons.folderOpen size={14} />
-            {controller.adding ? 'Adding...' : 'Add Folder'}
-          </button>
-        </div>
-      </div>
-
       {/* Scanning progress */}
       {controller.scanning && (
         <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">

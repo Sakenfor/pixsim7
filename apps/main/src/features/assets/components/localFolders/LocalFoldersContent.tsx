@@ -12,6 +12,8 @@
 import type { RefObject } from 'react';
 import { useCallback, useMemo } from 'react';
 
+import { Icons } from '@lib/icons';
+
 import { SourceGalleryView } from '@features/gallery/components/SourceGalleryView';
 import type { ClientFilterDef, ClientFilterState } from '@features/gallery/lib/useClientFilters';
 
@@ -175,6 +177,24 @@ export function LocalFoldersContent({
     [],
   );
 
+  const addFolderDisabled = controller.adding || controller.scanning !== null || !controller.supported;
+
+  // Compact Add Folder control for the gallery toolbar row (replaces the old
+  // "Local Folders" header row). Lives in the always-rendered leadingToolbarSlot
+  // so it stays reachable in the scope-less folder overview.
+  const addFolderButton = (
+    <button
+      type="button"
+      className="h-7 inline-flex items-center gap-1.5 px-2.5 rounded-md bg-accent text-accent-text hover:bg-accent-hover disabled:bg-neutral-400 disabled:cursor-not-allowed transition-colors text-xs font-medium flex-shrink-0"
+      onClick={controller.addFolder}
+      disabled={addFolderDisabled}
+      title="Add a local folder"
+    >
+      <Icons.folderOpen size={14} />
+      {controller.adding ? 'Adding...' : 'Add Folder'}
+    </button>
+  );
+
   const emptyState = (
     <div className="text-center py-16 border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-900/50">
       <div className="mb-4 flex justify-center">
@@ -183,11 +203,24 @@ export function LocalFoldersContent({
       <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-2">
         {controller.folders.length === 0 ? 'No folders added yet' : 'No files found'}
       </p>
-      <p className="text-sm text-neutral-500">
+      <p className="text-sm text-neutral-500 mb-4">
         {controller.folders.length === 0
-          ? 'Click "Add Folder" to get started'
+          ? 'Add a folder to get started'
           : 'Added folders contain no media files'}
       </p>
+      {controller.folders.length === 0 && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:bg-neutral-400 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+            onClick={controller.addFolder}
+            disabled={addFolderDisabled}
+          >
+            <Icons.folderOpen size={14} />
+            {controller.adding ? 'Adding...' : 'Add Folder'}
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -241,6 +274,7 @@ export function LocalFoldersContent({
       drilledGroupStorageKey={DRILLED_GROUP_KEY}
       scopeResetDeps={[controller.selectedFolderPath, controller.viewMode]}
       groupingMenuSlot={groupingMenuSlot}
+      leadingToolbarSlot={addFolderButton}
       renderToolbar={renderToolbar}
       renderBreadcrumb={renderBreadcrumb}
       emptyState={emptyState}

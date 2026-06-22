@@ -136,6 +136,13 @@ export interface SourceGalleryViewProps<TAsset extends AssetModel, TGroupBy exte
   scopeResetDeps?: unknown[];
 
   // ---- Slots (source-specific chrome) ----
+  /**
+   * Always-rendered leading toolbar chrome, shown in the sticky toolbar row
+   * regardless of scope (unlike renderToolbar/groupingMenuSlot which are
+   * hasScope-gated). For source-level actions that must stay reachable in the
+   * group-overview view — e.g. local folders' "Add Folder".
+   */
+  leadingToolbarSlot?: ReactNode;
   renderToolbar?: (ctx: SourceGalleryToolbarContext<TAsset>) => ReactNode;
   groupingMenuSlot?: ReactNode;
   renderBreadcrumb?: (ctx: SourceGalleryBreadcrumbContext<TGroupBy>) => ReactNode;
@@ -204,6 +211,7 @@ export function SourceGalleryView<TAsset extends AssetModel, TGroupBy extends st
     drilledGroupStorageKey,
     pageSize = GROUP_PAGE_SIZE,
     scopeResetDeps,
+    leadingToolbarSlot,
     renderToolbar,
     groupingMenuSlot,
     renderBreadcrumb,
@@ -736,6 +744,7 @@ export function SourceGalleryView<TAsset extends AssetModel, TGroupBy extends st
       {assets.length > 0 && (
         <div className="sticky top-0 z-20 mb-3 border-b border-neutral-200/70 dark:border-neutral-800/70 bg-neutral-50/95 dark:bg-neutral-950/95 supports-[backdrop-filter]:bg-neutral-50/80 supports-[backdrop-filter]:dark:bg-neutral-950/80 backdrop-blur pb-2">
           <div className="flex items-center gap-1">
+            {leadingToolbarSlot}
             {hasScope && renderToolbar?.({ filteredItems, pageItems, drilledItems, showDrilledView })}
             {hasScope && groupingMenuSlot}
             <ClientFilterBar
