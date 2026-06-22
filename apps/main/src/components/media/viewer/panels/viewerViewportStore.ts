@@ -34,6 +34,8 @@ const DEFAULT_VIEWPORT: ViewerViewport = {
   fitMode: 'contain',
 };
 
+const ZOOMED_IN_THRESHOLD = 100;
+
 export const useViewerViewportStore = hmrSingleton('viewerViewportStore', () =>
   create<ViewerViewportState>((set) => ({
     ...DEFAULT_VIEWPORT,
@@ -45,3 +47,7 @@ export const useViewerViewportStore = hmrSingleton('viewerViewportStore', () =>
     reset: () => set(DEFAULT_VIEWPORT),
   })),
 );
+
+export function isViewerZoomedIn(): boolean {
+  return useViewerViewportStore.getState().zoom > ZOOMED_IN_THRESHOLD;
+}
