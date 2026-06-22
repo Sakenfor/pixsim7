@@ -81,6 +81,7 @@ function MaskLayerGroup({
     toggleLayerVisibility,
     renameLayer,
     importSavedMask,
+    editingTargetMaskId,
   } = useMaskOverlayStore();
 
   const activeLayer = layers.find((l) => l.id === activeLayerId) ?? null;
@@ -130,8 +131,17 @@ function MaskLayerGroup({
 
   if (layers.length === 0) return null;
 
+  // Header label conveys "these layers belong to ONE mask" — either a saved
+  // mask asset (#id) or a new in-progress one. Without this, the bare list
+  // of "Layer 1 / Layer 2" gives no hint that they're children of a single
+  // mask and could be mistaken for separate saved masks.
+  const groupLabel =
+    typeof editingTargetMaskId === 'number'
+      ? `Mask • #${editingTargetMaskId}`
+      : 'Mask • new';
+
   return (
-    <LayerGroup label="Mask" icon="paintbrush" count={layers.length}>
+    <LayerGroup label={groupLabel} icon="paintbrush" count={layers.length}>
       <LayerPanel
         layers={layers}
         activeLayerId={activeLayerId}

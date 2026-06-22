@@ -57,6 +57,14 @@ export interface MaskOverlayStoreState {
   /** True when there's a known version parent for the current mask (enables "Save" vs "Save as new"). */
   hasVersionParent: boolean;
 
+  /**
+   * Asset id of the mask the editor is currently versioning (set when a saved
+   * mask is imported / draft-restored, advanced after save, cleared by "New
+   * mask"). Surfaced so sidebar UI can label the editing context — e.g. "Mask
+   * • #99234" vs "Mask • new".
+   */
+  editingTargetMaskId: number | null;
+
   // ── Hovered vertex (for per-point width control) ──────────────────
   hoveredVertex: { layerId: string; elementId: string; vertexIndex: number } | null;
   /** Current width of the hovered vertex (null when nothing hovered) */
@@ -75,6 +83,12 @@ export interface MaskOverlayStoreState {
   exportMask: () => Promise<void>;
   /** Save mask as a new standalone asset (no versioning). */
   saveAsNew: () => Promise<void>;
+  /**
+   * Discard all current drawing layers + draft + version target. Subsequent
+   * Save will create a fresh mask family — useful when you've been editing a
+   * loaded mask and want to start a brand-new one without closing the viewer.
+   */
+  resetMask: () => void;
   resetView: () => void;
 
   // Layer callbacks
@@ -87,10 +101,10 @@ export interface MaskOverlayStoreState {
 
   // ── Internal sync method ────────────────────────────────────────────
   _syncState: (partial: Partial<Pick<MaskOverlayStoreState,
-    'mode' | 'brushSize' | 'brushOpacity' | 'canUndo' | 'canRedo' | 'hasContent' | 'isSaving' | 'zoom' | 'isZoomed' | 'layers' | 'activeLayerId' | 'hasVersionParent' | 'activePresetId' | 'hoveredVertex' | 'hoveredVertexWidth'
+    'mode' | 'brushSize' | 'brushOpacity' | 'canUndo' | 'canRedo' | 'hasContent' | 'isSaving' | 'zoom' | 'isZoomed' | 'layers' | 'activeLayerId' | 'hasVersionParent' | 'editingTargetMaskId' | 'activePresetId' | 'hoveredVertex' | 'hoveredVertexWidth'
   >>) => void;
   _registerCallbacks: (cbs: Partial<Pick<MaskOverlayStoreState,
-    'setMode' | 'setBrushSize' | 'setBrushOpacity' | 'undo' | 'redo' | 'clearLayer' | 'exportMask' | 'saveAsNew' | 'resetView'
+    'setMode' | 'setBrushSize' | 'setBrushOpacity' | 'undo' | 'redo' | 'clearLayer' | 'exportMask' | 'saveAsNew' | 'resetMask' | 'resetView'
     | 'addLayer' | 'removeLayer' | 'setActiveLayer' | 'toggleLayerVisibility' | 'renameLayer' | 'importSavedMask'
     | 'setVertexWidth'
   >>) => void;
@@ -120,6 +134,7 @@ export const useMaskOverlayStore = create<MaskOverlayStoreState>((set) => ({
   setPreviewMaskUrl: (url) => set({ previewMaskUrl: url }),
 
   hasVersionParent: false,
+  editingTargetMaskId: null,
 
   layers: [],
   activeLayerId: null,
@@ -136,6 +151,7 @@ export const useMaskOverlayStore = create<MaskOverlayStoreState>((set) => ({
   clearLayer: noop,
   exportMask: noopAsync,
   saveAsNew: noopAsync,
+  resetMask: noop,
   resetView: noop,
 
   addLayer: noop,
