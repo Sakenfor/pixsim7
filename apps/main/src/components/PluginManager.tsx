@@ -12,8 +12,10 @@ import type {
 } from '@pixsim7/shared.plugins';
 import { CAPABILITY_LABELS } from '@pixsim7/shared.plugins';
 import { Button, Panel, Badge, FilterPillGroup, SearchInput } from '@pixsim7/shared.ui';
-import { useState, useSyncExternalStore, useMemo, useCallback, useRef } from 'react';
+import { useState, useSyncExternalStore, useMemo, useCallback, useRef, useEffect } from 'react';
 
+import { disablePlugin as apiDisablePlugin, enablePlugin as apiEnablePlugin } from '@lib/api/plugins';
+import type { PluginInfo } from '@lib/api/plugins';
 import { Icon } from '@lib/icons';
 import { pluginCatalog, pluginActivationManager, pluginSettingsRegistry } from '@lib/plugins';
 import type { SettingGroup, SettingStoreAdapter } from '@lib/settingsSchema/types';
@@ -21,6 +23,7 @@ import type { SettingGroup, SettingStoreAdapter } from '@lib/settingsSchema/type
 import { SettingFieldRenderer } from '@features/settings/components/shared/SettingFieldRenderer';
 
 
+import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
 import { usePluginConfigStoreInternal } from '@/stores/pluginConfigStore';
 
 // ===== Hooks =====
@@ -170,18 +173,27 @@ const FAMILY_FIELD_LABELS: Partial<Record<string, string>> = {
 /** Keys from PluginMetadata that should not be shown in family metadata */
 const BASE_METADATA_KEYS = new Set([
   'id', 'name', 'family', 'origin', 'activationState', 'canDisable',
-  'version', 'description', 'author', 'icon', 'tags', 'capabilities',
+  'version', 'description', 'author', 'icon', 'tags', 'capabilities', 'permissions',
   'providesFeatures', 'consumesFeatures', 'consumesActions', 'consumesState',
   'experimental', 'deprecated', 'deprecationMessage', 'replaces', 'configurable',
+  'updatedAt', 'changeNote', 'featureHighlights',
 ]);
 
 // ===== Component =====
 
 export function PluginManagerUI() {
   const allPlugins = useCatalogPlugins();
+  const backendPlugins = usePluginCatalogStore(s => s.plugins);
+  const isBackendInitialized = usePluginCatalogStore(s => s.isInitialized);
+  const isBackendApiAvailable = usePluginCatalogStore(s => s.isApiAvailable);
+  const initializeBackendCatalog = usePluginCatalogStore(s => s.initialize);
+  const refreshBackendCatalog = usePluginCatalogStore(s => s.refresh);
+  const syncRuntimeCatalog = usePluginCatalogStore(s => s.syncRuntimeCatalog);
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [familyFilter, setFamilyFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pendingToggles, setPendingToggles] = useState<Set<string>>(new Set());
 
   // Sorted plugins, filtered by family and search
   const plugins = useMemo(() => {
@@ -212,8 +224,88 @@ export function PluginManagerUI() {
       .sort(([a], [b]) => a.localeCompare(b));
   }, [allPlugins]);
 
-  const selected = plugins.find(p => p.id === selectedId);
+  const backendById = useMemo(() => {
+    const map = new Map<string, PluginInfo>();
+    for (const plugin of backendPlugins) {
+      map.set(plugin.plugin_id, plugin);
+    }
+    return map;
+  }, [backendPlugins]);
+
+  useEffect(() => {
+    if (!isBackendInitialized) {
+      void initializeBackendCatalog();
+    }
+  }, [isBackendInitialized, initializeBackendCatalog]);
+
+  // Keep selection stable and always valid for currently visible plugin list.
+  useEffect(() => {
+    if (plugins.length === 0) {
+      if (selectedId && !allPlugins.some(p => p.id === selectedId)) {
+        setSelectedId(null);
+      }
+      return;
+    }
+
+    if (!selectedId) {
+      setSelectedId(plugins[0].id);
+      return;
+    }
+
+    const existsInAll = allPlugins.some(p => p.id === selectedId);
+    const existsInVisible = plugins.some(p => p.id === selectedId);
+    if (!existsInAll || !existsInVisible) {
+      setSelectedId(plugins[0].id);
+    }
+  }, [allPlugins, plugins, selectedId]);
+
+  const selected = allPlugins.find(p => p.id === selectedId);
   const summary = pluginCatalog.getSummary();
+
+  const togglePlugin = useCallback(async (plugin: ExtendedPluginMetadata) => {
+    if (pendingToggles.has(plugin.id)) {
+      return;
+    }
+
+    setPendingToggles(prev => {
+      const next = new Set(prev);
+      next.add(plugin.id);
+      return next;
+    });
+
+    const wantsDeactivate = plugin.activationState === 'active';
+
+    try {
+      let backendEntry = backendById.get(plugin.id);
+      if (isBackendApiAvailable && !backendEntry) {
+        await syncRuntimeCatalog();
+        backendEntry = usePluginCatalogStore.getState().plugins.find(p => p.plugin_id === plugin.id);
+      }
+
+      if (isBackendApiAvailable && backendEntry) {
+        if (wantsDeactivate) {
+          await apiDisablePlugin(plugin.id);
+        } else {
+          await apiEnablePlugin(plugin.id);
+        }
+        void refreshBackendCatalog();
+      }
+
+      if (wantsDeactivate) {
+        await pluginActivationManager.deactivate(plugin.id);
+      } else {
+        await pluginActivationManager.activate(plugin.id);
+      }
+    } catch (error) {
+      console.error('[PluginManager] Failed to toggle plugin', plugin.id, error);
+    } finally {
+      setPendingToggles(prev => {
+        const next = new Set(prev);
+        next.delete(plugin.id);
+        return next;
+      });
+    }
+  }, [backendById, isBackendApiAvailable, pendingToggles, refreshBackendCatalog, syncRuntimeCatalog]);
 
   return (
     <div className="p-6 space-y-4">
@@ -285,7 +377,7 @@ export function PluginManagerUI() {
                     selectedId === plugin.id ? 'text-blue-200' : 'text-neutral-500'
                   }`}>
                     {plugin.family}
-                    {plugin.origin !== 'builtin' && ` · ${plugin.origin}`}
+                    | {plugin.origin}
                   </p>
                 </button>
               ))}
@@ -296,7 +388,13 @@ export function PluginManagerUI() {
         {/* Plugin Details */}
         <Panel className="lg:col-span-2 space-y-3 max-h-[75vh] overflow-y-auto">
           {selected ? (
-            <PluginDetails plugin={selected} />
+            <PluginDetails
+              plugin={selected}
+              backendEntry={backendById.get(selected.id)}
+              isTogglePending={pendingToggles.has(selected.id)}
+              onToggle={togglePlugin}
+              backendToggleAvailable={isBackendApiAvailable}
+            />
           ) : (
             <div className="flex items-center justify-center h-64 text-neutral-500">
               Select a plugin to view details
@@ -318,37 +416,91 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
-function PluginDetails({ plugin }: { plugin: ExtendedPluginMetadata }) {
+function PluginDetails({
+  plugin,
+  backendEntry,
+  isTogglePending,
+  onToggle,
+  backendToggleAvailable,
+}: {
+  plugin: ExtendedPluginMetadata;
+  backendEntry?: PluginInfo;
+  isTogglePending: boolean;
+  onToggle: (plugin: ExtendedPluginMetadata) => void;
+  backendToggleAvailable: boolean;
+}) {
   const canToggle = pluginCatalog.canDisable(plugin.id);
   const isActive = plugin.activationState === 'active';
+  const updatedAtLabel = formatUpdatedAt(plugin.updatedAt);
+  const featureHighlights = plugin.featureHighlights ?? [];
+  const isBackendManaged = Boolean(backendEntry);
 
   const handleToggle = () => {
-    pluginActivationManager.toggle(plugin.id);
+    onToggle(plugin);
   };
 
   return (
     <>
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">
-          {plugin.icon && <Icon name={plugin.icon as string} size={16} className="mr-2" />}
-          {plugin.name}
-        </h2>
+        <div>
+          <h2 className="text-lg font-semibold">
+            {plugin.icon && <Icon name={plugin.icon as string} size={16} className="mr-2" />}
+            {plugin.name}
+          </h2>
+          <p className="text-xs text-neutral-500 font-mono mt-0.5">{plugin.id}</p>
+        </div>
         {canToggle && (
           <Button
             size="sm"
             variant={isActive ? 'secondary' : 'primary'}
             onClick={handleToggle}
+            disabled={isTogglePending}
           >
-            {isActive ? 'Deactivate' : 'Activate'}
+            {isTogglePending ? 'Saving...' : isActive ? 'Deactivate' : 'Activate'}
           </Button>
         )}
       </div>
 
       <div className="space-y-3">
+        <div className="flex flex-wrap gap-1">
+          <Badge color="blue" className="text-xs">{FAMILY_LABELS[plugin.family] ?? plugin.family}</Badge>
+          <Badge color="purple" className="text-xs">{plugin.origin}</Badge>
+          <Badge color={isActive ? 'green' : 'gray'} className="text-xs">
+            {plugin.activationState}
+          </Badge>
+          {!canToggle && <Badge color="yellow" className="text-xs">Required</Badge>}
+          {plugin.experimental && <Badge color="yellow" className="text-xs">Experimental</Badge>}
+          {plugin.deprecated && <Badge color="red" className="text-xs">Deprecated</Badge>}
+        </div>
+
         {plugin.description && (
           <div>
             <SectionHeading>Description</SectionHeading>
             <p className="text-sm">{plugin.description}</p>
+          </div>
+        )}
+
+        {(updatedAtLabel || plugin.changeNote || featureHighlights.length > 0) && (
+          <div>
+            <SectionHeading>Recent Changes</SectionHeading>
+            <div className="space-y-1.5 text-xs">
+              {updatedAtLabel && (
+                <div>
+                  <span className="text-neutral-500">Updated: </span>
+                  <span>{updatedAtLabel}</span>
+                </div>
+              )}
+              {plugin.changeNote && (
+                <p className="text-neutral-700 dark:text-neutral-300">{plugin.changeNote}</p>
+              )}
+              {featureHighlights.length > 0 && (
+                <ul className="space-y-1 text-neutral-700 dark:text-neutral-300">
+                  {featureHighlights.map((highlight, index) => (
+                    <li key={`${highlight}-${index}`}>- {highlight}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
 
@@ -383,6 +535,16 @@ function PluginDetails({ plugin }: { plugin: ExtendedPluginMetadata }) {
             <SectionHeading>Can Disable</SectionHeading>
             <p>{canToggle ? 'Yes' : 'No (required)'}</p>
           </div>
+          <div>
+            <SectionHeading>Persistence</SectionHeading>
+            <p>
+              {isBackendManaged
+                ? 'Backend catalog'
+                : backendToggleAvailable
+                  ? 'Runtime only (not synced yet)'
+                  : 'Runtime only (backend unavailable)'}
+            </p>
+          </div>
         </div>
 
         {plugin.tags && plugin.tags.length > 0 && (
@@ -414,15 +576,14 @@ function PluginDetails({ plugin }: { plugin: ExtendedPluginMetadata }) {
         {/* Capabilities */}
         <CapabilitiesSection capabilities={plugin.capabilities} />
 
+        {/* Permissions */}
+        <PermissionsSection permissions={plugin.permissions} />
+
         {/* Dependencies */}
         <DependenciesSection plugin={plugin} />
 
         {/* Family-specific metadata */}
         <FamilyMetadataSection plugin={plugin} />
-
-        {plugin.experimental && (
-          <Badge color="yellow" className="text-xs">Experimental</Badge>
-        )}
 
         {plugin.deprecated && (
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded p-3">
@@ -545,6 +706,34 @@ function formatMetadataValue(value: unknown): string {
   if (Array.isArray(value)) return value.join(', ');
   if (typeof value === 'object' && value !== null) return JSON.stringify(value);
   return String(value);
+}
+
+function PermissionsSection({ permissions }: { permissions?: string[] }) {
+  if (!permissions || permissions.length === 0) return null;
+
+  return (
+    <div>
+      <SectionHeading>Permissions</SectionHeading>
+      <div className="flex flex-wrap gap-1">
+        {permissions.map(permission => (
+          <Badge key={permission} color="gray" className="text-xs font-mono">
+            {permission}
+          </Badge>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatUpdatedAt(value?: string): string | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  }).format(new Date(ms));
 }
 
 function PluginSettingsSection({ pluginId }: { pluginId: string }) {
