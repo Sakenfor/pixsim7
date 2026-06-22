@@ -63,7 +63,7 @@ const baseTheme = EditorView.baseTheme({
     padding: '0',
   },
   '&.cm-editor .cm-placeholder': {
-    color: 'var(--color-neutral-400)',
+    color: 'rgb(var(--color-text-muted) / 1)',
     fontStyle: 'normal',
   },
   '.cm-tooltip': {
@@ -281,19 +281,19 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
         ref={containerRef}
         style={{ minHeight: `${effectiveMinHeight}px` }}
         className={clsx(
-          'w-full rounded border outline-none flex-1 overflow-hidden',
-          transparent ? 'bg-transparent' : 'bg-white dark:bg-neutral-900',
+          'w-full rounded border outline-none flex-1 overflow-hidden text-th',
+          transparent ? 'bg-transparent' : 'bg-surface-elevated',
           disabled && 'opacity-60 cursor-not-allowed',
           resizable ? 'resize-y' : 'resize-none',
           isOverLimit
-            ? 'border-red-500 dark:border-red-500 focus-within:ring-2 focus-within:ring-red-500/40'
-            : 'border-neutral-300 dark:border-neutral-700 focus-within:ring-2 focus-within:ring-accent/40',
+            ? 'border-signal-error focus-within:ring-2 focus-within:ring-signal-error/40'
+            : 'border-th focus-within:ring-2 focus-within:ring-accent/40',
         )}
       />
       {showCounter && (
         <div className="mt-1 flex justify-between items-center text-xs gap-2">
           {isOverLimit && (
-            <span className="text-red-600 dark:text-red-400 font-medium">
+            <span className="text-signal-error font-medium">
               Over limit by {Math.abs(remaining)} chars
             </span>
           )}
@@ -301,7 +301,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
             {counterAccessory}
             <span className={clsx(
               'tabular-nums',
-              isOverLimit ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-neutral-500',
+              isOverLimit ? 'text-signal-error font-semibold' : 'text-th-muted',
             )}>
               {value.length} / {maxChars}
             </span>

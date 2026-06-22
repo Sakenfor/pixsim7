@@ -164,21 +164,21 @@ export const PromptInput: React.FC<PromptInputProps> = ({
         autoFocus={autoFocus}
         style={{ minHeight: `${effectiveMinHeight}px` }}
         className={clsx(
-          'w-full rounded border p-2 outline-none flex-1',
-          transparent ? 'bg-transparent' : 'bg-white dark:bg-neutral-900',
+          'w-full rounded border p-2 outline-none flex-1 text-th placeholder:text-th-muted',
+          transparent ? 'bg-transparent' : 'bg-surface-elevated',
           disabled && 'opacity-60 cursor-not-allowed',
           variant === 'compact' ? 'text-sm' : 'text-base',
           resizable ? 'resize-y' : 'resize-none',
           // Show warning border and ring when over limit
           isOverLimit
-            ? 'border-red-500 dark:border-red-500 focus:ring-2 focus:ring-red-500/40'
-            : 'border-neutral-300 dark:border-neutral-700 focus:ring-2 focus:ring-accent/40'
+            ? 'border-signal-error focus:ring-2 focus:ring-signal-error/40'
+            : 'border-th focus:ring-2 focus:ring-accent/40'
         )}
       />
       {showCounter && (
         <div className="mt-1 flex justify-between items-center text-xs gap-2">
           {isOverLimit && (
-            <span className="text-red-600 dark:text-red-400 font-medium">
+            <span className="text-signal-error font-medium">
               ⚠️ Over limit by {Math.abs(remaining)} chars
             </span>
           )}
@@ -186,7 +186,7 @@ export const PromptInput: React.FC<PromptInputProps> = ({
             {counterAccessory}
             <span className={clsx(
               'tabular-nums',
-              isOverLimit ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-neutral-500'
+              isOverLimit ? 'text-signal-error font-semibold' : 'text-th-muted'
             )}>
               {value.length} / {maxChars}
             </span>
