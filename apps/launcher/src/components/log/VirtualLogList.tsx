@@ -1,6 +1,7 @@
 /**
  * Simple virtualized log list — only renders rows near the viewport.
- * No external library dependency. Uses a sentinel element for auto-scroll.
+ * No external library dependency. Shared by all three log viewers so live DOM
+ * stays bounded (~50 rows) regardless of how many lines are buffered.
  *
  * Selection: because rows outside the viewport are unmounted, native text
  * selection can't span them. Instead we track a whole-line range by index
@@ -40,6 +41,10 @@ export function VirtualLogList({ lines, meta, fields, onFieldClick }: VirtualLog
   const dragging = useRef(false)
   const pointerY = useRef(0)
   const rafId = useRef<number | null>(null)
+  // Latest lines, read by the (stable-identity) drag handlers so they never
+  // close over a stale array — and so window listeners stay removable.
+  const linesRef = useRef(lines)
+  linesRef.current = lines
 
   // Measure container height
   useEffect(() => {
@@ -77,9 +82,10 @@ export function VirtualLogList({ lines, meta, fields, onFieldClick }: VirtualLog
     if (!el) return 0
     const rect = el.getBoundingClientRect()
     const y = clientY - rect.top + el.scrollTop
-    return Math.max(0, Math.min(lines.length - 1, Math.floor(y / ROW_HEIGHT)))
-  }, [lines.length])
+    return Math.max(0, Math.min(linesRef.current.length - 1, Math.floor(y / ROW_HEIGHT)))
+  }, [])
 
+  // Stable identities (empty deps) so add/removeEventListener always pair up.
   const onWindowMouseMove = useCallback((e: MouseEvent) => {
     if (!dragging.current) return
     pointerY.current = e.clientY
@@ -125,7 +131,7 @@ export function VirtualLogList({ lines, meta, fields, onFieldClick }: VirtualLog
     window.addEventListener('mouseup', stopDrag)
   }, [indexFromPointer, autoScrollTick, onWindowMouseMove, stopDrag])
 
-  // Clean up window listeners / rAF on unmount
+  // Clean up window listeners / rAF on unmount (stable stopDrag → runs once)
   useEffect(() => stopDrag, [stopDrag])
 
   const copySelection = useCallback(() => {

@@ -6,7 +6,6 @@
  * These helpers hold that common logic so the viewers stay in sync.
  */
 
-import { useCallback, useRef } from 'react'
 import { Play, Pause, Refresh, Trash } from '../icons'
 
 /** Fallback level-filter options when /logs/meta hasn't loaded yet. */
@@ -28,32 +27,6 @@ export function routeFieldClick(
 ) {
   if (TRACEABLE_FIELDS.has(name) && onFieldClick) onFieldClick(name, value)
   else setSearch(`${name}=${value}`)
-}
-
-/**
- * Keep a scroll container pinned to the bottom as new lines arrive — unless the
- * user has scrolled up (within 40px of the bottom counts as "at bottom").
- *
- * Returns the ref to attach to the scroll element, an `onScroll` handler, and
- * `stickToBottom()` to call from an effect keyed on whatever drives new lines.
- */
-export function useStickyScroll() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const atBottom = useRef(true)
-
-  const stickToBottom = useCallback(() => {
-    if (atBottom.current && containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
-    }
-  }, [])
-
-  const onScroll = useCallback(() => {
-    const el = containerRef.current
-    if (!el) return
-    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-  }, [])
-
-  return { containerRef, onScroll, stickToBottom }
 }
 
 /**

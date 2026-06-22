@@ -10,7 +10,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { getLogs, clearLogs } from '../api/client'
 import { getLogMeta, getCompiledFields, type LogMeta, type CompiledField } from '../api/logMeta'
 import { Input, Select } from '@pixsim7/shared.ui'
-import { LogLine, matchesSearch, LogControlButtons, useStickyScroll, LEVEL_OPTIONS } from './log'
+import { matchesSearch, LogControlButtons, VirtualLogList, LEVEL_OPTIONS } from './log'
 import { usePollWhenVisible } from '../hooks/usePollWhenVisible'
 
 const MAX_LINES = 2000
@@ -24,7 +24,6 @@ export function EmbeddedLogViewer() {
   const [levelFilter, setLevelFilter] = useState('')
   const [searchFilter, setSearchFilter] = useState('')
   const [paused, setPaused] = useState(false)
-  const { containerRef, onScroll, stickToBottom } = useStickyScroll()
 
   useEffect(() => {
     const onHash = () => setServiceKey(location.hash.slice(1))
@@ -57,8 +56,6 @@ export function EmbeddedLogViewer() {
 
   // Polling: pauses automatically when window is hidden
   usePollWhenVisible(fetchLogs, POLL_INTERVAL, !paused && !!serviceKey)
-
-  useEffect(() => { stickToBottom() }, [lines.length, stickToBottom])
 
   // Client-side filtering
   const filteredLines = lines.filter((line) => {
@@ -103,12 +100,14 @@ export function EmbeddedLogViewer() {
         <span className="text-gray-600">{filteredLines.length}{filteredLines.length !== lines.length ? `/${lines.length}` : ''} lines</span>
       </div>
 
-      {/* Log lines */}
-      <div ref={containerRef} onScroll={onScroll} className="flex-1 overflow-auto bg-surface">
-        {filteredLines.map((line, i) => (
-          <LogLine key={i} line={line} meta={meta} fields={fields}
-            onFieldClick={(name, value) => setSearchFilter(`${name}=${value}`)} />
-        ))}
+      {/* Log lines (virtualized — keeps live DOM bounded) */}
+      <div className="flex-1 min-h-0 bg-surface">
+        <VirtualLogList
+          lines={filteredLines}
+          meta={meta}
+          fields={fields}
+          onFieldClick={(name, value) => setSearchFilter(`${name}=${value}`)}
+        />
       </div>
     </div>
   )

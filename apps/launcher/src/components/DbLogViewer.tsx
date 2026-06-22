@@ -12,7 +12,7 @@ import {
   type LogMeta, type CompiledField, type FilterPreset,
 } from '../api/logMeta'
 import { Input, Select } from '@pixsim7/shared.ui'
-import { LogLine, matchesSearch, routeFieldClick, useStickyScroll, LEVEL_OPTIONS } from './log'
+import { matchesSearch, routeFieldClick, VirtualLogList, LEVEL_OPTIONS } from './log'
 import { Refresh } from './icons'
 
 export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, value: string) => void }) {
@@ -34,7 +34,6 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
   const [activePreset, setActivePreset] = useState<string>('')
 
   const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const { containerRef, onScroll, stickToBottom } = useStickyScroll()
 
   useEffect(() => {
     getLogMeta().then(setMeta)
@@ -113,15 +112,14 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
     return () => { if (refreshRef.current) clearInterval(refreshRef.current) }
   }, [autoRefresh, fetchLogs])
 
-  // Auto-scroll
-  useEffect(() => { stickToBottom() }, [entries.length, search, stickToBottom])
-
   // Client-side operator search (| !) on rendered lines
   const displayEntries = useMemo(() => {
     const hasOperators = search.includes('|') || search.includes('!')
     if (!hasOperators || !search) return entries
     return entries.filter((e) => matchesSearch(logEntryToLine(e), search))
   }, [entries, search])
+
+  const displayLines = useMemo(() => displayEntries.map(logEntryToLine), [displayEntries])
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-surface text-gray-100">
@@ -193,16 +191,19 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
         <div className="px-3 py-1 bg-red-900/30 text-red-400 text-[11px] border-b border-red-800/30 select-text whitespace-pre-wrap break-words">{error}</div>
       )}
 
-      <div ref={containerRef} onScroll={onScroll} className="flex-1 overflow-auto bg-surface">
-        {displayEntries.length === 0 && !loading && (
+      <div className="flex-1 min-h-0 bg-surface">
+        {displayLines.length === 0 && !loading ? (
           <div className="text-gray-500 text-sm text-center py-8">
             {error ? 'Failed to load — is the backend running?' : 'No logs match the current filters'}
           </div>
+        ) : (
+          <VirtualLogList
+            lines={displayLines}
+            meta={meta}
+            fields={fields}
+            onFieldClick={(name, value) => routeFieldClick(name, value, setSearch, onFieldClick)}
+          />
         )}
-        {displayEntries.map((entry) => (
-          <LogLine key={entry.id} line={logEntryToLine(entry)} meta={meta} fields={fields}
-            onFieldClick={(name, value) => routeFieldClick(name, value, setSearch, onFieldClick)} />
-        ))}
       </div>
     </div>
   )
