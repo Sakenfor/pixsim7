@@ -91,6 +91,7 @@ class AssetSearchRequest(BaseModel):
     tag: str | list[str] | None = Field(None, description="Filter assets containing tag (slug)")
     q: Optional[str] = Field(None, description="Full-text search over description/tags")
     include_archived: bool = Field(False, description="Include archived assets (default: false)")
+    archived_only: bool = Field(False, description="Restrict to ONLY archived assets (overrides include_archived)")
     searchable: Optional[bool] = Field(True, description="Filter by searchable flag (default: true)")
 
     created_from: datetime | None = Field(None, description="Filter by created_at >= value")

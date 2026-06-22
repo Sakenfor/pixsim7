@@ -193,8 +193,11 @@ class AssetSearchMixin:
         if not user.is_admin():
             query = query.where(Asset.user_id == owner_user_id)
 
-        # Exclude archived by default
-        if not include_archived:
+        # archived_only restricts to ONLY archived assets; otherwise exclude
+        # archived by default unless include_archived is set.
+        if sf.archived_only:
+            query = query.where(Asset.is_archived == True)
+        elif not include_archived:
             query = query.where(Asset.is_archived == False)
 
         # Searchable filter (default True to hide non-searchable assets)

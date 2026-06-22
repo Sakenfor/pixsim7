@@ -27,6 +27,8 @@ class AssetSearchFilters:
     sync_status: Optional[SyncStatus] = None
     provider_status: Optional[str] = None
     include_archived: bool = False
+    # Restrict results to ONLY archived assets (overrides include_archived).
+    archived_only: bool = False
     searchable: Optional[bool] = True
     asset_kind: Optional[str] = "content"
 
