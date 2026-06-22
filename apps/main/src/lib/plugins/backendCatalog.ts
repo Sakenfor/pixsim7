@@ -30,6 +30,7 @@ export interface BackendPluginEntryLike {
   description?: string;
   version?: string;
   tags?: string[];
+  permissions?: string[];
   manifest: BackendPluginManifestLike;
 }
 
@@ -95,6 +96,7 @@ export async function ensureBackendPluginCatalogEntry(
     description: entry.description ?? manifest.description,
     author: entry.author,
     tags: entry.tags ?? manifest.tags,
+    permissions: entry.permissions,
     pluginType,
     bundleFamily,
     icon: manifest.icon,

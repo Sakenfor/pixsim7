@@ -112,6 +112,7 @@ export function fromPluginSystemMetadata(
     deprecationMessage: metadata.deprecationMessage,
     replaces: metadata.replaces,
     configurable: metadata.configurable,
+    permissions: metadata.permissions,
     canDisable: metadata.canDisable,
     isActive: metadata.activationState === 'active',
     isBuiltin: origin === 'builtin',

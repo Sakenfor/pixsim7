@@ -136,6 +136,9 @@ export interface PluginMetadata extends PluginMeta {
   /** Capability hints for feature plugins */
   capabilities?: PluginCapabilityHints;
 
+  /** Required permissions for sandbox/bundle plugins */
+  permissions?: string[];
+
   /** Features this plugin provides */
   providesFeatures?: string[];
 

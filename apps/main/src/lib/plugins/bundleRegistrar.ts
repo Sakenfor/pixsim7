@@ -26,6 +26,7 @@ const controlCenterIdsByPluginId = new Map<string, string>();
 
 function buildBundleDependencies(manifest: BundleManifest): {
   capabilities?: PluginCapabilityHints;
+  permissions?: string[];
   providesFeatures?: string[];
   consumesFeatures?: string[];
   consumesActions?: string[];
@@ -64,6 +65,7 @@ function buildBundleDependencies(manifest: BundleManifest): {
 
   return {
     capabilities: Object.keys(capabilities).length > 0 ? capabilities : undefined,
+    permissions: manifest.permissions,
     providesFeatures: providesFeatures.length > 0 ? providesFeatures : undefined,
     consumesFeatures: consumesFeatures.length > 0 ? consumesFeatures : undefined,
     consumesActions: consumesActions.length > 0 ? consumesActions : undefined,
@@ -89,6 +91,7 @@ function buildUiBundleMetadata(
     tags: manifest.tags,
     pluginType: manifest.type,
     bundleFamily: manifest.family === 'tool' ? 'tool' : 'ui',
+    permissions: manifest.permissions,
     hasOverlays: manifest.permissions?.includes('ui:overlay'),
     icon: manifest.icon,
     ...dependencies,
