@@ -146,6 +146,51 @@ describe('buildGenerationRequest', () => {
     });
   });
 
+  it('stamps input_provenance from a carried assetSetProvenance marker', async () => {
+    const context = createBaseContext({
+      operationType: 'image_to_image',
+      prompt: 'From a set',
+      operationInputs: [
+        {
+          id: 'slot-0',
+          asset: { id: 42, mediaType: 'image' },
+          queuedAt: '',
+          // Upstream pre-pick already resolved the set ref to asset 42 and
+          // handed the lineage forward via assetSetProvenance.
+          assetSetProvenance: { setId: 7, mode: 'random_each', pickStrategy: 'no_repeat' },
+        },
+      ] as any,
+      dynamicParams: {},
+    });
+
+    const result = await buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.inputProvenance).toEqual([
+      {
+        input_id: 'slot-0',
+        set_id: 7,
+        mode: 'random_each',
+        pick_strategy: 'no_repeat',
+        resolved_asset_id: 42,
+      },
+    ]);
+  });
+
+  it('omits input_provenance when no input has set linkage', async () => {
+    const context = createBaseContext({
+      operationType: 'image_to_image',
+      prompt: 'No set',
+      operationInputs: [
+        { id: 'a', asset: { id: 10, mediaType: 'image' }, queuedAt: '' },
+      ] as any,
+      dynamicParams: {},
+    });
+
+    const result = await buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.inputProvenance).toBeUndefined();
+  });
+
   it('builds composition_assets from queued local URLs when backend IDs are unavailable', async () => {
     const context = createBaseContext({
       operationType: 'image_to_image',

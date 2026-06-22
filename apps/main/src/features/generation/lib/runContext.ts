@@ -31,10 +31,25 @@ export interface ResolvedGenerationRunDescriptor {
   metadata: Record<string, unknown>;
 }
 
+/**
+ * Records that an input asset was drawn from an asset set, and how. The
+ * concrete pick already lands in `input_asset_ids`; this preserves the
+ * otherwise-ephemeral selection MODE so a regenerate flow can later offer
+ * "re-pick from the set" vs. reuse the frozen asset. Plan: `quickgen-input-provenance`.
+ */
+export interface InputProvenanceEntry {
+  input_id: string;
+  set_id: number;
+  mode: 'random_each' | 'locked' | 'iterate';
+  pick_strategy?: 'random' | 'sequential' | 'no_repeat';
+  resolved_asset_id?: number;
+}
+
 export interface GenerationRunItemDescriptor {
   itemIndex?: number;
   itemTotal?: number;
   inputAssetIds?: readonly unknown[];
+  inputProvenance?: readonly InputProvenanceEntry[];
   metadata?: Record<string, unknown>;
 }
 
@@ -46,6 +61,7 @@ export interface GenerationRunContext {
   item_index?: number;
   item_total?: number;
   input_asset_ids?: number[];
+  input_provenance?: InputProvenanceEntry[];
   [key: string]: unknown;
 }
 
@@ -87,6 +103,31 @@ function normalizeInputAssetIds(value: readonly unknown[] | undefined): number[]
   return ids;
 }
 
+function normalizeInputProvenance(
+  value: readonly InputProvenanceEntry[] | undefined,
+): InputProvenanceEntry[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const entries = value
+    .filter((entry): entry is InputProvenanceEntry =>
+      !!entry
+      && typeof entry.input_id === 'string'
+      && entry.input_id.length > 0
+      && typeof entry.set_id === 'number'
+      && Number.isFinite(entry.set_id)
+      && (entry.mode === 'random_each' || entry.mode === 'locked' || entry.mode === 'iterate'))
+    .map((entry) => {
+      const resolvedAssetId = normalizePositiveInt(entry.resolved_asset_id);
+      return {
+        input_id: entry.input_id,
+        set_id: Math.floor(entry.set_id),
+        mode: entry.mode,
+        ...(entry.pick_strategy ? { pick_strategy: entry.pick_strategy } : {}),
+        ...(resolvedAssetId !== undefined ? { resolved_asset_id: resolvedAssetId } : {}),
+      };
+    });
+  return entries.length > 0 ? entries : undefined;
+}
+
 /**
  * Resolve run-level metadata once, then derive per-item contexts from it.
  */
@@ -112,6 +153,7 @@ export function createGenerationRunItemContext(
   const itemIndex = normalizeNonNegativeInt(item.itemIndex);
   const itemTotal = normalizePositiveInt(item.itemTotal);
   const inputAssetIds = normalizeInputAssetIds(item.inputAssetIds);
+  const inputProvenance = normalizeInputProvenance(item.inputProvenance);
 
   const context: GenerationRunContext = {
     ...run.metadata,
@@ -134,6 +176,9 @@ export function createGenerationRunItemContext(
   }
   if (inputAssetIds) {
     context.input_asset_ids = inputAssetIds;
+  }
+  if (inputProvenance) {
+    context.input_provenance = inputProvenance;
   }
 
   return context;

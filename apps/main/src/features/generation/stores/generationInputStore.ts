@@ -50,6 +50,14 @@ export interface InputItem {
   lockedTimestamp?: number; // Locked frame timestamp in seconds (for video assets)
   roleOverride?: string; // e.g. 'environment' or 'main_character'
   assetSetRef?: AssetSetSlotRef; // optional set linkage for variety picks
+  /**
+   * Set lineage carried forward when an upstream pre-pick already resolved this
+   * input's `assetSetRef` to a concrete asset (burst/Each/iterate paths strip
+   * `assetSetRef` the moment they pick). Lets `buildGenerationRequest` stamp
+   * `run_context.input_provenance` from a single point regardless of which path
+   * did the picking. Transient — never persisted to the input store.
+   */
+  assetSetProvenance?: Pick<AssetSetSlotRef, 'setId' | 'mode' | 'pickStrategy'>;
   maskUrl?: string; // DEPRECATED — kept for migration, prefer maskLayers
   maskLayers?: InputMaskLayer[]; // List of mask layers to composite at generation time
   skipped?: boolean; // Temporarily omit this input from generation

@@ -16,6 +16,7 @@ import { useCompositionPackageStore } from '@/stores/compositionPackageStore';
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 import { pickFromSet } from './pickFromSet';
+import type { InputProvenanceEntry } from './runContext';
 
 // Re-export for backwards compatibility
 export type { OperationType };
@@ -61,6 +62,14 @@ export interface BuildGenerationResult {
    * The caller should persist these via updatePickState and update display assets.
    */
   pickStateUpdates?: PickStateUpdate[];
+
+  /**
+   * Set lineage for inputs drawn from an asset set (mode + strategy + resolved
+   * pick). The caller stamps these into `run_context.input_provenance` so the
+   * saved generation records HOW each input was chosen, not just the concrete
+   * asset id. Plan: `quickgen-input-provenance`.
+   */
+  inputProvenance?: InputProvenanceEntry[];
 }
 
 /**
@@ -258,6 +267,9 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
   };
 
   const pickStateUpdates: PickStateUpdate[] = [];
+  // Keyed by inputId so the image+video double-resolve below collapses to one
+  // provenance entry per input (the second pass overwrites the first).
+  const inputProvenanceById = new Map<string, InputProvenanceEntry>();
 
   const resolveCompositionAssetsFromInputs = async (
     inputs: InputItem[] | undefined,
@@ -316,6 +328,21 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
           // Bug 1: set not found - warn instead of silent fallback
           console.warn(`[pickFromSet] Asset set "${item.assetSetRef.setId}" not found, using display asset`);
         }
+      }
+
+      // Record set lineage regardless of WHICH path resolved the pick: a live
+      // `assetSetRef` (single path picks here) or an `assetSetProvenance` marker
+      // carried by an upstream pre-pick (burst/Each/iterate stripped the ref).
+      const provenanceSource = item.assetSetRef ?? item.assetSetProvenance;
+      if (provenanceSource) {
+        const resolvedAssetId = asPositiveAssetId(resolvedAsset.id);
+        inputProvenanceById.set(item.id, {
+          input_id: item.id,
+          set_id: provenanceSource.setId,
+          mode: provenanceSource.mode,
+          ...(provenanceSource.pickStrategy ? { pick_strategy: provenanceSource.pickStrategy } : {}),
+          ...(resolvedAssetId !== undefined ? { resolved_asset_id: resolvedAssetId } : {}),
+        });
       }
 
       let role: string;
@@ -693,6 +720,7 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
     params: normalizedParams,
     finalPrompt: clampedPrompt,
     pickStateUpdates: pickStateUpdates.length > 0 ? pickStateUpdates : undefined,
+    inputProvenance: inputProvenanceById.size > 0 ? Array.from(inputProvenanceById.values()) : undefined,
   };
 }
 
