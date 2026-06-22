@@ -142,6 +142,7 @@ class AnalysisService:
         priority: int = 5,
         enqueue: bool = True,
         embedder_id: Optional[str] = None,
+        backfill_run_id: Optional[int] = None,
     ) -> tuple[AssetAnalysis, bool]:
         """
         Create analysis and return `(analysis, created)` where `created=False`
@@ -266,6 +267,7 @@ class AnalysisService:
             dedupe_key=dedupe_key,
             status=AnalysisStatus.PENDING,
             priority=priority,
+            backfill_run_id=backfill_run_id,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )

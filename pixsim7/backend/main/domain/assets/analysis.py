@@ -108,6 +108,15 @@ class AssetAnalysis(SQLModel, table=True):
         index=True,
         description="Stable idempotency key over dedupe tuple",
     )
+    backfill_run_id: Optional[int] = Field(
+        default=None,
+        index=True,
+        description=(
+            "Soft link to the AnalysisBackfillRun that created this analysis "
+            "(no FK). Lets a backfill reconcile its downstream per-analysis "
+            "outcomes (e.g. embed-time 409s that land after the run completes)."
+        ),
+    )
 
     # Lifecycle
     status: AnalysisStatus = Field(

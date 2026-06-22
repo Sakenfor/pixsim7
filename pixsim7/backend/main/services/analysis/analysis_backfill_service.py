@@ -98,8 +98,42 @@ class AnalysisBackfillService(BackfillRunServiceBase[AnalysisBackfillRun]):
             params=run.params or {},
             priority=run.priority,
             enqueue=True,
+            backfill_run_id=run.id,
         )
         return {"created": 1} if created else {"deduped": 1}
+
+    async def outcome_breakdowns(
+        self, run_ids: List[int]
+    ) -> Dict[int, Dict[str, int]]:
+        """Per-run downstream analysis-status counts (lazy reconcile).
+
+        The run's own counters only reflect *enqueue* success; the analyses
+        execute later and can fail (e.g. embed-time 409 model_not_served). This
+        groups the run's created analyses by their current status so callers can
+        surface "N completed, M failed" even after the run reports COMPLETED.
+        Keyed by run_id -> {status: count}; runs with no created analyses map to
+        an empty dict.
+        """
+        from pixsim7.backend.main.domain.assets.analysis import AssetAnalysis
+
+        out: Dict[int, Dict[str, int]] = {rid: {} for rid in run_ids}
+        if not run_ids:
+            return out
+
+        stmt = (
+            select(
+                AssetAnalysis.backfill_run_id,
+                AssetAnalysis.status,
+                func.count().label("n"),
+            )
+            .where(AssetAnalysis.backfill_run_id.in_(run_ids))
+            .group_by(AssetAnalysis.backfill_run_id, AssetAnalysis.status)
+        )
+        result = await self.db.execute(stmt)
+        for run_id, status, count in result.all():
+            key = status.value if hasattr(status, "value") else str(status)
+            out.setdefault(run_id, {})[key] = int(count)
+        return out
 
     def _apply_outcome(self, run: AnalysisBackfillRun, totals: Dict[str, int]) -> None:
         run.created_analyses += totals.get("created", 0)

@@ -177,6 +177,19 @@ class AnalysisBackfillListResponse(BaseModel):
     total: int
 
 
+class BackfillOutcomesResponse(BaseModel):
+    """Lazy reconcile of downstream per-analysis outcomes for a user's backfill
+    runs. Keyed by run_id (string) -> {analysis status: count}.
+
+    The run's own counters only reflect *enqueue* success; the analyses execute
+    later and can fail (e.g. embed-time 409 model_not_served) after the run
+    reports COMPLETED. This surfaces those real outcomes. Served off-schema
+    (include_in_schema=False) with a hand-written client type to avoid codegen
+    drift on the existing AnalysisBackfillResponse."""
+
+    outcomes: Dict[str, Dict[str, int]]
+
+
 # ===== SERIALIZATION HELPERS =====
 
 def _build_analysis_response(analysis) -> AnalysisResponse:
@@ -396,6 +409,32 @@ async def list_analysis_backfills(
         return AnalysisBackfillListResponse(items=items, total=len(items))
     except InvalidOperationError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# NOTE: declared before /analyses/backfills/{run_id} so the literal "outcomes"
+# segment isn't captured by the int path param. include_in_schema=False keeps
+# this advisory rollup out of the generated client (hand-written type instead).
+@router.get(
+    "/analyses/backfills/outcomes",
+    response_model=BackfillOutcomesResponse,
+    include_in_schema=False,
+)
+async def get_analysis_backfill_outcomes(
+    user: CurrentUser,
+    analysis_service: AnalysisSvc,
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Downstream per-analysis status counts for the user's recent backfill runs.
+
+    Reflects embed-time failures (e.g. 409 model_not_served) that land after a
+    run reports COMPLETED — which the run's enqueue-time counters cannot show.
+    """
+    service = AnalysisBackfillService(analysis_service.db)
+    runs = await service.list_runs(user_id=user.id, limit=limit)
+    breakdowns = await service.outcome_breakdowns([run.id for run in runs])
+    return BackfillOutcomesResponse(
+        outcomes={str(run_id): counts for run_id, counts in breakdowns.items()}
+    )
 
 
 @router.get("/analyses/backfills/{run_id}", response_model=AnalysisBackfillResponse)

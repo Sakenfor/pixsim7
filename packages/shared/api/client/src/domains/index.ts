@@ -186,6 +186,7 @@ export type {
   CreateAnalysisBackfillRequest,
   AnalysisBackfillResponse,
   AnalysisBackfillListResponse,
+  BackfillOutcomesResponse,
   ListAssetAnalysesOptions,
   ListAnalysisBackfillsOptions,
 } from './analyses';

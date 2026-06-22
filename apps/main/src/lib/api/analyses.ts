@@ -16,6 +16,7 @@ export type {
   CreateAnalysisBackfillRequest,
   AnalysisBackfillResponse,
   AnalysisBackfillListResponse,
+  BackfillOutcomesResponse,
   ListAssetAnalysesOptions,
   ListAnalysisBackfillsOptions,
 } from '@pixsim7/shared.api.client/domains';
@@ -32,3 +33,4 @@ export const getAnalysisBackfill = analysesApi.getAnalysisBackfill;
 export const pauseAnalysisBackfill = analysesApi.pauseAnalysisBackfill;
 export const resumeAnalysisBackfill = analysesApi.resumeAnalysisBackfill;
 export const cancelAnalysisBackfill = analysesApi.cancelAnalysisBackfill;
+export const getAnalysisBackfillOutcomes = analysesApi.getAnalysisBackfillOutcomes;

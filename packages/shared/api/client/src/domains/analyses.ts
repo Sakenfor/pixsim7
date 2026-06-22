@@ -87,6 +87,16 @@ export interface AnalysisBackfillListResponse {
   total: number;
 }
 
+/**
+ * Downstream per-analysis outcomes for the user's backfill runs.
+ * [frontend-only] Mirrors the off-schema BackfillOutcomesResponse: keyed by
+ * run_id (string) -> { analysis status: count }. Surfaces embed-time failures
+ * (e.g. 409 model_not_served) that land after a run reports COMPLETED.
+ */
+export interface BackfillOutcomesResponse {
+  outcomes: Record<string, Record<string, number>>;
+}
+
 export interface ListAssetAnalysesOptions {
   analyzer_id?: string;
   status?: AnalysisStatus;
@@ -146,6 +156,10 @@ export function createAnalysesApi(client: PixSimApiClient) {
 
     async cancelAnalysisBackfill(runId: number): Promise<AnalysisBackfillResponse> {
       return client.post<AnalysisBackfillResponse>(`/analyses/backfills/${runId}/cancel`);
+    },
+
+    async getAnalysisBackfillOutcomes(): Promise<BackfillOutcomesResponse> {
+      return client.get<BackfillOutcomesResponse>('/analyses/backfills/outcomes');
     },
   };
 }

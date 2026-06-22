@@ -14,6 +14,7 @@ import {
 import {
   createAnalysisBackfill,
   listAnalysisBackfills,
+  getAnalysisBackfillOutcomes,
   pauseAnalysisBackfill,
   resumeAnalysisBackfill,
   cancelAnalysisBackfill,
@@ -1149,6 +1150,7 @@ function AnalysisRoutingCatalog({
 interface AnalyzerBackfillPanelProps {
   assetAnalyzers: AnalyzerInfo[];
   runs: AnalysisBackfillResponse[];
+  outcomes: Record<string, Record<string, number>>;
   isLoading: boolean;
   error: string | null;
   formState: BackfillFormState;
@@ -1165,6 +1167,7 @@ interface AnalyzerBackfillPanelProps {
 function AnalyzerBackfillPanel({
   assetAnalyzers,
   runs,
+  outcomes,
   isLoading,
   error,
   formState,
@@ -1420,6 +1423,26 @@ function AnalyzerBackfillPanel({
                       style={{ width: `${progress}%` }}
                     />
                   </div>
+                  {(() => {
+                    // Downstream outcomes: the analyses this run created execute
+                    // later, so a run can report "completed" while embeds fail
+                    // (e.g. 409 model_not_served). Surface the real tally.
+                    const o = outcomes[String(run.id)];
+                    if (!o) return null;
+                    const done = o.completed ?? 0;
+                    const failed = o.failed ?? 0;
+                    const inflight = (o.pending ?? 0) + (o.processing ?? 0);
+                    if (done + failed + inflight === 0) return null;
+                    return (
+                      <div className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+                        Embeds: {done} done
+                        {failed > 0 && (
+                          <span className="text-amber-600 dark:text-amber-400"> • {failed} failed</span>
+                        )}
+                        {inflight > 0 && <span> • {inflight} running</span>}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {run.last_error && (
@@ -1473,6 +1496,7 @@ export function AnalyzersSettings() {
     return result;
   }, [storePointChains]);
   const [backfillRuns, setBackfillRuns] = useState<AnalysisBackfillResponse[]>([]);
+  const [backfillOutcomes, setBackfillOutcomes] = useState<Record<string, Record<string, number>>>({});
   const [backfillForm, setBackfillForm] = useState<BackfillFormState>(INITIAL_BACKFILL_FORM_STATE);
   const [isLoadingBackfills, setIsLoadingBackfills] = useState(false);
   const [backfillError, setBackfillError] = useState<string | null>(null);
@@ -1525,6 +1549,14 @@ export function AnalyzersSettings() {
       const response = await listAnalysisBackfills({ limit: 50 });
       setBackfillRuns(response.items ?? []);
       setBackfillError(null);
+      // Downstream outcomes are advisory; a failure here shouldn't surface as a
+      // backfill error. Reconciled lazily (failures land after a run completes).
+      try {
+        const out = await getAnalysisBackfillOutcomes();
+        setBackfillOutcomes(out.outcomes ?? {});
+      } catch {
+        setBackfillOutcomes({});
+      }
     } catch (err) {
       setBackfillError(err instanceof Error ? err.message : 'Failed to load backfill runs');
     } finally {
@@ -2275,6 +2307,7 @@ export function AnalyzersSettings() {
       <AnalyzerBackfillPanel
         assetAnalyzers={assetAnalyzers}
         runs={backfillRuns}
+        outcomes={backfillOutcomes}
         isLoading={isLoadingBackfills}
         error={backfillError}
         formState={backfillForm}
