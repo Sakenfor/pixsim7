@@ -165,7 +165,7 @@ def _parse_manifest(pack_dir: Path) -> Optional[Dict[str, Any]]:
 
     Delegates to the shared `read_pack_manifest_header` so primitives packs and
     prompt packs validate identical header shape (id, title, description,
-    version, category). Returns the header as a plain dict for back-compat with
+    version, category, icon). Returns the header as a plain dict for back-compat with
     the existing `load_primitives_pack` result envelope.
     """
     from pixsim7.backend.main.services.prompt.block.pack_manifest_header import (

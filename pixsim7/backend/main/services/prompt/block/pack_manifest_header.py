@@ -2,7 +2,7 @@
 
 A content pack's `manifest.yaml` carries two distinct concerns:
 
-1. **Pack-level metadata** (id, title, description, version, category) — read once
+1. **Pack-level metadata** (id, title, description, version, category, icon) — read once
    from the *root* manifest, applies to the whole pack. Used by the inventory
    endpoint and by the primitives loader.
 2. **Matrix-preset definitions** (prompt packs only) — may live in the root and
@@ -85,6 +85,7 @@ class PackManifestHeader:
     description: Optional[str] = None
     version: Optional[str] = None
     category: Optional[str] = None
+    icon: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -107,6 +108,9 @@ def extract_header_fields(*, data: Dict[str, Any], src: Path) -> Dict[str, Optio
         ),
         "category": _ensure_optional_string(
             value=data.get("category"), path=src, field="category"
+        ),
+        "icon": _ensure_optional_string(
+            value=data.get("icon"), path=src, field="icon"
         ),
     }
 

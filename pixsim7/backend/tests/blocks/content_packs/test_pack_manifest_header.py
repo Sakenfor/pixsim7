@@ -1,7 +1,7 @@
 """Tests for `pack_manifest_header.read_pack_manifest_header`.
 
 The shared header reader is the single source of truth for pack-level metadata
-(id, title, description, version, category). It feeds the inventory endpoint
+(id, title, description, version, category, icon). It feeds the inventory endpoint
 (prompt + primitives packs) and the primitives loader's manifest result.
 """
 from __future__ import annotations
@@ -42,6 +42,7 @@ def test_full_header_round_trips() -> None:
                 "description": "Camera primitives",
                 "version": "1.2.0",
                 "category": "camera",
+                "icon": "camera",
             },
         )
         header = read_pack_manifest_header(root)
@@ -51,6 +52,7 @@ def test_full_header_round_trips() -> None:
             description="Camera primitives",
             version="1.2.0",
             category="camera",
+            icon="camera",
         )
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -77,6 +79,7 @@ def test_partial_header_fields_default_to_none() -> None:
         assert header.title is None
         assert header.description is None
         assert header.version is None
+        assert header.icon is None
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -111,6 +114,16 @@ def test_non_string_version_raises() -> None:
     try:
         _write_yaml(root / "manifest.yaml", {"version": 1.0})
         with pytest.raises(ManifestValidationError, match="version must be a string"):
+            read_pack_manifest_header(root)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_non_string_icon_raises() -> None:
+    root = _tempdir()
+    try:
+        _write_yaml(root / "manifest.yaml", {"icon": ["camera"]})
+        with pytest.raises(ManifestValidationError, match="icon must be a string"):
             read_pack_manifest_header(root)
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -174,6 +187,7 @@ def test_to_dict_matches_dataclass_fields() -> None:
         description="d",
         version="1",
         category="c",
+        icon="camera",
     )
     assert header.to_dict() == {
         "id": "x",
@@ -181,6 +195,7 @@ def test_to_dict_matches_dataclass_fields() -> None:
         "description": "d",
         "version": "1",
         "category": "c",
+        "icon": "camera",
     }
 
 

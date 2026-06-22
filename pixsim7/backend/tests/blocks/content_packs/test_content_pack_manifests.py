@@ -48,6 +48,30 @@ def test_parse_manifests_collects_matrix_presets() -> None:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_parse_manifests_includes_manifest_icon() -> None:
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "manifest.yaml",
+            {
+                "id": "x",
+                "icon": "camera",
+                "matrix_presets": [
+                    {
+                        "label": "Preset",
+                        "query": {"row_key": "role", "col_key": "role"},
+                    }
+                ],
+            },
+        )
+
+        manifests = parse_manifests(root, pack_name="testpack")
+        assert len(manifests) == 1
+        assert manifests[0]["icon"] == "camera"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_parse_manifests_ignores_files_without_matrix_presets() -> None:
     root = Path(f"test_artifacts_pack_{uuid4().hex}")
     try:

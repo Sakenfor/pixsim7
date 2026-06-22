@@ -416,7 +416,7 @@ def _parse_manifests_core(
                 )
                 continue
 
-        # Header fields (id/title/description/version/category) are validated
+        # Header fields (id/title/description/version/category/icon) are validated
         # by the shared extractor in pack_manifest_header so per-source metadata
         # here matches the pack-level header reader byte-for-byte.
         # Imported lazily to avoid a circular import (pack_manifest_header imports from us).
@@ -447,6 +447,7 @@ def _parse_manifests_core(
                 "title": header["title"],
                 "description": header["description"],
                 "category": header["category"],
+                "icon": header["icon"],
                 "matrix_presets": parsed_presets,
             }
         )
