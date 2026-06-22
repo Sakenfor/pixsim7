@@ -5,6 +5,7 @@
  * Features can also register their own sources directly via referenceRegistry.
  */
 import { pixsimClient } from '@lib/api/client';
+import { fetchAllPlans } from '@lib/api/devPlans';
 
 import { referenceRegistry } from './registry';
 
@@ -73,9 +74,8 @@ referenceRegistry.register({
   color: 'text-blue-400',
   label: 'Plans',
   fetch: () =>
-    pixsimClient
-      .get<{ plans: PlanEntry[] }>('/dev/plans', { params: { limit: 200, include_hidden: false } })
-      .then((r) => _buildPlanTree(r.plans || []))
+    fetchAllPlans<PlanEntry>({ include_hidden: false })
+      .then((plans) => _buildPlanTree(plans))
       .catch(() => []),
 });
 

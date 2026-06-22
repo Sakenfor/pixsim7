@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
-import { fetchAllPlans } from '@features/panels/components/dev/plans/detail/fetchAllPlans';
+import { fetchAllPlans } from '@lib/api/devPlans';
+
 import { isCanonicalPlanId } from '@features/panels/components/dev/plans/detail/types';
 
 const POLL_MS = 60_000;
@@ -27,7 +28,7 @@ export function usePlanTitles(): Map<string, string> {
         // Page through *every* plan (compact — only id + title needed). This map
         // must cover all plans or grouped tabs for plans past the first page
         // render as dead links.
-        const plans = await fetchAllPlans({ compact: true });
+        const plans = await fetchAllPlans<{ id: string; title: string }>({ compact: true });
         if (cancelled) return;
         const next = new Map<string, string>();
         for (const p of plans) {

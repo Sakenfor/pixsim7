@@ -20,10 +20,11 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
+import { fetchAllPlans } from '@lib/api/devPlans';
 import { Icon } from '@lib/icons';
 
+
 import { PlanDetailView } from './plans/detail';
-import { fetchAllPlans } from './plans/detail/fetchAllPlans';
 import type {
   PlanStageOptionEntry,
   PlanStagesResponse,
@@ -111,7 +112,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
       // Page through every plan: the sidebar — and the "is this plan
       // available?" check downstream — must see all of them, not just the
       // first page, or plans past it show "unavailable" on open.
-      const allPlans = await fetchAllPlans();
+      const allPlans = await fetchAllPlans<PlanSummary>();
       const canonicalPlans = allPlans.filter((p) => isCanonicalPlanId(p.id));
       if (canonicalPlans.length !== allPlans.length) {
         console.warn('PlansPanel: dropped non-canonical plan IDs from sidebar list');
