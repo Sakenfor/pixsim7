@@ -70,6 +70,49 @@ export interface PlanDetail extends PlanSummary {
   markdown: string;
 }
 
+// =============================================================================
+// Plan graph (GET /dev/plans/graph) — canonical topology payload
+// =============================================================================
+
+export interface GraphPoints {
+  done: number;
+  total: number;
+}
+
+export type PlanEdgeKind = 'parent' | 'depends_on' | 'companion' | 'handoff';
+
+export interface PlanGraphNode {
+  id: string;
+  title: string;
+  status: string;
+  stage: string;
+  planType: string;
+  priority: string;
+  summary: string;
+  parentId: string | null;
+  tags: string[];
+  /** This plan's own checkpoint points. */
+  progress: GraphPoints;
+  /** Rolled up across the whole subtree, inclusive of this node. */
+  subtreeProgress: GraphPoints;
+  descendantCount: number;
+  dependsOnCount: number;
+  dependedOnByCount: number;
+  /** companion/handoff refs that point at docs which aren't plans in the graph */
+  externalDocCount: number;
+}
+
+export interface PlanGraphEdge {
+  source: string;
+  target: string;
+  kind: PlanEdgeKind;
+}
+
+export interface PlanGraphResponse {
+  nodes: PlanGraphNode[];
+  edges: PlanGraphEdge[];
+}
+
 export interface PlansIndexResponse {
   version: string;
   generatedAt: string | null;

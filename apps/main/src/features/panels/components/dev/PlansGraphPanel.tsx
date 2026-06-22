@@ -1,7 +1,14 @@
 /**
  * PlansGraphPanel - Network view of the plan registry.
  *
- * Nodes = plans (color by status, icon by planType, umbrellas larger).
+ * Data comes from GET /dev/plans/graph — a canonical payload of typed nodes +
+ * edges (parent / depends_on / companion / handoff), with server-computed
+ * subtree point rollups and reverse-dependency counts.
+ *
+ * Nodes = plans (color by status, icon by planType, umbrellas larger). The
+ * progress bar reflects subtreeProgress, so an umbrella reports where its whole
+ * subtree stands even when expanded.
+ *
  * Edges = parentId (solid grey) + dependsOn (dashed, colored by target status)
  *         + companions/handoffs (doc links, dotted). Dep + doc edges on by default.
  * Lane clusters = lane:* tag.
@@ -11,9 +18,9 @@
  * umbrella, so cross-cutting structure survives the fold. A "+N" badge shows
  * how many descendants are tucked away.
  *
- * Click a node → select; right detail pane shows summary + relations.
- * Double-click → navigate to the plan in PlansPanel.
- * Selected node + neighbors stay full-opacity; others dim (focus mode).
+ * Click a node → select; right detail pane shows summary + relations and traces
+ * the full transitive dependency chain (up + down). Double-click → navigate to
+ * the plan in PlansPanel.
  *
  * Mirrors DependencyGraphPanel's reactflow + dagre pattern.
  */
@@ -53,8 +60,10 @@ import { LatestNextUp } from './plans/detail/LatestNextUp';
 import {
   isCanonicalPlanId,
   PLAN_TYPE_ICONS,
-  type PlanSummary,
-  type PlansIndexResponse,
+  type GraphPoints,
+  type PlanGraphEdge,
+  type PlanGraphNode,
+  type PlanGraphResponse,
 } from './plans/detail/types';
 
 const NODE_W = 200;
@@ -130,11 +139,6 @@ function truncate(s: string, n: number): string {
 // Layout
 // ============================================================================
 
-interface PlanProgress {
-  done: number;
-  total: number;
-}
-
 interface BuildOptions {
   showDepEdges: boolean;
   showDocEdges: boolean;
@@ -145,7 +149,7 @@ interface PlanGraphResult {
   nodes: Node[];
   edges: Edge[];
   lanes: string[];
-  /** plan id → number of descendants hidden underneath it while collapsed */
+  /** plan id → number of descendants in its subtree */
   descendantCount: Map<string, number>;
 }
 
@@ -153,18 +157,25 @@ interface PlanGraphResult {
 const COMPANION_STROKE = '#a855f7'; // purple
 const HANDOFF_STROKE = '#14b8a6'; // teal
 
-function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResult {
-  const visibleAll = plans.filter((p) => !HIDDEN_STATUSES.has(p.status));
-  const planById = new Map(visibleAll.map((p) => [p.id, p]));
+function buildPlanGraph(
+  rawNodes: PlanGraphNode[],
+  rawEdges: PlanGraphEdge[],
+  opts: BuildOptions,
+): PlanGraphResult {
+  const visibleAll = rawNodes.filter((n) => !HIDDEN_STATUSES.has(n.status));
+  const planById = new Map(visibleAll.map((n) => [n.id, n]));
+  // Edges restricted to plans still present after status filtering.
+  const edgesInScope = rawEdges.filter(
+    (e) => planById.has(e.source) && planById.has(e.target),
+  );
 
-  // Parent → direct children, restricted to plans actually in the graph.
+  // Parent → direct children (from parent edges).
   const childrenByParent = new Map<string, string[]>();
-  for (const p of visibleAll) {
-    if (p.parentId && planById.has(p.parentId)) {
-      const arr = childrenByParent.get(p.parentId);
-      if (arr) arr.push(p.id);
-      else childrenByParent.set(p.parentId, [p.id]);
-    }
+  for (const e of edgesInScope) {
+    if (e.kind !== 'parent') continue;
+    const arr = childrenByParent.get(e.source);
+    if (arr) arr.push(e.target);
+    else childrenByParent.set(e.source, [e.target]);
   }
 
   const collectDescendants = (id: string, acc: string[] = []): string[] => {
@@ -175,31 +186,31 @@ function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResu
     return acc;
   };
 
-  // Total descendant count per plan (for the "+N" collapse badge) and the set of
-  // nodes hidden because some ancestor is collapsed.
+  // Total descendant count per plan (for the "+N" badge) and the set of nodes
+  // hidden because some ancestor is collapsed.
   const descendantCount = new Map<string, number>();
   const hidden = new Set<string>();
-  for (const p of visibleAll) {
-    const desc = collectDescendants(p.id);
-    if (desc.length) descendantCount.set(p.id, desc.length);
+  for (const n of visibleAll) {
+    const desc = collectDescendants(n.id);
+    if (desc.length) descendantCount.set(n.id, desc.length);
   }
   for (const cid of opts.collapsedIds) {
     if (!planById.has(cid)) continue;
     for (const d of collectDescendants(cid)) hidden.add(d);
   }
 
-  const visible = visibleAll.filter((p) => !hidden.has(p.id));
+  const visible = visibleAll.filter((n) => !hidden.has(n.id));
 
-  // Nearest non-hidden ancestor — edges crossing into a collapsed subtree
-  // reroute here so cross-cutting relationships stay visible on the umbrella.
-  const visibleAnchor = (id: string): string | null => {
+  // Nearest non-hidden ancestor a hidden node folds into (its collapsed umbrella).
+  const anchorOf = (id: string): string | null => {
+    if (planById.has(id) && !hidden.has(id)) return id;
     let cur: string | undefined = id;
     const seen = new Set<string>();
     while (cur && hidden.has(cur) && !seen.has(cur)) {
       seen.add(cur);
       cur = planById.get(cur)?.parentId ?? undefined;
     }
-    return cur && planById.has(cur) ? cur : null;
+    return cur && planById.has(cur) && !hidden.has(cur) ? cur : null;
   };
 
   const g = new dagre.graphlib.Graph({ compound: true });
@@ -207,55 +218,35 @@ function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResu
   g.setGraph({ rankdir: 'TB', nodesep: 28, ranksep: 90, marginx: 30, marginy: 30 });
 
   const lanesUsed = new Set<string>();
-  for (const p of visible) {
-    const lane = laneFromTags(p.tags);
+  for (const n of visible) {
+    const lane = laneFromTags(n.tags);
     if (lane) lanesUsed.add(lane);
   }
   for (const lane of lanesUsed) g.setNode(`lane-${lane}`, {});
 
-  // Own points-done/total for one plan (from the always-present open_summary).
-  const pointsOf = (p: PlanSummary): PlanProgress => {
-    const total = p.openSummary?.totalPoints ?? 0;
-    const open = p.openSummary?.openPoints ?? 0;
-    return { done: Math.max(0, total - open), total };
-  };
-  // A collapsed umbrella rolls up its whole hidden subtree; otherwise own work.
-  const progressOf = (p: PlanSummary): PlanProgress => {
-    if (!opts.collapsedIds.has(p.id)) return pointsOf(p);
-    let done = 0;
-    let total = 0;
-    for (const id of [p.id, ...collectDescendants(p.id)]) {
-      const cp = planById.get(id);
-      if (!cp) continue;
-      const pt = pointsOf(cp);
-      done += pt.done;
-      total += pt.total;
-    }
-    return { done, total };
-  };
-
   const planNodes: Node[] = [];
-  for (const p of visible) {
-    const isUmbrella = p.planType === 'umbrella';
+  for (const n of visible) {
+    const isUmbrella = n.planType === 'umbrella';
     const w = isUmbrella ? UMBRELLA_W : NODE_W;
     const h = isUmbrella ? UMBRELLA_H : NODE_H;
-    const nodeId = `plan-${p.id}`;
+    const nodeId = `plan-${n.id}`;
     g.setNode(nodeId, { width: w, height: h });
 
-    const lane = laneFromTags(p.tags);
+    const lane = laneFromTags(n.tags);
     if (lane) g.setParent(nodeId, `lane-${lane}`);
 
     planNodes.push({
       id: nodeId,
       type: 'planNode',
       position: { x: 0, y: 0 },
-      data: { plan: p, isUmbrella, progress: progressOf(p) },
+      // subtreeProgress: an umbrella shows its rolled-up work; a leaf shows its own.
+      data: { plan: n, isUmbrella, progress: n.subtreeProgress },
     });
   }
 
   const edges: Edge[] = [];
   const dagreEdgeSet = new Set<string>();
-  const edgeIdSet = new Set<string>();
+  const seenEdge = new Set<string>();
   const addDagreEdge = (from: string, to: string) => {
     const k = `${from}->${to}`;
     if (dagreEdgeSet.has(k)) return;
@@ -263,85 +254,52 @@ function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResu
     g.setEdge(from, to);
   };
 
-  // Resolve a raw plan id to the visible node id it should connect to (itself,
-  // or its collapsed ancestor). Returns null when the target isn't a plan node.
-  const anchorNodeId = (rawId: string): string | null => {
-    if (planById.has(rawId) && !hidden.has(rawId)) return `plan-${rawId}`;
-    const anchor = visibleAnchor(rawId);
-    return anchor ? `plan-${anchor}` : null;
-  };
+  for (const e of edgesInScope) {
+    if (e.kind === 'depends_on' && !opts.showDepEdges) continue;
+    if ((e.kind === 'companion' || e.kind === 'handoff') && !opts.showDocEdges) continue;
 
-  for (const p of visible) {
-    const fromId = `plan-${p.id}`;
+    const from = anchorOf(e.source);
+    const to = anchorOf(e.target);
+    if (!from || !to || from === to) continue;
 
-    if (p.parentId) {
-      const toId = anchorNodeId(p.parentId);
-      if (toId && toId !== fromId) {
-        edges.push({
-          id: `parent-${p.id}`,
-          source: toId,
-          target: fromId,
-          type: 'smoothstep',
-          style: { stroke: '#94a3b8', opacity: 0.55, strokeWidth: 1.5 },
-        });
-        addDagreEdge(toId, fromId);
-      }
-    }
+    const key = `${e.kind}:${from}->${to}`;
+    if (seenEdge.has(key)) continue;
+    seenEdge.add(key);
 
-    if (opts.showDepEdges) {
-      for (const dep of p.dependsOn ?? []) {
-        const toId = anchorNodeId(dep);
-        if (!toId || toId === fromId) continue;
-        const id = `dep-${p.id}-${dep}`;
-        if (edgeIdSet.has(id)) continue;
-        edgeIdSet.add(id);
-        const targetPlan = planById.get(dep) ?? planById.get(toId.replace(/^plan-/, ''));
-        const style = statusStyle(targetPlan?.status ?? 'parked');
-        edges.push({
-          id,
-          source: fromId,
-          target: toId,
-          type: 'smoothstep',
-          animated: targetPlan?.status === 'active',
-          style: {
-            stroke: style.border,
-            opacity: 0.7,
-            strokeWidth: 1.5,
-            strokeDasharray: '5 4',
-          },
-        });
-        addDagreEdge(fromId, toId);
-      }
-    }
+    const fromNode = `plan-${from}`;
+    const toNode = `plan-${to}`;
 
-    if (opts.showDocEdges) {
-      const docLinks: { ids: string[]; kind: string; stroke: string }[] = [
-        { ids: p.companions ?? [], kind: 'companion', stroke: COMPANION_STROKE },
-        { ids: p.handoffs ?? [], kind: 'handoff', stroke: HANDOFF_STROKE },
-      ];
-      for (const { ids, kind, stroke } of docLinks) {
-        for (const ref of ids) {
-          const toId = anchorNodeId(ref);
-          if (!toId || toId === fromId) continue;
-          const id = `${kind}-${p.id}-${ref}`;
-          if (edgeIdSet.has(id)) continue;
-          edgeIdSet.add(id);
-          edges.push({
-            id,
-            source: fromId,
-            target: toId,
-            type: 'smoothstep',
-            style: {
-              stroke,
-              opacity: 0.6,
-              strokeWidth: 1.25,
-              strokeDasharray: '2 3',
-            },
-          });
-          // Don't feed doc links to dagre — they're cross-cutting and would
-          // distort the parent/dep rank layout.
-        }
-      }
+    if (e.kind === 'parent') {
+      edges.push({
+        id: key,
+        source: fromNode,
+        target: toNode,
+        type: 'smoothstep',
+        style: { stroke: '#94a3b8', opacity: 0.55, strokeWidth: 1.5 },
+      });
+      addDagreEdge(fromNode, toNode);
+    } else if (e.kind === 'depends_on') {
+      const target = planById.get(to);
+      const style = statusStyle(target?.status ?? 'parked');
+      edges.push({
+        id: key,
+        source: fromNode,
+        target: toNode,
+        type: 'smoothstep',
+        animated: target?.status === 'active',
+        style: { stroke: style.border, opacity: 0.7, strokeWidth: 1.5, strokeDasharray: '5 4' },
+      });
+      addDagreEdge(fromNode, toNode);
+    } else {
+      // companion / handoff — cross-cutting; kept out of the dagre rank solve.
+      const stroke = e.kind === 'companion' ? COMPANION_STROKE : HANDOFF_STROKE;
+      edges.push({
+        id: key,
+        source: fromNode,
+        target: toNode,
+        type: 'smoothstep',
+        style: { stroke, opacity: 0.6, strokeWidth: 1.25, strokeDasharray: '2 3' },
+      });
     }
   }
 
@@ -358,8 +316,8 @@ function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResu
   const groupNodes: Node[] = [];
   for (const lane of lanesUsed) {
     const childIds = visible
-      .filter((p) => laneFromTags(p.tags) === lane)
-      .map((p) => `plan-${p.id}`);
+      .filter((n) => laneFromTags(n.tags) === lane)
+      .map((n) => `plan-${n.id}`);
     const positions = childIds.map((id) => g.node(id)).filter(Boolean);
     if (positions.length === 0) continue;
 
@@ -394,13 +352,13 @@ function buildPlanGraph(plans: PlanSummary[], opts: BuildOptions): PlanGraphResu
 // ============================================================================
 
 interface PlanNodeData {
-  plan: PlanSummary;
+  plan: PlanGraphNode;
   isUmbrella: boolean;
   /** descendants in the subtree (drives collapse affordance + badge) */
   descendants?: number;
   collapsed?: boolean;
-  /** points done/total — collapsed umbrellas roll up their subtree */
-  progress?: PlanProgress;
+  /** points done/total — umbrellas roll up their subtree (server-computed) */
+  progress?: GraphPoints;
   onToggleCollapse?: (planId: string) => void;
 }
 
@@ -474,10 +432,7 @@ function PlanNode({ data, selected }: { data: PlanNodeData; selected?: boolean }
           className="absolute bottom-0 left-0 right-0 h-[3px] rounded-b overflow-hidden bg-neutral-200 dark:bg-neutral-700"
           title={`${done}/${total} points done (${pct}%)`}
         >
-          <div
-            className="h-full"
-            style={{ width: `${pct}%`, backgroundColor: sStyle.border }}
-          />
+          <div className="h-full" style={{ width: `${pct}%`, backgroundColor: sStyle.border }} />
         </div>
       )}
     </div>
@@ -535,25 +490,42 @@ function EdgeLegendItem({
 // ============================================================================
 
 interface PlanDetailProps {
-  plan: PlanSummary;
-  allPlans: PlanSummary[];
+  plan: PlanGraphNode;
+  nodesById: Map<string, PlanGraphNode>;
+  edges: PlanGraphEdge[];
   onSelect: (planId: string) => void;
 }
 
-function PlanDetail({ plan, allPlans, onSelect }: PlanDetailProps) {
-  const planById = useMemo(() => new Map(allPlans.map((p) => [p.id, p])), [allPlans]);
+function PlanDetail({ plan, nodesById, edges, onSelect }: PlanDetailProps) {
   const lane = laneFromTags(plan.tags);
   const otherTags = plan.tags.filter((t) => !t.startsWith('lane:'));
-  const parent = plan.parentId ? planById.get(plan.parentId) : undefined;
-  const children = useMemo(
-    () => allPlans.filter((p) => p.parentId === plan.id),
-    [allPlans, plan.id],
-  );
-  const reverseDeps = useMemo(
-    () => allPlans.filter((p) => (p.dependsOn ?? []).includes(plan.id)),
-    [allPlans, plan.id],
-  );
+  const parent = plan.parentId ? nodesById.get(plan.parentId) : undefined;
   const iconName = PLAN_TYPE_ICONS[plan.planType] ?? 'fileText';
+
+  // Derive relation lists from the canonical edge set.
+  const rel = useMemo(() => {
+    const lookup = (ids: string[]) =>
+      ids.map((id) => nodesById.get(id)).filter((n): n is PlanGraphNode => !!n);
+    const children: string[] = [];
+    const dependsOn: string[] = [];
+    const dependedOnBy: string[] = [];
+    const companions: string[] = [];
+    const handoffs: string[] = [];
+    for (const e of edges) {
+      if (e.kind === 'parent' && e.source === plan.id) children.push(e.target);
+      if (e.kind === 'depends_on' && e.source === plan.id) dependsOn.push(e.target);
+      if (e.kind === 'depends_on' && e.target === plan.id) dependedOnBy.push(e.source);
+      if (e.kind === 'companion' && e.source === plan.id) companions.push(e.target);
+      if (e.kind === 'handoff' && e.source === plan.id) handoffs.push(e.target);
+    }
+    return {
+      children: lookup(children),
+      dependsOn: lookup(dependsOn),
+      dependedOnBy: lookup(dependedOnBy),
+      companions: lookup(companions),
+      handoffs: lookup(handoffs),
+    };
+  }, [edges, nodesById, plan.id]);
 
   return (
     <div className="p-3 space-y-3 text-xs">
@@ -572,21 +544,26 @@ function PlanDetail({ plan, allPlans, onSelect }: PlanDetailProps) {
           <Badge color="gray">{plan.stage}</Badge>
           <Badge color="blue">{plan.planType}</Badge>
           {plan.priority && plan.priority !== 'normal' && (
-            <Badge color={plan.priority === 'high' ? 'orange' : 'gray'}>
-              {plan.priority}
-            </Badge>
+            <Badge color={plan.priority === 'high' ? 'orange' : 'gray'}>{plan.priority}</Badge>
           )}
         </div>
       </div>
 
-      {plan.summary && (
-        <div className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
-          {plan.summary}
+      {plan.subtreeProgress.total > 0 && (
+        <div className="flex items-center gap-2 text-[10px] text-neutral-500 dark:text-neutral-400">
+          <span className="font-semibold uppercase tracking-wide">Subtree</span>
+          <span className="tabular-nums">
+            {plan.subtreeProgress.done}/{plan.subtreeProgress.total} pts
+          </span>
+          {plan.descendantCount > 0 && <span>· {plan.descendantCount} descendants</span>}
         </div>
       )}
 
-      <LatestNextUp planId={plan.id} compact />
+      {plan.summary && (
+        <div className="text-neutral-700 dark:text-neutral-300 leading-relaxed">{plan.summary}</div>
+      )}
 
+      <LatestNextUp planId={plan.id} compact />
 
       {(lane || otherTags.length > 0) && (
         <div>
@@ -604,54 +581,43 @@ function PlanDetail({ plan, allPlans, onSelect }: PlanDetailProps) {
         </div>
       )}
 
-      {parent && (
+      {parent && <RelationList label="Parent" plans={[parent]} onSelect={onSelect} />}
+      {rel.children.length > 0 && (
+        <RelationList label={`Children (${rel.children.length})`} plans={rel.children} onSelect={onSelect} />
+      )}
+      {rel.dependsOn.length > 0 && (
         <RelationList
-          label="Parent"
-          plans={[parent]}
+          label={`Depends on (${rel.dependsOn.length})`}
+          plans={rel.dependsOn}
           onSelect={onSelect}
         />
       )}
-      {children.length > 0 && (
-        <RelationList label={`Children (${children.length})`} plans={children} onSelect={onSelect} />
-      )}
-      {(plan.dependsOn ?? []).length > 0 && (
+      {rel.dependedOnBy.length > 0 && (
         <RelationList
-          label={`Depends on (${plan.dependsOn.length})`}
-          plans={plan.dependsOn.map((id) => planById.get(id)).filter((p): p is PlanSummary => !!p)}
+          label={`Depended on by (${rel.dependedOnBy.length})`}
+          plans={rel.dependedOnBy}
           onSelect={onSelect}
         />
       )}
-      {reverseDeps.length > 0 && (
+      {rel.companions.length > 0 && (
         <RelationList
-          label={`Depended on by (${reverseDeps.length})`}
-          plans={reverseDeps}
+          label={`Companions (${rel.companions.length})`}
+          plans={rel.companions}
           onSelect={onSelect}
         />
       )}
-      {(() => {
-        const companionPlans = (plan.companions ?? [])
-          .map((id) => planById.get(id))
-          .filter((p): p is PlanSummary => !!p);
-        return companionPlans.length > 0 ? (
-          <RelationList
-            label={`Companions (${companionPlans.length})`}
-            plans={companionPlans}
-            onSelect={onSelect}
-          />
-        ) : null;
-      })()}
-      {(() => {
-        const handoffPlans = (plan.handoffs ?? [])
-          .map((id) => planById.get(id))
-          .filter((p): p is PlanSummary => !!p);
-        return handoffPlans.length > 0 ? (
-          <RelationList
-            label={`Handoffs (${handoffPlans.length})`}
-            plans={handoffPlans}
-            onSelect={onSelect}
-          />
-        ) : null;
-      })()}
+      {rel.handoffs.length > 0 && (
+        <RelationList
+          label={`Handoffs (${rel.handoffs.length})`}
+          plans={rel.handoffs}
+          onSelect={onSelect}
+        />
+      )}
+      {plan.externalDocCount > 0 && (
+        <div className="text-[10px] text-neutral-500 dark:text-neutral-400 italic">
+          + {plan.externalDocCount} linked doc{plan.externalDocCount === 1 ? '' : 's'} (not plans)
+        </div>
+      )}
 
       <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700">
         <Button size="sm" onClick={() => navigateToPlan(plan.id)} className="w-full">
@@ -668,7 +634,7 @@ function RelationList({
   onSelect,
 }: {
   label: string;
-  plans: PlanSummary[];
+  plans: PlanGraphNode[];
   onSelect: (planId: string) => void;
 }) {
   return (
@@ -703,7 +669,8 @@ function RelationList({
 // ============================================================================
 
 export function PlansGraphPanel() {
-  const [plans, setPlans] = useState<PlanSummary[]>([]);
+  const [allNodes, setAllNodes] = useState<PlanGraphNode[]>([]);
+  const [allEdges, setAllEdges] = useState<PlanGraphEdge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
@@ -724,68 +691,86 @@ export function PlansGraphPanel() {
   useEffect(() => {
     setLoading(true);
     pixsimClient
-      .get<PlansIndexResponse>('/dev/plans?compact=true&limit=500')
+      .get<PlanGraphResponse>('/dev/plans/graph')
       .then((res) => {
-        setPlans(res.plans.filter((p) => isCanonicalPlanId(p.id)));
+        const nodes = res.nodes.filter((n) => isCanonicalPlanId(n.id));
+        const ids = new Set(nodes.map((n) => n.id));
+        setAllNodes(nodes);
+        setAllEdges(res.edges.filter((e) => ids.has(e.source) && ids.has(e.target)));
         setError('');
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load plans'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load plan graph'))
       .finally(() => setLoading(false));
   }, []);
 
-  const filtered = useMemo(() => {
-    if (statusFilter.size === 0) return plans;
-    return plans.filter((p) => !statusFilter.has(p.status));
-  }, [plans, statusFilter]);
+  const nodesById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
+
+  const filteredNodes = useMemo(() => {
+    if (statusFilter.size === 0) return allNodes;
+    return allNodes.filter((n) => !statusFilter.has(n.status));
+  }, [allNodes, statusFilter]);
 
   const { graphNodes, graphEdges, lanes, descendantCount } = useMemo(() => {
-    const result = buildPlanGraph(filtered, { showDepEdges, showDocEdges, collapsedIds });
+    const result = buildPlanGraph(filteredNodes, allEdges, { showDepEdges, showDocEdges, collapsedIds });
     return {
       graphNodes: result.nodes,
       graphEdges: result.edges,
       lanes: result.lanes,
       descendantCount: result.descendantCount,
     };
-  }, [filtered, showDepEdges, showDocEdges, collapsedIds]);
+  }, [filteredNodes, allEdges, showDepEdges, showDocEdges, collapsedIds]);
 
   // Plans that have a subtree to fold (drives the collapse-all control).
   const umbrellaIds = useMemo(() => [...descendantCount.keys()], [descendantCount]);
 
-  // Focus neighborhood for the selected plan: immediate hierarchy plus the
-  // *transitive* dependency chain in both directions (everything it depends on,
-  // recursively, and everything that recursively depends on it).
+  // Forward/back dependency adjacency for the transitive focus trace.
+  const depAdjacency = useMemo(() => {
+    const forward = new Map<string, string[]>();
+    const back = new Map<string, string[]>();
+    const parentOf = new Map<string, string>();
+    const childrenOf = new Map<string, string[]>();
+    const push = (m: Map<string, string[]>, k: string, v: string) => {
+      const arr = m.get(k);
+      if (arr) arr.push(v);
+      else m.set(k, [v]);
+    };
+    for (const e of allEdges) {
+      if (e.kind === 'depends_on') {
+        push(forward, e.source, e.target);
+        push(back, e.target, e.source);
+      } else if (e.kind === 'parent') {
+        parentOf.set(e.target, e.source);
+        push(childrenOf, e.source, e.target);
+      }
+    }
+    return { forward, back, parentOf, childrenOf };
+  }, [allEdges]);
+
+  // Focus neighborhood: immediate hierarchy plus the *transitive* dependency
+  // chain in both directions (everything it depends on, recursively, and
+  // everything that recursively depends on it).
   const neighborIds = useMemo<Set<string> | null>(() => {
     if (!selectedId) return null;
     const ids = new Set<string>([selectedId]);
-    const byId = new Map(plans.map((p) => [p.id, p]));
-    const sel = byId.get(selectedId);
-    if (!sel) return ids;
+    const { forward, back, parentOf, childrenOf } = depAdjacency;
 
-    // Immediate hierarchy (one hop — the chain we trace is dependencies).
-    if (sel.parentId) ids.add(sel.parentId);
-    for (const p of plans) if (p.parentId === selectedId) ids.add(p.id);
+    const parent = parentOf.get(selectedId);
+    if (parent) ids.add(parent);
+    for (const c of childrenOf.get(selectedId) ?? []) ids.add(c);
 
-    // Downstream: what the selection (transitively) depends on.
-    const down = [...(sel.dependsOn ?? [])];
-    while (down.length) {
-      const cur = down.pop()!;
-      if (ids.has(cur)) continue;
-      ids.add(cur);
-      for (const d of byId.get(cur)?.dependsOn ?? []) if (!ids.has(d)) down.push(d);
-    }
-
-    // Upstream: what (transitively) depends on the selection.
-    const up = plans.filter((p) => (p.dependsOn ?? []).includes(selectedId)).map((p) => p.id);
-    while (up.length) {
-      const cur = up.pop()!;
-      if (ids.has(cur)) continue;
-      ids.add(cur);
-      for (const p of plans) {
-        if ((p.dependsOn ?? []).includes(cur) && !ids.has(p.id)) up.push(p.id);
+    const walk = (adj: Map<string, string[]>) => {
+      const stack = [...(adj.get(selectedId) ?? [])];
+      while (stack.length) {
+        const cur = stack.pop()!;
+        if (ids.has(cur)) continue;
+        ids.add(cur);
+        for (const next of adj.get(cur) ?? []) if (!ids.has(next)) stack.push(next);
       }
-    }
+    };
+    walk(forward);
+    walk(back);
     return ids;
-  }, [selectedId, plans]);
+  }, [selectedId, depAdjacency]);
 
   // Apply focus dim + selection mark to nodes/edges (style-only; doesn't relayout).
   const displayNodes = useMemo(() => {
@@ -831,10 +816,7 @@ export function PlansGraphPanel() {
     onEdgesChange(displayEdges.map((e) => ({ type: 'reset' as const, item: e })));
   }, [displayNodes, displayEdges, onNodesChange, onEdgesChange]);
 
-  const nodeTypes = useMemo<NodeTypes>(
-    () => ({ planNode: PlanNode, laneGroup: LaneGroup }),
-    [],
-  );
+  const nodeTypes = useMemo<NodeTypes>(() => ({ planNode: PlanNode, laneGroup: LaneGroup }), []);
 
   const onNodeClick = useCallback((_e: React.MouseEvent, node: Node) => {
     if (node.type !== 'planNode') return;
@@ -862,7 +844,7 @@ export function PlansGraphPanel() {
   if (loading) {
     return (
       <div className="w-full h-full flex items-center justify-center text-sm text-neutral-500">
-        Loading plans…
+        Loading plan graph…
       </div>
     );
   }
@@ -874,11 +856,11 @@ export function PlansGraphPanel() {
     );
   }
 
-  const statusCounts = plans.reduce<Record<string, number>>((acc, p) => {
-    acc[p.status] = (acc[p.status] ?? 0) + 1;
+  const statusCounts = allNodes.reduce<Record<string, number>>((acc, n) => {
+    acc[n.status] = (acc[n.status] ?? 0) + 1;
     return acc;
   }, {});
-  const selectedPlan = selectedId ? plans.find((p) => p.id === selectedId) : null;
+  const selectedPlan = selectedId ? nodesById.get(selectedId) ?? null : null;
 
   return (
     <div className="w-full h-full bg-neutral-50 dark:bg-neutral-900 flex flex-col">
@@ -950,7 +932,7 @@ export function PlansGraphPanel() {
             </>
           )}
           <span className="pl-1.5 border-l border-neutral-300 dark:border-neutral-600">
-            {filtered.length}/{plans.length} plans · {graphEdges.length} edges
+            {filteredNodes.length}/{allNodes.length} plans · {graphEdges.length} edges
           </span>
         </div>
       </div>
@@ -988,7 +970,12 @@ export function PlansGraphPanel() {
           style={{ width: DETAIL_PANE_WIDTH }}
         >
           {selectedPlan ? (
-            <PlanDetail plan={selectedPlan} allPlans={plans} onSelect={setSelectedId} />
+            <PlanDetail
+              plan={selectedPlan}
+              nodesById={nodesById}
+              edges={allEdges}
+              onSelect={setSelectedId}
+            />
           ) : (
             <div className="p-3">
               <EmptyState

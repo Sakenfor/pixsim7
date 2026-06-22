@@ -145,6 +145,7 @@ from pixsim7.backend.main.api.v1.plans.routes_coverage import router as _coverag
 from pixsim7.backend.main.api.v1.plans.routes_todo import router as _todo_router
 from pixsim7.backend.main.api.v1.plans.routes_export import router as _export_router
 from pixsim7.backend.main.api.v1.plans.routes_grants import router as _grants_router
+from pixsim7.backend.main.api.v1.plans.routes_graph import router as _graph_router
 router.include_router(_grants_router)
 router.include_router(_review_router)
 router.include_router(_admin_router)
@@ -152,6 +153,9 @@ router.include_router(_agent_router)
 router.include_router(_coverage_router)
 router.include_router(_todo_router)
 router.include_router(_export_router)
+# Registered before the GET /{plan_id} catch-all (defined later) so /graph
+# isn't swallowed as a plan id.
+router.include_router(_graph_router)
 
 
 # ── Response models ──────────────────────────────────────────────
