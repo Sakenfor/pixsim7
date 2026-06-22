@@ -77,6 +77,25 @@ function findNearestDock(pos: { x: number; y: number }, leftInset: number): Cube
   return nearest;
 }
 
+/**
+ * Clamp a free-floating position so the cube stays inside the visible viewport.
+ * Without this a stale off-screen `floatingPos` (after a window resize, monitor
+ * swap, or DPI/resolution change) renders the cube invisible — and because the
+ * position is backend-synced it survives reloads, so the cube looks gone for good.
+ */
+function clampToViewport(pos: { x: number; y: number }, leftInset: number): { x: number; y: number } {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const minX = leftInset + DOCK_MARGIN;
+  const maxX = Math.max(minX, vw - CUBE_SIZE_IDLE - DOCK_MARGIN);
+  const minY = DOCK_MARGIN;
+  const maxY = Math.max(minY, vh - CUBE_SIZE_IDLE - DOCK_MARGIN);
+  return {
+    x: Math.min(Math.max(pos.x, minX), maxX),
+    y: Math.min(Math.max(pos.y, minY), maxY),
+  };
+}
+
 export function MinimizedPanelStack({
   panelCubes,
   registry = cubeFaceRegistry,
@@ -128,6 +147,24 @@ export function MinimizedPanelStack({
     const zones = getDockZones(leftInset);
     return zones[dockPosition] ?? floatingPos;
   }, [dockPosition, floatingPos, leftInset]);
+
+  // Keep the floating cube on-screen: re-clamp the persisted position on mount
+  // and whenever the viewport changes (window resize, monitor swap, DPI change).
+  // Reads/writes the store directly so it doesn't re-run on every drag frame.
+  useEffect(() => {
+    if (dockPosition !== 'floating') return;
+    const reclamp = () => {
+      const current = settingsStore.getState().floatingPos;
+      if (!current) return;
+      const clamped = clampToViewport(current, leftInset);
+      if (clamped.x !== current.x || clamped.y !== current.y) {
+        setStoredFloatingPos(clamped);
+      }
+    };
+    reclamp();
+    window.addEventListener('resize', reclamp);
+    return () => window.removeEventListener('resize', reclamp);
+  }, [dockPosition, leftInset, settingsStore, setStoredFloatingPos]);
 
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -435,10 +472,12 @@ export function MinimizedPanelStack({
           setClickExpanded((v) => !v);
         }
       } else {
-        // Commit the final free-drag position, then try to snap to nearest dock.
-        setStoredFloatingPos(lastPos);
+        // Commit the final free-drag position (clamped on-screen), then try to
+        // snap to the nearest dock.
+        const committed = clampToViewport(lastPos, leftInset);
+        setStoredFloatingPos(committed);
         setDragOverride(null);
-        const snap = findNearestDock(lastPos, leftInset);
+        const snap = findNearestDock(committed, leftInset);
         if (snap !== 'floating') {
           setDockPosition(snap);
         }

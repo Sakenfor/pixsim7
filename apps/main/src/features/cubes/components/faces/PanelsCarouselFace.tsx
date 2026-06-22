@@ -27,7 +27,7 @@ function getPanelMeta(panelId: string) {
 // ── Constants ──
 
 const ITEM_SIZE = 44;
-const ARC_RADIUS = 110;
+const ARC_RADIUS = 92;
 const ARC_SPAN = (160 * Math.PI) / 180;
 const MAX_VISIBLE = 7;
 const DRAG_OUT_THRESHOLD = 60;
@@ -87,7 +87,10 @@ function PanelsCarousel({ panelCubes, onRestore, onRestoreAll, onClearAll }: {
     ? getPanelMeta(panelCubes[focusIndex].minimizedPanel!.panelId) : null;
 
   const sideCount = Math.floor(MAX_VISIBLE / 2);
-  const angleStep = count > 1 ? ARC_SPAN / Math.min(MAX_VISIBLE - 1, count - 1) : 0;
+  // Fixed per-item angle so a couple of panels sit close together near the top
+  // and the arc only fills out the full span as you approach MAX_VISIBLE. Using
+  // count-1 here instead spread 2 panels across the entire 160° (opposite ends).
+  const angleStep = count > 1 ? ARC_SPAN / (MAX_VISIBLE - 1) : 0;
   const containerW = ARC_RADIUS * 2 + ITEM_SIZE + 20;
   const containerH = ARC_RADIUS + ITEM_SIZE / 2 + 4;
   const cx = containerW / 2;
