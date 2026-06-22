@@ -43,6 +43,7 @@ import {
   createGenerationRunItemContext,
   PROMPT_TOOL_RUN_CONTEXT_PATCH_KEY,
   type GenerationRunContext,
+  type InputProvenanceEntry,
   type PromptToolRunContextPatch,
 } from '../lib/runContext';
 import { executeSequentialSteps, createSequentialStepRunContextMetadata } from '../lib/sequentialExecutor';
@@ -138,6 +139,38 @@ function clampInputsToMaxSlots<T extends any[]>(
   const maxSlots = resolveMaxSlotsFromSpecs(opSpec?.parameters, operationType, model)
     ?? resolveMaxSlotsForModel(operationType, model);
   return (inputs.length > maxSlots ? inputs.slice(0, maxSlots) : inputs) as T;
+}
+
+/**
+ * Merge dynamic params in canonical precedence (low→high):
+ * shared bindings < probe cheap defaults < per-input overrides < caller overrides.
+ * Centralizes the order so the single/burst/Each/sequential paths can't drift.
+ * Plan: per-input-param-override.
+ */
+function buildDynamicParams(
+  shared: Record<string, any> | undefined,
+  probeDefaults: Record<string, any> | null | undefined,
+  perInputOverrides: Record<string, any> | undefined,
+  callerOverrides: Record<string, any> | undefined,
+): Record<string, any> {
+  return {
+    ...shared,
+    ...(probeDefaults || {}),
+    ...perInputOverrides,
+    ...callerOverrides,
+  };
+}
+
+/**
+ * Drop persisted source/composition asset params so explicitly-provided (or
+ * single-slot-clamped) inputs aren't overridden by stale store values. Note:
+ * the sequential output-chaining path deliberately does NOT use this — it
+ * *sets* source_asset_id(s) and clears legacy aliases, a different contract.
+ */
+function clearSourceAssetParams(params: Record<string, any>): void {
+  delete params.source_asset_id;
+  delete params.source_asset_ids;
+  delete params.composition_assets;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -742,6 +775,7 @@ function useQuickGenerateControllerImpl() {
     params: any;
     effectiveOperationType: OperationType;
     pickStateUpdates?: PickStateUpdate[];
+    inputProvenance?: InputProvenanceEntry[];
     inputAssetIds: number[];
     historyAssets: HistoryAsset[];
   }> {
@@ -845,6 +879,7 @@ function useQuickGenerateControllerImpl() {
       params: buildResult.params,
       effectiveOperationType,
       pickStateUpdates: buildResult.pickStateUpdates,
+      inputProvenance: buildResult.inputProvenance,
       inputAssetIds,
       historyAssets,
     };
@@ -952,7 +987,14 @@ function useQuickGenerateControllerImpl() {
           ...(updatedRef.recentPicks !== undefined ? { recentPicks: updatedRef.recentPicks } : {}),
         });
       }
-      return { ...item, asset, assetSetRef: undefined };
+      return {
+        ...item,
+        asset,
+        assetSetRef: undefined,
+        // Carry set lineage so buildGenerationRequest can stamp run_context
+        // provenance even though the live ref is consumed here.
+        assetSetProvenance: { setId: ref.setId, mode: ref.mode, pickStrategy: ref.pickStrategy },
+      };
     });
   }
 
@@ -1044,7 +1086,12 @@ function useQuickGenerateControllerImpl() {
         const setAssets = cache.get(ref.setId);
         const setIndex = plan.get(item.id)!;
         if (!setAssets || setAssets.length === 0) return item;
-        return { ...item, asset: setAssets[setIndex], assetSetRef: undefined };
+        return {
+          ...item,
+          asset: setAssets[setIndex],
+          assetSetRef: undefined,
+          assetSetProvenance: { setId: ref.setId, mode: ref.mode, pickStrategy: ref.pickStrategy },
+        };
       });
 
       if (strategy === 'each' || useCartesian) {
@@ -1160,12 +1207,12 @@ function useQuickGenerateControllerImpl() {
         // per-input bindings < explicit caller overrides. A per-input duration
         // binding therefore beats probe's duration:5 but still yields to an
         // explicit caller override. Plan: per-input-param-override.
-        const dynamicParams = {
-          ...activeBindings.dynamicParams,
-          ...(probeParams || {}),
-          ...resolvedPrimary?.paramOverrides,
-          ...overrideParams,
-        };
+        const dynamicParams = buildDynamicParams(
+          activeBindings.dynamicParams,
+          probeParams,
+          resolvedPrimary?.paramOverrides,
+          overrideParams,
+        );
         await applyFrameExtraction(dynamicParams, resolvedPrimary, []);
         // Per-input pinned prompt wins verbatim over the (shared) rolled prompt
         // so each queued asset can carry its own prompt while un-pinned inputs
@@ -1185,6 +1232,7 @@ function useQuickGenerateControllerImpl() {
           itemIndex: i,
           itemTotal: total,
           inputAssetIds: request.inputAssetIds,
+          inputProvenance: request.inputProvenance,
         });
         const prepared = prepareGenerateAssetSubmission({
           prompt: request.finalPrompt,
@@ -1277,6 +1325,14 @@ function useQuickGenerateControllerImpl() {
       });
   }
 
+  /** Mark the most recently generated id as active + watched (no-op if empty). */
+  function setLastGenerationIdAsActive(generatedIds: number[]) {
+    if (generatedIds.length === 0) return;
+    const lastId = generatedIds[generatedIds.length - 1];
+    setGenerationId(lastId);
+    setWatchingGeneration(lastId);
+  }
+
   /**
    * Generation pipeline core — builds request, submits to API, seeds generations store.
    * Does NOT touch active widget run state (generating, error, queueProgress).
@@ -1324,20 +1380,18 @@ function useQuickGenerateControllerImpl() {
     // Precedence (low→high): shared < probe < per-input binding < caller override.
     // Per-input params ride the current input alongside its promptOverride (resolved
     // below). Plan: per-input-param-override.
-    const dynamicParams = {
-      ...activeBindings.dynamicParams,
-      ...(probeDefaults || {}),
-      ...currentInput?.paramOverrides,
-      ...overrides?.paramOverrides,
-    };
+    const dynamicParams = buildDynamicParams(
+      activeBindings.dynamicParams,
+      probeDefaults,
+      currentInput?.paramOverrides,
+      overrides?.paramOverrides,
+    );
 
     // assetOverrides are documented as replacing current inputs, so clear any
     // persisted source/composition params that could override the provided assets.
     // Keep the same clearing behavior for explicit skipActiveAssetFallback too.
     if (overrides?.skipActiveAssetFallback || hasAssetOverrides) {
-      delete dynamicParams.source_asset_id;
-      delete dynamicParams.source_asset_ids;
-      delete dynamicParams.composition_assets;
+      clearSourceAssetParams(dynamicParams);
     }
 
     // Asset overrides: convert AssetModel[] to InputItems, bypassing store inputs
@@ -1390,9 +1444,7 @@ function useQuickGenerateControllerImpl() {
         ?? resolveMaxSlotsForModel(activeOperationType, model);
       if (resolvedMax === 1 && effectiveCurrentInput?.asset && effectiveInputs.length > 1) {
         effectiveInputs = [effectiveCurrentInput];
-        delete dynamicParams.composition_assets;
-        delete dynamicParams.source_asset_id;
-        delete dynamicParams.source_asset_ids;
+        clearSourceAssetParams(dynamicParams);
       }
     }
 
@@ -1493,6 +1545,7 @@ function useQuickGenerateControllerImpl() {
               itemIndex: i,
               itemTotal: burstCount,
               inputAssetIds: request.inputAssetIds,
+              inputProvenance: request.inputProvenance,
             }),
           ),
         ),
@@ -1518,11 +1571,7 @@ function useQuickGenerateControllerImpl() {
         }
       }
 
-      if (generatedIds.length > 0) {
-        const lastId = generatedIds[generatedIds.length - 1];
-        setGenerationId(lastId);
-        setWatchingGeneration(lastId);
-      }
+      setLastGenerationIdAsActive(generatedIds);
 
       logEvent('INFO', 'burst_complete', {
         queued: generatedIds.length,
@@ -1559,10 +1608,10 @@ function useQuickGenerateControllerImpl() {
         itemIndex: 0,
         itemTotal: 1,
         inputAssetIds: request.inputAssetIds,
+        inputProvenance: request.inputProvenance,
       }),
     );
-    setGenerationId(genId);
-    setWatchingGeneration(genId);
+    setLastGenerationIdAsActive([genId]);
     if (!overrides?.ephemeral) {
       recordInputHistory(activeOperationType, request.historyAssets);
     }
@@ -1640,12 +1689,12 @@ function useQuickGenerateControllerImpl() {
       // Per-input bindings on the source input carry through the whole chained
       // sequence (like the pinned prompt below). Precedence: shared < probe <
       // per-input < caller override. Plan: per-input-param-override.
-      const baseDynamicParams = {
-        ...activeBindings.dynamicParams,
-        ...(probeDefaults || {}),
-        ...currentInput?.paramOverrides,
-        ...options?.overrideDynamicParams,
-      };
+      const baseDynamicParams = buildDynamicParams(
+        activeBindings.dynamicParams,
+        probeDefaults,
+        currentInput?.paramOverrides,
+        options?.overrideDynamicParams,
+      );
 
       await applyFrameExtraction(baseDynamicParams, currentInput, transitionInputs);
 
@@ -1748,11 +1797,7 @@ function useQuickGenerateControllerImpl() {
         continueOnFailure: false,
       });
 
-      if (generatedIds.length > 0) {
-        const lastId = generatedIds[generatedIds.length - 1];
-        setGenerationId(lastId);
-        setWatchingGeneration(lastId);
-      }
+      setLastGenerationIdAsActive(generatedIds);
 
       if (result.status !== 'completed') {
         const failed = result.failedStepIndex != null ? result.failedStepIndex + 1 : null;
