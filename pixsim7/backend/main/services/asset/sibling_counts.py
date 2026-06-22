@@ -1,33 +1,54 @@
-"""Batch sibling-count queries for media-card badges.
+"""Batch cohort-count queries for the media-card similarity badge.
 
-Three glanceable counts per asset, all **user-scoped** and **include-self**:
+For each asset we count how many of the user's assets fall in the same
+*cohort* for every combination of three facets — Inputs (I), Prompt (P), Seed
+(S). All counts are **user-scoped** and **include-self**.
 
-* ``same_inputs`` — how many of the user's assets share the same *set of input
-  assets* (grouped by the denormalized ``Asset.input_assets_key``). 0 when the
-  asset had no input assets (text-to-* generations, uploads) — the frontend
-  hides the badge below 2.
-* ``same_prompt`` — how many of the user's assets share the same *prompt
-  family* (``PromptVersion.family_id``), falling back to the exact
-  ``prompt_version_id`` for one-off prompts that aren't in a family. 0 when the
-  asset has no prompt linkage (uploads).
-* ``same_seed`` — how many of the user's assets share the same generation
-  seed (the denormalized ``Asset.gen_seed``, i.e. the provider seed). 0 when no
-  meaningful seed is recorded for the asset.
+* Inputs  — the denormalized ``Asset.input_assets_key`` (the set of input
+  assets). NULL for text-to-* generations and uploads.
+* Prompt  — ``COALESCE(prompt_family_id, prompt_version_id)``: the prompt
+  family when the prompt belongs to one, else the exact version for one-off
+  prompts. A single grouping value either way (the two id-spaces never collide).
+* Seed    — the denormalized provider seed ``Asset.gen_seed`` (sentinel seeds
+  ``<= 0`` are stored as NULL upstream, so "pick a random seed" never groups).
 
-Mirrors ``AssetLineageService.has_children_map`` — batch a whole gallery page
-in a couple of GROUP BY queries so list responses need no per-card round-trips.
+The result is a per-asset map keyed by the lit-facet letters in canonical
+``i`` < ``p`` < ``s`` order: ``{"i", "p", "s", "ip", "is", "ps", "ips"}``. A
+combo is only counted for an asset that has a non-null value for *every* facet
+in it (e.g. ``ips`` needs inputs AND a prompt AND a seed); otherwise it stays 0
+and the frontend hides the badge. The frontend picks which combo to display
+from a user-chosen facet lens, so shipping the whole map lets it switch the
+displayed count instantly with no extra round-trip.
 
-See plan ``media-card-sibling-badges``.
+Mirrors ``AssetLineageService.has_children_map`` — a handful of GROUP BY
+queries batch a whole gallery page. See plan ``media-card-sibling-badges``.
 """
 from __future__ import annotations
 
-from typing import Dict, Iterable, List
-from uuid import UUID
+from typing import Callable, Dict, Iterable, List, Tuple
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.assets.models import Asset
+
+# A single prompt grouping value: the family if the prompt belongs to one, else
+# the exact version (one-off prompts). family_id and version_id are disjoint
+# id-spaces, so coalescing them can never produce a false match.
+_PROMPT_KEY = func.coalesce(Asset.prompt_family_id, Asset.prompt_version_id)
+
+# Facet letter -> (grouping column/expr, pivot-value extractor from an Asset).
+# The extractor returns None when the asset has no value for that facet, which
+# excludes it from every combo containing the facet.
+_FACETS: Dict[str, Tuple[object, Callable[[Asset], object]]] = {
+    "i": (Asset.input_assets_key, lambda a: a.input_assets_key),
+    "p": (_PROMPT_KEY, lambda a: a.prompt_family_id or a.prompt_version_id),
+    "s": (Asset.gen_seed, lambda a: a.gen_seed),
+}
+
+# All non-empty facet combinations, letters in canonical i<p<s order so the
+# keys match what the frontend builds from its facet lens.
+_COMBOS: Tuple[str, ...] = ("i", "p", "s", "ip", "is", "ps", "ips")
 
 
 class AssetSiblingCountService:
@@ -37,102 +58,50 @@ class AssetSiblingCountService:
     async def counts_map(
         self, assets: Iterable[Asset], owner_user_id: int
     ) -> Dict[int, Dict[str, int]]:
-        """Return ``{asset_id: {"same_inputs": int, "same_prompt": int, "same_seed": int}}``."""
+        """Return ``{asset_id: {combo_key: count}}`` for every facet combo."""
         asset_list = [a for a in assets if a is not None]
         result: Dict[int, Dict[str, int]] = {
-            a.id: {"same_inputs": 0, "same_prompt": 0, "same_seed": 0} for a in asset_list
+            a.id: {combo: 0 for combo in _COMBOS} for a in asset_list
         }
         if not asset_list:
             return result
 
-        await self._fill_same_inputs(asset_list, owner_user_id, result)
-        await self._fill_same_prompt(asset_list, owner_user_id, result)
-        await self._fill_same_seed(asset_list, owner_user_id, result)
+        for combo in _COMBOS:
+            await self._fill_combo(asset_list, owner_user_id, result, combo)
         return result
 
-    async def _fill_same_inputs(
+    async def _fill_combo(
         self,
         assets: List[Asset],
         owner_user_id: int,
         result: Dict[int, Dict[str, int]],
+        combo: str,
     ) -> None:
-        keys = {a.input_assets_key for a in assets if a.input_assets_key}
+        cols = [_FACETS[c][0] for c in combo]
+        extractors = [_FACETS[c][1] for c in combo]
+
+        def pivot_key(a: Asset):
+            vals = tuple(ex(a) for ex in extractors)
+            return vals if all(v is not None for v in vals) else None
+
+        keys = {k for a in assets if (k := pivot_key(a)) is not None}
         if not keys:
             return
 
+        # Composite IN over the exact facet columns; any cross-pair rows the IN
+        # admits are simply never read back (we look up exact pivot tuples).
         q = (
-            select(Asset.input_assets_key, func.count(Asset.id))
+            select(*cols, func.count(Asset.id))
             .where(Asset.user_id == owner_user_id)
-            .where(Asset.input_assets_key.in_(keys))
-            .group_by(Asset.input_assets_key)
+            .where(tuple_(*cols).in_(list(keys)))
+            .group_by(*cols)
         )
-        counts = {key: int(n) for key, n in (await self.db.execute(q)).all()}
+        counts: Dict[tuple, int] = {}
+        for row in (await self.db.execute(q)).all():
+            *key_vals, n = row
+            counts[tuple(key_vals)] = int(n)
 
         for a in assets:
-            if a.input_assets_key:
-                result[a.id]["same_inputs"] = counts.get(a.input_assets_key, 0)
-
-    async def _fill_same_prompt(
-        self,
-        assets: List[Asset],
-        owner_user_id: int,
-        result: Dict[int, Dict[str, int]],
-    ) -> None:
-        # Group by the denormalized family (no join). Assets whose prompt has no
-        # family (one-off prompts) fall back to grouping by exact version.
-        families = {a.prompt_family_id for a in assets if a.prompt_family_id}
-        oneoff_pv_ids = {
-            a.prompt_version_id
-            for a in assets
-            if a.prompt_version_id and not a.prompt_family_id
-        }
-
-        family_counts: Dict[UUID, int] = {}
-        if families:
-            fq = (
-                select(Asset.prompt_family_id, func.count(Asset.id))
-                .where(Asset.user_id == owner_user_id)
-                .where(Asset.prompt_family_id.in_(families))
-                .group_by(Asset.prompt_family_id)
-            )
-            family_counts = {fid: int(n) for fid, n in (await self.db.execute(fq)).all()}
-
-        version_counts: Dict[UUID, int] = {}
-        if oneoff_pv_ids:
-            vq = (
-                select(Asset.prompt_version_id, func.count(Asset.id))
-                .where(Asset.user_id == owner_user_id)
-                .where(Asset.prompt_version_id.in_(oneoff_pv_ids))
-                .group_by(Asset.prompt_version_id)
-            )
-            version_counts = {pv: int(n) for pv, n in (await self.db.execute(vq)).all()}
-
-        for a in assets:
-            if a.prompt_family_id:
-                result[a.id]["same_prompt"] = family_counts.get(a.prompt_family_id, 0)
-            elif a.prompt_version_id:
-                result[a.id]["same_prompt"] = version_counts.get(a.prompt_version_id, 0)
-
-    async def _fill_same_seed(
-        self,
-        assets: List[Asset],
-        owner_user_id: int,
-        result: Dict[int, Dict[str, int]],
-    ) -> None:
-        # Group by the denormalized provider seed (no join). Rides the
-        # user-scoped partial index idx_asset_user_gen_seed.
-        seeds = {a.gen_seed for a in assets if a.gen_seed is not None}
-        if not seeds:
-            return
-
-        q = (
-            select(Asset.gen_seed, func.count(Asset.id))
-            .where(Asset.user_id == owner_user_id)
-            .where(Asset.gen_seed.in_(seeds))
-            .group_by(Asset.gen_seed)
-        )
-        counts = {int(seed): int(n) for seed, n in (await self.db.execute(q)).all()}
-
-        for a in assets:
-            if a.gen_seed is not None:
-                result[a.id]["same_seed"] = counts.get(int(a.gen_seed), 0)
+            k = pivot_key(a)
+            if k is not None:
+                result[a.id][combo] = counts.get(k, 0)
