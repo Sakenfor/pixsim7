@@ -233,6 +233,23 @@ async def lifespan(app: FastAPI):
     async with get_async_session() as db:
         await run_startup_syncs(db)
 
+    # Best-effort: push the embedding hosted set (derived from the enabled
+    # asset:embedding instances) to the daemon so its served models track the
+    # instances after a restart. Backgrounded so a warming/absent daemon never
+    # delays readiness; the per-instance write hook keeps it fresh thereafter.
+    async def _sync_embedding_daemon_bg() -> None:
+        try:
+            from pixsim7.backend.main.services.embedding.daemon_sync import (
+                sync_embedding_daemon_models,
+            )
+            async with get_async_session() as sync_db:
+                await sync_embedding_daemon_models(sync_db)
+        except Exception:  # noqa: BLE001 — advisory; never affect startup
+            pass
+
+    import asyncio as _asyncio
+    _asyncio.create_task(_sync_embedding_daemon_bg())
+
     logger.info("pixsim7_ready")
 
     yield
@@ -250,6 +267,12 @@ async def lifespan(app: FastAPI):
     # Disable plugins
     await routes_manager.disable_all()
     await plugin_manager.disable_all()
+
+    # Tear down sibling-package capabilities bound for this host (symmetric
+    # with bind_for_host("fastapi") at startup; no-op for capabilities that
+    # never spawned a resource, e.g. the lazy embedding image daemon).
+    from pixsim7.backend.main.capability_registry import shutdown_for_host
+    await shutdown_for_host("fastapi")
 
     # Close connections
     await close_redis()

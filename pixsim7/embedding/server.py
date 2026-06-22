@@ -27,6 +27,9 @@ Endpoints:
                    {"embeddings":[[...]],"dim":N,"model_id":...}
                    `model_id` omitted -> the default model. A model_id not in the
                    allowed set returns 409 {"error":"model_not_served",...}.
+  POST /config/allowed-models -> {"model_ids":[...]} -> updates the allowed set
+                   (union with the env baseline). The backend pushes the set
+                   derived from the enabled asset:embedding instances here.
 
 Configuration (env):
   PIXSIM_EMBEDDING_MODEL_ID    - default/primary model (warm-loaded, pinned)
@@ -103,7 +106,10 @@ class _ModelRegistry:
 
     def __init__(self, *, default_model_id: str, allowed: set[str], capacity: int) -> None:
         self.default_model_id = default_model_id
-        self.allowed = allowed
+        # The env-configured set is the baseline; the backend can additively push
+        # an auto-derived set (from the asset:embedding instances) on top of it.
+        self._baseline = set(allowed) | {default_model_id}
+        self.allowed = set(self._baseline)
         self.capacity = capacity
         self.load_error: str | None = None  # default-model warmup failure
         self._loaded: "OrderedDict[str, tuple]" = OrderedDict()
@@ -112,6 +118,13 @@ class _ModelRegistry:
 
     def is_allowed(self, model_id: str) -> bool:
         return model_id in self.allowed
+
+    def set_allowed(self, model_ids: "list[str]") -> None:
+        """Replace the auto-derived portion of the allowed set (union with the
+        env baseline + default). Lets the backend keep the hosted set in sync
+        with the enabled asset:embedding instances without a daemon restart.
+        Atomic rebind — no lock needed (is_allowed reads a single reference)."""
+        self.allowed = self._baseline | {m for m in model_ids if m}
 
     @property
     def default_ready(self) -> bool:
@@ -200,6 +213,10 @@ class EmbedBody(BaseModel):
     model_id: str | None = None
 
 
+class AllowedModelsBody(BaseModel):
+    model_ids: list[str]
+
+
 def _health_extra() -> dict:
     return {
         "model_id": registry.default_model_id,
@@ -239,6 +256,17 @@ async def health():
         "in_flight": inflight.count,
         **_health_extra(),
     }
+
+
+@app.post("/config/allowed-models")
+async def set_allowed_models(body: AllowedModelsBody):
+    """Update the auto-derived hosted set (union with the env baseline).
+
+    Called by the backend to keep the daemon's served models in sync with the
+    enabled asset:embedding instances — so a per-instance model is hosted
+    without a manual env edit / daemon restart. Returns the resulting set."""
+    registry.set_allowed(body.model_ids)
+    return {"allowed": sorted(registry.allowed), "default": registry.default_model_id}
 
 
 @app.post("/embed")

@@ -209,3 +209,34 @@ async def test_concurrent_first_request_loads_once(monkeypatch) -> None:
     # Two concurrent acquires for the same cold model must de-dupe to one load.
     await asyncio.gather(reg.acquire("m/a"), reg.acquire("m/a"))
     assert loads["m/a"] == 1
+
+
+# ── auto-derived hosted set (backend push) ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_set_allowed_unions_baseline_and_default(monkeypatch) -> None:
+    # The pushed set unions with the env baseline; the default is always kept.
+    reg, _ = _install_registry(
+        monkeypatch, default="m/default", allowed={"m/default", "m/env"}
+    )
+    reg.set_allowed(["m/a", "m/b"])
+    assert reg.allowed == {"m/default", "m/env", "m/a", "m/b"}
+
+    # A subsequent push replaces the derived portion but keeps baseline+default.
+    reg.set_allowed(["m/c"])
+    assert reg.allowed == {"m/default", "m/env", "m/c"}
+    # Empty strings are ignored.
+    reg.set_allowed(["", "m/d"])
+    assert reg.allowed == {"m/default", "m/env", "m/d"}
+
+
+@pytest.mark.asyncio
+async def test_set_allowed_models_route(monkeypatch) -> None:
+    reg, _ = _install_registry(monkeypatch, default="m/default")
+    from pixsim7.embedding.server import AllowedModelsBody
+
+    res = await srv.set_allowed_models(AllowedModelsBody(model_ids=["m/fashion"]))
+    assert res["default"] == "m/default"
+    assert set(res["allowed"]) == {"m/default", "m/fashion"}
+    assert reg.is_allowed("m/fashion")

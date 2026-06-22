@@ -886,6 +886,22 @@ async def list_analyzer_instances(
     )
 
 
+async def _sync_embedding_daemon_if_needed(db, analyzer_id) -> None:
+    """When an asset:embedding instance changes, push the derived hosted set to
+    the daemon so its served models track the instances. Best-effort: a failure
+    (daemon down, etc.) must never break the instance write."""
+    if analyzer_id != "asset:embedding":
+        return
+    try:
+        from pixsim7.backend.main.services.embedding.daemon_sync import (
+            sync_embedding_daemon_models,
+        )
+
+        await sync_embedding_daemon_models(db)
+    except Exception:  # noqa: BLE001 — advisory sync, never fatal
+        pass
+
+
 @router.post("/analyzer-instances", response_model=AnalyzerInstanceResponse, status_code=201)
 async def create_analyzer_instance(
     data: AnalyzerInstanceCreate,
@@ -915,6 +931,7 @@ async def create_analyzer_instance(
         raise HTTPException(status_code=400, detail=f"Invalid instance config: {e.message}")
 
     await db.commit()
+    await _sync_embedding_daemon_if_needed(db, instance.analyzer_id)
 
     return _instance_to_response(instance)
 
@@ -965,6 +982,7 @@ async def update_analyzer_instance(
         raise HTTPException(status_code=404, detail="Analyzer instance not found")
 
     await db.commit()
+    await _sync_embedding_daemon_if_needed(db, instance.analyzer_id)
 
     return _instance_to_response(instance)
 
@@ -979,6 +997,13 @@ async def delete_analyzer_instance(
     Delete an analyzer instance.
     """
     service = AnalyzerInstanceService(db)
+    # Capture the analyzer_id before deletion so we can resync the daemon's
+    # hosted set if an asset:embedding instance just went away.
+    existing = await service.get_instance_for_user(
+        instance_id=instance_id, owner_user_id=user.id
+    )
+    analyzer_id = existing.analyzer_id if existing else None
+
     deleted = await service.delete_instance(
         instance_id=instance_id,
         owner_user_id=user.id,
@@ -987,6 +1012,7 @@ async def delete_analyzer_instance(
         raise HTTPException(status_code=404, detail="Analyzer instance not found")
 
     await db.commit()
+    await _sync_embedding_daemon_if_needed(db, analyzer_id)
 
 
 # include_in_schema=False: advisory internal status probe with a hand-written
