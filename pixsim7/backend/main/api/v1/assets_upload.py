@@ -1118,7 +1118,26 @@ async def extract_frame(
                     provider_id=target_provider_id,
                     error=str(upload_error),
                 )
-                # Refresh asset so response includes upload failure in last_upload_status_by_provider
+                # Stamp the same provider_flagged badge other upload-failure
+                # paths set (manual /assets/upload, /reupload, poller
+                # post-delivery moderation) so this rejection is consistent
+                # with the rest of the failure-tracking surface — gallery
+                # "flagged" filters, badge derivation, diagnostics all read
+                # this single bit. `record_upload_attempt` already wrote the
+                # attempt history inside _upload_to_provider; this only adds
+                # the badge-signal layer.
+                try:
+                    meta = dict(frame_asset.media_metadata or {})
+                    meta["provider_flagged"] = True
+                    meta["provider_flagged_reason"] = str(upload_error)
+                    frame_asset.media_metadata = meta
+                    from sqlalchemy.orm import attributes
+                    attributes.flag_modified(frame_asset, "media_metadata")
+                    await asset_service.db.commit()
+                except Exception:
+                    pass
+                # Refresh asset so response reflects the recorded failure
+                # (last_upload_status_by_provider + provider_flagged).
                 try:
                     frame_asset = await asset_service.get_asset(frame_asset.id)
                 except Exception:
