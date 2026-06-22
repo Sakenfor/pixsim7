@@ -1,13 +1,7 @@
 import { useEffect, useState } from 'react';
 
-import { pixsimClient } from '@lib/api/client';
-
+import { fetchAllPlans } from '@features/panels/components/dev/plans/detail/fetchAllPlans';
 import { isCanonicalPlanId } from '@features/panels/components/dev/plans/detail/types';
-
-interface PlanIndexEntry {
-  id: string;
-  title: string;
-}
 
 const POLL_MS = 60_000;
 
@@ -30,15 +24,13 @@ export function usePlanTitles(): Map<string, string> {
 
     const fetchTitles = async () => {
       try {
-        // compact + high limit: this map must cover every plan or grouped tabs
-        // for plans past the default 100-row page render as dead links. compact
-        // keeps it cheap (id + title is all we need here).
-        const res = await pixsimClient.get<{ plans: PlanIndexEntry[] }>(
-          '/dev/plans?compact=true&limit=500',
-        );
+        // Page through *every* plan (compact — only id + title needed). This map
+        // must cover all plans or grouped tabs for plans past the first page
+        // render as dead links.
+        const plans = await fetchAllPlans({ compact: true });
         if (cancelled) return;
         const next = new Map<string, string>();
-        for (const p of res.plans ?? []) {
+        for (const p of plans) {
           if (isCanonicalPlanId(p.id)) next.set(p.id, p.title);
         }
         setTitles(next);

@@ -23,11 +23,11 @@ import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 
 import { PlanDetailView } from './plans/detail';
+import { fetchAllPlans } from './plans/detail/fetchAllPlans';
 import type {
   PlanStageOptionEntry,
   PlanStagesResponse,
   PlanSummary,
-  PlansIndexResponse,
 } from './plans/detail/types';
 import {
   FALLBACK_PLAN_STAGE_OPTIONS,
@@ -108,12 +108,12 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     setLoading(true);
     setError('');
     try {
-      // limit=500 (endpoint max): the sidebar — and the "is this plan
-      // available?" check downstream — must see every plan, not just the
-      // default first 100, or plans past that page show "unavailable" on open.
-      const res = await pixsimClient.get<PlansIndexResponse>('/dev/plans?limit=500');
-      const canonicalPlans = res.plans.filter((p) => isCanonicalPlanId(p.id));
-      if (canonicalPlans.length !== res.plans.length) {
+      // Page through every plan: the sidebar — and the "is this plan
+      // available?" check downstream — must see all of them, not just the
+      // first page, or plans past it show "unavailable" on open.
+      const allPlans = await fetchAllPlans();
+      const canonicalPlans = allPlans.filter((p) => isCanonicalPlanId(p.id));
+      if (canonicalPlans.length !== allPlans.length) {
         console.warn('PlansPanel: dropped non-canonical plan IDs from sidebar list');
       }
       setPlans(canonicalPlans);
