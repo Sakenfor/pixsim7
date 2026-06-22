@@ -204,7 +204,7 @@ export function SidebarPaneShell({
                       type="button"
                       onClick={detachable.onDetach}
                       className={clsx(
-                        'flex h-5 w-5 items-center justify-center rounded',
+                        'flex h-5 w-5 items-center justify-center rounded tap-target',
                         'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300',
                         'hover:bg-neutral-100 dark:hover:bg-neutral-800',
                         'transition-colors',
@@ -219,7 +219,7 @@ export function SidebarPaneShell({
                       type="button"
                       onClick={handleToggle}
                       className={clsx(
-                        'flex h-5 w-5 items-center justify-center rounded',
+                        'flex h-5 w-5 items-center justify-center rounded tap-target',
                         'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300',
                         'hover:bg-neutral-100 dark:hover:bg-neutral-800',
                         'transition-colors',
@@ -241,7 +241,7 @@ export function SidebarPaneShell({
                     type="button"
                     onClick={detachable.onDetach}
                     className={clsx(
-                      'flex h-5 w-5 items-center justify-center rounded',
+                      'flex h-5 w-5 items-center justify-center rounded tap-target',
                       'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300',
                       'hover:bg-neutral-100 dark:hover:bg-neutral-800',
                       'transition-colors',
@@ -256,7 +256,7 @@ export function SidebarPaneShell({
                     type="button"
                     onClick={handleToggle}
                     className={clsx(
-                      'flex h-5 w-5 items-center justify-center rounded',
+                      'flex h-5 w-5 items-center justify-center rounded tap-target',
                       'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300',
                       'hover:bg-neutral-100 dark:hover:bg-neutral-800',
                       'transition-colors',
@@ -274,7 +274,7 @@ export function SidebarPaneShell({
                     type="button"
                     onClick={detachable.onDetach}
                     className={clsx(
-                      'flex h-5 w-5 items-center justify-center rounded',
+                      'flex h-5 w-5 items-center justify-center rounded tap-target',
                       'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300',
                       'hover:bg-neutral-100 dark:hover:bg-neutral-800',
                       'transition-colors',
@@ -289,7 +289,7 @@ export function SidebarPaneShell({
                     type="button"
                     onClick={handleToggle}
                     className={clsx(
-                      'flex h-5 w-5 items-center justify-center rounded',
+                      'flex h-5 w-5 items-center justify-center rounded tap-target',
                       'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300',
                       'hover:bg-neutral-100 dark:hover:bg-neutral-800',
                       'transition-colors',
