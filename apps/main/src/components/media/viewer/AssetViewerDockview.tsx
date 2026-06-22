@@ -394,6 +394,7 @@ export function AssetViewerDockview({
         allowedPanels={useDockId ? viewerPanelIds : undefined}
         excludePanels={useDockId ? floatingViewerPanelIds : undefined}
         storageKey="dockview:asset-viewer:v6"
+        keepMountedPanels={['quickGenerate']}
         context={context}
         className={className}
       />

@@ -63,6 +63,8 @@ export interface PanelHostMobileProps {
   context?: unknown;
   /** Storage key — used to remember active panel across sessions. */
   storageKey: string;
+  /** Panel IDs that should remain mounted even when not active. */
+  keepMountedPanels?: string[];
   className?: string;
 }
 
@@ -84,6 +86,7 @@ export function PanelHostMobile({
   hostCapabilityKeys,
   context,
   storageKey,
+  keepMountedPanels,
   className,
 }: PanelHostMobileProps) {
   const eligiblePanelIds = useMemo(() => {
@@ -140,7 +143,17 @@ export function PanelHostMobile({
   );
 
   const activeDef = activeId ? panelSelectors.get(activeId) : undefined;
-  const ActiveComponent = activeDef?.component;
+  const mountedPanelIds = useMemo(() => {
+    if (eligiblePanelIds.length === 0) return [];
+    const requested = new Set(keepMountedPanels ?? []);
+    const ids = new Set<string>();
+    for (const panelId of eligiblePanelIds) {
+      if (panelId === activeId || requested.has(panelId)) {
+        ids.add(panelId);
+      }
+    }
+    return eligiblePanelIds.filter((panelId) => ids.has(panelId));
+  }, [eligiblePanelIds, keepMountedPanels, activeId]);
 
   return (
     <div className={className ?? 'flex h-full w-full flex-col'}>
@@ -149,14 +162,22 @@ export function PanelHostMobile({
       </header>
 
       <main className="flex-1 overflow-hidden relative">
-        {ActiveComponent ? (
-          <ActiveComponent
-            params={context}
-            context={context}
-            api={NOOP_PANEL_API}
-            containerApi={NOOP_CONTAINER_API}
-          />
-        ) : null}
+        {mountedPanelIds.map((panelId) => {
+          const def = panelSelectors.get(panelId);
+          const PanelComponent = def?.component;
+          if (!PanelComponent) return null;
+          const isActive = panelId === activeId;
+          return (
+            <div key={panelId} className={isActive ? 'h-full' : 'hidden h-full'} aria-hidden={!isActive}>
+              <PanelComponent
+                params={context}
+                context={context}
+                api={NOOP_PANEL_API}
+                containerApi={NOOP_CONTAINER_API}
+              />
+            </div>
+          );
+        })}
       </main>
 
       <nav
