@@ -14,6 +14,7 @@ import {
 } from '../api/client'
 import { StatusDot } from '@pixsim7/shared.ui'
 import { ChoiceCard, CreateForm, InfoRow, LinkForm, type FormShell } from './setupShared'
+import { CollapsiblePanel } from './CollapsiblePanel'
 
 type Mode = 'choose' | 'create' | 'link'
 
@@ -185,10 +186,13 @@ const FormShell: FormShell = ({ title, onBack, children }) => {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-[#30363d] bg-[#161b22] p-3">
-      <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">{title}</div>
+    <CollapsiblePanel
+      title={title}
+      persistKey={`launcher:account:${title.toLowerCase()}`}
+      className="rounded-lg"
+    >
       {children}
-    </div>
+    </CollapsiblePanel>
   )
 }
 
@@ -201,4 +205,3 @@ function formatUptime(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60)
   return `${h}h ${m}m`
 }
-

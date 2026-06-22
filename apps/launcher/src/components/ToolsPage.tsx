@@ -9,6 +9,7 @@ import {
   useSidebarNav,
   type SidebarContentLayoutSection, type StatusTone,
 } from '@pixsim7/shared.ui'
+import { CollapsiblePanel } from './CollapsiblePanel'
 import {
   getCodegenTasks, runCodegenTask, getCodegenOpenapiStats, getCodegenOutputStats,
   getBuildables, buildPackage,
@@ -2071,9 +2072,11 @@ function SettingsSection() {
 
   return (
     <div className="p-3 space-y-3">
-      <div className="bg-surface-secondary rounded border border-border p-3 space-y-2">
-        <h3 className="text-xs font-bold text-gray-200 mb-2">Launcher</h3>
-
+      <CollapsiblePanel
+        title="Launcher"
+        persistKey="launcher:settings:launcher"
+        contentClassName="space-y-2"
+      >
         <label className="flex items-center gap-2 text-[11px]">
           <Checkbox checked={isDev} onChange={toggleDevMode} />
           <span className="text-gray-300">Dev mode (Vite HMR on :3100)</span>
@@ -2086,10 +2089,13 @@ function SettingsSection() {
         {toggle('clear_logs_on_restart', 'Clear logs on service start/restart')}
         {toggle('auto_refresh_logs', 'Auto-refresh DB logs')}
         {toggle('window_always_on_top', 'Window always on top')}
-      </div>
+      </CollapsiblePanel>
 
-      <div className="bg-surface-secondary rounded border border-border p-3 space-y-1">
-        <h3 className="text-xs font-bold text-gray-200 mb-1">Debug (legacy)</h3>
+      <CollapsiblePanel
+        title="Debug (legacy)"
+        persistKey="launcher:settings:debug-legacy"
+        contentClassName="space-y-1"
+      >
         <div className="text-[10px] text-gray-500 mb-2">
           These require a service restart. Use the Debug tab for runtime control instead.
         </div>
@@ -2105,7 +2111,7 @@ function SettingsSection() {
             className="w-48"
           />
         </div>
-      </div>
+      </CollapsiblePanel>
 
       <Button variant="primary" size="sm" onClick={save} loading={saving} disabled={saved}>
         {saved ? 'Saved' : 'Save Settings'}

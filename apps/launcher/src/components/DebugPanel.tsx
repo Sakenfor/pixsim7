@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Input, Select, Switch } from '@pixsim7/shared.ui'
 import { useServicesStore } from '../stores/services'
+import { CollapsiblePanel } from './CollapsiblePanel'
 import {
   getDomainCatalog,
   getLoggingConfig,
@@ -203,11 +204,15 @@ function GlobalConfigSection({
   const local = config.source === 'launcher-local'
 
   return (
-    <div className="space-y-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 px-1">
-        Global Config <span className="font-normal lowercase text-gray-600">(applies to all services)</span>
-      </div>
-
+    <CollapsiblePanel
+      title={
+        <span>
+          Global Config <span className="font-normal lowercase text-gray-600">(applies to all services)</span>
+        </span>
+      }
+      persistKey="launcher:debug:global-config"
+      contentClassName="space-y-2"
+    >
       {local && (
         <div className="rounded border border-amber-700/40 bg-amber-900/15 px-2 py-1.5 text-[10px] text-amber-300">
           Backend offline — showing the launcher-api process's own logging state.
@@ -276,7 +281,7 @@ function GlobalConfigSection({
           onUpdate={(levels) => onPatch({ log_domain_levels: levels })}
         />
       )}
-    </div>
+    </CollapsiblePanel>
   )
 }
 

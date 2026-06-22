@@ -14,6 +14,7 @@ import {
   getServiceSettings,
   updateServiceSettings,
 } from '../api/client'
+import { CollapsiblePanel } from './CollapsiblePanel'
 
 /** Group fields by section, preserving declaration order. */
 function groupBySection(fields: SettingField[]) {
@@ -76,8 +77,11 @@ export function ServiceSettingsPanel({
   }
 
   return (
-    <div className="bg-surface-secondary rounded border border-border p-3 space-y-2.5">
-      <div className="text-[11px] font-semibold text-gray-300">{title || 'Settings'}</div>
+    <CollapsiblePanel
+      title={title || 'Settings'}
+      persistKey={`launcher:service:${serviceKey}:settings:${activeSection ?? 'all'}`}
+      contentClassName="space-y-2.5"
+    >
       <div className="text-[10px] text-gray-500 leading-relaxed">
         Changes take effect on next restart.
       </div>
@@ -116,7 +120,7 @@ export function ServiceSettingsPanel({
         </div>
       )}
       {children?.(data.values)}
-    </div>
+    </CollapsiblePanel>
   )
 }
 
