@@ -411,6 +411,14 @@ import {
   };
 
   const HOTKEY_STORAGE_KEY = 'pxs7_player_hotkeys';
+  const MOUSE_BUTTON_CODES = {
+    1: 'MouseMiddle',
+  };
+  const HOTKEY_CODE_LABELS = {
+    MouseMiddle: 'Mouse Middle',
+    WheelUp: 'Wheel Up',
+    WheelDown: 'Wheel Down',
+  };
 
   function loadHotkeys() {
     try {
@@ -448,7 +456,8 @@ import {
 
     // Convert code to readable key name
     let key = hotkey.code;
-    if (key.startsWith('Key')) key = key.slice(3);
+    if (HOTKEY_CODE_LABELS[key]) key = HOTKEY_CODE_LABELS[key];
+    else if (key.startsWith('Key')) key = key.slice(3);
     else if (key.startsWith('Digit')) key = key.slice(5);
     else if (key === 'ArrowLeft') key = '←';
     else if (key === 'ArrowRight') key = '→';
@@ -495,14 +504,11 @@ import {
 
     state.recordingHotkey = action;
     btn.classList.add('recording');
-    btn.textContent = 'Press key...';
+    btn.textContent = 'Press key / click / wheel...';
   }
 
-  function handleHotkeyRecording(e) {
+  function finishHotkeyRecording(e, code) {
     if (!state.recordingHotkey) return false;
-
-    // Ignore modifier-only keypresses
-    if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return true;
 
     e.preventDefault();
     e.stopPropagation();
@@ -510,7 +516,7 @@ import {
     const action = state.recordingHotkey;
     state.hotkeys[action] = {
       ...state.hotkeys[action],
-      code: e.code,
+      code,
       ctrl: e.ctrlKey,
       shift: e.shiftKey,
       alt: e.altKey,
@@ -522,11 +528,138 @@ import {
     return true;
   }
 
-  function matchesHotkey(e, hotkey) {
-    return e.code === hotkey.code &&
+  function handleKeyboardHotkeyRecording(e) {
+    if (!state.recordingHotkey) return false;
+    // Ignore modifier-only keypresses
+    if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return true;
+    return finishHotkeyRecording(e, e.code);
+  }
+
+  function handleMouseHotkeyRecording(e) {
+    if (!state.recordingHotkey) return false;
+    const code = MOUSE_BUTTON_CODES[e.button];
+    if (!code) return false;
+    return finishHotkeyRecording(e, code);
+  }
+
+  function handleWheelHotkeyRecording(e) {
+    if (!state.recordingHotkey) return false;
+    if (!e.deltaY) return true;
+    const code = e.deltaY < 0 ? 'WheelUp' : 'WheelDown';
+    return finishHotkeyRecording(e, code);
+  }
+
+  function matchesHotkey(code, e, hotkey) {
+    return code === hotkey.code &&
            e.ctrlKey === hotkey.ctrl &&
            e.shiftKey === hotkey.shift &&
            e.altKey === hotkey.alt;
+  }
+
+  function isInputLikeTarget(target) {
+    if (!target || typeof target !== 'object') return false;
+    const tagName = target.tagName;
+    if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') return true;
+    return target.isContentEditable === true;
+  }
+
+  function isSkipHotkey(hotkey) {
+    return !hotkey.ctrl && !hotkey.shift && !hotkey.alt;
+  }
+
+  function dispatchHotkey(code, e) {
+    const hotkeys = state.hotkeys;
+
+    if (matchesHotkey(code, e, hotkeys.playPause)) {
+      e.preventDefault();
+      if (elements.video.paused) elements.video.play();
+      else elements.video.pause();
+      return true;
+    }
+    if (code === hotkeys.skipBack.code && isSkipHotkey(hotkeys.skipBack)) {
+      // Skip back with modifier support (normal, ctrl, shift)
+      e.preventDefault();
+      elements.video.pause();
+      elements.video.currentTime = Math.max(0, elements.video.currentTime - getSkipAmount(e));
+      return true;
+    }
+    if (code === hotkeys.skipForward.code && isSkipHotkey(hotkeys.skipForward)) {
+      // Skip forward with modifier support (normal, ctrl, shift)
+      e.preventDefault();
+      elements.video.pause();
+      elements.video.currentTime = Math.min(elements.video.duration, elements.video.currentTime + getSkipAmount(e));
+      return true;
+    }
+    if (matchesHotkey(code, e, hotkeys.capture)) {
+      if (e.ctrlKey || e.metaKey) return true;
+      e.preventDefault();
+      // If a region is drawn, capture it; otherwise toggle region mode
+      const hasRect = state.selectedRegion && state.selectedRegion.width > 0;
+      const hasPoly = state.polygonPoints && state.polygonPoints.length >= 3;
+      if (hasRect || hasPoly) {
+        window.PXS7Player.capture?.captureAndUpload();
+      } else {
+        window.PXS7Player.region?.setRegionType('rect');
+        window.PXS7Player.region?.toggleRegionMode();
+      }
+      return true;
+    }
+    if (matchesHotkey(code, e, hotkeys.saveAsset)) {
+      if (e.ctrlKey || e.metaKey) return true;
+      e.preventDefault();
+      window.PXS7Player.capture?.saveToAssetsOnly();
+      return true;
+    }
+    if (matchesHotkey(code, e, hotkeys.regionMode)) {
+      e.preventDefault();
+      window.PXS7Player.region?.setRegionType('rect');
+      window.PXS7Player.region?.toggleRegionMode();
+      return true;
+    }
+    if (matchesHotkey(code, e, hotkeys.polygonMode)) {
+      e.preventDefault();
+      window.PXS7Player.region?.setRegionType('polygon');
+      window.PXS7Player.region?.toggleRegionMode();
+      return true;
+    }
+    if (matchesHotkey(code, e, hotkeys.mute)) {
+      if (e.ctrlKey || e.metaKey) return true;
+      e.preventDefault();
+      toggleMute();
+      return true;
+    }
+    if (matchesHotkey(code, e, hotkeys.volumeUp)) {
+      e.preventDefault();
+      setVolume(state.volume + 0.05);
+      return true;
+    }
+    if (matchesHotkey(code, e, hotkeys.volumeDown)) {
+      e.preventDefault();
+      setVolume(state.volume - 0.05);
+      return true;
+    }
+    if (matchesHotkey(code, e, hotkeys.togglePlaylist)) {
+      e.preventDefault();
+      window.PXS7Player.playlist?.toggleSidebar();
+      return true;
+    }
+    if (matchesHotkey(code, e, hotkeys.zoomIn)) {
+      e.preventDefault();
+      zoomIn();
+      return true;
+    }
+    if (matchesHotkey(code, e, hotkeys.zoomOut)) {
+      e.preventDefault();
+      zoomOut();
+      return true;
+    }
+    if (matchesHotkey(code, e, hotkeys.zoomReset)) {
+      e.preventDefault();
+      zoomReset();
+      return true;
+    }
+
+    return false;
   }
 
   // Reset hotkeys button
@@ -546,77 +679,42 @@ import {
   // ===== Keyboard shortcuts =====
   document.addEventListener('keydown', (e) => {
     // Handle hotkey recording first
-    if (handleHotkeyRecording(e)) return;
+    if (handleKeyboardHotkeyRecording(e)) return;
 
-    if (e.target.tagName === 'INPUT') return;
+    if (isInputLikeTarget(e.target)) return;
 
-    const hotkeys = state.hotkeys;
-
-    if (matchesHotkey(e, hotkeys.playPause)) {
-      e.preventDefault();
-      if (elements.video.paused) elements.video.play();
-      else elements.video.pause();
-    } else if (e.code === hotkeys.skipBack.code && !hotkeys.skipBack.ctrl && !hotkeys.skipBack.shift && !hotkeys.skipBack.alt) {
-      // Skip back with modifier support (normal, ctrl, shift)
-      e.preventDefault();
-      elements.video.pause();
-      elements.video.currentTime = Math.max(0, elements.video.currentTime - getSkipAmount(e));
-    } else if (e.code === hotkeys.skipForward.code && !hotkeys.skipForward.ctrl && !hotkeys.skipForward.shift && !hotkeys.skipForward.alt) {
-      // Skip forward with modifier support (normal, ctrl, shift)
-      e.preventDefault();
-      elements.video.pause();
-      elements.video.currentTime = Math.min(elements.video.duration, elements.video.currentTime + getSkipAmount(e));
-    } else if (matchesHotkey(e, hotkeys.capture)) {
-      if (e.ctrlKey || e.metaKey) return;
-      e.preventDefault();
-      // If a region is drawn, capture it; otherwise toggle region mode
-      const hasRect = state.selectedRegion && state.selectedRegion.width > 0;
-      const hasPoly = state.polygonPoints && state.polygonPoints.length >= 3;
-      if (hasRect || hasPoly) {
-        window.PXS7Player.capture?.captureAndUpload();
-      } else {
-        window.PXS7Player.region?.setRegionType('rect');
-        window.PXS7Player.region?.toggleRegionMode();
-      }
-    } else if (matchesHotkey(e, hotkeys.saveAsset)) {
-      if (e.ctrlKey || e.metaKey) return;
-      e.preventDefault();
-      window.PXS7Player.capture?.saveToAssetsOnly();
-    } else if (matchesHotkey(e, hotkeys.regionMode)) {
-      e.preventDefault();
-      window.PXS7Player.region?.setRegionType('rect');
-      window.PXS7Player.region?.toggleRegionMode();
-    } else if (matchesHotkey(e, hotkeys.polygonMode)) {
-      e.preventDefault();
-      window.PXS7Player.region?.setRegionType('polygon');
-      window.PXS7Player.region?.toggleRegionMode();
-    } else if (e.code === 'Escape' && (state.regionMode || state.isDrawingPolygon)) {
+    if (e.code === 'Escape' && (state.regionMode || state.isDrawingPolygon)) {
       e.preventDefault();
       window.PXS7Player.region?.toggleRegionMode();
-    } else if (matchesHotkey(e, hotkeys.mute)) {
-      if (e.ctrlKey || e.metaKey) return;
-      e.preventDefault();
-      toggleMute();
-    } else if (matchesHotkey(e, hotkeys.volumeUp)) {
-      e.preventDefault();
-      setVolume(state.volume + 0.05);
-    } else if (matchesHotkey(e, hotkeys.volumeDown)) {
-      e.preventDefault();
-      setVolume(state.volume - 0.05);
-    } else if (matchesHotkey(e, hotkeys.togglePlaylist)) {
-      e.preventDefault();
-      window.PXS7Player.playlist?.toggleSidebar();
-    } else if (matchesHotkey(e, hotkeys.zoomIn)) {
-      e.preventDefault();
-      zoomIn();
-    } else if (matchesHotkey(e, hotkeys.zoomOut)) {
-      e.preventDefault();
-      zoomOut();
-    } else if (matchesHotkey(e, hotkeys.zoomReset)) {
-      e.preventDefault();
-      zoomReset();
+      return;
     }
+
+    dispatchHotkey(e.code, e);
   });
+
+  document.addEventListener('mousedown', (e) => {
+    // Handle hotkey recording first
+    if (handleMouseHotkeyRecording(e)) return;
+
+    if (isInputLikeTarget(e.target)) return;
+    const code = MOUSE_BUTTON_CODES[e.button];
+    if (!code) return;
+
+    dispatchHotkey(code, e);
+  });
+
+  document.addEventListener('wheel', (e) => {
+    // Handle hotkey recording first
+    if (handleWheelHotkeyRecording(e)) return;
+
+    if (isInputLikeTarget(e.target)) return;
+    if (!e.deltaY) return;
+
+    const code = e.deltaY < 0 ? 'WheelUp' : 'WheelDown';
+    if (dispatchHotkey(code, e)) {
+      e.stopPropagation();
+    }
+  }, { capture: true, passive: false });
 
   // Export
   window.PXS7Player.controls = {
