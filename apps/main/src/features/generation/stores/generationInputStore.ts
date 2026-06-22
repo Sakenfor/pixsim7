@@ -419,7 +419,21 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
               targetSlotIndex = getNextSlotIndex(nextItems);
             }
 
+            // The item (if any) currently occupying the slot we're about to
+            // overwrite. In replace mode (carousel) this is the asset being
+            // swapped out; carry its slot-sticky prompt pin / param overrides
+            // onto the new item so a replace doesn't silently un-pin the prompt.
+            // Mask/timestamp/set-ref are asset-specific and intentionally dropped.
+            const replacedItem = nextItems.find(
+              (item) => getSlotIndex(item, 0) === targetSlotIndex
+            );
             const nextItem = createInputItem(asset, targetSlotIndex);
+            if (replacedItem) {
+              nextItem.promptPinned = replacedItem.promptPinned;
+              nextItem.promptOverride = replacedItem.promptOverride;
+              nextItem.paramOverrides = replacedItem.paramOverrides;
+              nextItem.roleOverride = replacedItem.roleOverride;
+            }
 
             if (!shouldAllowDuplicates) {
               const existingIndex = nextItems.findIndex((item) => item.asset.id === asset.id);
