@@ -153,7 +153,9 @@ function SettingFieldControl({
           <NumberControl value={value as number} onChange={onChange} />
         )}
         {field.type === 'string' && !field.separator && (
-          <StringControl value={(value as string) ?? ''} onChange={onChange} />
+          isSecretField(field)
+            ? <SecretStringControl value={(value as string) ?? ''} onChange={onChange} />
+            : <StringControl value={(value as string) ?? ''} onChange={onChange} />
         )}
         {field.type === 'string' && field.separator && (
           <StringListControl value={(value as string) ?? ''} separator={field.separator} onChange={onChange} />
@@ -193,6 +195,45 @@ function NumberControl({ value, onChange }: { value: number; onChange: (v: numbe
         value={local}
         onChange={(e) => { setLocal(e.target.value); commit(e.target.value) }}
       />
+    </div>
+  )
+}
+
+/** Secret-ish fields (API keys, tokens, signing keys) — masked by env_export name. */
+function isSecretField(field: SettingField): boolean {
+  return /(API_KEY|SECRET_KEY|_TOKEN|_SECRET)$/.test(field.env_export ?? '')
+}
+
+/** Masked string input with a show/hide toggle, for secrets. */
+function SecretStringControl({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [local, setLocal] = useState(value)
+  const [reveal, setReveal] = useState(false)
+
+  useEffect(() => { setLocal(value) }, [value])
+
+  const commit = (v: string) => {
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => onChange(v), 500)
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        size="xs"
+        type={reveal ? 'text' : 'password'}
+        value={local}
+        placeholder="(unset — uses .env)"
+        onChange={(e) => { setLocal(e.target.value); commit(e.target.value) }}
+        className="flex-1 font-mono"
+      />
+      <button
+        type="button"
+        onClick={() => setReveal((r) => !r)}
+        className="text-[9px] text-gray-500 hover:text-gray-300 px-1 shrink-0"
+      >
+        {reveal ? 'Hide' : 'Show'}
+      </button>
     </div>
   )
 }

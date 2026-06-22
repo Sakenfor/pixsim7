@@ -97,6 +97,31 @@
       "default": "/health,/ready,/",
       "env_export": "PIXSIM_LOG_EXCLUDE_PATHS",
       "section": "Observability"
+    },
+    {
+      "key": "environment",
+      "type": "string",
+      "label": "Environment",
+      "description": "Deployment environment: development, staging, or production. Gates environment-scoped middleware.",
+      "default": "development",
+      "env_export": "ENVIRONMENT",
+      "section": "Runtime"
+    },
+    {
+      "key": "anthropic_api_key",
+      "type": "string",
+      "label": "Anthropic API Key",
+      "description": "Injected as ANTHROPIC_API_KEY into all services. Stored locally in plaintext; leave empty to fall back to .env / OS env.",
+      "env_export": "ANTHROPIC_API_KEY",
+      "section": "API Keys"
+    },
+    {
+      "key": "openai_api_key",
+      "type": "string",
+      "label": "OpenAI API Key",
+      "description": "Injected as OPENAI_API_KEY into all services. Stored locally in plaintext; leave empty to fall back to .env / OS env.",
+      "env_export": "OPENAI_API_KEY",
+      "section": "API Keys"
     }
   ]
 }
