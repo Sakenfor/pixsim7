@@ -18,20 +18,29 @@ import {
 
 const UNREAD_URL = '/notifications/unread-by-ref?ref_type=chat_session';
 const QUESTION_URL = '/notifications/unread-by-ref?ref_type=chat_tab';
+const ACTIVITY_URL = '/notifications/unread-by-ref?ref_type=chat_session_activity';
 
 /**
- * One poll cycle now fetches BOTH ref types (Phase 4a unread + Phase 4b
- * questions). Route the mock by URL so each surface gets its own slice.
+ * One poll cycle now fetches THREE ref types (Phase 4a unread + Phase 4b
+ * questions + cross-device activity). Route the mock by URL so each surface
+ * gets its own slice.
  */
 function mockByRefType(opts: {
   unread?: Record<string, number>;
   questions?: Record<string, number>;
+  activity?: Record<string, number>;
 }) {
   get.mockImplementation((url: string) => {
     if (url === QUESTION_URL) {
       return Promise.resolve({
         refType: 'chat_tab',
         counts: opts.questions ?? {},
+      });
+    }
+    if (url === ACTIVITY_URL) {
+      return Promise.resolve({
+        refType: 'chat_session_activity',
+        counts: opts.activity ?? {},
       });
     }
     return Promise.resolve({
@@ -79,6 +88,26 @@ describe('chatUnreadPoll', () => {
     expect(snap.countsBySessionId).toEqual({ s1: 2, s2: 3 });
     expect(snap.questionsByTabId).toEqual({ tabA: 1 });
     expect(snap.questionsTotal).toBe(1);
+    unsub();
+  });
+
+  it('tracks the pip-free cross-device activity counter separately from unread', async () => {
+    // Activity (peer user messages) must NOT inflate the unread total/pip —
+    // it lives in its own slice that consumers edge-detect for live sync.
+    mockByRefType({ unread: { s1: 2 }, activity: { s1: 7, s2: 1 } });
+    const unsub = subscribeChatUnread(() => {});
+
+    expect(get).toHaveBeenCalledWith(
+      ACTIVITY_URL,
+      expect.objectContaining({ headers: expect.any(Object) }),
+    );
+
+    await vi.waitFor(() => {
+      expect(getChatUnreadSnapshot().activityBySessionId).toEqual({ s1: 7, s2: 1 });
+    });
+    const snap = getChatUnreadSnapshot();
+    expect(snap.total).toBe(2); // unread total unaffected by activity
+    expect(snap.countsBySessionId).toEqual({ s1: 2 });
     unsub();
   });
 

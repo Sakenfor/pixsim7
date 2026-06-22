@@ -30,6 +30,12 @@ export interface UseChatUnreadResult {
   questionsByTabId: Record<string, number>;
   /** Number of tabs with a pending agent question (Phase 4b). */
   questionsTotal: number;
+  /**
+   * ChatSession id -> monotonic cross-device activity counter (pip-free).
+   * Edge-detect a rise to know a message was typed on another device and
+   * re-pull the transcript; never read the absolute value (it only grows).
+   */
+  activityBySessionId: Record<string, number>;
   loading: boolean;
   refresh: () => Promise<void>;
   /** Clear-on-focus for one bound session's unread replies. */
@@ -92,6 +98,7 @@ export function useChatUnread(): UseChatUnreadResult {
     total: snap.total,
     questionsByTabId: snap.questionsByTabId,
     questionsTotal: snap.questionsTotal,
+    activityBySessionId: snap.activityBySessionId,
     loading: snap.loading,
     refresh,
     markReadBySession,

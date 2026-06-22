@@ -495,6 +495,66 @@ function findMissingAssistantTail(
 }
 
 /**
+ * Returns the messages on the server after the latest matched local user turn
+ * that aren't present locally — INCLUDING peer `user` turns, not just
+ * assistant replies.
+ *
+ * This is the cross-device counterpart to `findMissingAssistantTail`. When a
+ * user types a message on another device, the server transcript gains a new
+ * `user` row (and, once answered, an assistant row) after the turn this device
+ * last knows about. The assistant-only recovery deliberately filters those
+ * peer user rows out (it was built for "recover MY lost reply"); this one keeps
+ * them so a second device's transcript stays complete. Without it, a message
+ * sent on the desktop never appears on the phone (only the agent's reply does).
+ *
+ * Same conservative matching as the assistant variant:
+ * - anchor on the latest local user turn, matched by text on the server
+ * - compare the full user+assistant tails (ephemeral local-only system/error
+ *   rows are excluded so a "Bridge disconnected" note can't break the match)
+ * - require the local tail to be a content-prefix of the server tail
+ */
+function findMissingTail(
+  localMessages: ChatMessage[],
+  serverMessages: ChatMessage[],
+): ChatMessage[] {
+  let localLastUserIdx = -1;
+  for (let i = localMessages.length - 1; i >= 0; i -= 1) {
+    if (localMessages[i].role === 'user') {
+      localLastUserIdx = i;
+      break;
+    }
+  }
+  if (localLastUserIdx < 0) return [];
+
+  const localLastUserText = localMessages[localLastUserIdx].text;
+  let serverLastUserIdx = -1;
+  for (let i = serverMessages.length - 1; i >= 0; i -= 1) {
+    if (serverMessages[i].role === 'user' && serverMessages[i].text === localLastUserText) {
+      serverLastUserIdx = i;
+      break;
+    }
+  }
+  if (serverLastUserIdx < 0) return [];
+
+  // Only user/assistant rows are persisted server-side; comparing those (and
+  // excluding local-only system/error notes) keeps the prefix match stable.
+  const isPersisted = (m: ChatMessage) => m.role === 'user' || m.role === 'assistant';
+  const localTail = localMessages.slice(localLastUserIdx + 1).filter(isPersisted);
+  const serverTail = serverMessages.slice(serverLastUserIdx + 1).filter(isPersisted);
+  if (serverTail.length <= localTail.length) return [];
+
+  for (let i = 0; i < localTail.length; i += 1) {
+    const localMsg = localTail[i];
+    const serverMsg = serverTail[i];
+    if (!serverMsg || serverMsg.role !== localMsg.role || serverMsg.text !== localMsg.text) {
+      return [];
+    }
+  }
+
+  return serverTail.slice(localTail.length);
+}
+
+/**
  * Compare assistant tails after the latest matched local user turn.
  *
  * - pendingCount: assistant messages present on server but not locally.
@@ -632,6 +692,12 @@ function evaluateTranscriptRecovery(
  * assistant tail must ALWAYS win over a `status` verdict, otherwise a reply
  * that's sitting on the server would be surfaced to the user as lost.
  *
+ *  - `sync-tail`     — the server transcript advanced on ANOTHER device (a
+ *                      peer `user` turn, optionally with its reply). Append it
+ *                      silently — nothing was lost, the conversation just
+ *                      moved elsewhere, so no "recovered" framing. Takes
+ *                      priority over the assistant-only recovery, which would
+ *                      otherwise drop the peer user row.
  *  - `recover-tail`  — server has assistant message(s) we can safely append.
  *  - `adopt-server`  — local/server diverged but the server reports more
  *                      replies; prefer server truth so the panel self-heals
@@ -643,6 +709,7 @@ function evaluateTranscriptRecovery(
  */
 type ReconcileAction =
   | { kind: 'recover-tail'; tail: ChatMessage[] }
+  | { kind: 'sync-tail'; tail: ChatMessage[] }
   | { kind: 'adopt-server' }
   | {
       kind: 'status';
@@ -656,6 +723,15 @@ function planReconcileAction(
   localMessages: ChatMessage[],
   serverMessages: ChatMessage[],
 ): ReconcileAction {
+  // Cross-device sync wins first: if the server has an appendable tail that
+  // includes a `user` turn typed on another device, adopt it verbatim. The
+  // assistant-only recovery below filters peer user rows out, so without this
+  // a message sent on one device would never surface on the other.
+  const peerTail = findMissingTail(localMessages, serverMessages);
+  if (peerTail.some((m) => m.role === 'user')) {
+    return { kind: 'sync-tail', tail: peerTail };
+  }
+
   const recovery = evaluateTranscriptRecovery(localMessages, serverMessages);
   if (recovery.recoveredAssistantTail.length > 0) {
     return { kind: 'recover-tail', tail: recovery.recoveredAssistantTail };
@@ -1621,6 +1697,7 @@ export {
   createTabId,
   findLatestUnansweredUserMessage,
   findMissingAssistantTail,
+  findMissingTail,
   getAssistantTailGap,
   serverHasUnansweredUserTurn,
   evaluateTranscriptRecovery,

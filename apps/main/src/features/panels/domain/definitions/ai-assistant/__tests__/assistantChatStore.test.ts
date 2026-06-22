@@ -53,6 +53,7 @@ import {
   useAssistantChatStore,
   findLatestUnansweredUserMessage,
   findMissingAssistantTail,
+  findMissingTail,
   getAssistantTailGap,
   serverHasUnansweredUserTurn,
   evaluateTranscriptRecovery,
@@ -416,6 +417,78 @@ describe('Assistant Chat Store', () => {
     });
   });
 
+  describe('findMissingTail (cross-device)', () => {
+    it('recovers a peer user turn (typed on another device) plus its reply', () => {
+      // This device only knows up to the prior turn; the server has a newer
+      // user message + reply added elsewhere. Both must come back — the
+      // assistant-only tail would drop the user row.
+      const missing = findMissingTail(
+        [
+          makeMsg('user', 'alpha'),
+          makeMsg('assistant', 'alpha reply'),
+        ],
+        [
+          makeMsg('user', 'alpha'),
+          makeMsg('assistant', 'alpha reply'),
+          makeMsg('user', 'beta from phone'),
+          makeMsg('assistant', 'beta reply'),
+        ],
+      );
+      expect(missing.map((m) => [m.role, m.text])).toEqual([
+        ['user', 'beta from phone'],
+        ['assistant', 'beta reply'],
+      ]);
+    });
+
+    it('recovers a peer user turn that has no reply yet', () => {
+      const missing = findMissingTail(
+        [
+          makeMsg('user', 'alpha'),
+          makeMsg('assistant', 'alpha reply'),
+        ],
+        [
+          makeMsg('user', 'alpha'),
+          makeMsg('assistant', 'alpha reply'),
+          makeMsg('user', 'beta from phone'),
+        ],
+      );
+      expect(missing.map((m) => [m.role, m.text])).toEqual([
+        ['user', 'beta from phone'],
+      ]);
+    });
+
+    it('ignores local-only system/error notes when matching the tail', () => {
+      const missing = findMissingTail(
+        [
+          makeMsg('user', 'alpha'),
+          makeMsg('assistant', 'alpha reply'),
+          makeMsg('system', 'Bridge disconnected'),
+        ],
+        [
+          makeMsg('user', 'alpha'),
+          makeMsg('assistant', 'alpha reply'),
+          makeMsg('user', 'beta'),
+        ],
+      );
+      expect(missing.map((m) => [m.role, m.text])).toEqual([['user', 'beta']]);
+    });
+
+    it('returns empty when the assistant tail diverges (no safe append)', () => {
+      const missing = findMissingTail(
+        [
+          makeMsg('user', 'alpha'),
+          makeMsg('assistant', 'local-only draft'),
+        ],
+        [
+          makeMsg('user', 'alpha'),
+          makeMsg('assistant', 'server answer'),
+          makeMsg('user', 'beta'),
+        ],
+      );
+      expect(missing).toEqual([]);
+    });
+  });
+
   describe('getAssistantTailGap', () => {
     it('reports pending assistant messages on server', () => {
       const gap = getAssistantTailGap(
@@ -653,6 +726,31 @@ describe('Assistant Chat Store', () => {
       if (action.kind === 'recover-tail') {
         expect(action.tail).toHaveLength(1);
         expect(action.tail[0].text).toBe('Here is the continuation');
+      }
+    });
+
+    it('returns sync-tail when a peer user message advanced the transcript elsewhere', () => {
+      // The asymmetry bug: this device sees only the agent reply, never the
+      // user message typed on the other device. The verdict must be sync-tail
+      // carrying BOTH rows, so the peer user turn appears too.
+      const action = planReconcileAction(
+        [
+          makeMsg('user', 'alpha'),
+          makeMsg('assistant', 'alpha reply'),
+        ],
+        [
+          makeMsg('user', 'alpha'),
+          makeMsg('assistant', 'alpha reply'),
+          makeMsg('user', 'beta from phone'),
+          makeMsg('assistant', 'beta reply'),
+        ],
+      );
+      expect(action.kind).toBe('sync-tail');
+      if (action.kind === 'sync-tail') {
+        expect(action.tail.map((m) => [m.role, m.text])).toEqual([
+          ['user', 'beta from phone'],
+          ['assistant', 'beta reply'],
+        ]);
       }
     });
 

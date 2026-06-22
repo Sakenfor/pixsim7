@@ -439,6 +439,17 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         }
 
         const action = planReconcileAction(current, serverMsgs);
+        if (action.kind === 'sync-tail') {
+          // Cross-device: a peer device advanced the transcript (a user
+          // message typed elsewhere, optionally with its reply). Append it
+          // silently — this isn't recovery, the conversation just moved on
+          // another device, so no "recovered" note / flag.
+          st.setMessages(tab.id, [...current, ...action.tail]);
+          setPendingServerMessages(0);
+          setServerTranscriptDiverged(false);
+          setResponseLost(false);
+          return;
+        }
         if (action.kind === 'recover-tail') {
           // Match the consume-effect's reconnect-failure recovery UX — surface
           // a system note so the user knows this came from server reconciliation
@@ -503,6 +514,31 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       if (timer) clearTimeout(timer);
     };
   }, [tab.id, tab.sessionId, reconcileNonce, sending]);
+
+  // Live cross-device sync: re-run the reconcile whenever the shared
+  // chat-unread poll reports new activity for THIS session. Two independent
+  // signals, edge-detected separately (summing would miss a rise that
+  // coincides with a clear-on-focus drop):
+  //   - assistant reply -> `countsBySessionId` (the blue pip; zeroed on focus)
+  //   - peer user message typed elsewhere -> `activityBySessionId` (pip-free,
+  //     monotonic — see chatUnreadPoll). This is what lets a message sent on
+  //     the desktop appear on the phone WITHOUT lighting an unread pip for the
+  //     user's own message.
+  // Without this the peer only catches up on tab-switch / reload, never live.
+  // The reconcile itself no-ops when nothing new is on the server, so an
+  // over-eager ping just costs one fetch.
+  const { countsBySessionId: liveReplyCounts, activityBySessionId: liveActivityCounts } = useChatUnread();
+  const replySignal = tab.sessionId ? (liveReplyCounts[tab.sessionId] ?? 0) : 0;
+  const activitySignal = tab.sessionId ? (liveActivityCounts[tab.sessionId] ?? 0) : 0;
+  const lastReplySignalRef = useRef(replySignal);
+  const lastActivitySignalRef = useRef(activitySignal);
+  useEffect(() => {
+    if (replySignal > lastReplySignalRef.current || activitySignal > lastActivitySignalRef.current) {
+      setReconcileNonce((n) => n + 1);
+    }
+    lastReplySignalRef.current = replySignal;
+    lastActivitySignalRef.current = activitySignal;
+  }, [replySignal, activitySignal]);
 
   // Draft: local state for responsive typing, synced to store.
   // On mount, prefer the local LS draft (cached by setDraft on prior edit);

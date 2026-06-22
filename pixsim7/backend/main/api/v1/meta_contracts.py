@@ -2647,9 +2647,17 @@ async def _store_pending_user_message(
     if not user_message:
         return
     try:
-        from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+        from pixsim7.backend.main.domain.platform.agent_profile import (
+            ChatSession,
+            ChatTab,
+        )
         from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
         from pixsim7.backend.main.shared.datetime_utils import utcnow
+
+        notif_session_id: str | None = None
+        notif_user_id: int | None = None
+        notif_label: str | None = None
+        has_tab_surface = False
 
         async with AsyncSessionLocal() as db:
             session = await db.get(ChatSession, session_id)
@@ -2677,7 +2685,44 @@ async def _store_pending_user_message(
             merged = _merge_chat_messages(session.messages, new_rows)
             session.messages = merged[-50:]
             session.last_used_at = utcnow()
+            # Capture before commit (expire_on_commit would detach these) so we
+            # can emit the cross-device live-sync ping after the transaction.
+            notif_session_id = session.id
+            notif_user_id = session.user_id
+            notif_label = session.label
+            # Only ping if a ChatTab surfaces this session — same gate as the
+            # assistant reply ping, so tab-less probe/CLI sessions don't accrue
+            # an uncleanable unread (see `_store_session_response`).
+            tab_match_ids = [notif_session_id]
+            if session.cli_session_id and session.cli_session_id != notif_session_id:
+                tab_match_ids.append(session.cli_session_id)
+            has_tab_surface = (
+                await db.execute(
+                    select(ChatTab.id)
+                    .where(ChatTab.session_id.in_(tab_match_ids))
+                    .limit(1)
+                )
+            ).first() is not None
             await db.commit()
+
+        # Cross-device live-sync ping: emit a pip-FREE activity notification
+        # for the USER turn. Only assistant replies tripped the chat-unread
+        # poll before, so a message typed on one device never surfaced live on
+        # the other — only the agent's reply did. This uses ref_type
+        # `chat_session_activity` (not `chat_session`) so it nudges the peer's
+        # poll to re-pull the transcript WITHOUT lighting the blue "unread
+        # reply" pip for the user's own message. Isolated from the persist
+        # transaction (its own session, swallowed errors) so a notification
+        # failure can't roll back the message we just saved.
+        if has_tab_surface and notif_user_id is not None and notif_session_id:
+            await _emit_chat_message_notification(
+                session_id=notif_session_id,
+                user_id=notif_user_id,
+                label=notif_label or "AI Assistant",
+                preview=user_message,
+                source="user",
+                ref_type="chat_session_activity",
+            )
     except Exception as e:
         log.warning(
             "store_pending_user_message_failed session_id=%s err=%s",
@@ -2855,11 +2900,19 @@ async def _emit_chat_message_notification(
     user_id: int,
     label: str,
     preview: str,
+    source: str = "assistant",
+    ref_type: str = "chat_session",
 ) -> None:
-    """Emit the chat-tab unread ping for one assistant reply.
+    """Emit the chat unread/activity ping for one chat message.
+
+    Assistant replies use ``ref_type="chat_session"`` (the blue unread pip).
+    The user's own turn uses ``ref_type="chat_session_activity"``: a separate,
+    pip-free channel that only nudges a SECOND device's chat-unread poll to
+    re-pull the transcript, so a message typed elsewhere syncs cross-device —
+    without lighting an "unread reply" pip for the user's own message.
 
     Best-effort and fully isolated: its own DB session + swallowed errors so
-    it can never disturb `_store_session_response`'s message persistence.
+    it can never disturb the caller's message persistence.
     """
     import logging
 
@@ -2889,9 +2942,9 @@ async def _emit_chat_message_notification(
                 body=snippet or None,
                 category="chat",
                 severity="info",
-                source="assistant",
+                source=source,
                 event_type="chat.message",
-                ref_type="chat_session",
+                ref_type=ref_type,
                 ref_id=str(session_id),
                 broadcast=False,
                 user_id=user_id,

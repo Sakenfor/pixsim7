@@ -30,6 +30,15 @@ export interface ChatUnreadSnapshot {
   questionsByTabId: Record<string, number>;
   /** Number of tabs with a pending agent question. */
   questionsTotal: number;
+  /**
+   * ChatSession id -> monotonic activity counter for messages typed on
+   * ANOTHER device (the backend emits a pip-free `chat_session_activity`
+   * ping per user turn). Pip-free by design — this is NOT shown anywhere; it
+   * exists purely as a rising-edge signal so a second device re-pulls the
+   * transcript when a message is sent elsewhere. Never cleared, so the count
+   * only grows; consumers must edge-detect, not read the absolute value.
+   */
+  activityBySessionId: Record<string, number>;
   /** ms epoch of the last successful fetch; 0 before first response. */
   lastFetchedAt: number;
   /** True while a fetch is in flight. */
@@ -44,6 +53,7 @@ interface UnreadByRefResponse {
 
 const REF_TYPE_UNREAD = 'chat_session';
 const REF_TYPE_QUESTION = 'chat_tab';
+const REF_TYPE_ACTIVITY = 'chat_session_activity';
 const POLL_INTERVAL_MS = 15_000;
 const POLL_HEADERS = {
   'X-Client-Surface': 'lib:chat-unread-poll',
@@ -56,6 +66,7 @@ let snapshot: ChatUnreadSnapshot = {
   total: 0,
   questionsByTabId: EMPTY_COUNTS,
   questionsTotal: 0,
+  activityBySessionId: EMPTY_COUNTS,
   lastFetchedAt: 0,
   loading: false,
 };
@@ -97,19 +108,22 @@ async function fetchOnce(): Promise<void> {
     return;
   }
   publish({ ...snapshot, loading: true });
-  // Both ref types in one cycle; allSettled so one failing endpoint never
-  // blanks the other surface.
-  const [unread, questions] = await Promise.all([
+  // All three ref types in one cycle; each falls back to its last good slice
+  // so one failing endpoint never blanks the others.
+  const [unread, questions, activity] = await Promise.all([
     fetchScoped(REF_TYPE_UNREAD),
     fetchScoped(REF_TYPE_QUESTION),
+    fetchScoped(REF_TYPE_ACTIVITY),
   ]);
   const countsBySessionId = unread ?? snapshot.countsBySessionId;
   const questionsByTabId = questions ?? snapshot.questionsByTabId;
+  const activityBySessionId = activity ?? snapshot.activityBySessionId;
   publish({
     countsBySessionId,
     total: sumCounts(countsBySessionId),
     questionsByTabId,
     questionsTotal: Object.keys(questionsByTabId).length,
+    activityBySessionId,
     lastFetchedAt: Date.now(),
     loading: false,
   });
@@ -203,6 +217,7 @@ export function __resetChatUnreadPollForTest(): void {
     total: 0,
     questionsByTabId: EMPTY_COUNTS,
     questionsTotal: 0,
+    activityBySessionId: EMPTY_COUNTS,
     lastFetchedAt: 0,
     loading: false,
   };
