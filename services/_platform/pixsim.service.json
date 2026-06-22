@@ -1,6 +1,7 @@
 {
   "id": "_platform",
   "type": "platform",
+  "category": "platform",
   "name": "Platform",
   "description": "Cross-cutting configuration shared across all services",
   "enabled": true,
