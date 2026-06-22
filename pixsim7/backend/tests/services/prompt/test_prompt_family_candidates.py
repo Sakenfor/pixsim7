@@ -13,6 +13,7 @@ from pixsim7.backend.main.services.prompt.family_candidates import (
     LABEL_TWEAK_FAMILY,
     CandidateMember,
     cluster_candidates,
+    induce_template_from_texts,
     _jaccard,
     _token_set,
 )
@@ -160,3 +161,46 @@ def test_suggested_title_nonempty():
     m2 = _member(text="A photorealistic creature standing in a misty forest at dusk")
     cand = cluster_candidates(_versions([m1, m2]), [(m1.version_id, m2.version_id)])[0]
     assert cand.suggested_title.strip()
+
+
+# ── template induction ───────────────────────────────────────────────────────
+
+
+def test_induce_template_needs_two_members():
+    assert induce_template_from_texts(["only one"]) is None
+    assert induce_template_from_texts([]) is None
+
+
+def test_induce_template_identical_is_all_skeleton():
+    t = induce_template_from_texts(["the quick brown fox", "the quick brown fox"])
+    assert t is not None
+    assert t.stable_pct == 100
+    assert t.slot_count == 0
+    assert [s.kind for s in t.segments] == ["text"]
+
+
+def test_induce_template_finds_variable_slot():
+    # Stable skeleton "a <X> cat sitting on a mat" with the adjective varying.
+    texts = [
+        "a red cat sitting on a mat",
+        "a blue cat sitting on a mat",
+        "a green cat sitting on a mat",
+    ]
+    t = induce_template_from_texts(texts, stable_ratio=0.6)
+    assert t is not None
+    assert t.slot_count == 1
+    slot = next(s.slot for s in t.segments if s.kind == "slot")
+    # the varying adjective is captured as the slot's values
+    assert {"red", "blue", "green"} & set(slot.values)
+    # surrounding words are stable skeleton
+    text_runs = " ".join(s.text for s in t.segments if s.kind == "text")
+    assert "cat sitting on a mat" in text_runs
+
+
+def test_induce_template_caps_variants():
+    texts = [f"prefix word{i} suffix" for i in range(15)]
+    t = induce_template_from_texts(texts, max_variants=5)
+    assert t is not None
+    slot = next(s.slot for s in t.segments if s.kind == "slot")
+    assert len(slot.values) == 5
+    assert slot.total >= 15

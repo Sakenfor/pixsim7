@@ -27,10 +27,11 @@ second text embedder would require a model-match guard in `_knn_edges`.
 """
 from __future__ import annotations
 
+import difflib
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import Iterable, Mapping
+from typing import Iterable, Mapping, Sequence
 from uuid import UUID
 
 from sqlalchemy import select, text
@@ -90,6 +91,131 @@ class FamilyCandidate:
     @property
     def size(self) -> int:
         return len(self.members)
+
+
+@dataclass(frozen=True)
+class TemplateSlot:
+    index: int
+    values: tuple[str, ...]  # sampled distinct values (capped)
+    total: int  # distinct values seen across members (>= len(values))
+
+
+@dataclass(frozen=True)
+class TemplateSegment:
+    kind: str  # "text" (stable skeleton run) | "slot" (variable span)
+    text: str | None = None
+    slot: TemplateSlot | None = None
+
+
+@dataclass(frozen=True)
+class InducedTemplate:
+    """A skeleton + variable slots induced from a set of related prompts (the
+    "reverse" of similarity: what changes least vs the spans that vary)."""
+
+    member_count: int
+    stable_pct: int
+    slot_count: int
+    segments: tuple[TemplateSegment, ...]
+
+
+# ── template induction (pure, DB-free, unit-testable) ───────────────────────
+
+
+def _align_left(ops, i: int) -> int:
+    """Map a representative word index to the left edge of the aligned member range."""
+    for tag, i1, i2, j1, j2 in ops:
+        if i < i1:
+            return j1
+        if i1 <= i < i2:
+            return j1 + (i - i1) if tag == "equal" else j1
+    return ops[-1][4] if ops else 0
+
+
+def induce_template_from_texts(
+    texts: Sequence[str],
+    *,
+    stable_ratio: float = 0.6,
+    max_variants: int = 8,
+) -> InducedTemplate | None:
+    """Induce a template from a set of related prompts.
+
+    representative = longest member (most complete skeleton); for each other
+    member, difflib word-level opcodes vs the representative; a rep token is
+    "stable" when kept (in an 'equal' block) by >= stable_ratio of members.
+    Stable runs become text segments; unstable runs become slots, with member
+    fragments aligned to the run sampled as the slot's values.
+    """
+    members = [t for t in texts if t and t.strip()]
+    if len(members) < 2:
+        return None
+    # Pick the representative by index (not identity): identical prompts may be
+    # interned to the same object, which would wrongly drop duplicate members.
+    rep_idx = max(range(len(members)), key=lambda i: len(members[i]))
+    rep = members[rep_idx]
+    rep_words = rep.split()
+    n = len(rep_words)
+    if n == 0:
+        return None
+
+    others = [members[i] for i in range(len(members)) if i != rep_idx]
+    keep = [0] * n
+    member_ops: list[tuple[list[str], list]] = []
+    for t in others:
+        ow = t.split()
+        ops = difflib.SequenceMatcher(None, rep_words, ow, autojunk=False).get_opcodes()
+        member_ops.append((ow, ops))
+        for tag, i1, i2, _j1, _j2 in ops:
+            if tag == "equal":
+                for i in range(i1, i2):
+                    keep[i] += 1
+
+    m = len(others)
+    stable = [(keep[i] / m) >= stable_ratio for i in range(n)]
+
+    segments: list[TemplateSegment] = []
+    text_buf: list[str] = []
+    slot_count = 0
+    i = 0
+    while i < n:
+        if stable[i]:
+            text_buf.append(rep_words[i])
+            i += 1
+            continue
+        if text_buf:
+            segments.append(TemplateSegment(kind="text", text=" ".join(text_buf)))
+            text_buf = []
+        s = i
+        while i < n and not stable[i]:
+            i += 1
+        e = i
+        slot_count += 1
+        seen: list[str] = []
+        seen_set: set[str] = set()
+
+        def _add(words: list[str]) -> None:
+            v = " ".join(words).strip()
+            if v and v not in seen_set:
+                seen_set.add(v)
+                seen.append(v)
+
+        _add(rep_words[s:e])  # the representative's own value
+        for ow, ops in member_ops:
+            _add(ow[_align_left(ops, s):_align_left(ops, e)])
+        segments.append(
+            TemplateSegment(
+                kind="slot",
+                slot=TemplateSlot(index=slot_count, values=tuple(seen[:max_variants]), total=len(seen)),
+            )
+        )
+    if text_buf:
+        segments.append(TemplateSegment(kind="text", text=" ".join(text_buf)))
+
+    return InducedTemplate(
+        member_count=len(members),
+        stable_pct=round(100 * sum(stable) / n),
+        slot_count=slot_count,
+        segments=tuple(segments),
+    )
 
 
 # ── lexical helpers ──────────────────────────────────────────────────────────
@@ -333,6 +459,127 @@ class PromptFamilyCandidateService:
         )
         rows = (await self.db.execute(sql, {"k": int(k)})).all()
         return [_Edge(src=r.src, nbr=r.nbr, cosine=1.0 - float(r.dist)) for r in rows]
+
+    async def promote_to_family(
+        self,
+        *,
+        version_ids: list[UUID],
+        family_id: UUID | None = None,
+        title: str | None = None,
+        prompt_type: str = "visual",
+        category: str | None = None,
+    ) -> dict:
+        """Group a candidate cluster into a family (the confirm-write action).
+
+        family_id None  -> create a new family (title required) and assign.
+        family_id given -> merge the cluster into that existing family.
+
+        Only currently-ungrouped versions are moved (already-grouped members are
+        left where they are and reported as skipped). Versions are ordered by
+        created_at and given sequential version_numbers from the family's next
+        number; any whose prompt_hash already exists in the target family (or
+        repeats within the batch) is skipped to respect the (prompt_hash,
+        family_id) uniqueness constraint.
+        """
+        if not version_ids:
+            raise ValueError("version_ids is required")
+
+        # Lazy imports avoid a service import cycle.
+        from pixsim7.backend.main.services.prompt.family import PromptFamilyService
+        from pixsim7.backend.main.services.prompt.git.versioning_adapter import (
+            PromptVersioningService,
+        )
+
+        rows = (
+            await self.db.execute(
+                select(PromptVersion)
+                .where(PromptVersion.id.in_(version_ids))
+                .order_by(PromptVersion.created_at, PromptVersion.id)
+            )
+        ).scalars().all()
+
+        created = False
+        if family_id is None:
+            if not title or not title.strip():
+                raise ValueError("title is required when creating a new family")
+            family = await PromptFamilyService(self.db).create_family(
+                title=title.strip(), prompt_type=prompt_type, category=category
+            )
+            family_id = family.id
+            created = True
+            existing_hashes: set[str] = set()
+        else:
+            family = await PromptFamilyService(self.db).get_family(family_id)
+            if family is None:
+                raise LookupError(f"Prompt family {family_id} not found")
+            existing_hashes = set(
+                (
+                    await self.db.execute(
+                        select(PromptVersion.prompt_hash).where(
+                            PromptVersion.family_id == family_id
+                        )
+                    )
+                ).scalars().all()
+            )
+
+        next_number = await PromptVersioningService(self.db).get_next_version_number(
+            family_id, lock=True
+        )
+
+        skipped_grouped = 0
+        skipped_duplicate = 0
+        assigned = 0
+        seen = set(existing_hashes)
+        for v in rows:
+            if v.family_id is not None:
+                skipped_grouped += 1
+                continue
+            if v.prompt_hash in seen:
+                skipped_duplicate += 1
+                continue
+            seen.add(v.prompt_hash)
+            v.family_id = family_id
+            v.version_number = next_number
+            v.parent_version_id = None
+            next_number += 1
+            assigned += 1
+
+        await self.db.commit()
+        return {
+            "family_id": str(family_id),
+            "title": family.title,
+            "created": created,
+            "assigned": assigned,
+            "skipped_grouped": skipped_grouped,
+            "skipped_duplicate": skipped_duplicate,
+        }
+
+    async def induce_template(
+        self,
+        version_ids: list[UUID],
+        *,
+        stable_ratio: float = 0.6,
+        max_variants: int = 8,
+    ) -> InducedTemplate | None:
+        """Induce a skeleton+slots template from the given versions' prompt text.
+
+        Works on any set of versions (ungrouped cluster or an existing family) —
+        no family membership required. See induce_template_from_texts.
+        """
+        if not version_ids:
+            return None
+        rows = (
+            await self.db.execute(
+                select(PromptVersion.prompt_text)
+                .where(PromptVersion.id.in_(version_ids))
+                .order_by(PromptVersion.created_at, PromptVersion.id)
+            )
+        ).scalars().all()
+        return induce_template_from_texts(
+            [t for t in rows if t],
+            stable_ratio=stable_ratio,
+            max_variants=max_variants,
+        )
 
     async def _load_members(self, ids: set[UUID]) -> dict[UUID, CandidateMember]:
         result = await self.db.execute(
