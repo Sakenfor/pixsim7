@@ -220,6 +220,13 @@
     extraFiltersKey: ''
   };
 
+  function normalizePageNumber(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 1;
+    const page = Math.floor(parsed);
+    return page > 0 ? page : 1;
+  }
+
   /**
    * Load assets with true pagination (page replacement, not append)
    * @param {Object} options
@@ -233,6 +240,7 @@
    */
   async function loadAssets(options = {}) {
     const { page = 1, q, uploadMethod, mediaType, providerId, extraFilters, forceRefresh = false } = options;
+    const safePage = normalizePageNumber(page);
     const extraFiltersKey = extraFilters
       ? JSON.stringify(Object.keys(extraFilters).sort().map((key) => [key, extraFilters[key]]))
       : '';
@@ -254,13 +262,13 @@
     }
 
     // Check cache - only use if same page, query, filters, and not forcing refresh
-    if (!forceRefresh && !queryChanged && !filtersChanged && assetsCache.length > 0 && assetsCurrentPage === page) {
+    if (!forceRefresh && !queryChanged && !filtersChanged && assetsCache.length > 0 && assetsCurrentPage === safePage) {
       return assetsCache;
     }
 
     try {
       const limit = ASSETS_PAGE_SIZE;
-      const offset = (page - 1) * limit;
+      const offset = (safePage - 1) * limit;
 
       // Build request params - use offset for page jumping
       const params = {
@@ -296,7 +304,7 @@
 
       debugLog('Raw backend response:', {
         success: res.success,
-        page,
+        page: safePage,
         offset,
         dataType: Array.isArray(res.data) ? 'array' : typeof res.data,
         dataKeys: res.data && typeof res.data === 'object' ? Object.keys(res.data) : null,
@@ -334,7 +342,7 @@
 
       // Replace cache with current page (not append)
       assetsCache = pageImages;
-      assetsCurrentPage = page;
+      assetsCurrentPage = safePage;
       assetsLoadedCount = pageImages.length;
 
       // Calculate total pages
@@ -352,15 +360,15 @@
       } else if (gotFullPage) {
         // Got full page, assume there's more
         assetsTotalCount = offset + pageImages.length + limit; // Estimate
-        assetsTotalPages = page + 1; // At least one more page
+        assetsTotalPages = safePage + 1; // At least one more page
       } else {
         // Got partial page, this is the last page
         assetsTotalCount = offset + pageImages.length;
-        assetsTotalPages = page;
+        assetsTotalPages = safePage;
       }
 
       debugLog('Loaded assets page:', {
-        page,
+        page: safePage,
         pageCount: pageImages.length,
         totalCount: assetsTotalCount,
         totalPages: assetsTotalPages,
@@ -932,7 +940,7 @@
         const origText = assetsBtn.textContent;
         assetsBtn.textContent = '...';
         // Use saved page/search from image picker if available
-        const savedPage = imagePicker.getSavedPage?.() || 1;
+        const savedPage = normalizePageNumber(imagePicker.getSavedPage?.());
         const savedSearch = imagePicker.getSavedSearch?.() || '';
         await loadAssets({ page: savedPage, q: savedSearch || undefined });
         assetsBtn.classList.remove('loading');
@@ -1111,7 +1119,7 @@
 
     // Load data in background (don't block)
     // Use saved page/search/filters from image picker for assets
-    const savedPage = imagePicker.getSavedPage?.() || 1;
+    const savedPage = normalizePageNumber(imagePicker.getSavedPage?.());
     const savedSearch = imagePicker.getSavedSearch?.() || '';
     const savedFilters = imagePicker.getSavedFilters?.() || {};
     Promise.all([

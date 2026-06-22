@@ -50,11 +50,20 @@
     assetsFilterOptionsLoading: false,
   };
 
+  function normalizePageNumber(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 1;
+    const page = Math.floor(parsed);
+    return page > 0 ? page : 1;
+  }
+
   // Load persisted state
   function loadAssetsState() {
     try {
       const saved = JSON.parse(localStorage.getItem(ASSETS_STATE_KEY) || '{}');
-      if (saved.page) state.assetsCurrentPage = saved.page;
+      if (saved.page !== undefined && saved.page !== null) {
+        state.assetsCurrentPage = normalizePageNumber(saved.page);
+      }
       if (saved.search) state.assetsSearchQuery = saved.search;
       if (saved.filterProvider) state.assetsFilterProvider = saved.filterProvider;
       if (saved.filterMediaType) state.assetsFilterMediaType = saved.filterMediaType;
@@ -71,7 +80,7 @@
   function saveAssetsState() {
     try {
       const data = {
-        page: state.assetsCurrentPage,
+        page: normalizePageNumber(state.assetsCurrentPage),
         search: state.assetsSearchQuery,
         filterProvider: state.assetsFilterProvider,
         filterMediaType: state.assetsFilterMediaType,
