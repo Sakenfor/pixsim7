@@ -22,12 +22,17 @@ class _FakeScalars:
         return self._rows
 
 
+class _FakeScalarsFirst(_FakeScalars):
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+
 class _FakeResult:
     def __init__(self, rows):
         self._rows = rows
 
     def scalars(self):
-        return _FakeScalars(self._rows)
+        return _FakeScalarsFirst(self._rows)
 
 
 class _FakeDb:
@@ -44,6 +49,13 @@ async def test_compute_desired_dedupes_sorts_and_drops_null() -> None:
     assert desired == ["a/model", "b/model"]
 
 
+async def test_compute_desired_default_picks_first() -> None:
+    # The query is ordered (primary/priority/id) + limit 1, so .first() is the
+    # active embedder; None when there's no active instance.
+    assert await daemon_sync.compute_desired_default_model(_FakeDb(["m/active"])) == "m/active"
+    assert await daemon_sync.compute_desired_default_model(_FakeDb([])) is None
+
+
 async def test_sync_swallows_compute_error(monkeypatch) -> None:
     async def boom(_db):
         raise RuntimeError("db down")
@@ -53,18 +65,22 @@ async def test_sync_swallows_compute_error(monkeypatch) -> None:
     assert await daemon_sync.sync_embedding_daemon_models(_FakeDb([])) is False
 
 
-async def test_sync_pushes_computed_set(monkeypatch) -> None:
-    pushed: list[list[str]] = []
+async def test_sync_pushes_computed_set_and_default(monkeypatch) -> None:
+    pushed: list[tuple] = []
 
     async def fake_compute(_db):
         return ["m/a", "m/b"]
 
-    async def fake_push(model_ids):
-        pushed.append(model_ids)
+    async def fake_default(_db):
+        return "m/a"
+
+    async def fake_push(model_ids, default=None):
+        pushed.append((model_ids, default))
         return True
 
     monkeypatch.setattr(daemon_sync, "compute_desired_embedding_models", fake_compute)
+    monkeypatch.setattr(daemon_sync, "compute_desired_default_model", fake_default)
     monkeypatch.setattr(daemon_sync, "push_allowed_models", fake_push)
 
     assert await daemon_sync.sync_embedding_daemon_models(_FakeDb([])) is True
-    assert pushed == [["m/a", "m/b"]]
+    assert pushed == [(["m/a", "m/b"], "m/a")]

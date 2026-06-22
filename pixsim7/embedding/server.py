@@ -27,14 +27,17 @@ Endpoints:
                    {"embeddings":[[...]],"dim":N,"model_id":...}
                    `model_id` omitted -> the default model. A model_id not in the
                    allowed set returns 409 {"error":"model_not_served",...}.
-  POST /config/allowed-models -> {"model_ids":[...]} -> updates the allowed set
-                   (union with the env baseline). The backend pushes the set
-                   derived from the enabled asset:embedding instances here.
+  POST /config/allowed-models -> {"model_ids":[...], "default"?:...} -> updates
+                   the allowed set (union with the env baseline) and optionally
+                   switches the warm-loaded default. The backend pushes the set +
+                   default derived from the enabled asset:embedding instances.
 
 Configuration (env):
-  PIXSIM_EMBEDDING_MODEL_ID    - default/primary model (warm-loaded, pinned)
-  PIXSIM_EMBEDDING_MODEL_IDS   - comma-separated *additional* allowed models
-                                 (the hosted set = default ∪ these)
+  PIXSIM_EMBEDDING_MODEL_ID    - startup/seed default (warm-loaded, pinned). The
+                                 live default is otherwise driven by the app's
+                                 active embedder via /config/allowed-models.
+  PIXSIM_EMBEDDING_MODEL_IDS   - optional manual baseline of extra allowed models
+                                 (the set is normally auto-derived from instances)
   PIXSIM_EMBEDDING_MAX_RESIDENT- max models resident in VRAM (default 2; LRU)
   PIXSIM_EMBEDDING_WEDGE_SEC   - in-flight age (s) past which /health reports
                                  'wedged' (default 120)
@@ -121,10 +124,29 @@ class _ModelRegistry:
 
     def set_allowed(self, model_ids: "list[str]") -> None:
         """Replace the auto-derived portion of the allowed set (union with the
-        env baseline + default). Lets the backend keep the hosted set in sync
-        with the enabled asset:embedding instances without a daemon restart.
+        env baseline + current default). Lets the backend keep the hosted set in
+        sync with the enabled asset:embedding instances without a daemon restart.
         Atomic rebind — no lock needed (is_allowed reads a single reference)."""
-        self.allowed = self._baseline | {m for m in model_ids if m}
+        self.allowed = (
+            self._baseline | {self.default_model_id} | {m for m in model_ids if m}
+        )
+
+    async def _swap_default(self, model_id: str) -> None:
+        """Warm-load `model_id`, then make it the default. Flipping only after
+        the load means /health never reports a not-ready default mid-swap; the
+        previous default stays pinned until then (and becomes evictable after)."""
+        await self.acquire(model_id)
+        self.default_model_id = model_id
+        self.allowed = self.allowed | {model_id}
+
+    def set_default(self, model_id: str) -> "asyncio.Task | None":
+        """Change the warm-loaded/pinned default to `model_id` (the app's active
+        embedder). The swap loads in the background so the push returns at once;
+        returns the task (or None if it's already the default / empty)."""
+        if not model_id or model_id == self.default_model_id:
+            return None
+        self.allowed = self.allowed | {model_id}  # allow immediately
+        return asyncio.create_task(self._swap_default(model_id))
 
     @property
     def default_ready(self) -> bool:
@@ -215,6 +237,9 @@ class EmbedBody(BaseModel):
 
 class AllowedModelsBody(BaseModel):
     model_ids: list[str]
+    # Optional: make this the warm-loaded/pinned default (the app's active
+    # embedder). Swapped in the background; omit to leave the default unchanged.
+    default: str | None = None
 
 
 def _health_extra() -> dict:
@@ -264,8 +289,11 @@ async def set_allowed_models(body: AllowedModelsBody):
 
     Called by the backend to keep the daemon's served models in sync with the
     enabled asset:embedding instances — so a per-instance model is hosted
-    without a manual env edit / daemon restart. Returns the resulting set."""
+    without a manual env edit / daemon restart. An optional `default` switches
+    the warm-loaded/pinned model (background swap). Returns the resulting set."""
     registry.set_allowed(body.model_ids)
+    if body.default:
+        registry.set_default(body.default)
     return {"allowed": sorted(registry.allowed), "default": registry.default_model_id}
 
 

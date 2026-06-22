@@ -90,17 +90,9 @@ TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
             "key": "model_id",
             "type": "string",
             "label": "Default Model ID",
-            "description": "HuggingFace model warm-loaded at startup and used when a request omits a model",
+            "description": "Startup/seed model warm-loaded at boot. The hosted set and the live default are otherwise auto-managed from the app's embedding instances.",
             "default": "google/siglip2-large-patch16-384",
             "env_map": "PIXSIM_EMBEDDING_MODEL_ID",
-        },
-        {
-            "key": "model_ids",
-            "type": "string",
-            "label": "Additional Model IDs",
-            "description": "Comma-separated extra models the daemon may serve (loaded on demand); the hosted set is the default plus these",
-            "default": "",
-            "env_map": "PIXSIM_EMBEDDING_MODEL_IDS",
         },
         {
             "key": "max_resident",
@@ -432,6 +424,12 @@ def settings_to_exports(schema: List[Dict], effective: Dict[str, Any]) -> Dict[s
         key = field["key"]
         value = effective.get(key)
         if value is None:
+            continue
+        # A field with no default that is empty counts as "unset" — skip it so
+        # it doesn't clobber a value already present in the process env (e.g. an
+        # API key supplied via .env). Fields that explicitly default to "" still
+        # export "" (their empty IS the intended value).
+        if value == "" and field.get("default") is None:
             continue
 
         ftype = field["type"]

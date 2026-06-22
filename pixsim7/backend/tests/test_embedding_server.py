@@ -240,3 +240,44 @@ async def test_set_allowed_models_route(monkeypatch) -> None:
     assert res["default"] == "m/default"
     assert set(res["allowed"]) == {"m/default", "m/fashion"}
     assert reg.is_allowed("m/fashion")
+
+
+@pytest.mark.asyncio
+async def test_swap_default_loads_then_flips(monkeypatch) -> None:
+    # The default flips only after the new model is warm-loaded, so /health
+    # never sees a not-ready default mid-swap.
+    reg, loads = _install_registry(monkeypatch, default="m/old")
+    await reg.ensure_default()
+    assert reg.default_model_id == "m/old"
+
+    await reg._swap_default("m/new")
+    assert reg.default_model_id == "m/new"
+    assert loads.get("m/new") == 1
+    assert reg.is_allowed("m/new")
+    # Old default stays allowed (in baseline) but is now evictable.
+    assert reg.is_allowed("m/old")
+
+
+@pytest.mark.asyncio
+async def test_set_default_noops_on_same_or_empty(monkeypatch) -> None:
+    reg, _ = _install_registry(monkeypatch, default="m/default")
+    assert reg.set_default("m/default") is None  # already the default
+    assert reg.set_default("") is None
+
+
+@pytest.mark.asyncio
+async def test_set_allowed_models_route_switches_default(monkeypatch) -> None:
+    reg, _ = _install_registry(monkeypatch, default="m/old")
+    from pixsim7.embedding.server import AllowedModelsBody
+
+    await srv.set_allowed_models(
+        AllowedModelsBody(model_ids=["m/new"], default="m/new")
+    )
+    # The swap is backgrounded; await it so the assertion is deterministic.
+    import asyncio
+
+    for _ in range(50):
+        if reg.default_model_id == "m/new":
+            break
+        await asyncio.sleep(0.01)
+    assert reg.default_model_id == "m/new"

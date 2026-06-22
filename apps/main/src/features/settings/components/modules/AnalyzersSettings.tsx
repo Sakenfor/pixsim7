@@ -2441,9 +2441,9 @@ export function AnalyzersSettings() {
               )}
               <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
                 The daemon's hosted set is kept in sync with your enabled embedding
-                instances automatically (plus the launcher{' '}
-                <span className="font-mono">PIXSIM_EMBEDDING_MODEL_ID</span> baseline), loading
-                each model on demand. Saving a model here adds it to the set.
+                instances automatically, loading each model on demand. Saving a model
+                here adds it to the set; the active embedder's model is also kept warm
+                as the daemon's default.
               </p>
             </div>
           </div>
