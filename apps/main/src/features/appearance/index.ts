@@ -1,5 +1,5 @@
 export { useAppearanceStore } from './stores/appearanceStore';
-export type { ColorScheme, AccentColor, IconTheme, ButtonStyle } from './stores/appearanceStore';
+export type { ColorScheme, AccentColor, IconTheme, ButtonStyle, BadgeSkin, IconSkin, CubeMotionPreset } from './stores/appearanceStore';
 export {
   useAssistantTintStore,
   ASSISTANT_TINT_STORE_KEY,

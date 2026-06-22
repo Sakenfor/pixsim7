@@ -12,8 +12,11 @@
 import {
   useAppearanceStore,
   type AccentColor,
+  type BadgeSkin,
   type ButtonStyle,
   type ColorScheme,
+  type CubeMotionPreset,
+  type IconSkin,
   type IconTheme,
 } from '@features/appearance';
 
@@ -30,6 +33,12 @@ export function useAppearanceSettingsAdapter(): SettingStoreAdapter {
   const setIconSetId = useAppearanceStore((s) => s.setIconSetId);
   const buttonStyle = useAppearanceStore((s) => s.buttonStyle);
   const setButtonStyle = useAppearanceStore((s) => s.setButtonStyle);
+  const badgeSkin = useAppearanceStore((s) => s.badgeSkin);
+  const setBadgeSkin = useAppearanceStore((s) => s.setBadgeSkin);
+  const iconSkin = useAppearanceStore((s) => s.iconSkin);
+  const setIconSkin = useAppearanceStore((s) => s.setIconSkin);
+  const cubeMotionPreset = useAppearanceStore((s) => s.cubeMotionPreset);
+  const setCubeMotionPreset = useAppearanceStore((s) => s.setCubeMotionPreset);
 
   return {
     get: (fieldId: string) => {
@@ -39,6 +48,9 @@ export function useAppearanceSettingsAdapter(): SettingStoreAdapter {
         case 'iconTheme': return iconTheme;
         case 'iconSetId': return iconSetId;
         case 'buttonStyle': return buttonStyle;
+        case 'badgeSkin': return badgeSkin;
+        case 'iconSkin': return iconSkin;
+        case 'cubeMotionPreset': return cubeMotionPreset;
         default: return undefined;
       }
     },
@@ -49,6 +61,9 @@ export function useAppearanceSettingsAdapter(): SettingStoreAdapter {
         case 'iconTheme': setIconTheme((value as IconTheme) ?? 'inherit'); break;
         case 'iconSetId': setIconSetId(String(value || 'outline')); break;
         case 'buttonStyle': setButtonStyle((value as ButtonStyle) ?? 'gradient'); break;
+        case 'badgeSkin': setBadgeSkin((value as BadgeSkin) ?? 'flat'); break;
+        case 'iconSkin': setIconSkin((value as IconSkin) ?? 'flat'); break;
+        case 'cubeMotionPreset': setCubeMotionPreset((value as CubeMotionPreset) ?? 'lively'); break;
       }
     },
     getAll: () => ({
@@ -57,6 +72,9 @@ export function useAppearanceSettingsAdapter(): SettingStoreAdapter {
       iconTheme,
       iconSetId,
       buttonStyle,
+      badgeSkin,
+      iconSkin,
+      cubeMotionPreset,
     }),
   };
 }

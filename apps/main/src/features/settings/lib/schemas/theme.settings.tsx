@@ -73,6 +73,55 @@ const themeTab: SettingTab = {
         },
       ],
     },
+    {
+      id: 'badge-style',
+      title: 'Badge Style',
+      description: 'Controls how media-card badges are rendered.',
+      fields: [
+        {
+          id: 'badgeSkin',
+          type: 'select',
+          label: 'Badge Style',
+          description: 'Flat 2D pills, or 3D CSS cubes (e.g. the top-left similarity badge).',
+          defaultValue: 'flat',
+          options: [
+            { value: 'flat', label: 'Flat (Default)' },
+            { value: 'cube', label: '3D Cube' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'icon-style',
+      title: 'Icon Style',
+      description: 'Controls how surface glyphs are rendered.',
+      fields: [
+        {
+          id: 'iconSkin',
+          type: 'select',
+          label: 'Icon Style',
+          description: 'Flat SVG glyphs, or 3D CSS cubes (currently the AI assistant tab icons).',
+          defaultValue: 'flat',
+          options: [
+            { value: 'flat', label: 'Flat (Default)' },
+            { value: 'cube', label: '3D Cube' },
+          ],
+        },
+        {
+          id: 'cubeMotionPreset',
+          type: 'select',
+          label: 'Cube Motion',
+          description: 'How 3D-cube icons animate to signal status (applies when Icon Style is 3D Cube).',
+          defaultValue: 'lively',
+          options: [
+            { value: 'lively', label: 'Lively (Default)' },
+            { value: 'calm', label: 'Calm' },
+            { value: 'minimal', label: 'Minimal' },
+            { value: 'off', label: 'Off' },
+          ],
+        },
+      ],
+    },
   ],
 };
 

@@ -7,6 +7,12 @@ export type ColorScheme = 'light' | 'dark' | 'system';
 export type AccentColor = 'blue' | 'purple' | 'emerald' | 'rose' | 'amber';
 export type IconTheme = 'inherit' | 'muted' | 'accent';
 export type ButtonStyle = 'solid' | 'gradient' | 'soft';
+/** How media-card badges are rendered: flat 2D pills vs 3D CSS cubes. */
+export type BadgeSkin = 'flat' | 'cube';
+/** How surface glyphs are rendered: flat SVG vs 3D CSS cube bead. */
+export type IconSkin = 'flat' | 'cube';
+/** Named bundle of per-state cube animations (only applies in the cube icon skin). */
+export type CubeMotionPreset = 'lively' | 'calm' | 'minimal' | 'off';
 
 interface AppearanceState {
   colorScheme: ColorScheme;
@@ -14,11 +20,17 @@ interface AppearanceState {
   iconTheme: IconTheme;
   iconSetId: string;
   buttonStyle: ButtonStyle;
+  badgeSkin: BadgeSkin;
+  iconSkin: IconSkin;
+  cubeMotionPreset: CubeMotionPreset;
   setColorScheme: (value: ColorScheme) => void;
   setAccentColor: (value: AccentColor) => void;
   setIconTheme: (value: IconTheme) => void;
   setIconSetId: (value: string) => void;
   setButtonStyle: (value: ButtonStyle) => void;
+  setBadgeSkin: (value: BadgeSkin) => void;
+  setIconSkin: (value: IconSkin) => void;
+  setCubeMotionPreset: (value: CubeMotionPreset) => void;
 }
 
 // ─── Migration from legacy keys ─────────────────────────────────────────────
@@ -75,11 +87,17 @@ export const useAppearanceStore = create<AppearanceState>()(
       iconTheme: 'inherit',
       iconSetId: 'outline',
       buttonStyle: 'gradient',
+      badgeSkin: 'flat',
+      iconSkin: 'flat',
+      cubeMotionPreset: 'lively',
       setColorScheme: (colorScheme) => set({ colorScheme }),
       setAccentColor: (accentColor) => set({ accentColor }),
       setIconTheme: (iconTheme) => set({ iconTheme }),
       setIconSetId: (iconSetId) => set({ iconSetId }),
       setButtonStyle: (buttonStyle) => set({ buttonStyle }),
+      setBadgeSkin: (badgeSkin) => set({ badgeSkin }),
+      setIconSkin: (iconSkin) => set({ iconSkin }),
+      setCubeMotionPreset: (cubeMotionPreset) => set({ cubeMotionPreset }),
     }),
     {
       name: 'appearance_v1',

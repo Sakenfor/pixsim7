@@ -7,8 +7,11 @@ import { useEffect, useState } from 'react';
 
 import { Icon, getIcon } from '@lib/icons';
 
+import { useAppearanceStore } from '@features/appearance';
+
 import type { ChatTab } from './assistantChatStore';
 import type { UnifiedProfile } from './assistantTypes';
+import { CUBE_MOTION_PRESETS, workingMotionFor } from './cubeMotionPresets';
 import { EngineProfileIcon, resolveProfileIcon } from './EngineProfileIcon';
 
 // Green "agent working" halo speed. Each agent activity event (a tool-use
@@ -43,6 +46,8 @@ export interface SessionItemProps {
    * unread pip — a blocked agent is more urgent than an unread reply.
    */
   hasPendingQuestion?: boolean;
+  /** The latest turn stopped because the agent account hit a rate/session limit. */
+  hasLimitStop?: boolean;
   /**
    * Soft "your turn — recently active" reminder, as a fade factor in [0, 1].
    * Non-zero for a non-active tab whose last message is a recent agent reply
@@ -87,6 +92,7 @@ export function SessionItem({
   isSending,
   hasUnread = false,
   hasPendingQuestion = false,
+  hasLimitStop = false,
   activeFade = 0,
   activityTick = 0,
   renamingTabId,
@@ -101,6 +107,8 @@ export function SessionItem({
   onRetryCreate,
   onDismissFailedCreate,
 }: SessionItemProps) {
+  const iconSkin = useAppearanceStore((s) => s.iconSkin);
+  const cubeMotionPreset = useAppearanceStore((s) => s.cubeMotionPreset);
   const tabProfile = profiles.find((p) => p.id === tab.profileId);
   // Agent-set tab identity (plan `agent-freeform-tab-identity`). The
   // freeform icon wins as the leading glyph, but only when it resolves to a
@@ -141,15 +149,31 @@ export function SessionItem({
   // slow blue = passively waiting on the user to read. `pulse` is the
   // animation-duration (inline style reliably overrides Tailwind's fixed-2s
   // `animate-pulse` shorthand); null = static.
-  const status: { ring: string; title: string; pulse: string | null } | null = isFailedCreate
-    ? { ring: 'ring-signal-error', title: "Couldn't save this tab to the server — retry or dismiss", pulse: null }
-    : hasPendingQuestion
-      ? { ring: 'ring-signal-warning', title: 'Agent is waiting on your answer', pulse: '1.4s' }
-      : isSending
-        ? { ring: 'ring-signal-success', title: 'Working…', pulse: workPulse }
-        : hasUnread
-          ? { ring: 'ring-signal-info', title: 'Unread reply', pulse: '2.8s' }
-          : null;
+  // `color` mirrors `ring` as a raw token so the cube icon skin can trace the
+  // same status on the cube's 3D edges (the flat skin keeps using `ring`).
+  // `motion` (cube skin) animates the cube per status from the active motion
+  // preset (working / waiting / unread → spin/sway/toss/pulse/nudge). The
+  // working motion's speed is derived from the live activity cadence
+  // (`workPulse`); passive states use the preset's fixed cadence. The flat skin
+  // keeps using `ring`/`pulse` regardless of preset.
+  const preset = CUBE_MOTION_PRESETS[cubeMotionPreset];
+  const status: {
+    ring: string;
+    color: string;
+    title: string;
+    pulse: string | null;
+    motion?: { type: 'spin' | 'sway' | 'toss' | 'pulse' | 'nudge'; duration?: string };
+  } | null = isFailedCreate
+    ? { ring: 'ring-signal-error', color: 'rgb(var(--error))', title: "Couldn't save this tab to the server — retry or dismiss", pulse: null }
+    : hasLimitStop
+      ? { ring: 'ring-signal-error', color: 'rgb(var(--error))', title: 'Stopped: agent session or rate limit hit', pulse: null }
+      : hasPendingQuestion
+        ? { ring: 'ring-signal-warning', color: 'rgb(var(--warning))', title: 'Agent is waiting on your answer', pulse: '1.4s', motion: preset.waiting ?? undefined }
+        : isSending
+          ? { ring: 'ring-signal-success', color: 'rgb(var(--success))', title: 'Working…', pulse: workPulse, motion: workingMotionFor(preset.working, workPulse) }
+          : hasUnread
+            ? { ring: 'ring-signal-info', color: 'rgb(var(--info))', title: 'Unread reply', pulse: '2.8s', motion: preset.unread ?? undefined }
+            : null;
 
   return (
     <div
@@ -174,8 +198,16 @@ export function SessionItem({
       }
     >
       <div className="relative flex shrink-0" title={status?.title}>
-        <EngineProfileIcon engine={tab.engine} icon={tabIcon} size={12} />
-        {status && (
+        <EngineProfileIcon
+          engine={tab.engine}
+          icon={tabIcon}
+          size={12}
+          statusOutline={iconSkin === 'cube' ? status?.color : undefined}
+          statusMotion={iconSkin === 'cube' ? status?.motion : undefined}
+        />
+        {/* Flat skin: 2D status halo. Cube skin routes the status to the cube's
+            own edges (above), so the flat ring is suppressed there. */}
+        {status && iconSkin !== 'cube' && (
           <span
             aria-hidden="true"
             className={`pointer-events-none absolute -inset-0.5 rounded-full ring-2 ${status.ring} shadow-[0_0_5px_var(--tw-ring-color)] ${status.pulse ? 'animate-pulse' : ''}`}

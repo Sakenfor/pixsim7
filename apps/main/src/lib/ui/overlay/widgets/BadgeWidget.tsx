@@ -15,9 +15,13 @@ import { Badge, useHoverExpand, PortalFloat } from '@pixsim7/shared.ui';
 import type { AnchorPlacement, AnchorAlign } from '@pixsim7/shared.ui';
 import React, { useRef } from 'react';
 
+
 import type { DataBinding } from '@lib/editing-core';
 import { resolveDataBinding } from '@lib/editing-core';
 import { Icon } from '@lib/icons';
+import { CubeFaces } from '@lib/ui/cube';
+
+import { useAppearanceStore } from '@features/appearance';
 
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 
@@ -115,6 +119,134 @@ export interface BadgeWidgetConfig {
   stackGroup?: string;
 }
 
+type BadgeColor = NonNullable<BadgeWidgetConfig['color']>;
+
+const SHAPE_CLASSES: Record<NonNullable<BadgeWidgetConfig['shape']>, string> = {
+  circle: 'rounded-full',
+  square: 'rounded-none',
+  rounded: 'rounded',
+};
+
+// Icon-badge colours (darker, more prominent) for the flat skin.
+const ICON_COLOR_CLASSES: Record<BadgeColor, string> = {
+  blue: 'bg-blue-600 text-white',
+  green: 'bg-green-600 text-white',
+  red: 'bg-red-600 text-white',
+  gray: 'bg-gray-700 text-white',
+  purple: 'bg-purple-600 text-white',
+  pink: 'bg-pink-600 text-white',
+  orange: 'bg-orange-600 text-white',
+  yellow: 'bg-yellow-600 text-white',
+  accent: 'bg-accent text-accent-text',
+};
+
+// Same palette as hex for the cube skin's lit face.
+const BADGE_COLOR_HEX: Record<BadgeColor, string> = {
+  blue: '#2563eb',
+  green: '#16a34a',
+  red: '#dc2626',
+  gray: '#374151',
+  purple: '#9333ea',
+  pink: '#db2777',
+  orange: '#ea580c',
+  yellow: '#ca8a04',
+  accent: '#6366f1',
+};
+
+interface BadgeBodyProps {
+  variant: BadgeWidgetConfig['variant'];
+  icon?: string;
+  label: string | undefined;
+  color: BadgeColor;
+  shape: NonNullable<BadgeWidgetConfig['shape']>;
+  pulse: boolean;
+  /** Pre-computed hover/cursor class string from the factory. */
+  hoverPop: string;
+  tooltip?: string;
+  className: string;
+}
+
+/**
+ * Badge content — the part that the global `badgeSkin` appearance setting swaps.
+ * `flat` reproduces the canonical 2D pill; `cube` renders the same icon/colour
+ * as a 3D {@link CubeFaces} bead with the label beside it. A real component (not
+ * an inline render) so the store read is a legal hook.
+ */
+function BadgeBody({
+  variant,
+  icon,
+  label,
+  color,
+  shape,
+  pulse,
+  hoverPop,
+  tooltip,
+  className,
+}: BadgeBodyProps) {
+  const badgeSkin = useAppearanceStore((s) => s.badgeSkin);
+
+  if (badgeSkin === 'cube') {
+    return (
+      <span className={`inline-flex items-center gap-1 ${className}`.trim()} title={tooltip}>
+        <CubeFaces
+          size={16}
+          faces={{
+            front: {
+              color: BADGE_COLOR_HEX[color],
+              content: icon ? <Icon name={icon} size={9} color="#fff" /> : undefined,
+            },
+          }}
+        />
+        {label && (
+          <span className="whitespace-nowrap text-[10px] font-medium text-white drop-shadow-sm">
+            {label}
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  // ── Flat skin (canonical 2D pill) ──
+  // Icon-only badges use custom circular styling.
+  if (variant === 'icon' && !label) {
+    return (
+      <div
+        className={`
+          inline-flex items-center justify-center
+          cq-btn-md
+          ${ICON_COLOR_CLASSES[color]}
+          ${SHAPE_CLASSES[shape]}
+          ${pulse ? 'animate-pulse-badge' : ''}
+          ${hoverPop}
+          shadow-md
+          ${className}
+        `.trim()}
+        title={tooltip}
+      >
+        {icon && <Icon name={icon} />}
+      </div>
+    );
+  }
+
+  // Text and icon-text badges use the shared Badge component.
+  return (
+    <Badge
+      color={color}
+      title={tooltip}
+      className={`
+        cq-badge inline-flex items-center gap-1
+        ${pulse ? 'animate-pulse-badge' : ''}
+        ${hoverPop}
+        shadow-sm
+        ${className}
+      `.trim()}
+    >
+      {(variant === 'icon' || variant === 'icon-text') && icon && <Icon name={icon} />}
+      {label && <span className="whitespace-nowrap">{label}</span>}
+    </Badge>
+  );
+}
+
 /**
  * Creates a badge widget from configuration
  */
@@ -157,66 +289,18 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     render: (data, context) => {
       if (visibleWhen && !visibleWhen(data)) return null;
       const resolvedLabel = resolveDataBinding(labelBinding, data);
-
-      // Icon-only badges use custom circular styling
-      if (variant === 'icon' && !resolvedLabel) {
-        const shapeClasses = {
-          circle: 'rounded-full',
-          square: 'rounded-none',
-          rounded: 'rounded',
-        };
-
-        // Color map for icon badges (darker, more prominent)
-        const iconColorClasses = {
-          blue: 'bg-blue-600 text-white',
-          green: 'bg-green-600 text-white',
-          red: 'bg-red-600 text-white',
-          gray: 'bg-gray-700 text-white',
-          purple: 'bg-purple-600 text-white',
-          pink: 'bg-pink-600 text-white',
-          orange: 'bg-orange-600 text-white',
-          yellow: 'bg-yellow-600 text-white',
-          accent: 'bg-accent text-accent-text',
-        };
-
-        return (
-          <div
-            className={`
-              inline-flex items-center justify-center
-              cq-btn-md
-              ${iconColorClasses[color]}
-              ${shapeClasses[shape]}
-              ${pulse ? 'animate-pulse-badge' : ''}
-              ${hoverPop}
-              shadow-md
-              ${className}
-            `.trim()}
-            title={tooltip}
-          >
-            {icon && <Icon name={icon} />}
-          </div>
-        );
-      }
-
-      // Text and icon-text badges use shared Badge component
       return (
-        <Badge
+        <BadgeBody
+          variant={variant}
+          icon={icon}
+          label={resolvedLabel}
           color={color}
-          className={`
-            cq-badge inline-flex items-center gap-1
-            ${pulse ? 'animate-pulse-badge' : ''}
-            ${hoverPop}
-            shadow-sm
-            ${className}
-          `.trim()}
-        >
-          {(variant === 'icon' || variant === 'icon-text') && icon && (
-            <Icon name={icon} />
-          )}
-          {resolvedLabel && (
-            <span className="whitespace-nowrap">{resolvedLabel}</span>
-          )}
-        </Badge>
+          shape={shape}
+          pulse={pulse}
+          hoverPop={hoverPop}
+          tooltip={tooltip}
+          className={className}
+        />
       );
     },
   };

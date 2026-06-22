@@ -3,6 +3,37 @@
 @tailwind utilities;
 
 /*
+ * Cube icon-skin motions (CubeFaces / EngineProfileIcon). Defined here in plain
+ * CSS rather than tailwind.config so they're always present without a Tailwind
+ * config rebuild, and so the dynamically-applied animation classes never depend
+ * on JIT class detection. `--cube-tilt-x` / `--cube-sway-amp` are set inline per
+ * cube. See plan `media-card-badge-skin`.
+ */
+@keyframes cube-spin {
+  0%   { transform: rotateX(var(--cube-tilt-x, -16deg)) rotateY(0deg); }
+  100% { transform: rotateX(var(--cube-tilt-x, -16deg)) rotateY(360deg); }
+}
+@keyframes cube-sway {
+  0%, 100% { transform: rotateX(var(--cube-tilt-x, -16deg)) rotateY(calc(-1 * var(--cube-sway-amp, 38deg))); }
+  50%      { transform: rotateX(var(--cube-tilt-x, -16deg)) rotateY(var(--cube-sway-amp, 38deg)); }
+}
+@keyframes cube-toss {
+  0%        { transform: rotateX(var(--cube-tilt-x, -16deg)) rotateY(0deg); }
+  18%, 100% { transform: rotateX(var(--cube-tilt-x, -16deg)) rotateY(360deg); }
+}
+@keyframes cube-nudge-loop {
+  0%, 60%, 100% { transform: scale(1); }
+  8%            { transform: scale(1.22); }
+  18%           { transform: scale(0.97); }
+  30%           { transform: scale(1.07); }
+  42%           { transform: scale(1); }
+}
+.animate-cube-spin       { animation: cube-spin 2.2s linear infinite; }
+.animate-cube-sway       { animation: cube-sway 1.6s ease-in-out infinite; }
+.animate-cube-toss       { animation: cube-toss 2.4s cubic-bezier(0.34, 1.56, 0.64, 1) infinite; }
+.animate-cube-nudge-loop { animation: cube-nudge-loop 3.5s ease-in-out infinite; }
+
+/*
  * JetBrains Mono - self-hosted, used by the terminal panel skin via
  * `--font-skin` (plan `panel-skin-theming`). Files are vendored in
  * `apps/main/public/fonts/`.

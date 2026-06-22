@@ -25,6 +25,9 @@ export default {
         'cube-wobble': 'cube-wobble 4s ease-in-out infinite',
         'cube-bounce': 'cube-bounce 0.5s cubic-bezier(.36,.07,.19,.97)',
         'cube-nudge': 'cube-nudge 0.6s cubic-bezier(.36,.07,.19,.97)',
+        // cube-spin / cube-sway / cube-toss / cube-nudge-loop live in index.css
+        // (plain CSS) so the cube icon-skin motions don't depend on a Tailwind
+        // config rebuild. See apps/main/src/index.css.
       },
       keyframes: {
         'pulse-glow': {
@@ -72,6 +75,11 @@ export default {
           '10%, 30%, 50%, 70%, 90%': { transform: 'translateX(-4px)' },
           '20%, 40%, 60%, 80%': { transform: 'translateX(4px)' },
         },
+        // Continuous Y-axis spin around a fixed tilt. The tilt is read from
+        // `--cube-tilt-x` (set inline per cube) so any resting pose spins
+        // correctly; GPU-composited transform, so it's cheap even many-up.
+        // cube-spin / cube-sway / cube-toss / cube-nudge-loop keyframes live in
+        // index.css (plain CSS) — see note on the `animation` map above.
         'cube-wobble': {
           '0%, 100%': { transform: 'rotateX(0deg) rotateY(0deg) rotateZ(0deg)' },
           '25%': { transform: 'rotateX(2deg) rotateY(-3deg) rotateZ(1deg)' },
