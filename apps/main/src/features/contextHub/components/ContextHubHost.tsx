@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useContext, useEffect, useMemo, useRef } from "react";
 
+import { registerContextHubHost } from "../domain/hostRegistry";
 import { createCapabilityRegistry } from "../domain/registry";
 import { ContextHubContext, getRootHub, type ContextHubState } from "../hooks/contextHubContext";
 import type { CapabilityRegistry } from "../types";
@@ -17,6 +18,14 @@ export function ContextHubHost({ children, hostId }: ContextHubHostProps) {
   if (!registryRef.current) {
     registryRef.current = createCapabilityRegistry();
   }
+
+  // Expose this host's registry to out-of-tree consumers (e.g. the Properties
+  // popup, rendered in a portal) so they can introspect *this host's* own
+  // capabilities without walking the parent chain.
+  useEffect(() => {
+    if (!hostId) return;
+    return registerContextHubHost(hostId, registryRef.current!);
+  }, [hostId]);
 
   // Clean up consumption records when this host unmounts
   useEffect(() => {

@@ -1,4 +1,8 @@
 export { ContextHubHost } from "./components/ContextHubHost";
+export {
+  getContextHubHostRegistry,
+  subscribeContextHubHosts,
+} from "./domain/hostRegistry";
 export { useContextHubState, useContextHubHostId } from "./hooks/contextHubContext";
 export type { ContextHubState } from "./hooks/contextHubContext";
 export { useCapability, useCapabilityAll, useProvideCapability, usePanelContext } from "./hooks";

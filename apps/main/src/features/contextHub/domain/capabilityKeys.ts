@@ -20,3 +20,4 @@ export const CAP_CHARACTER_SCENE_PREP_PREFILL = "characterScenePrepPrefill" as c
 export const CAP_UI_STUDIO_TARGET = "uiStudioTarget" as const;
 export const CAP_UI_STUDIO_ACTIONS = "uiStudioActions" as const;
 export const CAP_BLOCK_SELECTION = "blockSelection" as const;
+export const CAP_GAME_WORLD_EDITOR = "gameWorldEditor" as const;
