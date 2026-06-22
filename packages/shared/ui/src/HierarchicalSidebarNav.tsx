@@ -69,7 +69,9 @@ function getItemClasses(variant: 'light' | 'dark', state: HierarchicalSidebarNav
   }
 
   const tone =
-    state === 'active' || state === 'ancestor'
+    state === 'active'
+      ? 'bg-blue-600 text-white'
+      : state === 'ancestor'
       ? 'bg-neutral-900 text-neutral-100'
       : 'text-neutral-300 hover:bg-neutral-900/60 hover:text-neutral-100';
   return `${base} ${tone}`;
@@ -108,8 +110,8 @@ function getChildContainerClasses(variant: 'light' | 'dark') {
 
 function getChevronButtonClasses(variant: 'light' | 'dark') {
   return variant === 'light'
-    ? 'p-0.5 -ml-1 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded'
-    : 'inline-flex h-4 w-4 items-center justify-center rounded hover:bg-neutral-800';
+    ? 'inline-flex h-4 w-4 items-center justify-center rounded p-0.5 -ml-1 cursor-pointer text-neutral-500 transition-colors transition-shadow hover:text-blue-600 hover:bg-blue-100/80 hover:ring-1 hover:ring-blue-400/40 dark:text-neutral-400 dark:hover:text-blue-300 dark:hover:bg-blue-900/40'
+    : 'inline-flex h-4 w-4 items-center justify-center rounded cursor-pointer text-neutral-500 transition-colors transition-shadow hover:text-blue-300 hover:bg-blue-500/15 hover:ring-1 hover:ring-blue-400/40';
 }
 
 export function HierarchicalSidebarNav({
@@ -148,6 +150,7 @@ export function HierarchicalSidebarNav({
               {hasChildren && (
                 <span
                   className={getChevronButtonClasses(variant)}
+                  title={isExpanded ? 'Collapse' : 'Expand'}
                   onClick={(e) => {
                     e.stopPropagation();
                     onToggleExpand?.(item.id);

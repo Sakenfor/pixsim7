@@ -9,6 +9,8 @@ export interface SidebarContentLayoutSection {
   label: string;
   icon?: ReactNode;
   children?: { id: string; label: string; icon?: ReactNode; extra?: ReactNode }[];
+  selectOnClick?: boolean;
+  toggleOnClickIfExpandable?: boolean;
 }
 
 export interface SidebarContentLayoutProps {
