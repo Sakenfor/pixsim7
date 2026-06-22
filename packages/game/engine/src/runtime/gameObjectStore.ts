@@ -331,9 +331,9 @@ export function getSessionGameObject(
 /**
  * Hydration -> object-core seam (migration_rollout_v1 / hydration-entry).
  *
- * The single place session hydration (canonical `flags.gameObjects` + legacy
- * npc/inventory fallback) is projected into runtime `GameObjectEntity`
- * instances. Runtime callers should consume entities via these (or the
+ * The single place canonical session state (`flags.gameObjects`) is projected
+ * into runtime `GameObjectEntity` instances. Runtime callers should consume
+ * entities via these (or the
  * `GameRuntime` accessors that delegate here); the plain-POJO functions stay
  * the persistence/API edge per the POJO-boundary policy.
  */
@@ -404,9 +404,7 @@ export function upsertSessionGameObjects(
 }
 
 /**
- * Remove canonical game objects by ref. Operates on the hydrated store, so an
- * item that exists only via legacy inventory hydration is also removed (and the
- * rebuilt mirror reflects the removal).
+ * Remove canonical game objects by ref from the `flags.gameObjects` store.
  */
 export function removeSessionGameObjects(
   session: GameSessionDTO,

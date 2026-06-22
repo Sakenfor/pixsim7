@@ -2,7 +2,8 @@
  * Narrative Runtime ECS Helpers
  *
  * Provides helper functions for managing narrative runtime state in the ECS component system.
- * Narrative state is stored at: session.flags.npcs["npc:<id>"].components.narrative
+ * Narrative state lives on the canonical npc GameObject:
+ *   session.flags.gameObjects.objects["npc:<id>"].components (type "narrative")
  *
  * TypeScript equivalent of: pixsim7/backend/main/domain/narrative/ecs_helpers.py
  */

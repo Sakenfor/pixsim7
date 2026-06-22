@@ -15,9 +15,7 @@
  *      listGameObjects / upsertGameObjects (runtime/types.ts)
  *   3. Session (de)serialization        - session/storage.ts
  *      loadWorldSession / saveWorldSession (JSON.parse / JSON.stringify)
- *   4. Legacy mirrors                   - session/helpers.ts, session/state.ts
- *      (flags.inventory.items, flags.npcs hydration)
- *   5. Backend authoring API DTOs       - game_objects.py / game_meta.py
+ *   4. Backend authoring API DTOs       - game_objects.py / game_meta.py
  *      (Python side; POJO by construction - not exercised here)
  *
  * CONTEXT: no production users / no real game state exists (only a throwaway

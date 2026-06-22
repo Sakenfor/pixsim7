@@ -43,7 +43,6 @@ type Scenario = {
   expect: {
     canonical_refs?: string[];
     items?: ExpectItem[];
-    mirror_items?: Array<Record<string, unknown>>;
     npcs?: ExpectNpc[];
   };
 };
@@ -108,24 +107,6 @@ describe('store parity (TS<->Py shared fixture)', () => {
           if (ei.quantity !== undefined) {
             const qty = (actual as any).itemData?.quantity;
             expect(qty).toBe(ei.quantity);
-          }
-        }
-      }
-
-      // Temporary flags.inventory mirror.
-      if (expectFields.mirror_items) {
-        const mirror =
-          ((session.flags as any).inventory?.items as any[] | undefined) ?? [];
-        const mirrorById = new Map(mirror.map((m: any) => [m.id, m]));
-        expect([...mirrorById.keys()].sort()).toEqual(
-          expectFields.mirror_items.map((m) => m.id).sort()
-        );
-        for (const em of expectFields.mirror_items) {
-          const actual = mirrorById.get(em.id) as Record<string, unknown> | undefined;
-          expect(actual).toBeDefined();
-          for (const [key, value] of Object.entries(em)) {
-            if (key === 'id') continue;
-            expect(actual![key]).toBe(value);
           }
         }
       }
