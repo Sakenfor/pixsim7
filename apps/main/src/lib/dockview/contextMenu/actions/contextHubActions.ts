@@ -19,6 +19,7 @@ import { CATEGORY_LABELS } from "@features/panels/lib/panelConstants";
 import { resolveSiblings } from "@features/panels/lib/siblingResolution";
 import { panelPlacementCoordinator } from "@features/workspace/lib/panelPlacementCoordinator";
 
+import { resolvePanelOpenPolicy } from "../../panelInstancePolicy";
 import {
   getRegistryChain,
   getAllProviders,
@@ -365,7 +366,7 @@ function openRelatedPanel(ctx: MenuActionContext, panelId: string) {
   const { api } = resolveCurrentDockview(ctx);
   if (!api) return;
   const def = panelSelectors.get(panelId);
-  const allowMultiple = !!def?.supportsMultipleInstances;
+  const allowMultiple = resolvePanelOpenPolicy(panelId).allowMultiple;
   const title = def?.title ?? panelId;
 
   addPanelInCurrentDockview(ctx, panelId, {
@@ -406,8 +407,7 @@ function focusPanelInDockview(ctx: MenuActionContext, dockviewId: string, panelI
 }
 
 function buildRelatedPanelItemActions(ctx: MenuActionContext, panel: RelatedPanelCandidate): MenuAction[] {
-  const def = panelSelectors.get(panel.id);
-  const allowMultiple = !!def?.supportsMultipleInstances;
+  const allowMultiple = resolvePanelOpenPolicy(panel.id).allowMultiple;
   const placements = panelPlacementCoordinator.getPlacements(panel.id);
   const currentDockId = ctx.currentDockviewId;
   const currentDockOpen = currentDockId

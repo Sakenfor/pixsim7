@@ -10,6 +10,7 @@
 
 import { addDockviewPanel, resolvePanelDefinitionId } from '../../panelAdd';
 import { getDockviewGroups } from '../../panelAdd';
+import { resolvePanelOpenPolicy } from '../../panelInstancePolicy';
 import { resolveCurrentDockviewApi } from '../resolveCurrentDockview';
 import type { MenuAction } from '../types';
 
@@ -228,8 +229,8 @@ const moveToDockviewAction: MenuAction = {
           (panel as { params?: Record<string, unknown> }).params ??
           (panel.api as { params?: Record<string, unknown> } | undefined)?.params;
 
-        const registryEntry = ctx.panelRegistry?.getAll?.().find(p => p.id === panelId);
-        const allowMultiple = !!registryEntry?.supportsMultipleInstances;
+        const openPolicy = resolvePanelOpenPolicy(panelId);
+        const allowMultiple = openPolicy.allowMultiple;
 
         if (!allowMultiple && targetHost?.isPanelOpen(panelId, false)) {
           targetHost.focusPanel(panelId);
@@ -240,13 +241,13 @@ const moveToDockviewAction: MenuAction = {
         if (targetHost) {
           targetHost.addPanel(panelId, {
             allowMultiple,
-            title: panel.title ?? registryEntry?.title,
+            title: panel.title ?? openPolicy.title,
             params: panelParams,
           });
         } else {
           addDockviewPanel(targetApi, panelId, {
             allowMultiple,
-            title: panel.title ?? registryEntry?.title,
+            title: panel.title ?? openPolicy.title,
             params: panelParams,
           });
         }

@@ -10,6 +10,7 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { getDockWidgetByDockviewId, getDockWidgetPanelIds } from '@features/panels';
 
+import { resolvePanelOpenPolicy } from '../../panelInstancePolicy';
 import { resolveCurrentDockview } from '../resolveCurrentDockview';
 import type { MenuAction, MenuActionContext } from '../types';
 
@@ -156,7 +157,7 @@ function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{
       id: panel.id,
       title: panel.title,
       icon: panel.icon,
-      supportsMultipleInstances: panel.supportsMultipleInstances,
+      supportsMultipleInstances: resolvePanelOpenPolicy(panel.id).allowMultiple,
     });
   }
 
@@ -242,7 +243,7 @@ export const addPanelAction: MenuAction = {
         label: formatCategoryLabel(category),
         availableIn: ['background', 'tab', 'panel-content'],
         children: panels.map(panel => {
-          const allowMultiple = !!panel.supportsMultipleInstances;
+          const allowMultiple = resolvePanelOpenPolicy(panel.id).allowMultiple;
           const { label, iconColor } = decoratePanelEntry(panel, getOpenIndicator(ctx, panel.id));
           return {
             id: `panel:add:${panel.id}`,
@@ -297,7 +298,7 @@ export function getDefaultScopePanelSubmenu(
     if (panelId === ctx.currentDockviewId) continue;
     const panel = panelMap.get(panelId);
     if (!panel) continue;
-    const allowMultiple = !!panel.supportsMultipleInstances;
+    const allowMultiple = resolvePanelOpenPolicy(panel.id).allowMultiple;
     const { label, iconColor } = decoratePanelEntry(panel, getOpenIndicator(ctx, panel.id));
     children.push({
       id: `panel:add:default-scope:${panel.id}`,
