@@ -88,7 +88,7 @@ export function VersionNavigator({
       <button
         onClick={handlePrev}
         disabled={!canPrev}
-        className="w-5 h-5 flex items-center justify-center rounded text-th-secondary hover:bg-th/10 disabled:opacity-25 disabled:cursor-default transition-colors"
+        className="w-5 h-5 flex items-center justify-center rounded text-th-secondary hover:bg-th/10 disabled:opacity-25 disabled:cursor-default transition-colors tap-target"
         title="Previous version"
       >
         <Icon name="chevronLeft" size={11} />
@@ -107,7 +107,7 @@ export function VersionNavigator({
       <button
         onClick={handleNext}
         disabled={!canNext}
-        className="w-5 h-5 flex items-center justify-center rounded text-th-secondary hover:bg-th/10 disabled:opacity-25 disabled:cursor-default transition-colors"
+        className="w-5 h-5 flex items-center justify-center rounded text-th-secondary hover:bg-th/10 disabled:opacity-25 disabled:cursor-default transition-colors tap-target"
         title="Next version"
       >
         <Icon name="chevronRight" size={11} />
@@ -118,7 +118,7 @@ export function VersionNavigator({
         <button
           ref={triggerRef}
           onClick={showTimeline ? closeTimeline : openTimeline}
-          className="w-5 h-5 flex items-center justify-center rounded text-th-secondary hover:bg-th/10 transition-colors"
+          className="w-5 h-5 flex items-center justify-center rounded text-th-secondary hover:bg-th/10 transition-colors tap-target"
           title="Version timeline"
         >
           <Icon name="gitBranch" size={11} />
