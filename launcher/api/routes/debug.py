@@ -101,6 +101,7 @@ class LoggingConfig(BaseModel):
     log_db_min_level: str
     log_retention_days: int
     log_domain_levels: dict[str, str]
+    sql_logging: bool = False
     # "backend" = canonical persisted config; "launcher-local" = degraded
     # fallback served from the launcher-api process's own in-memory logging
     # state when the backend (the persisted-config owner) is unreachable.
@@ -112,6 +113,7 @@ class LoggingConfigPatch(BaseModel):
     log_db_min_level: Optional[str] = None
     log_retention_days: Optional[int] = None
     log_domain_levels: Optional[dict[str, str]] = None
+    sql_logging: Optional[bool] = None
 
 
 def _local_logging_config() -> "LoggingConfig":

@@ -54,15 +54,6 @@
       "section": "Debug"
     },
     {
-      "key": "sql_logging",
-      "type": "boolean",
-      "label": "SQL Logging",
-      "description": "Enable SQLAlchemy query echo",
-      "default": false,
-      "env_export": "SQL_LOGGING_ENABLED",
-      "section": "Debug"
-    },
-    {
       "key": "worker_debug_flags",
       "type": "string",
       "label": "Worker Debug Flags",

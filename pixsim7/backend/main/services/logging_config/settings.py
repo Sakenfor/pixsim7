@@ -37,6 +37,11 @@ class LoggingSettings(SettingsBase):
         description="Minimum level for DB log ingestion (DEBUG/INFO/WARNING/ERROR). "
         "Prevents DEBUG console logging from flooding the log database.",
     )
+    sql_logging: bool = Field(
+        False,
+        description="Echo every SQL statement (SQLAlchemy echo) across all DB engines. "
+        "Debug only — very verbose. Applied live via the logging applier, no restart.",
+    )
 
 
 def get_logging_settings() -> LoggingSettings:

@@ -1219,6 +1219,7 @@ async def get_logging_config(user: CurrentUser, db: DatabaseSession):
     """Get current per-domain logging config (any authenticated user)."""
     from pixsim7.backend.main.services.system_config import get_config
     from pixsim_logging.domains import get_domain_config_display
+    from pixsim7.backend.main.infrastructure.database.session import get_sql_echo
 
     # Merge persisted settings with live domain levels
     persisted = await get_config(db, "logging") or {}
@@ -1227,6 +1228,7 @@ async def get_logging_config(user: CurrentUser, db: DatabaseSession):
         log_level=persisted.get("log_level", "INFO"),
         log_retention_days=persisted.get("log_retention_days", 30),
         log_db_min_level=persisted.get("log_db_min_level", "INFO"),
+        sql_logging=get_sql_echo(),
     )
 
 
@@ -1246,6 +1248,7 @@ async def update_logging_config(
     """
     from pixsim7.backend.main.services.system_config import patch_config, apply_namespace, get_config
     from pixsim_logging.domains import get_domain_config_display, KNOWN_DOMAINS
+    from pixsim7.backend.main.infrastructure.database.session import get_sql_echo
 
     patch_data = body.model_dump(exclude_none=True)
     if patch_data:
@@ -1297,6 +1300,7 @@ async def update_logging_config(
         log_level=persisted.get("log_level", "INFO"),
         log_retention_days=persisted.get("log_retention_days", 30),
         log_db_min_level=persisted.get("log_db_min_level", "INFO"),
+        sql_logging=get_sql_echo(),
     )
 
 

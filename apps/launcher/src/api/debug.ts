@@ -30,6 +30,8 @@ export interface LoggingConfig {
   log_db_min_level: string
   log_retention_days: number
   log_domain_levels: Record<string, string>
+  /** Echo every SQL statement (SQLAlchemy echo) across all backend DB engines — live, debug only. */
+  sql_logging: boolean
   /**
    * 'backend' = canonical persisted config; 'launcher-local' = degraded
    * fallback served from the launcher-api process when the backend is

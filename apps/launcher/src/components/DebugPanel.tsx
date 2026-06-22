@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Input, Select } from '@pixsim7/shared.ui'
+import { Input, Select, Switch } from '@pixsim7/shared.ui'
 import { useServicesStore } from '../stores/services'
 import {
   getDomainCatalog,
@@ -246,6 +246,15 @@ function GlobalConfigSection({
             value={config.log_retention_days}
             saving={saving || local}
             onCommit={(days) => onPatch({ log_retention_days: days })}
+          />
+        </Row>
+
+        <Row label="SQL Echo" hint={local ? 'Backend-owned — unavailable while offline' : 'Log every SQL statement (very verbose, debug only)'}>
+          <Switch
+            size="sm"
+            checked={!!config.sql_logging}
+            disabled={saving || local}
+            onCheckedChange={(v) => onPatch({ sql_logging: v })}
           />
         </Row>
       </div>

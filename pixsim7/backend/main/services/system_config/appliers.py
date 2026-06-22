@@ -89,6 +89,10 @@ def _apply_logging_config(data: dict) -> None:
         settings.log_domain_levels = levels
         update_domain_config(levels)
 
+    if "sql_logging" in data:
+        from pixsim7.backend.main.infrastructure.database.session import set_sql_echo
+        set_sql_echo(bool(data["sql_logging"]))
+
 
 register_applier("logging", _apply_logging_config)
 

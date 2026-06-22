@@ -137,6 +137,24 @@ SessionLocal = sessionmaker(
 )
 
 
+def set_sql_echo(enabled: bool) -> None:
+    """Toggle SQLAlchemy statement echo on every engine at runtime.
+
+    Lets the SQL-echo logging toggle apply live (no restart) — driven by the
+    ``logging`` system_config namespace's ``sql_logging`` key via its applier.
+    """
+    global _sql_logging_enabled
+    _sql_logging_enabled = enabled
+    for eng in (async_engine, async_log_engine, async_blocks_engine, async_automation_engine):
+        eng.sync_engine.echo = enabled
+    sync_engine.echo = enabled
+
+
+def get_sql_echo() -> bool:
+    """Current live SQL-echo state (reflects runtime toggles, not just boot env)."""
+    return _sql_logging_enabled
+
+
 # ===== NAMING CONVENTION =====
 # Consistent constraint naming for migrations
 naming_convention = {
