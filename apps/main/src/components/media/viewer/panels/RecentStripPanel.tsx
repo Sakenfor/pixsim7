@@ -228,6 +228,12 @@ export function RecentStripPanel() {
   // there's no visual jump on press — positions only catch up on release.
   // Mirrors the gallery's pointer-down prepend suppression (see useAssets).
   const [pointerActive, setPointerActive] = useState(false);
+  // Ref mirror so the auto-follow effect can read the live interaction state
+  // WITHOUT listing pointerActive in its deps — otherwise the effect re-runs on
+  // every pointer release and snaps the strip back to the current asset, which
+  // fights manual scrolling.
+  const pointerActiveRef = useRef(pointerActive);
+  pointerActiveRef.current = pointerActive;
   const frozenAssetsRef = useRef<ViewerAsset[]>(liveAssets);
   if (!pointerActive) frozenAssetsRef.current = liveAssets;
   const assets = pointerActive ? frozenAssetsRef.current : liveAssets;
@@ -327,9 +333,13 @@ export function RecentStripPanel() {
   // asset list via ref so this only fires on a current-id change, matching the
   // prior scrollIntoView behaviour (not on every new asset arrival). Suppressed
   // while a pointer is down so an auto-scroll can't yank the strip out from
-  // under an in-progress click/drag; re-runs on release to recentre.
+  // under an in-progress click/drag. pointerActive is read via a ref and kept
+  // OUT of the deps on purpose: if it were a dep, ending an interaction would
+  // re-run this and snap the strip back to the current asset, fighting manual
+  // scrolling. A genuine current-id change (e.g. clicking a thumb) still
+  // recentres normally.
   useEffect(() => {
-    if (pointerActive) return;
+    if (pointerActiveRef.current) return;
     const el = scrollRef.current;
     if (!el || itemSize <= 0) return;
     const idx = assetsRef.current.findIndex((a) => a.id === currentId);
@@ -337,7 +347,7 @@ export function RecentStripPanel() {
     const left = STRIP_PAD + idx * (itemSize + STRIP_GAP);
     const target = left - (el.clientWidth - itemSize) / 2;
     el.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
-  }, [currentId, itemSize, pointerActive]);
+  }, [currentId, itemSize]);
 
   useEffect(() => {
     const el = wrapperRef.current;
