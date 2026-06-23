@@ -1,3 +1,4 @@
+import { BACKEND_BASE } from '@lib/api/client';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { authService } from '@lib/auth';
 
@@ -33,9 +34,10 @@ export async function checkHashesAgainstBackend(
   const uniqueHashes = Array.from(new Set(hashes.filter(Boolean)));
   if (uniqueHashes.length === 0) return [];
 
-  // Empty env var = relative mode. Undefined = hardcoded fallback.
-  const envBase = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
-  const base = options?.backendUrl ?? envBase;
+  // Keep URL resolution consistent with the shared API client:
+  // VITE_BACKEND_URL="relative" (or "") resolves to same-origin "".
+  const baseInput = options?.backendUrl ?? BACKEND_BASE;
+  const base = baseInput.trim().toLowerCase() === 'relative' ? '' : baseInput;
   const token = options?.token ?? authService.getStoredToken();
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) {
