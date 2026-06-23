@@ -1,5 +1,5 @@
 import { Button, useToastStore } from '@pixsim7/shared.ui';
-import { type ComponentProps, type ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, type ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -8,6 +8,7 @@ import { listAssetGroups } from '@lib/api/assets';
 import type { AssetGroupListResponse, AssetGroupRequest } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { Icon, type IconName } from '@lib/icons';
+import { gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
 import { IconPicker } from '@lib/ui/forms';
 import { getMediaCardPreset } from '@lib/ui/overlay';
 
@@ -52,7 +53,6 @@ import { useSetAddRecencyStore } from '../stores/setAddRecencyStore';
 import { useSurfaceSetBadgesExpanded } from '../stores/setBadgeExpansionStore';
 
 import { ClusterCard } from './ClusterCard';
-import { DebugSurfaceContent } from './DebugGallerySurface';
 import { DynamicFilters, ChipContextMenu } from './DynamicFilters';
 import { FilterPresetBar } from './FilterPresetBar';
 import { GroupBreadcrumb } from './GroupBreadcrumb';
@@ -75,11 +75,9 @@ import {
 } from './groupHelpers';
 import { GroupingMenuDropdown } from './GroupingMenuDropdown';
 import { ParallelGroupSection, type ParallelAxisData } from './ParallelGroupSection';
-import { ReviewSurfaceContent } from './ReviewGallerySurface';
 import { BottomPagination } from './shared/BottomPagination';
 import { GalleryToolsStrip } from './shared/GalleryToolsStrip';
 import { PaginationStrip } from './shared/PaginationStrip';
-import { SignalTriageContent } from './SignalTriageGallerySurface';
 
 
 // ---------------------------------------------------------------------------
@@ -1504,14 +1502,22 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     return params.get('surface') || 'assets-default';
   }, [location.search]);
 
-  if (activeSurfaceId === 'assets-review') {
-    return <ReviewSurfaceContent controller={controller} />;
-  }
-  if (activeSurfaceId === 'assets-debug') {
-    return <DebugSurfaceContent controller={controller} />;
-  }
-  if (activeSurfaceId === 'assets-signal-triage') {
-    return <SignalTriageContent controller={controller} />;
+  // Registry-driven dispatch: resolve the surface's component from the plugin
+  // registry instead of a hardcoded if-ladder, so adding a surface only means
+  // registering it (see registerGallerySurfaces) — no edit here. Subscribed via
+  // useSyncExternalStore so a surface that registers after first paint (async
+  // module init) still renders once it lands. 'assets-default' (component:
+  // () => null) and any unknown id resolve to null and fall through to this
+  // component's own gallery body below.
+  const ActiveSurfaceComponent = useSyncExternalStore(
+    gallerySurfaceSelectors.subscribe,
+    () =>
+      activeSurfaceId === 'assets-default'
+        ? null
+        : gallerySurfaceSelectors.get(activeSurfaceId)?.component ?? null,
+  );
+  if (ActiveSurfaceComponent) {
+    return <ActiveSurfaceComponent controller={controller} />;
   }
 
   return (

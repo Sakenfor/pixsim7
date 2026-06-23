@@ -6,7 +6,7 @@
  * @example
  * ```typescript
  * // Import from barrel
- * import { GallerySurfaceHost, GallerySurfaceSwitcher, GalleryLayoutControls } from '@features/gallery';
+ * import { GallerySurfaceSwitcher, GalleryLayoutControls } from '@features/gallery';
  *
  * // Or import specific modules
  * import { GalleryToolsPanel } from '@features/gallery/components/panels/GalleryToolsPanel';
@@ -17,7 +17,6 @@
 // Components - Surface Management
 // ============================================================================
 
-export { GallerySurfaceHost } from './components/GallerySurfaceHost';
 export { GallerySurfaceSwitcher } from './components/GallerySurfaceSwitcher';
 export { SurfacePresetPicker, type SurfacePresetPickerProps } from './components/SurfacePresetPicker';
 
