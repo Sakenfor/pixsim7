@@ -53,25 +53,30 @@ export function SignalTriageContent({ controller }: SignalTriageContentProps) {
   // from here. So we always force `media_type: 'video'` — a positive value that
   // overwrites any persisted/URL image — alongside the bucket flag. Signal scores
   // only exist on videos, so this never excludes a real candidate.
-  useEffect(() => {
-    controller.replaceFilters({ signal_likely_broken: true, media_type: 'video' });
-    // intentionally only on mount; subsequent edits respect user choices
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Switch which bucket we're triaging. replaceFilters swaps cleanly (resets to
-  // defaults + the one bucket flag + forced video), so the buckets stay mutually
-  // exclusive and a stale media_type can't zero the queue.
+  // Switch which bucket we're triaging. The bucket flags are unknown keys (not in
+  // the controller's initialFilters), so replaceFilters does NOT drop the
+  // previously-set one — leaving it on accumulates mutually-exclusive flags (e.g.
+  // broken=≥3 AND borderline=1–2) and silently zeroes the queue. So we set ALL
+  // three flags every time, only the chosen one true (the rest false → no
+  // condition), plus forced video.
   const selectQueue = useCallback(
     (q: TriageQueue) => {
-      const spec = TRIAGE_QUEUES.find((x) => x.id === q);
-      if (!spec) return;
       setQueue(q);
       setFocusedIndex(0);
-      controller.replaceFilters({ [spec.filter]: true, media_type: 'video' });
+      const flags = Object.fromEntries(
+        TRIAGE_QUEUES.map((x) => [x.filter, x.id === q]),
+      );
+      controller.replaceFilters({ ...flags, media_type: 'video' });
     },
     [controller],
   );
+
+  // Start on the Broken bucket (also clears any stale media_type/bucket flags).
+  useEffect(() => {
+    selectQueue('broken');
+    // intentionally only on mount; subsequent edits respect user choices
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const focused = controller.assets[focusedIndex];
 
