@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain import OperationType
+from pixsim7.backend.main.domain import OperationType, AccountStatus
 from pixsim7.backend.main.shared.errors import NoAccountAvailableError
 
 logger = logging.getLogger(__name__)
@@ -55,11 +55,15 @@ async def check_sufficient_credits(
     model: Optional[str] = None,
 ) -> bool:
     """
-    Check if user has access to an account with sufficient credits.
+    Check whether a generation should be allowed to enter the queue.
 
-    This is a fail-fast check to reject generations that would fail
-    due to insufficient credits. If credits are stale/unknown for all
-    accounts, skip the fail-fast rejection and let the worker validate.
+    This is a fail-fast guard whose only job is to reject requests the
+    account pool can *never* serve. A credit shortage on otherwise-usable
+    accounts is transient — credits refill via daily reset, top-up, the next
+    sync, or an in-flight job completing — and the worker already defers such
+    jobs onto the retry queue at dispatch time. So we only reject when there
+    is no recoverable (ACTIVE/EXHAUSTED) account at all; everything else is
+    allowed to queue into PENDING and ride out the dip.
 
     Args:
         db: Database session
@@ -70,8 +74,9 @@ async def check_sufficient_credits(
         model: Optional model for routing-aware checks
 
     Returns:
-        True if an account with sufficient credits exists, or credits are
-        stale/unknown for all accounts.
+        True if the request should be allowed to queue (an account can
+        currently afford it, or a recoverable account exists that the worker
+        can wait on). False only when the pool is genuinely hopeless.
     """
     from pixsim7.backend.main.services.account import AccountService
 
@@ -94,44 +99,45 @@ async def check_sufficient_credits(
         )
         return True
     except NoAccountAvailableError:
-        # If we have no accounts at all, this is a real failure.
+        # The structural probe found no account that can *currently* afford the
+        # operation. Credit shortage is transient, though: daily resets,
+        # top-ups, the next credit sync, or an in-flight job completing all
+        # replenish the pool. The worker already defers ``AccountExhaustedError``
+        # / ``NoAccountAvailableError`` back onto the retry queue at dispatch
+        # time (see job_processor), so a momentary dip should let the generation
+        # queue into PENDING and ride it out — exactly as a concurrency-full
+        # account already does (that's why this probe passes
+        # ``ignore_availability=True``) — rather than hard-failing the request
+        # with a 500. Without this, when the only credit-affording account
+        # briefly dips below the threshold between a deduction and the next
+        # sync, a *new* creation 500s while an already-queued job would have
+        # simply waited.
+        #
+        # Only reject when the pool is genuinely hopeless: no recoverable
+        # account exists at all. ACTIVE accounts (busy/cooldown today, free
+        # tomorrow) and EXHAUSTED accounts (out of credits now, refilled on the
+        # next reset/sync) are both things the worker can ride out; DISABLED /
+        # ERROR / RATE_LIMITED accounts are not, so they don't count toward
+        # "the queue can eventually serve this".
         accounts = await account_service.list_accounts(
             provider_id=provider_id,
             user_id=user_id,
             include_shared=True,
         )
-        if not accounts:
+        recoverable = [
+            a for a in accounts
+            if a.status in (AccountStatus.ACTIVE, AccountStatus.EXHAUSTED)
+        ]
+        if not recoverable:
             return False
 
-        # If credits haven't been synced recently for any account,
-        # skip fail-fast so the worker can refresh and decide.
-        from datetime import datetime, timezone, timedelta
-
-        stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
-        has_recent_sync = False
-
-        for account in accounts:
-            metadata = account.provider_metadata or {}
-            synced_at_raw = metadata.get("credits_synced_at")
-            if not synced_at_raw:
-                continue
-            try:
-                synced_at = datetime.fromisoformat(str(synced_at_raw).replace("Z", "+00:00"))
-            except ValueError:
-                continue
-            if synced_at >= stale_cutoff:
-                has_recent_sync = True
-                break
-
-        if not has_recent_sync:
-            logger.info(
-                "credits_unverified_skip_fail_fast",
-                extra={
-                    "user_id": user_id,
-                    "provider_id": provider_id,
-                    "required_credits": required_credits,
-                },
-            )
-            return True
-
-        return False
+        logger.info(
+            "credits_insufficient_defer_to_worker",
+            extra={
+                "user_id": user_id,
+                "provider_id": provider_id,
+                "required_credits": required_credits,
+                "recoverable_accounts": len(recoverable),
+            },
+        )
+        return True
