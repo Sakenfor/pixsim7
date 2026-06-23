@@ -90,6 +90,7 @@ def _validate_checkpoints(raw: list) -> list[dict]:
     from pixsim7.backend.main.api.v1.plans.schemas import Checkpoint
     from pixsim7.backend.main.services.docs.plan_authoring_policy import (
         promote_silent_done,
+        strip_stepped_points,
     )
 
     validated = []
@@ -102,11 +103,16 @@ def _validate_checkpoints(raw: list) -> list[dict]:
             cp_dict = Checkpoint.model_validate(cp).model_dump(by_alias=False, exclude_none=True)
         except Exception as exc:
             raise ValueError(f"Invalid checkpoint '{cp.get('id', f'index {i}')}': {exc}") from exc
-        # Canonicalize the inverse status/points lie at the write choke-point:
-        # a checkpoint that is complete by points/steps but whose status was
-        # never flipped gets auto-promoted to 'done'. (The forward lie —
-        # status='done' while underwater — is hard-rejected upstream by the
-        # status_points_consistent policy rule before we get here.)
+        # Canonicalize status/points lies at the write choke-point:
+        #  - steps-XOR-points: a step-tracked checkpoint must not also persist
+        #    explicit points (steps win on read), so strip them. Conflicting
+        #    points are hard-rejected upstream by steps_points_no_conflict; here
+        #    we drop the redundant-but-consistent leftovers.
+        #  - silent-done: a checkpoint complete by points/steps but whose status
+        #    was never flipped gets auto-promoted to 'done'. (The forward lie —
+        #    status='done' while underwater — is hard-rejected upstream by the
+        #    status_points_consistent rule before we get here.)
+        strip_stepped_points(cp_dict)
         promote_silent_done(cp_dict)
         validated.append(cp_dict)
     return validated

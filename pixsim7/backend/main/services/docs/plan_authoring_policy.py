@@ -208,6 +208,38 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
         "message": "Checkpoint status/points mismatch — see errors for specifics.",
     },
     {
+        "id": "plans.create.checkpoints.steps_points_no_conflict",
+        "endpoint_id": "plans.create",
+        "field": "checkpoints",
+        "level": "required",
+        "applies_to_principal_types": ["agent", "service", "user"],
+        "description": (
+            "A checkpoint is EITHER step-tracked (steps[]) OR points-tracked "
+            "(explicit points_total/points_done), never both. When steps[] is "
+            "present its tally is the operational truth — explicit points are "
+            "auto-derived from it on every read, so a conflicting explicit "
+            "points value is a write-time lie. Rejected on the full-array "
+            "create write. (On accepted writes the redundant explicit points "
+            "are also stripped so no stale value persists.)"
+        ),
+        "constraint": {"type": "checkpoint_steps_points_no_conflict"},
+        "message": "Checkpoint steps/points conflict — see errors for specifics.",
+    },
+    {
+        "id": "plans.update.checkpoints.steps_points_no_conflict",
+        "endpoint_id": "plans.update",
+        "field": "checkpoints",
+        "level": "required",
+        "applies_to_principal_types": ["agent", "service", "user"],
+        "description": (
+            "Same rule as plans.create — applies only when the PATCH payload "
+            "includes a checkpoints array. Hard rejection on the full-array "
+            "write; skipped for partial updates that don't touch checkpoints."
+        ),
+        "constraint": {"type": "checkpoint_steps_points_no_conflict"},
+        "message": "Checkpoint steps/points conflict — see errors for specifics.",
+    },
+    {
         "id": "plans.progress.evidence.test_suite_refs_registered_for_automation",
         "endpoint_id": "plans.progress",
         "field": "append_evidence",
@@ -609,6 +641,106 @@ def complete_underwater_done(cp: Dict[str, Any]) -> Optional[str]:
     )
 
 
+def _checkpoint_steps_tally(cp: Dict[str, Any]) -> Optional[tuple[int, int]]:
+    """Return (done, total) derived from a checkpoint's steps[], or None when
+    the checkpoint has no usable steps array."""
+    steps = cp.get("steps")
+    if not (isinstance(steps, list) and steps):
+        return None
+    step_dicts = [s for s in steps if isinstance(s, dict)]
+    if not step_dicts:
+        return None
+    total = len(step_dicts)
+    done = sum(1 for s in step_dicts if bool(s.get("done")))
+    return done, total
+
+
+def _coerce_int(value: Any) -> Optional[int]:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def check_checkpoint_steps_points_conflict(cp: Dict[str, Any]) -> Optional[str]:
+    """Return a message when a checkpoint carries BOTH steps[] and explicit
+    points_* that disagree with the steps tally, else None.
+
+    steps[] is the single source of truth for a step-tracked checkpoint —
+    ``_derive_checkpoint_points`` overrides explicit points with the steps
+    count on every read. Persisting an explicit points value that disagrees is
+    a write-time lie: the number the author sees on write is silently replaced
+    on the next read. (This was previously only a log warning.)
+    """
+    tally = _checkpoint_steps_tally(cp)
+    if tally is None:
+        return None
+    steps_done, steps_total = tally
+    pd = _coerce_int(cp.get("points_done"))
+    pt = _coerce_int(cp.get("points_total"))
+    mismatches: List[str] = []
+    if pt is not None and pt != steps_total:
+        mismatches.append(f"points_total={pt} != steps_total={steps_total}")
+    if pd is not None and pd != steps_done:
+        mismatches.append(f"points_done={pd} != steps_done={steps_done}")
+    if not mismatches:
+        return None
+    cp_id = str(cp.get("id") or "?")
+    return (
+        f"Checkpoint '{cp_id}': has steps[] AND conflicting explicit points "
+        f"({'; '.join(mismatches)}). steps[] is the single source of truth — "
+        f"drop points_done/points_total; they are auto-derived from steps."
+    )
+
+
+def strip_stepped_points(cp: Dict[str, Any]) -> bool:
+    """Canonicalize a step-tracked checkpoint in place: remove any explicit
+    points_done/points_total so no stale points persist alongside steps[].
+
+    Returns True when a key was removed. No-op for checkpoints without a usable
+    steps array (those legitimately use explicit points). Shared by the write
+    choke-point (``_validate_checkpoints``) and the corpus backfill so there is
+    one definition of the canonical shape.
+    """
+    if _checkpoint_steps_tally(cp) is None:
+        return False
+    changed = False
+    for key in ("points_done", "points_total"):
+        if key in cp:
+            del cp[key]
+            changed = True
+    return changed
+
+
+def _constraint_checkpoint_steps_points_no_conflict(
+    value: Any,
+    field_name: str,
+    rule: Dict[str, Any],
+    constraint: Dict[str, Any],
+    payload: Any,
+    context: Dict[str, Any],
+) -> List[str]:
+    """Array-payload check (plans.create / plans.update): reject every
+    checkpoint that carries steps[] AND conflicting explicit points.
+
+    Skipped silently when ``value`` is not a list — partial updates that don't
+    touch the checkpoints array shouldn't trigger this rule.
+    """
+    del field_name, rule, constraint, payload, context
+    if not isinstance(value, list):
+        return []
+    out: List[str] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        msg = check_checkpoint_steps_points_conflict(item)
+        if msg:
+            out.append(msg)
+    return out
+
+
 def _constraint_checkpoint_status_points_consistent(
     value: Any,
     field_name: str,
@@ -668,6 +800,7 @@ CONSTRAINT_VALIDATORS: Dict[str, ConstraintValidator] = {
     "array_min_items": _constraint_array_min_items,
     "array_items_required_keys": _constraint_array_items_required_keys,
     "checkpoint_status_points_consistent": _constraint_checkpoint_status_points_consistent,
+    "checkpoint_steps_points_no_conflict": _constraint_checkpoint_steps_points_no_conflict,
     "evidence_test_suite_refs_exist": _constraint_evidence_test_suite_refs_exist,
     "string_required_non_empty": _constraint_string_required_non_empty,
     "string_max_length": _constraint_string_max_length,

@@ -28,6 +28,7 @@ def test_constraint_registry_exposes_known_validators() -> None:
     assert "string_max_length" in policy.CONSTRAINT_VALIDATORS
     assert "advisory" in policy.CONSTRAINT_VALIDATORS
     assert "work_summary_next_when_active" in policy.CONSTRAINT_VALIDATORS
+    assert "checkpoint_steps_points_no_conflict" in policy.CONSTRAINT_VALIDATORS
 
 
 def test_validate_policy_create_enforces_required_rule_for_agent() -> None:
@@ -444,3 +445,121 @@ def test_complete_underwater_done_noop_when_consistent() -> None:
     cp = {"id": "cp1", "status": "active", "points_done": 2, "points_total": 5}
     assert policy.complete_underwater_done(cp) is None
     assert cp["points_done"] == 2
+
+
+# ──────────────────────────────────────────────────────────────────────
+# steps-XOR-points: conflict detection + canonicalization
+# ──────────────────────────────────────────────────────────────────────
+
+def test_steps_points_conflict_detects_total_mismatch() -> None:
+    msg = policy.check_checkpoint_steps_points_conflict({
+        "id": "cp1",
+        "points_total": 8,  # steps say 2
+        "steps": [{"id": "s1", "done": True}, {"id": "s2", "done": False}],
+    })
+    assert msg is not None
+    assert "points_total=8" in msg and "steps_total=2" in msg
+
+
+def test_steps_points_conflict_detects_done_mismatch() -> None:
+    msg = policy.check_checkpoint_steps_points_conflict({
+        "id": "cp1",
+        "points_done": 5,  # steps say 1 done
+        "steps": [{"id": "s1", "done": True}, {"id": "s2", "done": False}],
+    })
+    assert msg is not None
+    assert "points_done=5" in msg
+
+
+def test_steps_points_conflict_silent_when_consistent() -> None:
+    assert policy.check_checkpoint_steps_points_conflict({
+        "id": "cp1",
+        "points_done": 1, "points_total": 2,  # matches the steps tally
+        "steps": [{"id": "s1", "done": True}, {"id": "s2", "done": False}],
+    }) is None
+
+
+def test_steps_points_conflict_silent_without_steps() -> None:
+    assert policy.check_checkpoint_steps_points_conflict({
+        "id": "cp1", "points_done": 1, "points_total": 5,
+    }) is None
+
+
+def test_steps_points_conflict_silent_without_explicit_points() -> None:
+    assert policy.check_checkpoint_steps_points_conflict({
+        "id": "cp1",
+        "steps": [{"id": "s1", "done": True}, {"id": "s2", "done": False}],
+    }) is None
+
+
+def test_strip_stepped_points_removes_keys_in_place() -> None:
+    cp = {
+        "id": "cp1", "points_done": 1, "points_total": 5,
+        "steps": [{"id": "s1", "done": True}],
+    }
+    assert policy.strip_stepped_points(cp) is True
+    assert "points_done" not in cp and "points_total" not in cp
+    assert cp["steps"]  # steps untouched
+
+
+def test_strip_stepped_points_noop_without_steps() -> None:
+    cp = {"id": "cp1", "points_done": 1, "points_total": 5}
+    assert policy.strip_stepped_points(cp) is False
+    assert cp["points_done"] == 1
+
+
+def test_create_rejects_steps_points_conflict() -> None:
+    payload = SimpleNamespace(
+        id="conflict-plan",
+        checkpoints=[
+            {"id": "cp1", "label": "C1",
+             "points_total": 8,
+             "steps": [{"id": "s1", "done": True}, {"id": "s2", "done": False}]},
+        ],
+        summary="ok", companions=[], code_paths=["src/"],
+    )
+    principal = SimpleNamespace(principal_type="user", source="user:1")
+
+    violations, _warnings = policy.validate_policy("plans.create", payload, principal)
+
+    assert any("cp1" in v and "single source of truth" in v for v in violations), violations
+
+
+def test_update_rejects_steps_points_conflict_when_array_present() -> None:
+    payload = {
+        "checkpoints": [
+            {"id": "cp1", "label": "C1",
+             "points_done": 5,
+             "steps": [{"id": "s1", "done": True}, {"id": "s2", "done": False}]},
+        ],
+    }
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    violations = policy.validate_plan_update_policy(payload, principal)
+
+    assert any("cp1" in v for v in violations), violations
+
+
+def test_update_skips_steps_points_conflict_when_checkpoints_absent() -> None:
+    payload = {"status": "active"}
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    violations = policy.validate_plan_update_policy(payload, principal)
+
+    assert not any("source of truth" in v for v in violations)
+
+
+def test_consistent_stepped_checkpoint_passes_create() -> None:
+    payload = SimpleNamespace(
+        id="ok-stepped-plan",
+        checkpoints=[
+            {"id": "cp1", "label": "C1",
+             "steps": [{"id": "s1", "done": True}, {"id": "s2", "done": False}]},
+        ],
+        summary="ok", companions=[], code_paths=["src/"],
+    )
+    principal = SimpleNamespace(principal_type="user", source="user:1")
+
+    violations, _warnings = policy.validate_policy("plans.create", payload, principal)
+
+    assert not any("source of truth" in v for v in violations)

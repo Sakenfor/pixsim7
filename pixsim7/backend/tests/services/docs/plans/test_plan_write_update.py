@@ -68,12 +68,50 @@ async def test_update_plan_updates_target_and_checkpoints(monkeypatch: pytest.Mo
 
 @pytest.mark.asyncio
 async def test_update_plan_rejects_invalid_checkpoints_shape() -> None:
-    with pytest.raises(ValueError, match="Invalid 'checkpoints'"):
+    # A list with a non-object item is rejected per-item by _validate_checkpoints.
+    with pytest.raises(ValueError, match="expected object"):
         await plan_write.update_plan(
             db=SimpleNamespace(),
             plan_id="plan-a",
             updates={"checkpoints": ["not-an-object"]},
         )
+
+
+def test_validate_checkpoints_strips_points_when_stepped() -> None:
+    """steps-XOR-points canonicalization: a step-tracked checkpoint must not
+    persist explicit points alongside steps[] (steps win on read)."""
+    out = plan_write._validate_checkpoints([
+        {
+            "id": "cp1", "label": "C1", "status": "active",
+            "points_done": 1, "points_total": 5,  # stale — should be stripped
+            "steps": [
+                {"id": "s1", "label": "a", "done": True},
+                {"id": "s2", "label": "b", "done": False},
+            ],
+        },
+    ])
+    assert "points_done" not in out[0]
+    assert "points_total" not in out[0]
+    assert len(out[0]["steps"]) == 2
+
+
+def test_validate_checkpoints_keeps_points_when_not_stepped() -> None:
+    """Points-tracked checkpoints (no steps[]) keep their explicit points."""
+    out = plan_write._validate_checkpoints([
+        {"id": "cp1", "label": "C1", "status": "active",
+         "points_done": 2, "points_total": 5},
+    ])
+    assert out[0]["points_done"] == 2
+    assert out[0]["points_total"] == 5
+
+
+def test_validate_checkpoints_promotes_silent_done() -> None:
+    """A checkpoint complete by points but left non-done is auto-promoted."""
+    out = plan_write._validate_checkpoints([
+        {"id": "cp1", "label": "C1", "status": "active",
+         "points_done": 5, "points_total": 5},
+    ])
+    assert out[0]["status"] == "done"
 
 
 @pytest.mark.asyncio
