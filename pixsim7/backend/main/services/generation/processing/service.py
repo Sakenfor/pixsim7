@@ -319,6 +319,639 @@ def _init_worker_debug_flags() -> None:
 logger = _get_worker_logger()
 
 
+class _HandlerState:
+    """Mutable flag shared with the generic exception handler in _process:
+    whether the generation was already marked failed, so the fallback handler
+    does not double-mark / re-emit JOB_FAILED."""
+
+    def __init__(self) -> None:
+        self.failed_marked = False
+
+
+async def _handle_provider_error(
+    e: ProviderError,
+    *,
+    db,
+    generation,
+    generation_id: int,
+    account,
+    account_service,
+    generation_service,
+    gen_logger,
+    debug,
+    gen_params,
+    gen_model,
+    required_credit_hint,
+    adaptive_submit_gate,
+    is_final_try: bool,
+    job_try: int,
+    state: _HandlerState,
+) -> dict:
+    """Dispatch a provider submit error: quota / concurrent-limit /
+    auth-rotation / content-filter. Returns a terminal result dict, or
+    re-raises ``e`` to signal an ARQ retry. Sets ``state.failed_marked`` when
+    it marks the generation failed so the caller's fallback handler in
+    ``_process`` will not double-mark / re-emit JOB_FAILED."""
+    account_released = False
+    # Log expected errors as warning, unexpected as error
+    if isinstance(e, EXPECTED_ERRORS):
+        gen_logger.warning("provider:error", error=str(e), error_type=e.__class__.__name__)
+    else:
+        gen_logger.error("provider:error", error=str(e), error_type=e.__class__.__name__)
+    debug.provider(
+        "provider_error",
+        error=str(e),
+        error_type=e.__class__.__name__,
+        generation_id=generation_id,
+    )
+
+    # If provider reports quota exhaustion for this account,
+    # mark the account as exhausted and retry with a different account.
+    # Exception: unlimited/free models don't consume credits — the
+    # provider API may reject zero-credit accounts even for free ops.
+    # In that case skip exhaustion marking; the error is a false
+    # positive and rotating accounts won't help.
+    if isinstance(e, ProviderQuotaExceededError):
+        if is_unlimited_model(account, gen_model) or required_credit_hint == 0:
+            gen_logger.warning(
+                "quota_error_ignored_free_model",
+                account_id=account.id,
+                model=gen_model,
+                required_credit_hint=required_credit_hint,
+                msg="Provider returned quota error for free/unlimited model — not marking account exhausted",
+            )
+            # Fall through to generic error handling below
+        else:
+            account_marked_exhausted = False
+            quota_error_code = _extract_error_code(e)
+            # Refresh credits from provider before marking
+            # exhausted — the quota error may be stale if a
+            # refund landed between verify_credits and submit.
+            try:
+                refreshed = await refresh_account_credits(account, account_service, gen_logger)
+                await db.commit()
+                required_credit_types = resolve_required_credit_types(
+                    generation,
+                    gen_params,
+                    account=account,
+                )
+                if has_positive_credits(
+                    refreshed,
+                    required_credit_types=required_credit_types,
+                ):
+                    gen_logger.info(
+                        "quota_error_but_credits_available",
+                        account_id=account.id,
+                        required_credit_types=required_credit_types,
+                        credits=refreshed,
+                        msg=(
+                            "provider returned quota error but required credit pool has "
+                            "balance after refresh - skipping mark_exhausted"
+                        ),
+                    )
+                elif has_positive_credits(refreshed):
+                    gen_logger.info(
+                        "quota_error_required_pool_depleted",
+                        account_id=account.id,
+                        required_credit_types=required_credit_types,
+                        credits=refreshed,
+                        msg=(
+                            "provider returned quota error and required credit pool is empty "
+                            "while another pool still has balance"
+                        ),
+                    )
+                else:
+                    await account_service.mark_exhausted(account.id)
+                    account_marked_exhausted = True
+            except Exception as mark_err:
+                gen_logger.warning(
+                    "account_mark_exhausted_failed",
+                    account_id=account.id,
+                    error=str(mark_err),
+                )
+
+            if not account_marked_exhausted:
+                await _apply_account_cooldown(
+                    db=db,
+                    account=account,
+                    cooldown_seconds=_quota_error_account_cooldown_seconds(),
+                    gen_logger=gen_logger,
+                    event_name="account_cooldown_quota_error",
+                    error_code=quota_error_code,
+                )
+
+            await _release_account_reservation(
+                account_service=account_service,
+                account_id=account.id,
+                gen_logger=gen_logger,
+            )
+            account_released = True
+            # Quota exhaustion is a hard account-level failure for this
+            # attempt; rotate even for pinned generations by clearing the
+            # preferred account if it matches the exhausted account.
+            # Cap rotations within the current auto-retry round so that
+            # one round can't produce N rows for N accounts when every
+            # account is dry. Once at cap, fall through to mark_failed →
+            # auto_retry handler picks up the next round (with retry_count++
+            # and escalating defer).
+            from pixsim7.backend.main.services.generation.generation_settings import (
+                get_generation_settings,
+            )
+            rotation_cap = (
+                get_generation_settings().auto_retry_max_quota_rotations_per_round
+            )
+            rotations_so_far = await _count_submissions_in_current_round(
+                db, generation.id, generation.retry_count or 0,
+            )
+            if rotations_so_far >= rotation_cap:
+                gen_logger.info(
+                    "auto_retry_quota_rotation_cap_reached",
+                    generation_id=generation.id,
+                    rotations_so_far=rotations_so_far,
+                    cap=rotation_cap,
+                    retry_count=generation.retry_count or 0,
+                    msg="bailing rotation; auto_retry handles next round",
+                )
+                # Fall through to mark as failed; auto_retry will resume.
+            else:
+                quota_defer_seconds = _quota_rotation_requeue_defer_seconds(generation)
+                if quota_defer_seconds is not None:
+                    gen_logger.info(
+                        "quota_rotation_defer_scheduled",
+                        generation_id=generation.id,
+                        attempt_id=generation.__dict__.get("attempt_id"),
+                        defer_seconds=quota_defer_seconds,
+                    )
+                requeue_result = await _requeue_generation_for_account_rotation(
+                    db=db,
+                    generation=generation,
+                    generation_id=generation_id,
+                    failed_account_id=account.id,
+                    reason="account_quota_exhausted",
+                    log_event="generation_requeued_for_different_account",
+                    account_log_field="exhausted_account_id",
+                    gen_logger=gen_logger,
+                    clear_preferred_on_account_match=True,
+                    defer_seconds=quota_defer_seconds,
+                )
+                if requeue_result:
+                    return requeue_result
+                # Fall through to mark as failed if requeue fails
+
+    # Concurrent limit reached - put account in short cooldown and try different account
+    elif isinstance(e, ProviderConcurrentLimitError):
+        adaptive_concurrency = await _adaptive_provider_concurrency_record_limit_error(
+            generation=generation,
+            account=account,
+            model=gen_model,
+            local_concurrency=getattr(account, "current_processing_jobs", None),
+            attempted_level_hint=(
+                int(adaptive_submit_gate.get("attempted_level"))
+                if adaptive_submit_gate and adaptive_submit_gate.get("attempted_level")
+                else None
+            ),
+            gen_logger=gen_logger,
+        )
+        if adaptive_concurrency:
+            gen_logger.info(
+                "adaptive_concurrency_cap_updated",
+                generation_id=generation.id,
+                account_id=account.id,
+                provider_id=account.provider_id,
+                operation_type=_get_operation_value(generation),
+                model=gen_model,
+                attempted_level=adaptive_concurrency.get("attempted_level"),
+                observed_local_concurrency=adaptive_concurrency.get("observed_local_concurrency"),
+                observed_cap=adaptive_concurrency.get("observed_cap"),
+                is_probe_level_reject=adaptive_concurrency.get("is_probe_level_reject"),
+                previous_effective_cap=adaptive_concurrency.get("previous_effective_cap"),
+                effective_cap=adaptive_concurrency.get("effective_cap"),
+                configured_cap=adaptive_concurrency.get("configured_cap"),
+                consecutive_limit_rejects=adaptive_concurrency.get("consecutive_limit_rejects"),
+                consecutive_in_cap_limit_rejects=adaptive_concurrency.get(
+                    "consecutive_in_cap_limit_rejects"
+                ),
+                lower_after_consecutive_rejects=adaptive_concurrency.get(
+                    "lower_after_consecutive_rejects"
+                ),
+                cap_lowered=adaptive_concurrency.get("cap_lowered"),
+                next_probe_delay_seconds=adaptive_concurrency.get("next_probe_delay_seconds"),
+            )
+        # Discriminator A: a 500044 rejected while local concurrency is
+        # below the configured cap is physically impossible as a real
+        # limit — it's a content-induced provider bug. Only quarantine
+        # once the SAME request has tripped it enough times in a short
+        # window (quarantine_now) — a lone transient reject must not
+        # pause a prompt the user is actively iterating on. Quarantining
+        # stops sibling generations from hammering the provider; the
+        # structured event below is what the Control Center surfaces.
+        if adaptive_concurrency and adaptive_concurrency.get("quarantine_now"):
+            spurious_prompt_hash = adaptive_concurrency.get("prompt_group_hash")
+            await mark_prompt_concurrent_quarantined(
+                account.provider_id,
+                spurious_prompt_hash,
+                account_id=account.id,
+                trigger_generation_id=generation.id,
+                gen_logger=gen_logger,
+            )
+            gen_logger.warning(
+                "prompt_quarantined_concurrent_limit",
+                generation_id=generation.id,
+                account_id=account.id,
+                provider_id=account.provider_id,
+                operation_type=_get_operation_value(generation),
+                model=gen_model,
+                prompt_group_hash=spurious_prompt_hash,
+                spurious_count=adaptive_concurrency.get("spurious_count"),
+                observed_local_concurrency=adaptive_concurrency.get(
+                    "observed_local_concurrency"
+                ),
+                configured_cap=adaptive_concurrency.get("configured_cap"),
+                effective_cap=adaptive_concurrency.get("effective_cap"),
+            )
+        concurrent_cooldown_seconds = _get_concurrent_limit_cooldown_seconds(
+            generation, account
+        )
+        await _apply_account_cooldown(
+            db=db,
+            account=account,
+            cooldown_seconds=concurrent_cooldown_seconds,
+            gen_logger=gen_logger,
+            event_name="account_cooldown_concurrent_limit",
+        )
+        if _is_pinned_account(generation, account):
+            # Pinned account at capacity — wait for a slot to free
+            # up instead of rotating to a different account.
+            current_retries = getattr(generation, 'retry_count', 0) or 0
+            concurrent_plan = await _plan_pinned_concurrent_defer(
+                db=db,
+                generation=generation,
+                account=account,
+                concurrent_cooldown_seconds=concurrent_cooldown_seconds,
+                current_retry_count=current_retries,
+                gen_logger=gen_logger,
+                adaptive_recommended_defer_seconds=(
+                    int(adaptive_concurrency.get("recommended_defer_seconds"))
+                    if adaptive_concurrency and adaptive_concurrency.get("adaptive_active")
+                    else None
+                ),
+            )
+            if concurrent_plan.get("action") == "defer":
+                # Suppress wake — other pinned generations would
+                # hit the same provider limit and cascade through
+                # wasted reserve+release cycles.
+                await _release_account_reservation(
+                    account_service=account_service,
+                    account_id=account.id,
+                    gen_logger=gen_logger,
+                    skip_wake=True,
+                )
+                account_released = True
+                defer_result = await _defer_pinned_generation(
+                    db=db,
+                    generation=generation,
+                    generation_id=generation_id,
+                    account_id=account.id,
+                    defer_seconds=int(concurrent_plan.get("defer_seconds") or 1),
+                    reason=str(concurrent_plan.get("reason") or "pinned_account_concurrent_wait"),
+                    gen_logger=gen_logger,
+                    increment_retry=bool(concurrent_plan.get("increment_retry")),
+                )
+                if defer_result:
+                    return defer_result
+                # Fall through to standard failure if defer fails
+            else:
+                # Generation giving up — allow wake so the freed
+                # slot can be used by another pinned generation.
+                await _release_account_reservation(
+                    account_service=account_service,
+                    account_id=account.id,
+                    gen_logger=gen_logger,
+                )
+                account_released = True
+                await _clear_pinned_concurrent_wait_count(generation.id, gen_logger=gen_logger)
+                gen_logger.warning(
+                    "pinned_concurrent_max_waits",
+                    generation_id=generation.id,
+                    retry_count=current_retries,
+                    concurrent_wait_count=concurrent_plan.get("wait_count"),
+                    max_waits=concurrent_plan.get("max_waits"),
+                )
+                await generation_service.mark_failed(
+                    generation_id,
+                    (
+                        f"Pinned account #{account.id} exceeded max concurrent wait defers "
+                        f"({concurrent_plan.get('max_waits')}) while provider concurrency was limited"
+                    ),
+                )
+                state.failed_marked = True
+                get_health_tracker().increment_failed()
+                return {
+                    "status": "failed",
+                    "reason": "pinned_concurrent_max_waits",
+                    "generation_id": generation_id,
+                }
+        else:
+            await _release_account_reservation(
+                account_service=account_service,
+                account_id=account.id,
+                gen_logger=gen_logger,
+            )
+            account_released = True
+            requeue_result = await _requeue_generation_for_account_rotation(
+                db=db,
+                generation=generation,
+                generation_id=generation_id,
+                failed_account_id=account.id,
+                reason="account_concurrent_limit",
+                log_event="generation_requeued_concurrent_limit",
+                account_log_field="previous_account_id",
+                gen_logger=gen_logger,
+            )
+            if requeue_result:
+                return requeue_result
+        # Fall through to standard failure if requeue fails
+
+    # Session/auth failure on one account - cool it down and retry with another account.
+    elif _is_auth_rotation_error(e):
+        error_code = _extract_error_code(e)
+        AccountEventService.record(
+            "auth_failure",
+            account.id,
+            provider_id=account.provider_id,
+            generation_id=generation_id,
+            error_code=error_code,
+            cooldown_seconds=AUTH_FAILURE_COOLDOWN_SECONDS,
+        )
+        await _apply_account_cooldown(
+            db=db,
+            account=account,
+            cooldown_seconds=AUTH_FAILURE_COOLDOWN_SECONDS,
+            gen_logger=gen_logger,
+            event_name="account_cooldown_auth_failure",
+            error_code=error_code,
+        )
+        await _release_account_reservation(
+            account_service=account_service,
+            account_id=account.id,
+            gen_logger=gen_logger,
+        )
+        account_released = True
+        if _is_pinned_account(generation, account):
+            # Pinned account auth failure: clear the pin and rotate so
+            # generation can continue on another valid account.
+            gen_logger.warning(
+                "pinned_account_auth_failed_requeue",
+                account_id=account.id,
+                error=str(e),
+                msg="pinned account authentication failed, clearing pin and requeueing",
+            )
+
+        requeue_result = await _requeue_generation_for_account_rotation(
+            db=db,
+            generation=generation,
+            generation_id=generation_id,
+            failed_account_id=account.id,
+            reason="account_auth_failure",
+            log_event="generation_requeued_auth_failure",
+            account_log_field="failed_account_id",
+            gen_logger=gen_logger,
+            clear_preferred_on_account_match=True,
+            error_code=error_code,
+        )
+        if requeue_result:
+            return requeue_result
+        # Fall through to mark as failed if requeue fails
+
+    # Content filtered - retry only if retryable (output rejection, not prompt rejection)
+    elif isinstance(e, ProviderContentFilteredError):
+        is_retryable = getattr(e, 'retryable', True)
+
+        if not is_retryable:
+            # Non-retryable (e.g., prompt rejected) - mark failed and DON'T re-raise
+            # This prevents ARQ from retrying
+            gen_logger.warning(
+                "content_filter_not_retryable",
+                generation_id=generation.id,
+                error=str(e),
+                error_code=_extract_error_code(e),
+            )
+            await generation_service.mark_failed(
+                generation_id, str(e), error_code=_extract_error_code(e),
+            )
+            released = await _release_account_reservation(
+                account_service=account_service,
+                account_id=account.id,
+                gen_logger=gen_logger,
+            )
+            account_released = account_released or released
+            # Refresh credits so DB reflects any provider refund.
+            await refresh_account_credits_best_effort(
+                account,
+                account_service,
+                gen_logger,
+                db=db,
+                failure_log_event="content_filter_credit_refresh_failed",
+            )
+            # Return instead of raise to prevent ARQ retry
+            return {
+                "status": "failed",
+                "reason": "content_filtered_not_retryable",
+                "generation_id": generation_id,
+                "error": str(e),
+            }
+
+        # Retryable content filter (output rejection)
+        # Release account reservation
+        released = await _release_account_reservation(
+            account_service=account_service,
+            account_id=account.id,
+            gen_logger=gen_logger,
+        )
+        account_released = account_released or released
+
+        # Refresh credits so the DB reflects any provider refund.
+        # Without this, stale low-credit rows block the SQL
+        # min_credits pre-filter and no account can be selected
+        # until something else triggers a refresh.
+        await refresh_account_credits_best_effort(
+            account,
+            account_service,
+            gen_logger,
+            db=db,
+            failure_log_event="content_filter_credit_refresh_failed",
+        )
+
+        # Check retry count for content filter budget (not attempt_id —
+        # attempt_id includes non-error transitions like concurrent waits).
+        MAX_CONTENT_FILTER_RETRIES = max_submit_content_filter_retries()
+        current_retries = getattr(generation, 'retry_count', 0) or 0
+
+        if current_retries < MAX_CONTENT_FILTER_RETRIES:
+            try:
+                content_filter_error_code = _extract_error_code(e)
+                is_pinned = _is_pinned_account(generation, account)
+
+                if is_pinned:
+                    if should_yield_pinned_content_filter_retry(current_retries):
+                        siblings = await _count_pending_pinned_siblings(
+                            db, generation.preferred_account_id, generation.id,
+                        )
+                        if siblings > 0:
+                            yield_allowed, yield_count = await try_acquire_content_filter_yield(
+                                generation.id,
+                            )
+                            if not yield_allowed:
+                                gen_logger.info(
+                                    "pinned_content_filter_yield_cap_reached",
+                                    generation_id=generation.id,
+                                    retry_count=current_retries,
+                                    yield_count=yield_count,
+                                    max_yields=content_filter_max_yields(),
+                                )
+                            else:
+                                defer_seconds = content_filter_yield_defer_seconds()
+                                gen_logger.info(
+                                    "pinned_content_filter_yielding",
+                                    generation_id=generation.id,
+                                    retry_count=current_retries,
+                                    siblings_pending=siblings,
+                                    defer_seconds=defer_seconds,
+                                    yield_count=yield_count,
+                                )
+                                defer_result = await _defer_pinned_generation(
+                                    db=db,
+                                    generation=generation,
+                                    generation_id=generation_id,
+                                    account_id=account.id,
+                                    defer_seconds=defer_seconds,
+                                    reason="pinned_content_filter_yield",
+                                    gen_logger=gen_logger,
+                                    increment_retry=content_filter_yield_counts_as_retry(),
+                                )
+                                if defer_result:
+                                    return defer_result
+                            # Fall through to immediate same-account retry if defer fails
+
+                # Non-pinned content filter retries can rotate after a small
+                # number of same-account failures to avoid hammering one account.
+                if (
+                    not is_pinned
+                    and should_rotate_content_filter_account(current_retries)
+                ):
+                    requeue_result = await _requeue_generation_for_account_rotation(
+                        db=db,
+                        generation=generation,
+                        generation_id=generation_id,
+                        failed_account_id=account.id,
+                        reason="content_filtered_account_rotation",
+                        log_event="generation_requeued_content_filter_rotation",
+                        account_log_field="filtered_account_id",
+                        gen_logger=gen_logger,
+                        error_code=content_filter_error_code,
+                        increment_retry=True,
+                    )
+                    if requeue_result:
+                        return requeue_result
+                    # Fall through to immediate retry if rotation requeue fails
+
+                from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+                # Increment retry count and reset to pending on the same account
+                generation.retry_count = (generation.retry_count or 0) + 1
+                generation.status = GenStatus.PENDING
+                generation.started_at = None
+                generation.completed_at = None
+                await db.commit()
+                await db.refresh(generation)
+
+                arq_pool = await get_arq_pool()
+                enqueue_result = await enqueue_generation_retry_job(
+                    arq_pool, generation.id,
+                )
+
+                gen_logger.info(
+                    "generation_requeued_content_filter_retry",
+                    generation_id=generation.id,
+                    retry_attempt=generation.retry_count,
+                    max_retries=MAX_CONTENT_FILTER_RETRIES,
+                    enqueue_deduped=bool(enqueue_result.get("deduped")),
+                )
+
+                await _publish_job_retrying(
+                    generation,
+                    reason="content_filtered_retry",
+                    gen_logger=gen_logger,
+                )
+
+                return {
+                    "status": "requeued",
+                    "reason": "content_filtered_retry",
+                    "generation_id": generation_id,
+                    "retry_attempt": generation.retry_count,
+                }
+            except Exception as requeue_err:
+                gen_logger.error(
+                    "generation_requeue_failed",
+                    error=str(requeue_err),
+                    generation_id=generation.id,
+                )
+                # Fall through to mark as failed if requeue fails
+        else:
+            gen_logger.warning(
+                "content_filter_max_retries_exceeded",
+                generation_id=generation.id,
+                retry_count=current_retries,
+            )
+            # Fall through to mark as failed
+
+    # Release account reservation on failure
+    if not account_released:
+        await _release_account_reservation(
+            account_service=account_service,
+            account_id=account.id,
+            gen_logger=gen_logger,
+        )
+
+    # Check if this error should NOT be retried
+    is_non_retryable = _is_non_retryable_error(e)
+    is_final = is_final_try
+
+    # Only mark as failed (and emit JOB_FAILED event) on final attempt or non-retryable errors
+    if is_final or is_non_retryable:
+        await generation_service.mark_failed(
+            generation_id, str(e), error_code=_extract_error_code(e),
+        )
+        state.failed_marked = True
+        gen_logger.info(
+            "generation_marked_failed",
+            is_final_try=is_final,
+            is_non_retryable=is_non_retryable,
+        )
+    else:
+        gen_logger.info(
+            "generation_will_retry",
+            job_try=job_try,
+            max_tries=_get_max_tries(),
+        )
+
+    # Note: Credits not refreshed on failure - provider rejects before billing
+
+    # Track failed generation
+    get_health_tracker().increment_failed()
+
+    # Don't raise for non-retryable errors - prevents ARQ retry
+    if is_non_retryable:
+        return {
+            "status": "failed",
+            "reason": "non_retryable_error",
+            "generation_id": generation_id,
+            "error": str(e),
+        }
+
+    raise e
+
+
 async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> dict:
     """
     Process a single generation, returning a terminal result dict.
@@ -358,7 +991,7 @@ async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> d
 
     async for db in get_db():
         try:
-            failed_marked = False
+            _err_state = _HandlerState()
             # Initialized here (not only in the ProviderError handler) so the
             # mark_started duplicate-pickup abort path below can read it without
             # a NameError when no provider submit was ever attempted.
@@ -1029,604 +1662,25 @@ async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> d
                 }
 
             except ProviderError as e:
-                account_released = False
-                # Log expected errors as warning, unexpected as error
-                if isinstance(e, EXPECTED_ERRORS):
-                    gen_logger.warning("provider:error", error=str(e), error_type=e.__class__.__name__)
-                else:
-                    gen_logger.error("provider:error", error=str(e), error_type=e.__class__.__name__)
-                debug.provider(
-                    "provider_error",
-                    error=str(e),
-                    error_type=e.__class__.__name__,
+                _err_outcome = await _handle_provider_error(
+                    e,
+                    db=db,
+                    generation=generation,
                     generation_id=generation_id,
+                    account=account,
+                    account_service=account_service,
+                    generation_service=generation_service,
+                    gen_logger=gen_logger,
+                    debug=debug,
+                    gen_params=gen_params,
+                    gen_model=gen_model,
+                    required_credit_hint=required_credit_hint,
+                    adaptive_submit_gate=adaptive_submit_gate,
+                    is_final_try=is_final_try,
+                    job_try=job_try,
+                    state=_err_state,
                 )
-
-                # If provider reports quota exhaustion for this account,
-                # mark the account as exhausted and retry with a different account.
-                # Exception: unlimited/free models don't consume credits — the
-                # provider API may reject zero-credit accounts even for free ops.
-                # In that case skip exhaustion marking; the error is a false
-                # positive and rotating accounts won't help.
-                if isinstance(e, ProviderQuotaExceededError):
-                    if is_unlimited_model(account, gen_model) or required_credit_hint == 0:
-                        gen_logger.warning(
-                            "quota_error_ignored_free_model",
-                            account_id=account.id,
-                            model=gen_model,
-                            required_credit_hint=required_credit_hint,
-                            msg="Provider returned quota error for free/unlimited model — not marking account exhausted",
-                        )
-                        # Fall through to generic error handling below
-                    else:
-                        account_marked_exhausted = False
-                        quota_error_code = _extract_error_code(e)
-                        # Refresh credits from provider before marking
-                        # exhausted — the quota error may be stale if a
-                        # refund landed between verify_credits and submit.
-                        try:
-                            refreshed = await refresh_account_credits(account, account_service, gen_logger)
-                            await db.commit()
-                            required_credit_types = resolve_required_credit_types(
-                                generation,
-                                gen_params,
-                                account=account,
-                            )
-                            if has_positive_credits(
-                                refreshed,
-                                required_credit_types=required_credit_types,
-                            ):
-                                gen_logger.info(
-                                    "quota_error_but_credits_available",
-                                    account_id=account.id,
-                                    required_credit_types=required_credit_types,
-                                    credits=refreshed,
-                                    msg=(
-                                        "provider returned quota error but required credit pool has "
-                                        "balance after refresh - skipping mark_exhausted"
-                                    ),
-                                )
-                            elif has_positive_credits(refreshed):
-                                gen_logger.info(
-                                    "quota_error_required_pool_depleted",
-                                    account_id=account.id,
-                                    required_credit_types=required_credit_types,
-                                    credits=refreshed,
-                                    msg=(
-                                        "provider returned quota error and required credit pool is empty "
-                                        "while another pool still has balance"
-                                    ),
-                                )
-                            else:
-                                await account_service.mark_exhausted(account.id)
-                                account_marked_exhausted = True
-                        except Exception as mark_err:
-                            gen_logger.warning(
-                                "account_mark_exhausted_failed",
-                                account_id=account.id,
-                                error=str(mark_err),
-                            )
-
-                        if not account_marked_exhausted:
-                            await _apply_account_cooldown(
-                                db=db,
-                                account=account,
-                                cooldown_seconds=_quota_error_account_cooldown_seconds(),
-                                gen_logger=gen_logger,
-                                event_name="account_cooldown_quota_error",
-                                error_code=quota_error_code,
-                            )
-
-                        await _release_account_reservation(
-                            account_service=account_service,
-                            account_id=account.id,
-                            gen_logger=gen_logger,
-                        )
-                        account_released = True
-                        # Quota exhaustion is a hard account-level failure for this
-                        # attempt; rotate even for pinned generations by clearing the
-                        # preferred account if it matches the exhausted account.
-                        # Cap rotations within the current auto-retry round so that
-                        # one round can't produce N rows for N accounts when every
-                        # account is dry. Once at cap, fall through to mark_failed →
-                        # auto_retry handler picks up the next round (with retry_count++
-                        # and escalating defer).
-                        from pixsim7.backend.main.services.generation.generation_settings import (
-                            get_generation_settings,
-                        )
-                        rotation_cap = (
-                            get_generation_settings().auto_retry_max_quota_rotations_per_round
-                        )
-                        rotations_so_far = await _count_submissions_in_current_round(
-                            db, generation.id, generation.retry_count or 0,
-                        )
-                        if rotations_so_far >= rotation_cap:
-                            gen_logger.info(
-                                "auto_retry_quota_rotation_cap_reached",
-                                generation_id=generation.id,
-                                rotations_so_far=rotations_so_far,
-                                cap=rotation_cap,
-                                retry_count=generation.retry_count or 0,
-                                msg="bailing rotation; auto_retry handles next round",
-                            )
-                            # Fall through to mark as failed; auto_retry will resume.
-                        else:
-                            quota_defer_seconds = _quota_rotation_requeue_defer_seconds(generation)
-                            if quota_defer_seconds is not None:
-                                gen_logger.info(
-                                    "quota_rotation_defer_scheduled",
-                                    generation_id=generation.id,
-                                    attempt_id=generation.__dict__.get("attempt_id"),
-                                    defer_seconds=quota_defer_seconds,
-                                )
-                            requeue_result = await _requeue_generation_for_account_rotation(
-                                db=db,
-                                generation=generation,
-                                generation_id=generation_id,
-                                failed_account_id=account.id,
-                                reason="account_quota_exhausted",
-                                log_event="generation_requeued_for_different_account",
-                                account_log_field="exhausted_account_id",
-                                gen_logger=gen_logger,
-                                clear_preferred_on_account_match=True,
-                                defer_seconds=quota_defer_seconds,
-                            )
-                            if requeue_result:
-                                return requeue_result
-                            # Fall through to mark as failed if requeue fails
-
-                # Concurrent limit reached - put account in short cooldown and try different account
-                elif isinstance(e, ProviderConcurrentLimitError):
-                    adaptive_concurrency = await _adaptive_provider_concurrency_record_limit_error(
-                        generation=generation,
-                        account=account,
-                        model=gen_model,
-                        local_concurrency=getattr(account, "current_processing_jobs", None),
-                        attempted_level_hint=(
-                            int(adaptive_submit_gate.get("attempted_level"))
-                            if adaptive_submit_gate and adaptive_submit_gate.get("attempted_level")
-                            else None
-                        ),
-                        gen_logger=gen_logger,
-                    )
-                    if adaptive_concurrency:
-                        gen_logger.info(
-                            "adaptive_concurrency_cap_updated",
-                            generation_id=generation.id,
-                            account_id=account.id,
-                            provider_id=account.provider_id,
-                            operation_type=_get_operation_value(generation),
-                            model=gen_model,
-                            attempted_level=adaptive_concurrency.get("attempted_level"),
-                            observed_local_concurrency=adaptive_concurrency.get("observed_local_concurrency"),
-                            observed_cap=adaptive_concurrency.get("observed_cap"),
-                            is_probe_level_reject=adaptive_concurrency.get("is_probe_level_reject"),
-                            previous_effective_cap=adaptive_concurrency.get("previous_effective_cap"),
-                            effective_cap=adaptive_concurrency.get("effective_cap"),
-                            configured_cap=adaptive_concurrency.get("configured_cap"),
-                            consecutive_limit_rejects=adaptive_concurrency.get("consecutive_limit_rejects"),
-                            consecutive_in_cap_limit_rejects=adaptive_concurrency.get(
-                                "consecutive_in_cap_limit_rejects"
-                            ),
-                            lower_after_consecutive_rejects=adaptive_concurrency.get(
-                                "lower_after_consecutive_rejects"
-                            ),
-                            cap_lowered=adaptive_concurrency.get("cap_lowered"),
-                            next_probe_delay_seconds=adaptive_concurrency.get("next_probe_delay_seconds"),
-                        )
-                    # Discriminator A: a 500044 rejected while local concurrency is
-                    # below the configured cap is physically impossible as a real
-                    # limit — it's a content-induced provider bug. Only quarantine
-                    # once the SAME request has tripped it enough times in a short
-                    # window (quarantine_now) — a lone transient reject must not
-                    # pause a prompt the user is actively iterating on. Quarantining
-                    # stops sibling generations from hammering the provider; the
-                    # structured event below is what the Control Center surfaces.
-                    if adaptive_concurrency and adaptive_concurrency.get("quarantine_now"):
-                        spurious_prompt_hash = adaptive_concurrency.get("prompt_group_hash")
-                        await mark_prompt_concurrent_quarantined(
-                            account.provider_id,
-                            spurious_prompt_hash,
-                            account_id=account.id,
-                            trigger_generation_id=generation.id,
-                            gen_logger=gen_logger,
-                        )
-                        gen_logger.warning(
-                            "prompt_quarantined_concurrent_limit",
-                            generation_id=generation.id,
-                            account_id=account.id,
-                            provider_id=account.provider_id,
-                            operation_type=_get_operation_value(generation),
-                            model=gen_model,
-                            prompt_group_hash=spurious_prompt_hash,
-                            spurious_count=adaptive_concurrency.get("spurious_count"),
-                            observed_local_concurrency=adaptive_concurrency.get(
-                                "observed_local_concurrency"
-                            ),
-                            configured_cap=adaptive_concurrency.get("configured_cap"),
-                            effective_cap=adaptive_concurrency.get("effective_cap"),
-                        )
-                    concurrent_cooldown_seconds = _get_concurrent_limit_cooldown_seconds(
-                        generation, account
-                    )
-                    await _apply_account_cooldown(
-                        db=db,
-                        account=account,
-                        cooldown_seconds=concurrent_cooldown_seconds,
-                        gen_logger=gen_logger,
-                        event_name="account_cooldown_concurrent_limit",
-                    )
-                    if _is_pinned_account(generation, account):
-                        # Pinned account at capacity — wait for a slot to free
-                        # up instead of rotating to a different account.
-                        current_retries = getattr(generation, 'retry_count', 0) or 0
-                        concurrent_plan = await _plan_pinned_concurrent_defer(
-                            db=db,
-                            generation=generation,
-                            account=account,
-                            concurrent_cooldown_seconds=concurrent_cooldown_seconds,
-                            current_retry_count=current_retries,
-                            gen_logger=gen_logger,
-                            adaptive_recommended_defer_seconds=(
-                                int(adaptive_concurrency.get("recommended_defer_seconds"))
-                                if adaptive_concurrency and adaptive_concurrency.get("adaptive_active")
-                                else None
-                            ),
-                        )
-                        if concurrent_plan.get("action") == "defer":
-                            # Suppress wake — other pinned generations would
-                            # hit the same provider limit and cascade through
-                            # wasted reserve+release cycles.
-                            await _release_account_reservation(
-                                account_service=account_service,
-                                account_id=account.id,
-                                gen_logger=gen_logger,
-                                skip_wake=True,
-                            )
-                            account_released = True
-                            defer_result = await _defer_pinned_generation(
-                                db=db,
-                                generation=generation,
-                                generation_id=generation_id,
-                                account_id=account.id,
-                                defer_seconds=int(concurrent_plan.get("defer_seconds") or 1),
-                                reason=str(concurrent_plan.get("reason") or "pinned_account_concurrent_wait"),
-                                gen_logger=gen_logger,
-                                increment_retry=bool(concurrent_plan.get("increment_retry")),
-                            )
-                            if defer_result:
-                                return defer_result
-                            # Fall through to standard failure if defer fails
-                        else:
-                            # Generation giving up — allow wake so the freed
-                            # slot can be used by another pinned generation.
-                            await _release_account_reservation(
-                                account_service=account_service,
-                                account_id=account.id,
-                                gen_logger=gen_logger,
-                            )
-                            account_released = True
-                            await _clear_pinned_concurrent_wait_count(generation.id, gen_logger=gen_logger)
-                            gen_logger.warning(
-                                "pinned_concurrent_max_waits",
-                                generation_id=generation.id,
-                                retry_count=current_retries,
-                                concurrent_wait_count=concurrent_plan.get("wait_count"),
-                                max_waits=concurrent_plan.get("max_waits"),
-                            )
-                            await generation_service.mark_failed(
-                                generation_id,
-                                (
-                                    f"Pinned account #{account.id} exceeded max concurrent wait defers "
-                                    f"({concurrent_plan.get('max_waits')}) while provider concurrency was limited"
-                                ),
-                            )
-                            failed_marked = True
-                            get_health_tracker().increment_failed()
-                            return {
-                                "status": "failed",
-                                "reason": "pinned_concurrent_max_waits",
-                                "generation_id": generation_id,
-                            }
-                    else:
-                        await _release_account_reservation(
-                            account_service=account_service,
-                            account_id=account.id,
-                            gen_logger=gen_logger,
-                        )
-                        account_released = True
-                        requeue_result = await _requeue_generation_for_account_rotation(
-                            db=db,
-                            generation=generation,
-                            generation_id=generation_id,
-                            failed_account_id=account.id,
-                            reason="account_concurrent_limit",
-                            log_event="generation_requeued_concurrent_limit",
-                            account_log_field="previous_account_id",
-                            gen_logger=gen_logger,
-                        )
-                        if requeue_result:
-                            return requeue_result
-                    # Fall through to standard failure if requeue fails
-
-                # Session/auth failure on one account - cool it down and retry with another account.
-                elif _is_auth_rotation_error(e):
-                    error_code = _extract_error_code(e)
-                    AccountEventService.record(
-                        "auth_failure",
-                        account.id,
-                        provider_id=account.provider_id,
-                        generation_id=generation_id,
-                        error_code=error_code,
-                        cooldown_seconds=AUTH_FAILURE_COOLDOWN_SECONDS,
-                    )
-                    await _apply_account_cooldown(
-                        db=db,
-                        account=account,
-                        cooldown_seconds=AUTH_FAILURE_COOLDOWN_SECONDS,
-                        gen_logger=gen_logger,
-                        event_name="account_cooldown_auth_failure",
-                        error_code=error_code,
-                    )
-                    await _release_account_reservation(
-                        account_service=account_service,
-                        account_id=account.id,
-                        gen_logger=gen_logger,
-                    )
-                    account_released = True
-                    if _is_pinned_account(generation, account):
-                        # Pinned account auth failure: clear the pin and rotate so
-                        # generation can continue on another valid account.
-                        gen_logger.warning(
-                            "pinned_account_auth_failed_requeue",
-                            account_id=account.id,
-                            error=str(e),
-                            msg="pinned account authentication failed, clearing pin and requeueing",
-                        )
-
-                    requeue_result = await _requeue_generation_for_account_rotation(
-                        db=db,
-                        generation=generation,
-                        generation_id=generation_id,
-                        failed_account_id=account.id,
-                        reason="account_auth_failure",
-                        log_event="generation_requeued_auth_failure",
-                        account_log_field="failed_account_id",
-                        gen_logger=gen_logger,
-                        clear_preferred_on_account_match=True,
-                        error_code=error_code,
-                    )
-                    if requeue_result:
-                        return requeue_result
-                    # Fall through to mark as failed if requeue fails
-
-                # Content filtered - retry only if retryable (output rejection, not prompt rejection)
-                elif isinstance(e, ProviderContentFilteredError):
-                    is_retryable = getattr(e, 'retryable', True)
-
-                    if not is_retryable:
-                        # Non-retryable (e.g., prompt rejected) - mark failed and DON'T re-raise
-                        # This prevents ARQ from retrying
-                        gen_logger.warning(
-                            "content_filter_not_retryable",
-                            generation_id=generation.id,
-                            error=str(e),
-                            error_code=_extract_error_code(e),
-                        )
-                        await generation_service.mark_failed(
-                            generation_id, str(e), error_code=_extract_error_code(e),
-                        )
-                        released = await _release_account_reservation(
-                            account_service=account_service,
-                            account_id=account.id,
-                            gen_logger=gen_logger,
-                        )
-                        account_released = account_released or released
-                        # Refresh credits so DB reflects any provider refund.
-                        await refresh_account_credits_best_effort(
-                            account,
-                            account_service,
-                            gen_logger,
-                            db=db,
-                            failure_log_event="content_filter_credit_refresh_failed",
-                        )
-                        # Return instead of raise to prevent ARQ retry
-                        return {
-                            "status": "failed",
-                            "reason": "content_filtered_not_retryable",
-                            "generation_id": generation_id,
-                            "error": str(e),
-                        }
-
-                    # Retryable content filter (output rejection)
-                    # Release account reservation
-                    released = await _release_account_reservation(
-                        account_service=account_service,
-                        account_id=account.id,
-                        gen_logger=gen_logger,
-                    )
-                    account_released = account_released or released
-
-                    # Refresh credits so the DB reflects any provider refund.
-                    # Without this, stale low-credit rows block the SQL
-                    # min_credits pre-filter and no account can be selected
-                    # until something else triggers a refresh.
-                    await refresh_account_credits_best_effort(
-                        account,
-                        account_service,
-                        gen_logger,
-                        db=db,
-                        failure_log_event="content_filter_credit_refresh_failed",
-                    )
-
-                    # Check retry count for content filter budget (not attempt_id —
-                    # attempt_id includes non-error transitions like concurrent waits).
-                    MAX_CONTENT_FILTER_RETRIES = max_submit_content_filter_retries()
-                    current_retries = getattr(generation, 'retry_count', 0) or 0
-
-                    if current_retries < MAX_CONTENT_FILTER_RETRIES:
-                        try:
-                            content_filter_error_code = _extract_error_code(e)
-                            is_pinned = _is_pinned_account(generation, account)
-
-                            if is_pinned:
-                                if should_yield_pinned_content_filter_retry(current_retries):
-                                    siblings = await _count_pending_pinned_siblings(
-                                        db, generation.preferred_account_id, generation.id,
-                                    )
-                                    if siblings > 0:
-                                        yield_allowed, yield_count = await try_acquire_content_filter_yield(
-                                            generation.id,
-                                        )
-                                        if not yield_allowed:
-                                            gen_logger.info(
-                                                "pinned_content_filter_yield_cap_reached",
-                                                generation_id=generation.id,
-                                                retry_count=current_retries,
-                                                yield_count=yield_count,
-                                                max_yields=content_filter_max_yields(),
-                                            )
-                                        else:
-                                            defer_seconds = content_filter_yield_defer_seconds()
-                                            gen_logger.info(
-                                                "pinned_content_filter_yielding",
-                                                generation_id=generation.id,
-                                                retry_count=current_retries,
-                                                siblings_pending=siblings,
-                                                defer_seconds=defer_seconds,
-                                                yield_count=yield_count,
-                                            )
-                                            defer_result = await _defer_pinned_generation(
-                                                db=db,
-                                                generation=generation,
-                                                generation_id=generation_id,
-                                                account_id=account.id,
-                                                defer_seconds=defer_seconds,
-                                                reason="pinned_content_filter_yield",
-                                                gen_logger=gen_logger,
-                                                increment_retry=content_filter_yield_counts_as_retry(),
-                                            )
-                                            if defer_result:
-                                                return defer_result
-                                        # Fall through to immediate same-account retry if defer fails
-
-                            # Non-pinned content filter retries can rotate after a small
-                            # number of same-account failures to avoid hammering one account.
-                            if (
-                                not is_pinned
-                                and should_rotate_content_filter_account(current_retries)
-                            ):
-                                requeue_result = await _requeue_generation_for_account_rotation(
-                                    db=db,
-                                    generation=generation,
-                                    generation_id=generation_id,
-                                    failed_account_id=account.id,
-                                    reason="content_filtered_account_rotation",
-                                    log_event="generation_requeued_content_filter_rotation",
-                                    account_log_field="filtered_account_id",
-                                    gen_logger=gen_logger,
-                                    error_code=content_filter_error_code,
-                                    increment_retry=True,
-                                )
-                                if requeue_result:
-                                    return requeue_result
-                                # Fall through to immediate retry if rotation requeue fails
-
-                            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-
-                            # Increment retry count and reset to pending on the same account
-                            generation.retry_count = (generation.retry_count or 0) + 1
-                            generation.status = GenStatus.PENDING
-                            generation.started_at = None
-                            generation.completed_at = None
-                            await db.commit()
-                            await db.refresh(generation)
-
-                            arq_pool = await get_arq_pool()
-                            enqueue_result = await enqueue_generation_retry_job(
-                                arq_pool, generation.id,
-                            )
-
-                            gen_logger.info(
-                                "generation_requeued_content_filter_retry",
-                                generation_id=generation.id,
-                                retry_attempt=generation.retry_count,
-                                max_retries=MAX_CONTENT_FILTER_RETRIES,
-                                enqueue_deduped=bool(enqueue_result.get("deduped")),
-                            )
-
-                            await _publish_job_retrying(
-                                generation,
-                                reason="content_filtered_retry",
-                                gen_logger=gen_logger,
-                            )
-
-                            return {
-                                "status": "requeued",
-                                "reason": "content_filtered_retry",
-                                "generation_id": generation_id,
-                                "retry_attempt": generation.retry_count,
-                            }
-                        except Exception as requeue_err:
-                            gen_logger.error(
-                                "generation_requeue_failed",
-                                error=str(requeue_err),
-                                generation_id=generation.id,
-                            )
-                            # Fall through to mark as failed if requeue fails
-                    else:
-                        gen_logger.warning(
-                            "content_filter_max_retries_exceeded",
-                            generation_id=generation.id,
-                            retry_count=current_retries,
-                        )
-                        # Fall through to mark as failed
-
-                # Release account reservation on failure
-                if not account_released:
-                    await _release_account_reservation(
-                        account_service=account_service,
-                        account_id=account.id,
-                        gen_logger=gen_logger,
-                    )
-
-                # Check if this error should NOT be retried
-                is_non_retryable = _is_non_retryable_error(e)
-                is_final = is_final_try
-
-                # Only mark as failed (and emit JOB_FAILED event) on final attempt or non-retryable errors
-                if is_final or is_non_retryable:
-                    await generation_service.mark_failed(
-                        generation_id, str(e), error_code=_extract_error_code(e),
-                    )
-                    failed_marked = True
-                    gen_logger.info(
-                        "generation_marked_failed",
-                        is_final_try=is_final,
-                        is_non_retryable=is_non_retryable,
-                    )
-                else:
-                    gen_logger.info(
-                        "generation_will_retry",
-                        job_try=job_try,
-                        max_tries=_get_max_tries(),
-                    )
-
-                # Note: Credits not refreshed on failure - provider rejects before billing
-
-                # Track failed generation
-                get_health_tracker().increment_failed()
-
-                # Don't raise for non-retryable errors - prevents ARQ retry
-                if is_non_retryable:
-                    return {
-                        "status": "failed",
-                        "reason": "non_retryable_error",
-                        "generation_id": generation_id,
-                        "error": str(e),
-                    }
-
-                raise
+                return _err_outcome
 
         except (NoAccountAvailableError, AccountCooldownError, AccountExhaustedError) as e:
             generation_ref = generation if "generation" in locals() else None
@@ -1765,7 +1819,7 @@ async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> d
             is_final = is_final_try
 
             # Try to mark generation as failed - only on final attempt or non-retryable errors
-            if not failed_marked and (is_final or is_non_retryable):
+            if not _err_state.failed_marked and (is_final or is_non_retryable):
                 try:
                     await generation_service.mark_failed(
                         generation_id, str(e), error_code=_extract_error_code(e),
