@@ -952,6 +952,76 @@ async def _handle_provider_error(
     raise e
 
 
+async def _guards(
+    *,
+    generation,
+    generation_id: int,
+    generation_service,
+    gen_logger,
+    debug,
+) -> dict | None:
+    """Pre-flight guards: short-circuit before account selection.
+
+    Returns a terminal result dict to stop processing (status no longer
+    pending, future-scheduled, or prompt quarantined), or None to continue.
+    """
+    if generation.status != "pending":
+        try:
+            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+            arq_pool = await get_arq_pool()
+            await clear_generation_wait_metadata(arq_pool, generation_id)
+        except Exception:
+            pass
+        await _clear_pinned_concurrent_wait_count(generation_id, gen_logger=gen_logger)
+        gen_logger.warning("generation_not_pending", status=generation.status)
+        return {"status": "skipped", "reason": f"Generation status is {generation.status}"}
+
+    # Check if scheduled for later
+    if generation.scheduled_at and generation.scheduled_at > datetime.now(timezone.utc):
+        gen_logger.info("generation_scheduled", scheduled_at=str(generation.scheduled_at))
+        debug.worker("scheduled_in_future", scheduled_at=str(generation.scheduled_at))
+        return {"status": "scheduled", "scheduled_for": str(generation.scheduled_at)}
+
+    # Quarantine guard: if this prompt was flagged for repeatedly tripping
+    # the provider's concurrent-limit at low concurrency (spurious 500044 —
+    # see Discriminator A), pause instead of resubmitting. Resubmitting just
+    # re-trips the provider bug and re-collapses the learned cap. Recovery is
+    # automatic once the quarantine key (TTL) expires; editing the prompt is
+    # recommended. See plan ``pixverse-spurious-concurrent-limit``.
+    _prompt_group_hash = seed_agnostic_prompt_group_hash(generation)
+    if await is_prompt_concurrent_quarantined(generation.provider_id, _prompt_group_hash):
+        # update_status persists the error fields and emits JOB_PAUSED so
+        # the Control Center quarantine warning can surface it live.
+        await generation_service.update_status(
+            generation_id,
+            GenStatus.PAUSED,
+            "Paused: this prompt + input image(s) combination repeatedly "
+            "triggered the provider's concurrent-limit error at low concurrency "
+            "(likely a provider-side content bug — the prompt and/or an input "
+            "image can be the cause). It is retryable once the quarantine "
+            "clears; editing the prompt or swapping the input image is recommended.",
+            error_code="provider_concurrent_limit_quarantine",
+        )
+        try:
+            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+            arq_pool = await get_arq_pool()
+            await clear_generation_wait_metadata(arq_pool, generation_id)
+        except Exception:
+            pass
+        await _clear_pinned_concurrent_wait_count(generation_id, gen_logger=gen_logger)
+        gen_logger.warning(
+            "generation_paused_prompt_quarantined",
+            generation_id=generation.id,
+            provider_id=generation.provider_id,
+            prompt_group_hash=_prompt_group_hash,
+        )
+        return {"status": "paused", "reason": "prompt_concurrent_quarantine"}
+
+    return None
+
+
 async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> dict:
     """
     Process a single generation, returning a terminal result dict.
@@ -1007,59 +1077,15 @@ async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> d
             debug = DebugLogger()
             debug.worker("loaded_generation", generation_id=generation.id, status=str(generation.status))
 
-            if generation.status != "pending":
-                try:
-                    from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-
-                    arq_pool = await get_arq_pool()
-                    await clear_generation_wait_metadata(arq_pool, generation_id)
-                except Exception:
-                    pass
-                await _clear_pinned_concurrent_wait_count(generation_id, gen_logger=gen_logger)
-                gen_logger.warning("generation_not_pending", status=generation.status)
-                return {"status": "skipped", "reason": f"Generation status is {generation.status}"}
-
-            # Check if scheduled for later
-            if generation.scheduled_at and generation.scheduled_at > datetime.now(timezone.utc):
-                gen_logger.info("generation_scheduled", scheduled_at=str(generation.scheduled_at))
-                debug.worker("scheduled_in_future", scheduled_at=str(generation.scheduled_at))
-                return {"status": "scheduled", "scheduled_for": str(generation.scheduled_at)}
-
-            # Quarantine guard: if this prompt was flagged for repeatedly tripping
-            # the provider's concurrent-limit at low concurrency (spurious 500044 —
-            # see Discriminator A), pause instead of resubmitting. Resubmitting just
-            # re-trips the provider bug and re-collapses the learned cap. Recovery is
-            # automatic once the quarantine key (TTL) expires; editing the prompt is
-            # recommended. See plan ``pixverse-spurious-concurrent-limit``.
-            _prompt_group_hash = seed_agnostic_prompt_group_hash(generation)
-            if await is_prompt_concurrent_quarantined(generation.provider_id, _prompt_group_hash):
-                # update_status persists the error fields and emits JOB_PAUSED so
-                # the Control Center quarantine warning can surface it live.
-                await generation_service.update_status(
-                    generation_id,
-                    GenStatus.PAUSED,
-                    "Paused: this prompt + input image(s) combination repeatedly "
-                    "triggered the provider's concurrent-limit error at low concurrency "
-                    "(likely a provider-side content bug — the prompt and/or an input "
-                    "image can be the cause). It is retryable once the quarantine "
-                    "clears; editing the prompt or swapping the input image is recommended.",
-                    error_code="provider_concurrent_limit_quarantine",
-                )
-                try:
-                    from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-
-                    arq_pool = await get_arq_pool()
-                    await clear_generation_wait_metadata(arq_pool, generation_id)
-                except Exception:
-                    pass
-                await _clear_pinned_concurrent_wait_count(generation_id, gen_logger=gen_logger)
-                gen_logger.warning(
-                    "generation_paused_prompt_quarantined",
-                    generation_id=generation.id,
-                    provider_id=generation.provider_id,
-                    prompt_group_hash=_prompt_group_hash,
-                )
-                return {"status": "paused", "reason": "prompt_concurrent_quarantine"}
+            _guard = await _guards(
+                generation=generation,
+                generation_id=generation_id,
+                generation_service=generation_service,
+                gen_logger=gen_logger,
+                debug=debug,
+            )
+            if _guard is not None:
+                return _guard
 
             # The generation has been admitted for execution (not future-scheduled),
             # so clear any explicit wait marker used by the pinned dispatcher.
