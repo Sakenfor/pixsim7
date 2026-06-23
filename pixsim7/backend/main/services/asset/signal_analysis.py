@@ -5,14 +5,17 @@ combines them with the generation's *cohort-relative render time* to score
 how likely a clip is a degenerate generation (e.g. a fast-failed output where
 the model bailed early / returned a canned rejection clip).
 
-Scoring model (v3 — tonal-audio + render dual-primary). See plan
+Scoring model (v4 — tonal-audio + render dual-primary). See plan
 ``signal-scan-recalibration`` for the live-data validation behind it:
 
-  * PRIMARY — tonal audio (``spectral_flatness``): < 0.25 strong (+4), < 0.32
-    moderate (+3), < 0.38 weak (+1). The single strongest discriminator on live
-    data — broken clips carry narrowband synthetic audio (canned refusal voice,
-    pitched "hum" melody, silent gibberish; flatness ~0.15-0.25) while genuine
-    clips carry a broadband soundtrack (~0.43-0.48), with no overlap.
+  * PRIMARY — tonal audio (``spectral_flatness``): < 0.25 strong (+4, flags
+    alone), 0.25–0.38 weak (+1, needs corroboration). Broken clips carry
+    narrowband synthetic audio (canned refusal voice, pitched "hum" melody,
+    silent gibberish; flatness ~0.15-0.25) while genuine clips carry a broadband
+    soundtrack (~0.43-0.48). v3 also flagged the 0.25–0.32 mid-band alone (+3);
+    on live data ~35% of the broken queue sat there and false-flagged genuine
+    tonal/musical clips (e.g. action clips with a sustained score), so that band
+    is now corroboration-only.
   * PRIMARY — render ratio vs cohort median (``render_ratio``, supplied by the
     caller from cohort_baselines): < 0.5 strong (+4), < 0.7 moderate (+2),
     < 0.85 weak (+1). Genuine fast-fails render below cohort median — but note
@@ -72,7 +75,7 @@ from pixsim_logging import get_logger
 logger = get_logger()
 
 # Bump when scoring changes so re-scans can be detected via prev_scanner_version.
-SCANNER_VERSION = "v3"
+SCANNER_VERSION = "v4"
 
 # Corroborating-axis thresholds. Each axis ORs its two sub-signals (they are
 # highly correlated; summing them was the v1 double-counting bug) and
@@ -100,8 +103,7 @@ SUSPICIOUS_THRESHOLD = 3           # score >= this is flagged broken
 # discriminator for this library — render time, the v2 primary, barely separates
 # (broken render ~0.98x cohort). See plan signal-scan-recalibration.
 FLATNESS_STRONG = 0.25     # median flatness below this → +4 (deep broken band; flags alone)
-FLATNESS_MODERATE = 0.32   # below this → +3 (still clear of the clean band; flags alone)
-FLATNESS_WEAK = 0.38       # below this → +1 (ambiguous mid-zone; needs corroboration)
+FLATNESS_WEAK = 0.38       # 0.25–0.38 → +1 (ambiguous mid-zone; corroboration-only, never flags alone)
 FRAME_TONAL_FLATNESS = 0.15  # per-frame flatness below this counts as a "tonal" frame
 SPECTRAL_SR = 16000        # mono decode rate for the spectral probe
 SPECTRAL_WIN = 2048        # FFT window (samples)
@@ -280,13 +282,18 @@ def _render_points(render_ratio: Optional[float]) -> int:
 
 
 def _tonal_points(flatness: Optional[float]) -> int:
-    """Graded points for the tonal-audio (spectral-flatness) primary signal."""
+    """Graded points for the tonal-audio (spectral-flatness) primary signal.
+
+    Only the DEEP band (< FLATNESS_STRONG) flags broken on its own (+4). The
+    0.25–0.38 mid-zone is weak (+1) and needs a corroborating axis to reach
+    'broken' — v3 scored 0.25–0.32 as +3 (flagged alone), which false-flagged
+    genuine clips carrying tonal/musical audio (action clips with a sustained
+    score). See plan signal-scan-recalibration.
+    """
     if flatness is None:
         return 0
     if flatness < FLATNESS_STRONG:
         return 4
-    if flatness < FLATNESS_MODERATE:
-        return 3
     if flatness < FLATNESS_WEAK:
         return 1
     return 0
