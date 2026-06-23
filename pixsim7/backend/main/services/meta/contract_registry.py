@@ -575,7 +575,12 @@ def _builtin_plans_management() -> MetaContract:
                 path="/api/v1/dev/plans/progress/{plan_id}",
                 summary=(
                     "Log in-flight checkpoint progress with optional git commit traceability. "
-                    "Supports point deltas, execution metadata, and commit SHA evidence."
+                    "Supports point deltas, execution metadata, and commit SHA evidence. "
+                    "Auto-routes by checkpoint shape: for a step-tracked checkpoint (steps[]), "
+                    "points_done/points_delta are translated onto step toggles (first-N done) "
+                    "and points are derived from steps — no need to pick between points and "
+                    "mark_steps_done. Setting status='done' on an underwater checkpoint "
+                    "auto-completes it; completing the points auto-promotes status to done."
                 ),
                 input_schema={
                     "type": "object",
@@ -586,9 +591,28 @@ def _builtin_plans_management() -> MetaContract:
                             "required": ["checkpoint_id"],
                             "properties": {
                                 "checkpoint_id": {"type": "string"},
-                                "points_delta": {"type": "integer"},
-                                "points_done": {"type": "integer"},
-                                "points_total": {"type": "integer"},
+                                "points_delta": {
+                                    "type": "integer",
+                                    "description": "Relative points change. On a stepped checkpoint, routed onto step toggles.",
+                                },
+                                "points_done": {
+                                    "type": "integer",
+                                    "description": "Absolute points done. On a stepped checkpoint, marks the first N steps done.",
+                                },
+                                "points_total": {
+                                    "type": "integer",
+                                    "description": "Points budget. Rejected on a stepped checkpoint unless it equals the step count (the total is fixed by steps[]).",
+                                },
+                                "mark_steps_done": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Step ids or labels to mark done (targeted path for stepped checkpoints).",
+                                },
+                                "mark_steps_undone": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Step ids or labels to mark not-done.",
+                                },
                                 "status": {"type": "string", "enum": ["pending", "active", "done", "blocked"]},
                                 "owner": {"type": "string"},
                                 "eta": {"type": "string"},

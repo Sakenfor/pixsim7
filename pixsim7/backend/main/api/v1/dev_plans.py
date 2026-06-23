@@ -1572,68 +1572,83 @@ async def log_plan_progress(
             },
         )
 
-    # Fail loud when points are sent for a step-tracked checkpoint. Per the
-    # authoring contract, steps[] is the canonical points signal when present:
-    # _derive_checkpoint_points() overrides explicit points_* with the steps
-    # tally. Silently honoring points here would write a value that the very
-    # next read (todo_summary, this endpoint's own next call) re-derives away,
-    # so the caller's progress never sticks. Reject instead of no-op, and point
-    # them at the safe targeted path: mark_steps_done on this same endpoint.
+    # A checkpoint is EITHER step-tracked (steps[]) OR points-tracked (explicit
+    # points_*). One plans.progress endpoint serves both: it auto-routes by the
+    # checkpoint's shape (plan checkpoint-consistency-enforcement /
+    # unify-progress-endpoint). For a step-tracked checkpoint, points are
+    # derived from steps[] (steps win per the authoring contract), so a points
+    # signal is translated onto step toggles instead of being rejected — the
+    # caller can drive a stepped checkpoint by count without knowing step ids.
     _cp_steps = checkpoint.get("steps")
     _stepped = isinstance(_cp_steps, list) and any(
         isinstance(s, dict) for s in _cp_steps
     )
-    _points_requested = (
-        payload.points_delta != 0
-        or payload.points_done is not None
-        or payload.points_total is not None
-    )
-    if _stepped and _points_requested:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "message": (
-                    f"Checkpoint {payload.checkpoint_id!r} is step-tracked: its "
-                    "points are derived from steps[] (steps win per the authoring "
-                    "contract). Points sent via plans.progress are silently "
-                    "overridden by the steps tally and will not persist. Re-send "
-                    "this same plans.progress call with mark_steps_done (step ids "
-                    "or labels) instead — points and status are re-derived "
-                    "automatically. status / owner / note (no points) are also "
-                    "accepted as-is."
-                ),
-                "checkpoint_id": payload.checkpoint_id,
-                "steps_total": sum(1 for s in _cp_steps if isinstance(s, dict)),
-                "steps_done": sum(
-                    1 for s in _cp_steps if isinstance(s, dict) and bool(s.get("done"))
-                ),
-                "contract": PLAN_AUTHORING_CONTRACT_ENDPOINT,
-            },
+
+    if _stepped:
+        _step_dicts = [s for s in _cp_steps if isinstance(s, dict)]
+        _steps_total = len(_step_dicts)
+        # A stepped checkpoint's total is fixed by its step count. An exact
+        # restatement (points_total == len(steps)) is a harmless no-op, but a
+        # different total can't be reconciled here — the caller must add/remove
+        # steps via a full-array PATCH, not a progress call.
+        if payload.points_total is not None and payload.points_total != _steps_total:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": (
+                        f"Checkpoint {payload.checkpoint_id!r} is step-tracked: its "
+                        f"points_total is fixed at {_steps_total} (the step count). "
+                        f"Cannot set points_total={payload.points_total} — add or "
+                        f"remove steps[] via PATCH /dev/plans/{{plan_id}} to change "
+                        f"the total."
+                    ),
+                    "checkpoint_id": payload.checkpoint_id,
+                    "steps_total": _steps_total,
+                    "contract": PLAN_AUTHORING_CONTRACT_ENDPOINT,
+                },
+            )
+        if payload.points_done is not None and payload.points_done < 0:
+            raise HTTPException(status_code=400, detail="points_done cannot be negative")
+        # Route an absolute points_done and/or a delta onto the first-N steps in
+        # array order. mark_steps_done/_undone (already applied above) stays the
+        # targeted path; this is the count-based convenience path.
+        if payload.points_done is not None or payload.points_delta != 0:
+            _current_done = sum(1 for s in _step_dicts if bool(s.get("done")))
+            _target = payload.points_done if payload.points_done is not None else _current_done
+            _target += payload.points_delta
+            _target = max(0, min(_target, _steps_total))
+            if _target != _current_done:
+                for _idx, _step in enumerate(_step_dicts):
+                    _step["done"] = _idx < _target
+                steps_changed = True
+        # Points + status now derive from the (possibly updated) steps tally;
+        # never persist explicit points alongside steps[].
+        points_done, points_total = _derive_checkpoint_points(checkpoint)
+        points_changed = False
+    else:
+        points_done, points_total = _derive_checkpoint_points(checkpoint)
+        if payload.points_done is not None:
+            points_done = payload.points_done
+        if payload.points_delta != 0:
+            points_done += payload.points_delta
+        if payload.points_total is not None:
+            points_total = payload.points_total
+
+        if points_done < 0:
+            raise HTTPException(status_code=400, detail="points_done cannot be negative")
+        if points_total is not None and points_total < 0:
+            raise HTTPException(status_code=400, detail="points_total cannot be negative")
+        if points_total is not None and points_done > points_total:
+            points_total = points_done
+
+        points_changed = (
+            payload.points_delta != 0
+            or payload.points_done is not None
+            or payload.points_total is not None
         )
-
-    points_done, points_total = _derive_checkpoint_points(checkpoint)
-    if payload.points_done is not None:
-        points_done = payload.points_done
-    if payload.points_delta != 0:
-        points_done += payload.points_delta
-    if payload.points_total is not None:
-        points_total = payload.points_total
-
-    if points_done < 0:
-        raise HTTPException(status_code=400, detail="points_done cannot be negative")
-    if points_total is not None and points_total < 0:
-        raise HTTPException(status_code=400, detail="points_total cannot be negative")
-    if points_total is not None and points_done > points_total:
-        points_total = points_done
-
-    points_changed = (
-        payload.points_delta != 0
-        or payload.points_done is not None
-        or payload.points_total is not None
-    )
-    if points_changed:
-        checkpoint["points_done"] = points_done
-        checkpoint["points_total"] = points_total if points_total is not None else points_done
+        if points_changed:
+            checkpoint["points_done"] = points_done
+            checkpoint["points_total"] = points_total if points_total is not None else points_done
 
     if payload.status is not None:
         checkpoint["status"] = payload.status
