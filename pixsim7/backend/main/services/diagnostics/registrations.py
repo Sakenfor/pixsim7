@@ -16,6 +16,7 @@ from .early_cdn_webapi import EarlyCdnWebapiDiagnostic
 from .pixverse_extend_last_frame import PixverseExtendLastFrameDiagnostic
 from .pixverse_image_salvage import PixverseImageSalvageDiagnostic
 from .registry import diagnostic_registry
+from .scan_plan_consistency import ScanPlanConsistencyDiagnostic
 from .scan_suspicious_videos import ScanSuspiciousVideosDiagnostic
 from .shell_script import ShellScriptDiagnostic
 from .synthetic import SyntheticDiagnostic
@@ -30,6 +31,7 @@ def _register_builtins() -> None:
         EarlyCdnWebapiDiagnostic,
         EarlyCdnOpenapiDiagnostic,
         PixverseImageSalvageDiagnostic,
+        ScanPlanConsistencyDiagnostic,
     ):
         if not diagnostic_registry.has(cls.spec.id):
             diagnostic_registry.register_item(cls())

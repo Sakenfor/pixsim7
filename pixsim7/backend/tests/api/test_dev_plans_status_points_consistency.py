@@ -426,3 +426,48 @@ class TestProgressEndpointConsistency:
             if "points_done" in w and "points_total" in w
         ]
         assert consistency_warnings == []
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Corpus invariant — no status/points/steps lies persist across all plans
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
+class TestPlanCorpusConsistencyInvariant:
+    """Regression guard: the live plan corpus must carry zero consistency lies.
+
+    Write-time enforcement (hard-reject on create/update, auto-canonicalize on
+    progress) plus the scan-plan-consistency backfill should keep every plan
+    clean. This asserts it against whatever plan corpus the configured DB holds,
+    so a regression (a lie that slips past the validator via a direct DB write)
+    fails the build. Skips gracefully when the DB is unreachable or has no
+    plan_registry rows (e.g. a fresh CI DB) — there it has nothing to assert.
+    """
+
+    @pytest.mark.asyncio
+    async def test_no_consistency_lies_in_plan_corpus(self):
+        from sqlalchemy import text
+
+        from pixsim7.backend.main.infrastructure.database.session import get_async_session
+        from pixsim7.backend.main.services.diagnostics.scan_plan_consistency import scan_plans
+
+        try:
+            async with get_async_session() as session:
+                rows = (
+                    await session.execute(
+                        text("SELECT id, checkpoints FROM dev_meta.plan_registry")
+                    )
+                ).all()
+        except Exception as exc:  # noqa: BLE001 — no reachable corpus to check
+            pytest.skip(f"plan_registry not reachable: {type(exc).__name__}")
+
+        if not rows:
+            pytest.skip("no plans in corpus")
+
+        plans = [{"id": plan_id, "checkpoints": raw} for plan_id, raw in rows]
+        findings = scan_plans(plans)
+        assert findings == [], (
+            f"{len(findings)} checkpoint consistency lie(s) in the corpus — run the "
+            f"scan-plan-consistency diagnostic with apply=true to fix: "
+            f"{findings[:10]}"
+        )
