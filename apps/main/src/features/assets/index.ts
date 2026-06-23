@@ -8,8 +8,6 @@
 // Components - Gallery Surfaces
 // ============================================================================
 
-export { CuratorSurfaceContent } from './components/CuratorGallerySurface';
-export type { CuratorSurfaceContentProps } from './components/CuratorGallerySurface';
 export { DebugSurfaceContent } from './components/DebugGallerySurface';
 export type { DebugSurfaceContentProps } from './components/DebugGallerySurface';
 export { ReviewSurfaceContent } from './components/ReviewGallerySurface';

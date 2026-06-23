@@ -139,7 +139,7 @@ function AssetTagsPanel() {
                 Waiting for asset details...
               </div>
             ) : (
-              <GalleryToolsPanel context={galleryContext} surfaceId="assets-curator" />
+              <GalleryToolsPanel context={galleryContext} surfaceId="assets-default" />
             )}
             {assets.length > 0 && (
               <div className="space-y-2">

@@ -39,20 +39,11 @@ Simplified view optimized for asset review and curation:
 
 **Use when:** Reviewing newly imported assets, curating collections, or performing quality control.
 
-### Assets – Curator (`assets-curator`)
-
-**Category:** Curation
-**Icon:** ⭐
-**Route:** `/assets?surface=assets-curator`
-
-Advanced curation interface for power users:
-- Multiple view modes (Grid, List, Compact)
-- Collection building and management
-- Bulk selection with Select All
-- Advanced filtering (media type, tags, provider, sort)
-- Gallery tools integration (bulk tag tool available)
-
-**Use when:** Organizing large asset libraries, building collections, or performing advanced curation workflows.
+> **Removed (2026-06):** the dedicated **Curator** surface was deleted as
+> redundant — selection, bulk tools, and grid/compact layout already live on the
+> default gallery; its "collections" feature was dead code. Its one unique view
+> (text list) may return later as a `list` layout mode on the default gallery.
+> See plan `gallery-surface-unification`.
 
 ### Assets – Debug (`assets-debug`)
 

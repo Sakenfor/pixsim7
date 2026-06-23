@@ -1,16 +1,18 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Bulk Tag Gallery Tool
  *
  * Demonstrates a gallery tool with surface support.
- * Available on default and curator surfaces, but not review.
+ * Available on the default gallery surface (also surfaced in the asset-tags
+ * panel), but not the review surfaces.
  */
 
+import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
 import { Button } from '@pixsim7/shared.ui';
 import { useEffect, useMemo, useState } from 'react';
 
-import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
-import { useAsyncTask } from '@lib/asyncTask';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
+import { useAsyncTask } from '@lib/asyncTask';
 
 import type { GalleryToolPlugin, GalleryToolContext } from '../lib/core/types';
 
@@ -381,8 +383,9 @@ export const bulkTagTool: GalleryToolPlugin = {
   icon: 'dY?ú‹,?',
   category: 'automation',
 
-  // This tool supports default and curator surfaces, but NOT review
-  supportedSurfaces: ['assets-default', 'assets-curator'],
+  // This tool supports the default gallery surface (also surfaced in the
+  // asset-tags panel), but NOT the review surfaces.
+  supportedSurfaces: ['assets-default'],
 
   // Only show when assets are selected
   whenVisible: (context) => context.selectedAssets.length > 0,

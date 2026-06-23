@@ -15,7 +15,6 @@ import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
 import {
   ReviewSurfaceContent,
-  CuratorSurfaceContent,
   DebugSurfaceContent,
   SignalTriageContent,
 } from '@features/assets';
@@ -48,21 +47,6 @@ const builtInGallerySurfaces = [
     },
     onExit: () => {
       console.log('[GallerySurfaces] Exiting review mode');
-    },
-  },
-  {
-    id: 'assets-curator',
-    label: 'Assets – Curator',
-    description: 'Advanced curation tools for power users',
-    icon: '⭐',
-    category: 'curation',
-    component: CuratorSurfaceContent,
-    supportsMediaTypes: ['image', 'video', 'audio', '3d_model'],
-    supportsSelection: true,
-    routePath: '/assets/curator',
-    defaultTools: ['bulk-tag'],
-    onEnter: () => {
-      console.log('[GallerySurfaces] Curator mode - Advanced tools enabled');
     },
   },
   {

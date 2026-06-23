@@ -24,7 +24,6 @@ import type { MediaCardBadgeConfig } from '@/components/media/MediaCard';
 export type GallerySurfaceId =
   | 'assets-default'
   | 'assets-review'
-  | 'assets-curator'
   | 'assets-debug'
   | string;
 

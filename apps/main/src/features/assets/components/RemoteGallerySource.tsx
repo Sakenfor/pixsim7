@@ -52,7 +52,6 @@ import { useSetAddRecencyStore } from '../stores/setAddRecencyStore';
 import { useSurfaceSetBadgesExpanded } from '../stores/setBadgeExpansionStore';
 
 import { ClusterCard } from './ClusterCard';
-import { CuratorSurfaceContent } from './CuratorGallerySurface';
 import { DebugSurfaceContent } from './DebugGallerySurface';
 import { DynamicFilters, ChipContextMenu } from './DynamicFilters';
 import { FilterPresetBar } from './FilterPresetBar';
@@ -1507,9 +1506,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
 
   if (activeSurfaceId === 'assets-review') {
     return <ReviewSurfaceContent controller={controller} />;
-  }
-  if (activeSurfaceId === 'assets-curator') {
-    return <CuratorSurfaceContent controller={controller} />;
   }
   if (activeSurfaceId === 'assets-debug') {
     return <DebugSurfaceContent controller={controller} />;
