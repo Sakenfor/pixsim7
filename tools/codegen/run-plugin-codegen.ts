@@ -10,6 +10,7 @@
  *
  * Usage:
  *   pnpm codegen -- --only plugin-codegen
+ *   pnpm codegen -- --only plugin-codegen --check
  *
  * Requires backend to be running at BACKEND_URL (default: http://localhost:8000)
  */
@@ -46,6 +47,10 @@ interface AllManifestsResponse {
   total: number;
 }
 
+function resolveBin(name: string): string {
+  return process.platform === 'win32' ? `${name}.cmd` : name;
+}
+
 async function fetchManifests(): Promise<AllManifestsResponse | null> {
   try {
     const url = `${BACKEND_URL}${FRONTEND_MANIFESTS_ENDPOINT}`;
@@ -80,17 +85,20 @@ function collectCodegenTasks(data: AllManifestsResponse): Array<{ pluginId: stri
   return tasks;
 }
 
-async function runTask(pluginId: string, task: CodegenTask): Promise<boolean> {
-  console.log(`\n[${pluginId}] Running: ${task.id}`);
+async function runTask(pluginId: string, task: CodegenTask, checkMode: boolean): Promise<boolean> {
+  console.log(`\n[${pluginId}] Running: ${task.id}${checkMode ? ' (check)' : ''}`);
   console.log(`  Description: ${task.description}`);
   console.log(`  Script: ${task.script}`);
 
   const scriptPath = path.resolve(process.cwd(), task.script);
+  const runner = resolveBin('tsx');
+  const args = [scriptPath];
+  if (checkMode) args.push('--check');
 
   return new Promise((resolve) => {
-    const child = spawn('npx', ['tsx', scriptPath], {
+    const child = spawn(runner, args, {
       stdio: 'inherit',
-      shell: true,
+      shell: process.platform === 'win32',
     });
 
     child.on('close', (code) => {
@@ -111,8 +119,11 @@ async function runTask(pluginId: string, task: CodegenTask): Promise<boolean> {
 }
 
 async function main() {
+  const argv = process.argv.slice(2);
+  const checkMode = argv.includes('--check');
+
   console.log('='.repeat(60));
-  console.log('Plugin Codegen Task Runner');
+  console.log(`Plugin Codegen Task Runner (${checkMode ? 'check' : 'run'} mode)`);
   console.log('='.repeat(60));
 
   const data = await fetchManifests();
@@ -133,11 +144,23 @@ async function main() {
     console.log(`  - ${pluginId}: ${task.id}`);
   }
 
+  if (checkMode) {
+    const unsupported = tasks.filter(({ task }) => !task.supportsCheck);
+    if (unsupported.length > 0) {
+      console.error('\nCheck mode requested, but some plugin tasks do not declare supportsCheck=true:');
+      for (const { pluginId, task } of unsupported) {
+        console.error(`  - ${pluginId}: ${task.id}`);
+      }
+      console.error('\nEither run without --check, or update those plugin manifests to set supportsCheck=true.');
+      process.exit(1);
+    }
+  }
+
   let succeeded = 0;
   let failed = 0;
 
   for (const { pluginId, task } of tasks) {
-    const success = await runTask(pluginId, task);
+    const success = await runTask(pluginId, task, checkMode);
     if (success) {
       succeeded++;
     } else {

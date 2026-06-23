@@ -219,7 +219,7 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     script: 'tools/codegen/run-plugin-codegen.ts',
     // No single output — fans out across plugins. Stats panel hides for this task.
     requires: 'main-api',
-    supportsCheck: false,
+    supportsCheck: true,
     groups: ['plugins'],
   },
   {
