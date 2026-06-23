@@ -1,82 +1,86 @@
 /**
- * Review Gallery Surface (Presentational)
+ * Review Gallery Surface
  *
- * Simplified gallery view optimized for reviewing and curating assets.
- * Receives controller from RemoteGallerySource — no own data fetching.
+ * A descriptor for {@link ReviewModeSurface}: a simplified pass for accepting /
+ * rejecting / skipping assets. Decisions persist to localStorage (review session
+ * state survives reloads) and tint the card; nothing is written to the backend.
+ * Keyboard: A = accept, R = reject, S = skip, ←/→ navigate, ? = help.
  *
- * Features:
- * - Larger card view
- * - Accept/reject actions
- * - Keyboard shortcuts (A/R/S)
- * - Persistent review session state
+ * Only the review-specific bits live here (the decision verbs + persisted sets,
+ * the progress stats, the card tinting). The focused-grid scaffold is shared.
  */
 
 import { Button } from '@pixsim7/shared.ui';
-import { useState, useMemo, useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
 
-import { MediaCard } from '@/components/media/MediaCard';
-import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { usePersistentSet } from '@/hooks/usePersistentState';
 
 import type { AssetsController } from '../hooks/useAssetsController';
-import { toggleFavoriteTag } from '../lib/favoriteTag';
 import type { AssetModel } from '../models/asset';
 
-import { GalleryGrid, GallerySurfaceShell } from './shared';
+import { DynamicFilters } from './DynamicFilters';
+import { ReviewModeSurface, type ReviewDecision } from './ReviewModeSurface';
 
 export interface ReviewSurfaceContentProps {
   controller: AssetsController;
 }
 
-export function ReviewSurfaceContent({ controller }: ReviewSurfaceContentProps) {
-  const [focusedAssetIndex, setFocusedAssetIndex] = useState<number>(0);
-  const [showHelp, setShowHelp] = useState(false);
+const HELP_ROWS = [
+  { keys: 'A', label: 'Accept asset' },
+  { keys: 'R', label: 'Reject asset' },
+  { keys: 'S', label: 'Skip asset' },
+  { keys: '←/→', label: 'Navigate' },
+  { keys: '?', label: 'Toggle help' },
+];
 
-  // Persistent review state - survives page reloads
+export function ReviewSurfaceContent({ controller }: ReviewSurfaceContentProps) {
+  // Persistent review state — survives page reloads.
   const [reviewedAssets, setReviewedAssets] = usePersistentSet('review-session:reviewed', new Set());
   const [acceptedAssets, setAcceptedAssets] = usePersistentSet('review-session:accepted', new Set());
   const [rejectedAssets, setRejectedAssets] = usePersistentSet('review-session:rejected', new Set());
 
-  const handleAccept = (assetId: string | number) => {
-    const id = String(assetId);
-    setReviewedAssets(prev => new Set(prev).add(id));
-    setAcceptedAssets(prev => new Set(prev).add(id));
-    setRejectedAssets(prev => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  };
+  const handleAccept = useCallback(
+    (assetId: string | number) => {
+      const id = String(assetId);
+      setReviewedAssets((prev) => new Set(prev).add(id));
+      setAcceptedAssets((prev) => new Set(prev).add(id));
+      setRejectedAssets((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    },
+    [setReviewedAssets, setAcceptedAssets, setRejectedAssets],
+  );
 
-  const handleReject = (assetId: string | number) => {
-    const id = String(assetId);
-    setReviewedAssets(prev => new Set(prev).add(id));
-    setRejectedAssets(prev => new Set(prev).add(id));
-    setAcceptedAssets(prev => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  };
+  const handleReject = useCallback(
+    (assetId: string | number) => {
+      const id = String(assetId);
+      setReviewedAssets((prev) => new Set(prev).add(id));
+      setRejectedAssets((prev) => new Set(prev).add(id));
+      setAcceptedAssets((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    },
+    [setReviewedAssets, setRejectedAssets, setAcceptedAssets],
+  );
 
-  const handleSkip = (assetId: string | number) => {
-    const id = String(assetId);
-    setReviewedAssets(prev => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-    setAcceptedAssets(prev => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-    setRejectedAssets(prev => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  };
+  const handleSkip = useCallback(
+    (assetId: string | number) => {
+      const id = String(assetId);
+      const drop = (prev: Set<string>) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      };
+      setReviewedAssets(drop);
+      setAcceptedAssets(drop);
+      setRejectedAssets(drop);
+    },
+    [setReviewedAssets, setAcceptedAssets, setRejectedAssets],
+  );
 
   const stats = useMemo(
     () => ({
@@ -84,103 +88,79 @@ export function ReviewSurfaceContent({ controller }: ReviewSurfaceContentProps) 
       reviewed: reviewedAssets.size,
       accepted: acceptedAssets.size,
       rejected: rejectedAssets.size,
-      remaining: controller.assets.length - reviewedAssets.size,
     }),
-    [controller.assets.length, reviewedAssets.size, acceptedAssets.size, rejectedAssets.size]
+    [controller.assets.length, reviewedAssets.size, acceptedAssets.size, rejectedAssets.size],
   );
 
-  const clearSession = () => {
+  const clearSession = useCallback(() => {
     if (confirm('Clear all review progress? This cannot be undone.')) {
       setReviewedAssets(new Set());
       setAcceptedAssets(new Set());
       setRejectedAssets(new Set());
     }
-  };
+  }, [setReviewedAssets, setAcceptedAssets, setRejectedAssets]);
 
-  // Get current focused asset
-  const focusedAsset = controller.assets[focusedAssetIndex];
-
-  // Keyboard shortcuts
-  useKeyboardShortcuts([
-    {
-      key: 'a',
-      description: 'Accept current asset',
-      callback: () => {
-        if (focusedAsset) {
-          handleAccept(focusedAsset.id);
-          setFocusedAssetIndex((prev) => Math.min(prev + 1, controller.assets.length - 1));
-        }
+  const decisions = useMemo<ReviewDecision[]>(
+    () => [
+      {
+        id: 'accept',
+        label: '✓ Accept',
+        hotkey: 'a',
+        hotkeyLabel: 'A',
+        run: (asset) => handleAccept(asset.id),
+        isActive: (asset) => acceptedAssets.has(String(asset.id)),
       },
-    },
-    {
-      key: 'r',
-      description: 'Reject current asset',
-      callback: () => {
-        if (focusedAsset) {
-          handleReject(focusedAsset.id);
-          setFocusedAssetIndex((prev) => Math.min(prev + 1, controller.assets.length - 1));
-        }
+      {
+        id: 'reject',
+        label: '✗ Reject',
+        hotkey: 'r',
+        hotkeyLabel: 'R',
+        run: (asset) => handleReject(asset.id),
+        isActive: (asset) => rejectedAssets.has(String(asset.id)),
       },
-    },
-    {
-      key: 's',
-      description: 'Skip current asset',
-      callback: () => {
-        if (focusedAsset) {
-          handleSkip(focusedAsset.id);
-          setFocusedAssetIndex((prev) => Math.min(prev + 1, controller.assets.length - 1));
-        }
+      {
+        id: 'skip',
+        label: '↺',
+        hotkey: 's',
+        hotkeyLabel: 'S',
+        run: (asset) => handleSkip(asset.id),
+        // Surface the undo only once an asset has been decided.
+        visibleWhen: (asset) => reviewedAssets.has(String(asset.id)),
       },
-    },
-    {
-      key: 'ArrowRight',
-      description: 'Next asset',
-      callback: () => setFocusedAssetIndex((prev) => Math.min(prev + 1, controller.assets.length - 1)),
-    },
-    {
-      key: 'ArrowLeft',
-      description: 'Previous asset',
-      callback: () => setFocusedAssetIndex(prev => Math.max(prev - 1, 0)),
-    },
-    {
-      key: '?',
-      description: 'Show keyboard shortcuts',
-      callback: () => setShowHelp(prev => !prev),
-      preventDefault: false,
-    },
-  ]);
+    ],
+    [handleAccept, handleReject, handleSkip, acceptedAssets, rejectedAssets, reviewedAssets],
+  );
 
-  // Auto-focus when items change
-  useEffect(() => {
-    if (focusedAssetIndex >= controller.assets.length && controller.assets.length > 0) {
-      setFocusedAssetIndex(controller.assets.length - 1);
-    }
-  }, [controller.assets.length, focusedAssetIndex]);
+  const cardActions = useCallback(
+    (asset: AssetModel) => ({
+      onApprove: () => handleAccept(asset.id),
+      onReject: () => handleReject(asset.id),
+    }),
+    [handleAccept, handleReject],
+  );
 
-  // Convert selected IDs to asset array for context menu
-  const selectedAssets = useMemo(() => {
-    return controller.assets.filter((a) => controller.selectedAssetIds.has(String(a.id)));
-  }, [controller.assets, controller.selectedAssetIds]);
+  const cardClassName = useCallback(
+    (asset: AssetModel) => {
+      const id = String(asset.id);
+      if (acceptedAssets.has(id)) return 'border-green-500 bg-green-50 dark:bg-green-900/10';
+      if (rejectedAssets.has(id)) return 'border-red-500 bg-red-50 dark:bg-red-900/10';
+      return '';
+    },
+    [acceptedAssets, rejectedAssets],
+  );
 
-  // Header actions: help button + progress stats
   const headerActions = (
     <div className="flex items-center gap-4 text-sm">
-      <button
-        onClick={() => setShowHelp(true)}
-        className="px-2 py-0.5 text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded border border-neutral-300 dark:border-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-        title="Keyboard shortcuts"
-      >
-        ?
-      </button>
       <span className="text-neutral-600 dark:text-neutral-400">
         Progress: {stats.reviewed}/{stats.total}
       </span>
-      <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
+      <span className="rounded bg-green-100 px-3 py-1 text-green-700 dark:bg-green-900/30 dark:text-green-300">
         ✓ {stats.accepted} Accepted
       </span>
-      <span className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded">
+      <span className="rounded bg-red-100 px-3 py-1 text-red-700 dark:bg-red-900/30 dark:text-red-300">
         ✗ {stats.rejected} Rejected
       </span>
+      <span className="text-xs text-neutral-500 dark:text-neutral-400">? = shortcuts</span>
       {stats.reviewed > 0 && (
         <Button variant="secondary" onClick={clearSession} className="text-xs">
           Clear Session
@@ -189,121 +169,24 @@ export function ReviewSurfaceContent({ controller }: ReviewSurfaceContentProps) 
     </div>
   );
 
-  const renderCard = (asset: AssetModel, index: number) => {
-    const assetId = String(asset.id);
-    const isAccepted = acceptedAssets.has(assetId);
-    const isRejected = rejectedAssets.has(assetId);
-    const isReviewed = reviewedAssets.has(assetId);
-    const isFocused = index === focusedAssetIndex;
-
-    return (
-      <div
-        className={`border-2 rounded-lg overflow-hidden transition-all ${
-          isFocused
-            ? 'ring-4 ring-blue-500 ring-offset-2'
-            : ''
-        } ${
-          isAccepted
-            ? 'border-green-500 bg-green-50 dark:bg-green-900/10'
-            : isRejected
-            ? 'border-red-500 bg-red-50 dark:bg-red-900/10'
-            : 'border-neutral-200 dark:border-neutral-700'
-        }`}
-        onClick={() => setFocusedAssetIndex(index)}
-      >
-        <MediaCard
-          asset={asset}
-          onToggleFavorite={() => toggleFavoriteTag(asset)}
-          actions={{
-            ...controller.getAssetActions(asset),
-            onApprove: () => handleAccept(assetId),
-            onReject: () => handleReject(assetId),
-          }}
-          overlayPresetId="media-card-review"
-          contextMenuSelection={selectedAssets}
-        />
-
-        <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700">
-          <div className="flex gap-2">
-            <Button
-              variant={isAccepted ? 'primary' : 'secondary'}
-              onClick={() => handleAccept(assetId)}
-              className="flex-1 text-sm"
-            >
-              ✓ Accept
-            </Button>
-            <Button
-              variant={isRejected ? 'primary' : 'secondary'}
-              onClick={() => handleReject(assetId)}
-              className="flex-1 text-sm"
-            >
-              ✗ Reject
-            </Button>
-            {isReviewed && (
-              <Button
-                variant="secondary"
-                onClick={() => handleSkip(assetId)}
-                className="text-sm"
-              >
-                ↺
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const filtersContent = (
+    <DynamicFilters
+      filters={controller.filters}
+      onFiltersChange={(f) => controller.setFilters(f)}
+    />
+  );
 
   return (
-    <>
-      {/* Keyboard Shortcuts Help Modal */}
-      {showHelp && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowHelp(false)}>
-          <div className="bg-white dark:bg-neutral-800 rounded-lg p-6 max-w-md" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold mb-4">Keyboard Shortcuts</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><kbd className="px-2 py-1 bg-neutral-100 dark:bg-neutral-700 rounded">A</kbd><span>Accept asset</span></div>
-              <div className="flex justify-between"><kbd className="px-2 py-1 bg-neutral-100 dark:bg-neutral-700 rounded">R</kbd><span>Reject asset</span></div>
-              <div className="flex justify-between"><kbd className="px-2 py-1 bg-neutral-100 dark:bg-neutral-700 rounded">S</kbd><span>Skip asset</span></div>
-              <div className="flex justify-between"><kbd className="px-2 py-1 bg-neutral-100 dark:bg-neutral-700 rounded">←/→</kbd><span>Navigate</span></div>
-              <div className="flex justify-between"><kbd className="px-2 py-1 bg-neutral-100 dark:bg-neutral-700 rounded">?</kbd><span>Toggle help</span></div>
-            </div>
-            <Button variant="primary" onClick={() => setShowHelp(false)} className="mt-4 w-full">
-              Close
-            </Button>
-          </div>
-        </div>
-      )}
-
-      <GallerySurfaceShell
-        title="Asset Review"
-        headerActions={headerActions}
-        filters={controller.filters}
-        onFiltersChange={(updates) => controller.setFilters({ ...updates })}
-        showSearch
-        showMediaType={false}
-        showSort
-        filtersLayout="horizontal"
-        error={controller.error}
-        loading={controller.loading}
-        itemCount={controller.assets.length}
-      >
-        <GalleryGrid
-          items={controller.assets}
-          renderCard={renderCard}
-          getKey={(a) => a.id}
-          cardSize={320}
-          rowGap={24}
-          columnGap={24}
-          pagination={{
-            currentPage: controller.currentPage,
-            totalPages: controller.totalPages,
-            hasMore: controller.hasMore,
-            loading: controller.loading,
-            onPageChange: controller.goToPage,
-          }}
-        />
-      </GallerySurfaceShell>
-    </>
+    <ReviewModeSurface
+      controller={controller}
+      title="Asset Review"
+      headerActions={headerActions}
+      filtersContent={filtersContent}
+      decisions={decisions}
+      cardActions={cardActions}
+      cardClassName={cardClassName}
+      overlayPresetId="media-card-review"
+      helpRows={HELP_ROWS}
+    />
   );
 }
