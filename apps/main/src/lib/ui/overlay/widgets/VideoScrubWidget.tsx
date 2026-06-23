@@ -422,6 +422,15 @@ export function VideoScrubWidgetRenderer({
     try {
       const want = new URL(effectiveUrl, window.location.origin).href;
       if (el.currentSrc === want && el.readyState >= 2) {
+        // Element is already loaded for this URL — skip load() (it would wipe
+        // the decoded frame buffer). But a preceding (re)borrow reset our
+        // readiness flags to false, and since we're NOT calling load(), the
+        // loadedmetadata/canplay events won't re-fire to set them back. Seed
+        // them from the element's live readyState so the "Loading video…"
+        // overlay clears and the play gate opens. Without this the preview
+        // sticks on "Loading…" and never plays until the next re-hover.
+        setIsVideoLoaded(true);
+        if (el.readyState >= 3) setCanPlay(true);
         return;
       }
     } catch { /* fall through to reload */ }
@@ -1554,8 +1563,12 @@ export function VideoScrubWidgetRenderer({
         </div>
       )}
 
-      {/* Loading indicator - hide if video failed to load or no URL available */}
-      {isHovering && !isVideoLoaded && !videoError && !!resolvedUrl && (
+      {/* Loading indicator — only once we've actually committed a decoder slot
+          to loading this clip (shouldAttachVideoSrc). Keying on bare `isHovering`
+          flashed "Loading…" during the hover-intent debounce and the slot wait,
+          when we're deliberately not loading yet — read as a spurious/sticky
+          loading state on quick hovers. Still hidden on failure / no URL. */}
+      {isHovering && shouldAttachVideoSrc && !isVideoLoaded && !videoError && !!resolvedUrl && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
           <div className="px-3 py-1.5 bg-black/80 text-white text-xs rounded backdrop-blur-sm">
             Loading video...
