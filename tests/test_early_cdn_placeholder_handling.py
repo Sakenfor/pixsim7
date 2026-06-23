@@ -555,13 +555,13 @@ class _FakeGenerationDict:
 
 
 def test_safe_attempt_id_returns_zero_for_none():
-    from pixsim7.backend.main.workers.job_processor import _safe_attempt_id
+    from pixsim7.backend.main.services.generation.processing.service import _safe_attempt_id
 
     assert _safe_attempt_id(None) == 0
 
 
 def test_safe_attempt_id_reads_resident_value():
-    from pixsim7.backend.main.workers.job_processor import _safe_attempt_id
+    from pixsim7.backend.main.services.generation.processing.service import _safe_attempt_id
 
     gen = _FakeGenerationDict(attempt_id=5)
     assert _safe_attempt_id(gen) == 5
@@ -569,7 +569,7 @@ def test_safe_attempt_id_reads_resident_value():
 
 def test_safe_attempt_id_defaults_when_attribute_missing():
     """Simulates an expired ORM instance — attempt_id not in ``__dict__``."""
-    from pixsim7.backend.main.workers.job_processor import _safe_attempt_id
+    from pixsim7.backend.main.services.generation.processing.service import _safe_attempt_id
 
     gen = _FakeGenerationDict()  # no attempt_id key
     assert _safe_attempt_id(gen) == 0
@@ -588,7 +588,7 @@ def test_safe_attempt_id_never_triggers_descriptor_access():
     the class-level descriptor. The fake raises on descriptor access; if the
     helper ever regresses to ``getattr`` we trip this test.
     """
-    from pixsim7.backend.main.workers.job_processor import _safe_attempt_id
+    from pixsim7.backend.main.services.generation.processing.service import _safe_attempt_id
 
     gen = _FakeGenerationDict()
     # No attempt_id in __dict__; __getattr__ would raise if the helper fell
@@ -598,7 +598,7 @@ def test_safe_attempt_id_never_triggers_descriptor_access():
 
 def test_safe_attempt_id_normalizes_non_int():
     """Defensive: garbage value → 0 (matches upstream _normalize_positive_int)."""
-    from pixsim7.backend.main.workers.job_processor import _safe_attempt_id
+    from pixsim7.backend.main.services.generation.processing.service import _safe_attempt_id
 
     assert _safe_attempt_id(_FakeGenerationDict(attempt_id=None)) == 0
     assert _safe_attempt_id(_FakeGenerationDict(attempt_id="nope")) == 0
@@ -612,7 +612,7 @@ def test_account_unavailable_defer_safe_with_expired_generation():
     fall back to base defer without raising MissingGreenlet.
     """
     from pixsim7.backend.main.shared.errors import NoAccountAvailableError
-    from pixsim7.backend.main.workers.job_processor import (
+    from pixsim7.backend.main.services.generation.processing.service import (
         _account_unavailable_requeue_defer_seconds,
     )
 
@@ -630,7 +630,7 @@ def test_account_unavailable_defer_safe_with_expired_generation():
 
 def test_quota_rotation_defer_safe_with_expired_generation():
     """Integration sibling — quota path must not blow up on expired instance."""
-    from pixsim7.backend.main.workers.job_processor import (
+    from pixsim7.backend.main.services.generation.processing.service import (
         _quota_rotation_requeue_defer_seconds,
     )
 
@@ -642,7 +642,7 @@ def test_quota_rotation_defer_safe_with_expired_generation():
 
 def test_quota_rotation_defer_escalates_on_high_attempt_id():
     """Control: the happy path still escalates when attempt_id is loaded."""
-    from pixsim7.backend.main.workers.job_processor import (
+    from pixsim7.backend.main.services.generation.processing.service import (
         _quota_rotation_defer_after_attempts,
         _quota_rotation_requeue_defer_seconds,
     )

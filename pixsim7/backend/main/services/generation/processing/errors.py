@@ -1,8 +1,11 @@
 """
-Error classification helpers for the generation job processor.
+Error classification helpers for generation processing.
 
-Extracted from job_processor.py to keep the main processing pipeline focused
-on orchestration while error-handling logic lives here.
+Host-agnostic logic: retryability/classification of provider errors. Lives
+under ``services/generation/processing`` (not ``workers/``) per the
+``worker-thin-host-canon`` plan — the arq worker is a transport host that
+delegates here. Distinct from ``error_policy.py`` (per-error-code retry
+overrides); this module is the static classification surface.
 """
 from pixsim7.backend.main.shared.errors import (
     ProviderAuthenticationError,

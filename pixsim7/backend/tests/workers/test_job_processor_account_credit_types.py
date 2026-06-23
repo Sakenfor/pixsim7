@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from pixsim7.backend.main.domain.enums import OperationType
-from pixsim7.backend.main.workers.job_processor_account import (
+from pixsim7.backend.main.services.generation.processing.account_ops import (
     has_positive_credits,
     has_sufficient_credits,
     is_unlimited_model,

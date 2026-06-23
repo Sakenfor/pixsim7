@@ -105,7 +105,7 @@ from pixsim7.backend.main.shared.debug import (
     load_global_debug_from_env,
 )
 from pixsim7.backend.main.shared.errors import ProviderError
-from pixsim7.backend.main.workers.job_processor_account import (
+from pixsim7.backend.main.services.generation.processing.account_ops import (
     refresh_account_credits_best_effort,
 )
 from pixsim7.backend.main.infrastructure.events.bus import event_bus

@@ -1,8 +1,9 @@
 """
-Account management helpers for the generation job processor.
+Account management helpers for generation processing.
 
-Credit verification, account reservation/release, cooldown application,
-and credit hint estimation — extracted from job_processor.py.
+Credit verification, account reservation/release, cooldown application, and
+credit hint estimation. Host-agnostic logic relocated out of ``workers/`` into
+``services/generation/processing`` per the ``worker-thin-host-canon`` plan.
 """
 from datetime import datetime, timezone, timedelta
 from typing import Any, Iterable

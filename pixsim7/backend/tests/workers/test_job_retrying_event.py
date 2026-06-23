@@ -13,8 +13,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from pixsim7.backend.main.workers import job_processor_requeue
-from pixsim7.backend.main.workers.job_processor_requeue import (
+from pixsim7.backend.main.services.generation.processing import (
+    requeue as job_processor_requeue,
+)
+from pixsim7.backend.main.services.generation.processing.requeue import (
     _publish_job_retrying,
     _requeue_generation_for_account_rotation,
     _defer_pinned_generation,

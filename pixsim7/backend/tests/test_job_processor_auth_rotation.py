@@ -10,6 +10,7 @@ from pixsim7.backend.main.shared.errors import (
     ProviderQuotaExceededError,
 )
 from pixsim7.backend.main.workers import job_processor
+from pixsim7.backend.main.services.generation.processing import service
 from pixsim7.backend.main.workers.job_processor import _is_auth_rotation_error
 
 
@@ -182,20 +183,20 @@ async def test_process_generation_requeues_and_clears_preferred_on_auth_failure(
     async def _fake_get_arq_pool():
         return arq_pool
 
-    monkeypatch.setattr(job_processor, "_init_worker_debug_flags", lambda: None)
+    monkeypatch.setattr(service, "_init_worker_debug_flags", lambda: None)
     monkeypatch.setattr(
-        job_processor,
+        service,
         "bind_job_context",
         lambda *args, **kwargs: _NoopLogger(),
     )
-    monkeypatch.setattr(job_processor, "get_global_debug_logger", lambda: _NoopDebug())
-    monkeypatch.setattr(job_processor, "DebugLogger", lambda *args, **kwargs: _NoopDebug())
-    monkeypatch.setattr(job_processor, "get_db", _fake_get_db)
-    monkeypatch.setattr(job_processor, "UserService", _FakeUserService)
-    monkeypatch.setattr(job_processor, "GenerationService", _FakeGenerationService)
-    monkeypatch.setattr(job_processor, "AccountService", _FakeAccountService)
-    monkeypatch.setattr(job_processor, "ProviderService", _FakeProviderService)
-    monkeypatch.setattr(job_processor, "refresh_account_credits", _fake_refresh_account_credits)
+    monkeypatch.setattr(service, "get_global_debug_logger", lambda: _NoopDebug())
+    monkeypatch.setattr(service, "DebugLogger", lambda *args, **kwargs: _NoopDebug())
+    monkeypatch.setattr(service, "get_db", _fake_get_db)
+    monkeypatch.setattr(service, "UserService", _FakeUserService)
+    monkeypatch.setattr(service, "GenerationService", _FakeGenerationService)
+    monkeypatch.setattr(service, "AccountService", _FakeAccountService)
+    monkeypatch.setattr(service, "ProviderService", _FakeProviderService)
+    monkeypatch.setattr(service, "refresh_account_credits", _fake_refresh_account_credits)
     monkeypatch.setattr(
         "pixsim7.backend.main.infrastructure.redis.get_arq_pool",
         _fake_get_arq_pool,

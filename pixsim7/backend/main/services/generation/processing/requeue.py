@@ -1,8 +1,11 @@
 """
-Requeue and defer helpers for the generation job processor.
+Requeue and defer helpers for generation processing.
 
-Account rotation requeue, pinned generation deferral, and sibling counting —
-extracted from job_processor.py.
+Account rotation requeue, pinned generation deferral, and sibling counting.
+Host-agnostic logic relocated out of ``workers/`` into
+``services/generation/processing`` per the ``worker-thin-host-canon`` plan.
+(``_count_runnable_pinned_siblings`` still lives in ``workers/worker_concurrency``
+pending its own relocation assessment.)
 """
 from datetime import datetime, timezone, timedelta
 

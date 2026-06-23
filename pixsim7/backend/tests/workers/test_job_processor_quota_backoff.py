@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from pixsim7.backend.main.workers import job_processor
+from pixsim7.backend.main.services.generation.processing import service
 
 
 def _generation(attempt_id: int | None) -> SimpleNamespace:
@@ -23,10 +23,10 @@ def test_quota_rotation_defer_omitted_before_threshold(monkeypatch) -> None:
             value = max(minimum, value)
         return value
 
-    monkeypatch.setattr(job_processor, "_settings_int", _fake_settings_int)
+    monkeypatch.setattr(service, "_settings_int", _fake_settings_int)
 
-    assert job_processor._quota_rotation_requeue_defer_seconds(_generation(0)) is None
-    assert job_processor._quota_rotation_requeue_defer_seconds(_generation(7)) is None
+    assert service._quota_rotation_requeue_defer_seconds(_generation(0)) is None
+    assert service._quota_rotation_requeue_defer_seconds(_generation(7)) is None
 
 
 def test_quota_rotation_defer_scales_by_attempt_steps(monkeypatch) -> None:
@@ -43,12 +43,12 @@ def test_quota_rotation_defer_scales_by_attempt_steps(monkeypatch) -> None:
             value = max(minimum, value)
         return value
 
-    monkeypatch.setattr(job_processor, "_settings_int", _fake_settings_int)
+    monkeypatch.setattr(service, "_settings_int", _fake_settings_int)
 
-    assert job_processor._quota_rotation_requeue_defer_seconds(_generation(8)) == 3
-    assert job_processor._quota_rotation_requeue_defer_seconds(_generation(11)) == 3
-    assert job_processor._quota_rotation_requeue_defer_seconds(_generation(12)) == 6
-    assert job_processor._quota_rotation_requeue_defer_seconds(_generation(16)) == 9
+    assert service._quota_rotation_requeue_defer_seconds(_generation(8)) == 3
+    assert service._quota_rotation_requeue_defer_seconds(_generation(11)) == 3
+    assert service._quota_rotation_requeue_defer_seconds(_generation(12)) == 6
+    assert service._quota_rotation_requeue_defer_seconds(_generation(16)) == 9
 
 
 def test_quota_rotation_defer_caps_at_max(monkeypatch) -> None:
@@ -65,9 +65,9 @@ def test_quota_rotation_defer_caps_at_max(monkeypatch) -> None:
             value = max(minimum, value)
         return value
 
-    monkeypatch.setattr(job_processor, "_settings_int", _fake_settings_int)
+    monkeypatch.setattr(service, "_settings_int", _fake_settings_int)
 
-    assert job_processor._quota_rotation_requeue_defer_seconds(_generation(5)) == 4
-    assert job_processor._quota_rotation_requeue_defer_seconds(_generation(7)) == 8
-    assert job_processor._quota_rotation_requeue_defer_seconds(_generation(9)) == 12
-    assert job_processor._quota_rotation_requeue_defer_seconds(_generation(99)) == 12
+    assert service._quota_rotation_requeue_defer_seconds(_generation(5)) == 4
+    assert service._quota_rotation_requeue_defer_seconds(_generation(7)) == 8
+    assert service._quota_rotation_requeue_defer_seconds(_generation(9)) == 12
+    assert service._quota_rotation_requeue_defer_seconds(_generation(99)) == 12
