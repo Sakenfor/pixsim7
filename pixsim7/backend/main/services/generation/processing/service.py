@@ -359,6 +359,10 @@ async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> d
     async for db in get_db():
         try:
             failed_marked = False
+            # Initialized here (not only in the ProviderError handler) so the
+            # mark_started duplicate-pickup abort path below can read it without
+            # a NameError when no provider submit was ever attempted.
+            account_released = False
             user_service = UserService(db)
             generation_service = GenerationService(db, user_service)
             account_service = AccountService(db)

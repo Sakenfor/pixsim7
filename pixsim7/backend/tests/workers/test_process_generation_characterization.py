@@ -173,6 +173,7 @@ def _install(
     accounts: dict[int, Any] | None = None,
     select_account: Callable[..., Any] | None = None,
     execute_generation: Callable[..., Any] | None = None,
+    mark_started_raises: BaseException | None = None,
     is_pinned: bool = False,
     is_quarantined: bool = False,
 ) -> _Env:
@@ -205,6 +206,8 @@ def _install(
             return generation
 
         async def mark_started(self, gid):
+            if mark_started_raises is not None:
+                raise mark_started_raises
             generation.status = "processing"
             generation.started_at = object()
             return generation
@@ -449,6 +452,32 @@ async def test_happy_path_submitted(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "execute_generation" in env.calls
     assert "enqueue_immediate_poll" in env.calls  # races the early-CDN window
     assert gen.account_id == 100  # persisted onto the generation
+
+
+@pytest.mark.asyncio
+async def test_duplicate_pickup_skips_and_releases(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If mark_started races another worker (InvalidOperationError), abort
+    cleanly: release the reservation and return 'already_processing'.
+
+    Regression guard for the latent ``account_released`` NameError on this path
+    (it was only initialized inside the ProviderError handler, never reached
+    here). Without the fix this raised NameError → wrapped into an ARQ retry.
+    """
+    from pixsim7.backend.main.shared.errors import InvalidOperationError
+
+    gen = _make_generation()
+    env = _install(
+        monkeypatch,
+        generation=gen,
+        mark_started_raises=InvalidOperationError("already processing"),
+    )
+    result = await _run(gen)
+    assert result == {
+        "status": "skipped",
+        "reason": "already_processing",
+        "generation_id": gen.id,
+    }
+    assert "_release_account_reservation" in env.calls
 
 
 # --------------------------------------------------------------------------- #
