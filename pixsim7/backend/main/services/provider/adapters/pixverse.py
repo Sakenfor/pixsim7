@@ -280,7 +280,7 @@ class PixverseProvider(
             and isinstance(original_video_id, (str, int))
             and str(original_video_id).isdigit()
         ):
-            logger.info(
+            logger.debug(
                 "pixverse_extend_original_id_fast_path",
                 original_video_id=str(original_video_id),
                 composition_assets_count=len(composition_assets) if isinstance(composition_assets, list) else 1,
@@ -289,9 +289,10 @@ class PixverseProvider(
             result_params.pop("composition_assets", None)
             composition_assets = None
 
-        # Debug logging for IMAGE_TO_IMAGE resolution path
+        # Per-submission diagnostics for the i2i resolution path — DEBUG so it
+        # stays available behind a level toggle without spamming production.
         if operation_type == OperationType.IMAGE_TO_IMAGE:
-            logger.info(
+            logger.debug(
                 "pixverse_i2i_debug",
                 has_composition_assets=bool(composition_assets),
                 composition_assets_count=len(composition_assets) if composition_assets else 0,
@@ -313,7 +314,7 @@ class PixverseProvider(
                 media_type_filter = "image"
             elif operation_type in {OperationType.VIDEO_EXTEND, OperationType.VIDEO_MODIFY}:
                 media_type_filter = "video"
-                logger.info(
+                logger.debug(
                     "pixverse_extend_debug",
                     composition_assets_count=len(composition_assets),
                     first_asset_keys=list(composition_assets[0].keys()) if composition_assets else [],
