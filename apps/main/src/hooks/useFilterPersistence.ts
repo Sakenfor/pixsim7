@@ -125,7 +125,17 @@ function readInitialFilters<T extends Record<string, any>>(
       if (values.length > 1) {
         merged[key as keyof T] = values.filter((v) => v !== '') as any;
       } else {
-        merged[key as keyof T] = value as any;
+        // Coerce boolean-ish values back to real booleans. Unknown keys (e.g. the
+        // signal-triage bucket flags signal_likely_broken / signal_borderline /
+        // signal_overridden) are written to the URL as the strings "true"/"false".
+        // Without this, a persisted "false" reads back as a TRUTHY string, which
+        // turns an intended "no condition" into an applied filter — and since the
+        // triage buckets are mutually exclusive, that silently zeroes the queue.
+        merged[key as keyof T] = (value === 'true'
+          ? true
+          : value === 'false'
+            ? false
+            : value) as any;
       }
     });
   }
