@@ -29,21 +29,46 @@ export interface SignalTriageContentProps {
   controller: AssetsController;
 }
 
+/** The mutually-exclusive score buckets you can triage, each a registered
+ * boolean filter (all now gated to the CURRENT scanner version, so stale
+ * prior-heuristic scores no longer leak in). */
+type TriageQueue = 'broken' | 'borderline' | 'overridden';
+
+const TRIAGE_QUEUES: { id: TriageQueue; label: string; filter: string }[] = [
+  { id: 'broken', label: 'Broken (≥3)', filter: 'signal_likely_broken' },
+  { id: 'borderline', label: 'Borderline (1–2)', filter: 'signal_borderline' },
+  { id: 'overridden', label: 'Decided', filter: 'signal_overridden' },
+];
+
 export function SignalTriageContent({ controller }: SignalTriageContentProps) {
   const [focusedIndex, setFocusedIndex] = useState(0);
+  const [queue, setQueue] = useState<TriageQueue>('broken');
 
   // Start from a CLEAN triage state on mount. The asset filter session
   // (`assets_filters`) is shared across every gallery surface, so merging here
   // would inherit whatever stale filters the user left on the main gallery
   // (e.g. media_type=image, a search query, a tag) — combined with the
   // video-only signal flag that silently yields an empty queue. replaceFilters
-  // resets to defaults + the broken flag; subsequent in-surface toggles still
-  // apply on top of this clean base.
+  // resets to defaults + the chosen bucket flag; subsequent in-surface toggles
+  // (search/sort) still apply on top of this clean base.
   useEffect(() => {
     controller.replaceFilters({ signal_likely_broken: true });
     // intentionally only on mount; subsequent edits respect user choices
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Switch which bucket we're triaging. replaceFilters swaps cleanly (resets to
+  // defaults + the one bucket flag), so the buckets stay mutually exclusive.
+  const selectQueue = useCallback(
+    (q: TriageQueue) => {
+      const spec = TRIAGE_QUEUES.find((x) => x.id === q);
+      if (!spec) return;
+      setQueue(q);
+      setFocusedIndex(0);
+      controller.replaceFilters({ [spec.filter]: true });
+    },
+    [controller],
+  );
 
   const focused = controller.assets[focusedIndex];
 
@@ -98,6 +123,22 @@ export function SignalTriageContent({ controller }: SignalTriageContentProps) {
   const headerActions = useMemo(
     () => (
       <div className="flex items-center gap-3 text-sm">
+        <div className="flex overflow-hidden rounded-md border border-neutral-300 dark:border-neutral-600">
+          {TRIAGE_QUEUES.map((qd) => (
+            <button
+              key={qd.id}
+              type="button"
+              onClick={() => selectQueue(qd.id)}
+              className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                queue === qd.id
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-transparent text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'
+              }`}
+            >
+              {qd.label}
+            </button>
+          ))}
+        </div>
         <span className="text-neutral-600 dark:text-neutral-400">
           Remaining: {controller.assets.length}
           {controller.hasMore ? '+' : ''}
@@ -107,7 +148,7 @@ export function SignalTriageContent({ controller }: SignalTriageContentProps) {
         </span>
       </div>
     ),
-    [controller.assets.length, controller.hasMore],
+    [queue, selectQueue, controller.assets.length, controller.hasMore],
   );
 
   const renderCard = useCallback(
@@ -174,7 +215,8 @@ export function SignalTriageContent({ controller }: SignalTriageContentProps) {
         Nothing left to triage
       </div>
       <div className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-        No videos in the broken queue. Run the scanner if you want to add more.
+        No videos in the {TRIAGE_QUEUES.find((q) => q.id === queue)?.label ?? 'current'} queue.
+        Switch queue above, or run the scanner to add more.
       </div>
     </div>
   );

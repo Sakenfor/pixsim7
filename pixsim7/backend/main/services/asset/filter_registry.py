@@ -1347,16 +1347,23 @@ def register_default_asset_filters() -> None:
     _signal_metrics = cast(Asset.media_metadata, JSONB).op("->")("signal_metrics")
     _signal_score = _signal_metrics.op("->>")("score").cast(Integer)
     _signal_override = _signal_metrics.op("->>")("user_override")  # 'clean' | 'broken' | NULL
+    # Only surface scores from the CURRENT heuristic. The signal_score JSON/column
+    # persists across re-scans, so without this gate a bumped SCANNER_VERSION leaves
+    # stale prior-version flags (e.g. v2) polluting the triage queues and disagreeing
+    # with the version-scoped /signal-scan-stats dashboard. See plan
+    # signal-scan-recalibration.
+    from pixsim7.backend.main.services.asset.signal_analysis import SCANNER_VERSION
+    _signal_current = Asset.signal_scanner_version == SCANNER_VERSION
 
     asset_filter_registry.register(
         FilterSpec(
             key="signal_likely_broken",
             type="boolean",
             label="Likely broken",
-            description="Heuristic flag: low audio + low visual divergence (score ≥ 3). Excludes user-marked Keep.",
-            # score >= 3 AND override IS NOT 'clean' (NULL is fine)
+            description="Heuristic flag: low audio + low visual divergence (current-version score ≥ 3). Excludes user-marked Keep.",
+            # current-version score >= 3 AND override IS NOT 'clean' (NULL is fine)
             condition_builder=lambda v: (
-                (_signal_score >= 3) & (func.coalesce(_signal_override, "") != "clean")
+                _signal_current & (_signal_score >= 3) & (func.coalesce(_signal_override, "") != "clean")
             ) if v else None,
         )
     )
@@ -1365,9 +1372,9 @@ def register_default_asset_filters() -> None:
             key="signal_likely_clean",
             type="boolean",
             label="Likely clean",
-            description="Signal score == 0. Excludes user-marked broken.",
+            description="Current-version signal score == 0. Excludes user-marked broken.",
             condition_builder=lambda v: (
-                (_signal_score == 0) & (func.coalesce(_signal_override, "") != "broken")
+                _signal_current & (_signal_score == 0) & (func.coalesce(_signal_override, "") != "broken")
             ) if v else None,
         )
     )
@@ -1376,10 +1383,10 @@ def register_default_asset_filters() -> None:
             key="signal_borderline",
             type="boolean",
             label="Borderline",
-            description="Signal score 1–2 (one weak/corroborating axis only) and not yet user-decided. The undecided middle to triage.",
-            # 1 <= score <= 2 AND no user_override yet
+            description="Current-version signal score 1–2 (one weak/corroborating axis only) and not yet user-decided. The undecided middle to triage.",
+            # current-version 1 <= score <= 2 AND no user_override yet
             condition_builder=lambda v: (
-                (_signal_score >= 1) & (_signal_score <= 2) & _signal_override.is_(None)
+                _signal_current & (_signal_score >= 1) & (_signal_score <= 2) & _signal_override.is_(None)
             ) if v else None,
         )
     )
