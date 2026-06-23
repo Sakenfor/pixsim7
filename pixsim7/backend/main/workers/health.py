@@ -27,7 +27,7 @@ from pixsim7.backend.main.workers.worker_families import (  # noqa: E402
     WORKER_ROLE_RETRY,
     WORKER_ROLE_SIMULATION,
     WORKER_ROLE_AUTOMATION,
-    WORKER_ROLE_MEDIA_ARCHIVE,
+    WORKER_ROLE_MEDIA_MAINTENANCE,
     WORKER_ROLES,
 )
 
@@ -215,8 +215,8 @@ async def update_automation_heartbeat(ctx: dict) -> None:
     await _update_worker_heartbeat(ctx, WORKER_ROLE_AUTOMATION)
 
 
-async def update_media_archive_heartbeat(ctx: dict) -> None:
-    await _update_worker_heartbeat(ctx, WORKER_ROLE_MEDIA_ARCHIVE)
+async def update_media_maintenance_heartbeat(ctx: dict) -> None:
+    await _update_worker_heartbeat(ctx, WORKER_ROLE_MEDIA_MAINTENANCE)
 
 
 async def get_worker_health(
@@ -272,7 +272,7 @@ async def get_worker_health(
 
 
 async def get_worker_family_health() -> Dict[str, Optional[Dict[str, Any]]]:
-    """Get health for main, retry, and simulation workers."""
+    """Get health for every worker family (one entry per role in WORKER_ROLES)."""
     results: Dict[str, Optional[Dict[str, Any]]] = {}
     for role in WORKER_ROLES:
         results[role] = await get_worker_health(

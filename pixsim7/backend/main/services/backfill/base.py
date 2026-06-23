@@ -47,6 +47,10 @@ class BackfillRunServiceBase(ABC, Generic[TRun]):
     run_model: type  # the SQLModel run table (e.g. AnalysisBackfillRun)
     enqueue_job_name: str  # ARQ task name that processes one batch
     log_prefix: str  # log-event prefix, e.g. "analysis_backfill"
+    # Optional dedicated ARQ queue for this domain's batch job. ``None`` (the
+    # default) enqueues onto the main/generation queue; set it to route slow
+    # sweeps onto an isolated worker (e.g. media-maintenance).
+    queue_name: Optional[str] = None
 
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -246,7 +250,10 @@ class BackfillRunServiceBase(ABC, Generic[TRun]):
             from pixsim7.backend.main.infrastructure.redis import get_arq_pool
 
             arq_pool = await get_arq_pool()
-            await arq_pool.enqueue_job(self.enqueue_job_name, backfill_run_id=run_id)
+            kwargs = {"backfill_run_id": run_id}
+            if self.queue_name:
+                kwargs["_queue_name"] = self.queue_name
+            await arq_pool.enqueue_job(self.enqueue_job_name, **kwargs)
             logger.info("%s_queued run_id=%s", self.log_prefix, run_id)
         except Exception as exc:
             logger.error(

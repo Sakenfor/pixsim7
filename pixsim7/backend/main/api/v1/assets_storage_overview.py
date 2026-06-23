@@ -1410,7 +1410,7 @@ async def cancel_relocate_job(
 # Background restore: reverse of background relocation. Same long-lived arq job
 # pattern so a bulk un-archive doesn't block the request — progress lives in
 # Redis, so /restore/job is pollable and survives a page reload. Both run on the
-# single-slot media-archive worker, so a restore and a relocation serialize
+# single-slot media-maintenance worker, so a restore and a relocation serialize
 # (intended — they share the same S3/ZeroTier link).
 # ---------------------------------------------------------------------------
 

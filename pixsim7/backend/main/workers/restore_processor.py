@@ -111,7 +111,7 @@ async def process_restore(
     """
     from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.infrastructure.database.session import get_async_session
-    from pixsim7.backend.main.infrastructure.queue import MEDIA_ARCHIVE_QUEUE_NAME
+    from pixsim7.backend.main.infrastructure.queue import MEDIA_MAINTENANCE_QUEUE_NAME
     from pixsim7.backend.main.infrastructure.redis.client import get_arq_pool, get_redis
     from pixsim7.backend.main.services.storage.placement import (
         ARCHIVE_ROOT_ID,
@@ -201,7 +201,7 @@ async def process_restore(
                 apply=apply, verify_hash=verify_hash, delete_archive=delete_archive,
                 max_assets=max_assets, stats=stats,
                 _job_id=f"restore:{job_id}:{cursor}",
-                _queue_name=MEDIA_ARCHIVE_QUEUE_NAME,
+                _queue_name=MEDIA_MAINTENANCE_QUEUE_NAME,
             )
             logger.info("restore_job_reenqueued", job_id=job_id, cursor=cursor, **_log_stats(stats))
             return await _persist("continued")
@@ -239,7 +239,7 @@ async def start_restore_job(
     job_id: Optional[str] = None,
 ) -> str:
     """Enqueue a background restore job; returns its logical job_id."""
-    from pixsim7.backend.main.infrastructure.queue import MEDIA_ARCHIVE_QUEUE_NAME
+    from pixsim7.backend.main.infrastructure.queue import MEDIA_MAINTENANCE_QUEUE_NAME
     from pixsim7.backend.main.infrastructure.redis.client import get_arq_pool, get_redis
 
     job_id = job_id or f"restore-{int(time.time())}-{uuid.uuid4().hex[:6]}"
@@ -258,7 +258,7 @@ async def start_restore_job(
         apply=apply, verify_hash=verify_hash, delete_archive=delete_archive,
         max_assets=max_assets,
         _job_id=f"restore:{job_id}:0",
-        _queue_name=MEDIA_ARCHIVE_QUEUE_NAME,
+        _queue_name=MEDIA_MAINTENANCE_QUEUE_NAME,
     )
     return job_id
 
@@ -293,7 +293,7 @@ async def reconcile_orphaned_restore_job() -> Optional[str]:
     """Mark a non-terminal latest job as ``interrupted`` (call at worker startup).
 
     See ``relocation_processor.reconcile_orphaned_restore_job``'s twin for the
-    full rationale. This MUST run on the media-archive worker (the only worker
+    full rationale. This MUST run on the media-maintenance worker (the only worker
     that processes restore), so its "I just started ⟹ no batch in flight"
     premise actually holds. Returns the retired job id, if any.
     """

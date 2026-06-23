@@ -54,7 +54,7 @@ from pixsim7.backend.main.workers.health import (
     update_retry_heartbeat,
     update_simulation_heartbeat,
     update_automation_heartbeat,
-    update_media_archive_heartbeat,
+    update_media_maintenance_heartbeat,
     get_health_tracker,
 )
 from pixsim7.backend.main.workers.log_cleanup import cleanup_old_logs
@@ -64,7 +64,7 @@ from pixsim7.backend.main.workers.worker_families import (
     BY_ROLE,
     WORKER_ROLE_AUTOMATION,
     WORKER_ROLE_MAIN,
-    WORKER_ROLE_MEDIA_ARCHIVE,
+    WORKER_ROLE_MEDIA_MAINTENANCE,
     WORKER_ROLE_RETRY,
     WORKER_ROLE_SIMULATION,
 )
@@ -73,7 +73,7 @@ from pixsim7.backend.main.infrastructure.queue import (
     GENERATION_RETRY_QUEUE_NAME,
     SIMULATION_SCHEDULER_QUEUE_NAME,
     AUTOMATION_QUEUE_NAME,
-    MEDIA_ARCHIVE_QUEUE_NAME,
+    MEDIA_MAINTENANCE_QUEUE_NAME,
 )
 from pixsim7.backend.main.shared.debug import load_global_debug_from_env
 from pixsim_logging import configure_logging, configure_stdlib_root_logger, bind_domain_context
@@ -327,7 +327,6 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="process_ephemeral_chain_execution")
     logger.info("worker_component_registered", component="process_ephemeral_fanout_execution")
     logger.info("worker_component_registered", component="run_analysis_backfill_batch")
-    logger.info("worker_component_registered", component="run_signal_backfill_batch")
     logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/2s")
     logger.info("worker_component_registered", component="requeue_pending_generations", schedule="*/30s")
     logger.info("worker_component_registered", component="requeue_pending_analyses", schedule="*/30s")
@@ -564,27 +563,34 @@ async def automation_shutdown(ctx: dict) -> None:
         logger.warning("worker_shutdown_database_close_error", error=str(e))
 
 
-async def media_archive_startup(ctx: dict) -> None:
-    """Startup for the dedicated media-archive worker (bulk relocate/restore).
+async def media_maintenance_startup(ctx: dict) -> None:
+    """Startup for the dedicated media-maintenance worker.
 
-    Loads persisted system config so the ``storage_roots`` applier binds the
-    ``archive`` S3 backend before any relocation job builds the storage service.
+    Hosts the slow bulk asset jobs — archive relocate/restore and durable
+    signal-scan reprobe. Loads persisted system config so the ``storage_roots``
+    applier binds the ``archive`` S3 backend before any relocation job builds the
+    storage service.
     """
     _normalize_arq_logger_handlers()
     get_health_tracker()
-    logger.info("worker_start", msg="PixSim7 Media Archive Worker Starting")
+    logger.info("worker_start", msg="PixSim7 Media Maintenance Worker Starting")
     await _load_persisted_system_config_for_worker()
     logger.info(
         "worker_component_registered",
         component="process_relocation",
-        queue=MEDIA_ARCHIVE_QUEUE_NAME,
+        queue=MEDIA_MAINTENANCE_QUEUE_NAME,
     )
     logger.info(
         "worker_component_registered",
         component="process_restore",
-        queue=MEDIA_ARCHIVE_QUEUE_NAME,
+        queue=MEDIA_MAINTENANCE_QUEUE_NAME,
     )
-    logger.info("worker_component_registered", component="update_media_archive_heartbeat", schedule="*/30s")
+    logger.info(
+        "worker_component_registered",
+        component="run_signal_backfill_batch",
+        queue=MEDIA_MAINTENANCE_QUEUE_NAME,
+    )
+    logger.info("worker_component_registered", component="update_media_maintenance_heartbeat", schedule="*/30s")
 
     # Retire any relocation/restore job left non-terminal by a crash/restart so
     # the UI doesn't show a phantom in-flight job. This belongs HERE, not in the
@@ -599,11 +605,11 @@ async def media_archive_startup(ctx: dict) -> None:
         try:
             retired = await reconcile()
             if retired:
-                logger.info("startup_media_archive_reconcile_complete", job_id=retired)
+                logger.info("startup_media_maintenance_reconcile_complete", job_id=retired)
         except Exception as e:
-            logger.warning("startup_media_archive_reconcile_failed", error=str(e))
+            logger.warning("startup_media_maintenance_reconcile_failed", error=str(e))
 
-    await update_media_archive_heartbeat(ctx)
+    await update_media_maintenance_heartbeat(ctx)
     # Slow archive uploads can run for a long time; keep the machine awake.
     inhibit_sleep()
 
@@ -622,9 +628,9 @@ async def _reconcile_restore_on_startup() -> Optional[str]:
     return await reconcile_orphaned_restore_job()
 
 
-async def media_archive_shutdown(ctx: dict) -> None:
-    """Shutdown for the dedicated media-archive worker."""
-    logger.info("worker_shutdown", msg="PixSim7 Media Archive Worker Shutting Down")
+async def media_maintenance_shutdown(ctx: dict) -> None:
+    """Shutdown for the dedicated media-maintenance worker."""
+    logger.info("worker_shutdown", msg="PixSim7 Media Maintenance Worker Shutting Down")
     await _drain_arq_pool(ctx)
     try:
         await close_database()
@@ -643,7 +649,7 @@ _MAIN_FAMILY = BY_ROLE[WORKER_ROLE_MAIN]
 _RETRY_FAMILY = BY_ROLE[WORKER_ROLE_RETRY]
 _SIMULATION_FAMILY = BY_ROLE[WORKER_ROLE_SIMULATION]
 _AUTOMATION_FAMILY = BY_ROLE[WORKER_ROLE_AUTOMATION]
-_MEDIA_ARCHIVE_FAMILY = BY_ROLE[WORKER_ROLE_MEDIA_ARCHIVE]
+_MEDIA_MAINTENANCE_FAMILY = BY_ROLE[WORKER_ROLE_MEDIA_MAINTENANCE]
 
 
 class WorkerSettings:
@@ -674,7 +680,6 @@ class WorkerSettings:
         process_ephemeral_chain_execution,
         process_ephemeral_fanout_execution,
         run_analysis_backfill_batch,
-        run_signal_backfill_batch,
         poll_job_statuses,
         poll_generation_once,
         requeue_pending_generations,
@@ -890,36 +895,38 @@ class AutomationWorkerSettings:
     health_check_interval = 60
 
 
-class MediaArchiveWorkerSettings:
-    """ARQ worker dedicated to slow media-archive jobs (bulk relocate/restore).
+class MediaMaintenanceWorkerSettings:
+    """ARQ worker dedicated to slow bulk media-maintenance jobs.
 
-    Isolated from the main generation worker so long S3/ZeroTier uploads can't
-    eat generation processing slots. Single-slot by default; the relocation job
-    self-paginates and re-enqueues to span the job timeout. See plan
-    media-storage-tiering cp-k.
+    Hosts archive relocate/restore and durable signal-scan reprobe — isolated
+    from the main generation worker so long S3/ZeroTier uploads and probe sweeps
+    can't eat generation processing slots. Single-slot by default; each job
+    self-paginates and re-enqueues to span the job timeout. See plans
+    media-storage-tiering cp-k and signal-reprobe-backfill-run.
     """
 
     redis_settings = _redis_settings()
-    queue_name = _MEDIA_ARCHIVE_FAMILY.queue_name
+    queue_name = _MEDIA_MAINTENANCE_FAMILY.queue_name
 
     functions = [
         process_relocation,
         process_restore,
+        run_signal_backfill_batch,
         reload_logging_config,
     ]
 
     cron_jobs = [
-        cron(update_media_archive_heartbeat, second={0, 30}, run_at_startup=False),
+        cron(update_media_maintenance_heartbeat, second={0, 30}, run_at_startup=False),
         cron(reload_logging_config, second={10}, run_at_startup=False),
     ]
 
-    on_startup = media_archive_startup
-    on_shutdown = media_archive_shutdown
+    on_startup = media_maintenance_startup
+    on_shutdown = media_maintenance_shutdown
 
-    max_jobs = _MEDIA_ARCHIVE_FAMILY.resolve_max_jobs()
-    job_timeout = _MEDIA_ARCHIVE_FAMILY.resolve_job_timeout()
-    max_tries = _MEDIA_ARCHIVE_FAMILY.resolve_max_tries()
-    retry_jobs = _MEDIA_ARCHIVE_FAMILY.retry_jobs
+    max_jobs = _MEDIA_MAINTENANCE_FAMILY.resolve_max_jobs()
+    job_timeout = _MEDIA_MAINTENANCE_FAMILY.resolve_job_timeout()
+    max_tries = _MEDIA_MAINTENANCE_FAMILY.resolve_max_tries()
+    retry_jobs = _MEDIA_MAINTENANCE_FAMILY.retry_jobs
 
     log_results = True
     verbose = True

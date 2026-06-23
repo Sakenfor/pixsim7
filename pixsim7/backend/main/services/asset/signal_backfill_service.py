@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from pixsim7.backend.main.domain import Asset, User
 from pixsim7.backend.main.domain.assets.backfill import BackfillStatus
 from pixsim7.backend.main.domain.assets.signal_backfill import SignalBackfillRun
+from pixsim7.backend.main.infrastructure.queue import MEDIA_MAINTENANCE_QUEUE_NAME
 from pixsim7.backend.main.services.backfill import BackfillRunServiceBase
 from pixsim7.backend.main.services.asset.signal_analysis import (
     SCANNER_VERSION,
@@ -34,6 +35,9 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
     run_model = SignalBackfillRun
     enqueue_job_name = "run_signal_backfill_batch"
     log_prefix = "signal_backfill"
+    # Run on the isolated media-maintenance worker (single-slot) so a full-library
+    # reprobe sweep doesn't contend with the generation hot path.
+    queue_name = MEDIA_MAINTENANCE_QUEUE_NAME
 
     async def create_run(
         self,

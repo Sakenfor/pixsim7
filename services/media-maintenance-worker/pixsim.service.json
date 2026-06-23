@@ -1,0 +1,24 @@
+{
+  "id": "media-maintenance-worker",
+  "category": "services",
+  "type": "worker",
+  "name": "Worker (Media Maintenance)",
+  "description": "Dedicated worker for slow bulk media-maintenance jobs — archive relocate/restore over S3/MinIO plus durable signal-scan reprobe — isolated from generation so long uploads/sweeps don't eat its slots",
+  "module": "arq",
+  "args": ["pixsim7.backend.main.workers.arq_worker.MediaMaintenanceWorkerSettings"],
+  "depends_on": ["db"],
+  "auto_start": false,
+  "enabled": true,
+  "settings": [
+    {
+      "key": "max_jobs",
+      "default": 1,
+      "description": "Max concurrent jobs (1 avoids parallel uploads/probe fetches saturating the link)"
+    },
+    {
+      "key": "job_timeout",
+      "default": 3600,
+      "description": "Job timeout in seconds (the job self-re-enqueues ~40 min in, well before this)"
+    }
+  ]
+}

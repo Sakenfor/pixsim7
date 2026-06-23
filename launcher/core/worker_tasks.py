@@ -35,7 +35,7 @@ WORKER_FAMILIES: tuple[tuple[str, str, str, str], ...] = (
     ("retry", "generation-retry", "arq:queue:generation-retry", "Generation Retry"),
     ("simulation", "simulation-worker", "arq:queue:simulation-scheduler", "Simulation"),
     ("automation", "automation-worker", "arq:queue:automation", "Automation"),
-    ("media_archive", "media-archive-worker", "arq:queue:media-archive", "Media Archive"),
+    ("media_maintenance", "media-maintenance-worker", "arq:queue:media-maintenance", "Media Maintenance"),
 )
 
 _HEARTBEAT_KEY = "arq:worker:{role}:heartbeat"

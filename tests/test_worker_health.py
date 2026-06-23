@@ -105,7 +105,7 @@ async def test_get_worker_health_supports_legacy_main_fallback(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_worker_family_health_returns_all_three_roles(monkeypatch):
+async def test_get_worker_family_health_returns_all_roles(monkeypatch):
     fake_redis = _FakeRedis()
 
     async def _fake_get_redis():
@@ -122,7 +122,10 @@ async def test_get_worker_family_health_returns_all_three_roles(monkeypatch):
 
     family = await wh.get_worker_family_health()
 
-    assert set(family.keys()) == {"main", "retry", "simulation"}
+    # One entry per worker family (main/retry/simulation/automation/
+    # media_maintenance), keyed by role — future families included automatically.
+    assert set(family.keys()) == set(wh.WORKER_ROLES)
+    # The three we heart-beated above report health; the rest are present but None.
     assert family["main"] is not None
     assert family["retry"] is not None
     assert family["simulation"] is not None

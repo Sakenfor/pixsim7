@@ -30,7 +30,7 @@ WORKER_CMDLINE_SELECTORS: dict[str, List[str]] = {
     "generation-retry": ["GenerationRetryWorkerSettings"],
     "simulation-worker": ["SimulationWorkerSettings"],
     "automation-worker": ["AutomationWorkerSettings"],
-    "media-archive-worker": ["MediaArchiveWorkerSettings"],
+    "media-maintenance-worker": ["MediaMaintenanceWorkerSettings"],
     "ai-client": ["pixsim7.client", "-m pixsim7.client"],
 }
 
