@@ -1,16 +1,20 @@
 /**
- * Asset warnings — compact per-asset signals surfaced on media cards.
+ * Asset indicators — compact per-asset signals surfaced on media cards.
  *
- * Extensible list: add new warning ids as new failure modes need UI surfacing.
- * Each warning carries its own icon + severity; the renderer clusters them
- * into a single bottom-left pill.
+ * Extensible list: add new ids as new states need UI surfacing. Not all
+ * indicators are "warnings": severity `info` carries non-warning provenance
+ * (e.g. recovered-from-provider). Each entry has its own icon + severity; the
+ * renderer clusters them into a single bottom-left badge.
+ *
+ * Type/export names keep the `Warning` prefix for now to bound blast radius —
+ * the surface is conceptually an indicator cluster.
  */
 
 import type { AssetModel } from '../models/asset';
 
-export type AssetWarningId = 'noReusableLastFrame';
+export type AssetWarningId = 'noReusableLastFrame' | 'recovered';
 
-export type AssetWarningSeverity = 'warning' | 'error';
+export type AssetWarningSeverity = 'info' | 'warning' | 'error';
 
 export interface AssetWarning {
   id: AssetWarningId;
@@ -42,6 +46,17 @@ export function getAssetWarnings(asset: AssetModel | null | undefined): AssetWar
       icon: 'arrowRight',
       tooltip: 'Provider last-frame missing — synthetic extend may still fail moderation.',
       severity: 'warning',
+    });
+  }
+  // Provenance, not a warning: this image was CDN-salvaged after the provider
+  // reported it filtered/failed/stuck but it had actually rendered. Distinct
+  // from (and additive to) the provider-flagged warning above — both can show.
+  if (asset.recovered) {
+    warnings.push({
+      id: 'recovered',
+      icon: 'shield',
+      tooltip: 'Recovered — image salvaged from a provider false-filter / stuck-processing state.',
+      severity: 'info',
     });
   }
   return warnings;
