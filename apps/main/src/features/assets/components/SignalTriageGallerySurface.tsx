@@ -45,27 +45,30 @@ export function SignalTriageContent({ controller }: SignalTriageContentProps) {
   const [queue, setQueue] = useState<TriageQueue>('broken');
 
   // Start from a CLEAN triage state on mount. The asset filter session
-  // (`assets_filters`) is shared across every gallery surface, so merging here
-  // would inherit whatever stale filters the user left on the main gallery
-  // (e.g. media_type=image, a search query, a tag) — combined with the
-  // video-only signal flag that silently yields an empty queue. replaceFilters
-  // resets to defaults + the chosen bucket flag; subsequent in-surface toggles
-  // (search/sort) still apply on top of this clean base.
+  // (`assets_filters`) is shared across every gallery surface, so a stale filter
+  // the user left on the main gallery can leak in — combined with the video-only
+  // signal buckets it silently yields an EMPTY queue. The worst offender is
+  // `media_type=image`: it zeroes every bucket, and because this surface hides the
+  // media-type control (`showMediaType={false}`) it's invisible and unclearable
+  // from here. So we always force `media_type: 'video'` — a positive value that
+  // overwrites any persisted/URL image — alongside the bucket flag. Signal scores
+  // only exist on videos, so this never excludes a real candidate.
   useEffect(() => {
-    controller.replaceFilters({ signal_likely_broken: true });
+    controller.replaceFilters({ signal_likely_broken: true, media_type: 'video' });
     // intentionally only on mount; subsequent edits respect user choices
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Switch which bucket we're triaging. replaceFilters swaps cleanly (resets to
-  // defaults + the one bucket flag), so the buckets stay mutually exclusive.
+  // defaults + the one bucket flag + forced video), so the buckets stay mutually
+  // exclusive and a stale media_type can't zero the queue.
   const selectQueue = useCallback(
     (q: TriageQueue) => {
       const spec = TRIAGE_QUEUES.find((x) => x.id === q);
       if (!spec) return;
       setQueue(q);
       setFocusedIndex(0);
-      controller.replaceFilters({ [spec.filter]: true });
+      controller.replaceFilters({ [spec.filter]: true, media_type: 'video' });
     },
     [controller],
   );
