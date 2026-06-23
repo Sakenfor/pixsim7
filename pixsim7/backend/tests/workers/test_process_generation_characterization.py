@@ -30,6 +30,7 @@ from pixsim7.backend.main.shared.errors import (
     ProviderConcurrentLimitError,
     ProviderContentFilteredError,
     ProviderError,
+    ProviderQuotaExceededError,
 )
 from pixsim7.backend.main.workers import job_processor
 from pixsim7.backend.main.services.generation.processing import service
@@ -176,6 +177,13 @@ def _install(
     mark_started_raises: BaseException | None = None,
     is_pinned: bool = False,
     is_quarantined: bool = False,
+    credit_hint: int = 0,
+    has_positive: bool = True,
+    rotation_cap: int = 3,
+    rotations_so_far: int = 0,
+    cf_max_retries: int = 3,
+    cf_should_rotate: bool = False,
+    is_final: bool = False,
 ) -> _Env:
     """Wire up every module global ``process_generation`` touches.
 
@@ -347,16 +355,42 @@ def _install(
     monkeypatch.setattr(service, "_get_concurrent_limit_cooldown_seconds", lambda g, a: 5)
     monkeypatch.setattr(service, "mark_prompt_concurrent_quarantined", _noop_async)
 
-    # --- credit hints (short-circuit verify_credits to True) ---
-    monkeypatch.setattr(service, "_required_generation_credit_hint", lambda *a, **k: 0)
+    # --- credit hints / verification ---
+    # credit_hint==0 short-circuits verify_credits to True (the default). With a
+    # positive hint (quota tests), has_sufficient_credits is forced True so
+    # acquisition still passes, while has_positive_credits drives the quota
+    # handler's mark_exhausted-vs-cooldown branch.
+    monkeypatch.setattr(service, "_required_generation_credit_hint", lambda *a, **k: credit_hint)
     monkeypatch.setattr(service, "resolve_required_credit_types", lambda *a, **k: None)
     monkeypatch.setattr(service, "is_unlimited_model", lambda *a, **k: False)
+    monkeypatch.setattr(service, "has_sufficient_credits", lambda *a, **k: True)
+    monkeypatch.setattr(service, "has_positive_credits", lambda *a, **k: has_positive)
 
     async def _fake_refresh(*a, **k):
-        return {}
+        return {"web": 10}
 
     monkeypatch.setattr(service, "refresh_account_credits", _fake_refresh)
     monkeypatch.setattr(service, "refresh_account_credits_best_effort", _fake_refresh)
+
+    # --- quota-rotation cap inputs ---
+    async def _fake_count_submissions(*a, **k):
+        return rotations_so_far
+
+    monkeypatch.setattr(service, "_count_submissions_in_current_round", _fake_count_submissions)
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.generation.generation_settings.get_generation_settings",
+        lambda: SimpleNamespace(auto_retry_max_quota_rotations_per_round=rotation_cap),
+    )
+
+    # --- content-filter retry policy ---
+    monkeypatch.setattr(service, "max_submit_content_filter_retries", lambda: cf_max_retries)
+    monkeypatch.setattr(
+        service, "should_rotate_content_filter_account", lambda n: cf_should_rotate
+    )
+    monkeypatch.setattr(service, "_publish_job_retrying", _noop_async)
+
+    # --- is_final_try: computed in the worker glue, not the service ---
+    monkeypatch.setattr(job_processor, "_is_final_try", lambda ctx: is_final)
 
     # --- account-event sink ---
     monkeypatch.setattr(
@@ -581,3 +615,173 @@ async def test_retryable_provider_error_raises_on_nonfinal(
     _install(monkeypatch, generation=gen, execute_generation=_raise)
     with pytest.raises(ProviderError):
         await _run(gen, job_try=1)  # non-final try → re-raise so ARQ retries
+
+
+# --------------------------------------------------------------------------- #
+# Error-policy sub-branches — quota dispatch
+#
+# These pin the internal branches of the `except ProviderError` block (quota /
+# content-filter) so the eventual _handle_provider_error extraction (plan
+# worker-thin-host-canon slice 3) is mechanically verifiable, not just covered
+# at the terminal-outcome level. credit_hint>0 is what steers a quota error off
+# the free/unlimited "ignored" path into the real exhaust/rotate logic.
+# --------------------------------------------------------------------------- #
+def _raise_quota(**k):
+    raise ProviderQuotaExceededError("pixverse", 10)
+
+
+@pytest.mark.asyncio
+async def test_quota_rotation_requeues_under_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    gen = _make_generation()
+    env = _install(
+        monkeypatch,
+        generation=gen,
+        execute_generation=_raise_quota,
+        credit_hint=1,
+        has_positive=True,  # credits available after refresh → don't mark exhausted
+        rotations_so_far=0,
+        rotation_cap=3,
+    )
+    result = await _run(gen)
+    assert result["status"] == "requeued"
+    assert result["reason"] == "account_quota_exhausted"
+    assert "mark_exhausted" not in env.calls  # had balance after refresh
+    assert "_apply_account_cooldown" in env.calls
+    assert "_release_account_reservation" in env.calls
+    assert "_requeue_generation_for_account_rotation" in env.calls
+
+
+@pytest.mark.asyncio
+async def test_quota_marks_exhausted_when_no_positive_credits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gen = _make_generation()
+    env = _install(
+        monkeypatch,
+        generation=gen,
+        execute_generation=_raise_quota,
+        credit_hint=1,
+        has_positive=False,  # truly dry → mark exhausted (cooldown skipped)
+        rotations_so_far=0,
+    )
+    result = await _run(gen)
+    assert result["status"] == "requeued"
+    assert result["reason"] == "account_quota_exhausted"
+    assert "mark_exhausted" in env.calls
+    assert "_apply_account_cooldown" not in env.calls  # exhausted path skips cooldown
+
+
+@pytest.mark.asyncio
+async def test_quota_cap_reached_marks_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    gen = _make_generation()
+    env = _install(
+        monkeypatch,
+        generation=gen,
+        execute_generation=_raise_quota,
+        credit_hint=1,
+        rotations_so_far=5,  # >= cap → bail rotation, fall through to mark_failed
+        rotation_cap=3,
+    )
+    result = await _run(gen)
+    # quota error is non-retryable → returns (no ARQ retry) after mark_failed
+    assert result["status"] == "failed"
+    assert result["reason"] == "non_retryable_error"
+    assert "mark_failed" in env.calls
+    assert "_requeue_generation_for_account_rotation" not in env.calls
+
+
+@pytest.mark.asyncio
+async def test_quota_free_model_ignored_falls_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gen = _make_generation()
+    env = _install(
+        monkeypatch,
+        generation=gen,
+        execute_generation=_raise_quota,
+        credit_hint=0,  # free/0-cost op → quota error ignored, no exhaust/rotate
+    )
+    result = await _run(gen)
+    assert result["status"] == "failed"
+    assert result["reason"] == "non_retryable_error"
+    assert "mark_failed" in env.calls
+    assert "mark_exhausted" not in env.calls
+    assert "_apply_account_cooldown" not in env.calls
+    assert "_requeue_generation_for_account_rotation" not in env.calls
+
+
+# --------------------------------------------------------------------------- #
+# Error-policy sub-branches — content-filter retryable dispatch
+# --------------------------------------------------------------------------- #
+def _raise_cf_retryable(**k):
+    raise ProviderContentFilteredError("pixverse", "output rejected", retryable=True)
+
+
+@pytest.mark.asyncio
+async def test_content_filter_retryable_same_account_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gen = _make_generation()
+    env = _install(
+        monkeypatch,
+        generation=gen,
+        execute_generation=_raise_cf_retryable,
+        cf_should_rotate=False,  # under the rotate threshold → same-account retry
+        cf_max_retries=3,
+    )
+    result = await _run(gen)
+    assert result["status"] == "requeued"
+    assert result["reason"] == "content_filtered_retry"
+    assert result["retry_attempt"] == 1
+    assert gen.retry_count == 1
+    assert "enqueue_generation_retry_job" in env.calls
+    assert "_requeue_generation_for_account_rotation" not in env.calls
+
+
+@pytest.mark.asyncio
+async def test_content_filter_retryable_rotates_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gen = _make_generation()
+    env = _install(
+        monkeypatch,
+        generation=gen,
+        execute_generation=_raise_cf_retryable,
+        cf_should_rotate=True,  # past threshold → rotate to a different account
+        cf_max_retries=3,
+    )
+    result = await _run(gen)
+    assert result["status"] == "requeued"
+    assert result["reason"] == "content_filtered_account_rotation"
+    assert "_requeue_generation_for_account_rotation" in env.calls
+
+
+@pytest.mark.asyncio
+async def test_content_filter_max_retries_exceeded_marks_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gen = _make_generation(retry_count=5)  # already past the budget
+    env = _install(
+        monkeypatch,
+        generation=gen,
+        execute_generation=_raise_cf_retryable,
+        cf_max_retries=3,
+        is_final=True,  # final attempt → mark failed, then re-raise
+    )
+    with pytest.raises(ProviderContentFilteredError):
+        await _run(gen)
+    assert "mark_failed" in env.calls
+
+
+@pytest.mark.asyncio
+async def test_generic_retryable_final_marks_failed_and_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise(**k):
+        raise ProviderError("transient blip", error_code="provider_unknown", retryable=True)
+
+    gen = _make_generation()
+    env = _install(monkeypatch, generation=gen, execute_generation=_raise, is_final=True)
+    with pytest.raises(ProviderError):
+        await _run(gen)  # final + retryable → mark_failed then raise
+    assert "mark_failed" in env.calls
