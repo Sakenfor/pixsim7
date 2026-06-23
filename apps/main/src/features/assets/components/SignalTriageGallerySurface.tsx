@@ -23,6 +23,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import type { AssetsController } from '../hooks/useAssetsController';
 import type { AssetModel } from '../models/asset';
 
+import { DynamicFilters } from './DynamicFilters';
 import { GalleryGrid, GallerySurfaceShell } from './shared';
 
 export interface SignalTriageContentProps {
@@ -40,25 +41,73 @@ const TRIAGE_QUEUES: { id: TriageQueue; label: string; filter: string }[] = [
   { id: 'overridden', label: 'Decided', filter: 'signal_overridden' },
 ];
 
+/** Registry filter keys the triage surface owns directly — hidden from the shared
+ * DynamicFilters chip bar so they can't fight the queue scope: the three bucket
+ * flags are driven by {@link SignalBucketSwitcher}, and media_type is force-pinned
+ * to `video` by the queue selector (signal scores only exist on videos). */
+const TRIAGE_OWNED_FILTER_KEYS = [
+  'signal_likely_broken',
+  'signal_borderline',
+  'signal_overridden',
+  'signal_likely_clean',
+  'media_type',
+];
+
+/** Segmented control for picking which mutually-exclusive score bucket to triage.
+ * Reusable: the Phase-A shared surface frame can host it in the filter bar. */
+function SignalBucketSwitcher({
+  queue,
+  onSelect,
+}: {
+  queue: TriageQueue;
+  onSelect: (q: TriageQueue) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+        Queue
+      </span>
+      <div className="flex overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-700">
+        {TRIAGE_QUEUES.map((qd) => (
+          <button
+            key={qd.id}
+            type="button"
+            onClick={() => onSelect(qd.id)}
+            className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+              queue === qd.id
+                ? 'bg-accent text-accent-text'
+                : 'bg-white text-neutral-600 hover:bg-neutral-100 dark:bg-neutral-900/60 dark:text-neutral-300 dark:hover:bg-neutral-800'
+            }`}
+          >
+            {qd.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SignalTriageContent({ controller }: SignalTriageContentProps) {
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [queue, setQueue] = useState<TriageQueue>('broken');
 
-  // Start from a CLEAN triage state on mount. The asset filter session
-  // (`assets_filters`) is shared across every gallery surface, so a stale filter
-  // the user left on the main gallery can leak in — combined with the video-only
-  // signal buckets it silently yields an EMPTY queue. The worst offender is
-  // `media_type=image`: it zeroes every bucket, and because this surface hides the
-  // media-type control (`showMediaType={false}`) it's invisible and unclearable
-  // from here. So we always force `media_type: 'video'` — a positive value that
-  // overwrites any persisted/URL image — alongside the bucket flag. Signal scores
-  // only exist on videos, so this never excludes a real candidate.
-  // Switch which bucket we're triaging. The bucket flags are unknown keys (not in
-  // the controller's initialFilters), so replaceFilters does NOT drop the
-  // previously-set one — leaving it on accumulates mutually-exclusive flags (e.g.
-  // broken=≥3 AND borderline=1–2) and silently zeroes the queue. So we set ALL
-  // three flags every time, only the chosen one true (the rest false → no
-  // condition), plus forced video.
+  // Switch which bucket we're triaging, replacing the whole filter slate.
+  //
+  // We set ALL three bucket flags every time (chosen = true, the rest = false),
+  // not just the chosen one. `replaceFilters` resets in-memory state to a clean
+  // slate, but persistence only rewrites the URL/session keys it's handed — a
+  // sibling flag we *omit* would linger in the URL and reappear on the next read.
+  // Sending every key forces it to be cleared. The `false` siblings correctly
+  // mean "no condition" (each backend bucket is `... if v else None`); this
+  // relies on useFilterPersistence coercing the persisted "false" back to a real
+  // boolean, otherwise it reads as a truthy string and all three buckets apply
+  // at once — mutually exclusive, so the queue silently zeroes.
+  //
+  // `media_type: 'video'` is a positive constraint (signal scores only exist on
+  // videos) that also overwrites any stale persisted media_type leaking in from
+  // the shared `assets_filters` session — important because the media-type key is
+  // hidden from this surface's chip bar (see TRIAGE_OWNED_FILTER_KEYS), so it's
+  // otherwise unclearable here.
   const selectQueue = useCallback(
     (q: TriageQueue) => {
       setQueue(q);
@@ -131,22 +180,6 @@ export function SignalTriageContent({ controller }: SignalTriageContentProps) {
   const headerActions = useMemo(
     () => (
       <div className="flex items-center gap-3 text-sm">
-        <div className="flex overflow-hidden rounded-md border border-neutral-300 dark:border-neutral-600">
-          {TRIAGE_QUEUES.map((qd) => (
-            <button
-              key={qd.id}
-              type="button"
-              onClick={() => selectQueue(qd.id)}
-              className={`px-2.5 py-1 text-xs font-medium transition-colors ${
-                queue === qd.id
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-transparent text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'
-              }`}
-            >
-              {qd.label}
-            </button>
-          ))}
-        </div>
         <span className="text-neutral-600 dark:text-neutral-400">
           Remaining: {controller.assets.length}
           {controller.hasMore ? '+' : ''}
@@ -156,7 +189,20 @@ export function SignalTriageContent({ controller }: SignalTriageContentProps) {
         </span>
       </div>
     ),
-    [queue, selectQueue, controller.assets.length, controller.hasMore],
+    [controller.assets.length, controller.hasMore],
+  );
+
+  // Filter panel: the queue segmented control + the same registry-driven chip bar
+  // the default gallery uses (minus triage-owned keys), so the filter UX matches.
+  const filtersContent = (
+    <div className="space-y-3">
+      <SignalBucketSwitcher queue={queue} onSelect={selectQueue} />
+      <DynamicFilters
+        filters={controller.filters}
+        onFiltersChange={(f) => controller.setFilters(f)}
+        exclude={TRIAGE_OWNED_FILTER_KEYS}
+      />
+    </div>
   );
 
   const renderCard = useCallback(
@@ -234,12 +280,7 @@ export function SignalTriageContent({ controller }: SignalTriageContentProps) {
       title="Signal Triage"
       subtitle="Validate the broken-video heuristic. Keep = override as not broken; Flag = confirm bad."
       headerActions={headerActions}
-      filters={controller.filters}
-      onFiltersChange={(updates) => controller.setFilters({ ...updates })}
-      showSearch
-      showMediaType={false}
-      showSort
-      filtersLayout="horizontal"
+      filtersContent={filtersContent}
       error={controller.error}
       loading={controller.loading}
       itemCount={controller.assets.length}

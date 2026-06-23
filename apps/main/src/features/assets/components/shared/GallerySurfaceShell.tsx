@@ -52,6 +52,14 @@ export interface GallerySurfaceShellProps {
   filtersHeader?: ReactNode;
   /** Additional content to render after filters (e.g., "Select All" button) */
   filtersActions?: ReactNode;
+  /**
+   * Custom filter UI rendered inside the filters panel in place of the built-in
+   * plain-select {@link GalleryFilters}. Lets a surface drop in the registry-driven
+   * `DynamicFilters` chip bar (matching the default gallery) without coupling this
+   * shell to it. When provided, the `show*`/`providers`/`extraSortOptions` props are
+   * ignored. `filters`/`onFiltersChange` become optional in this mode.
+   */
+  filtersContent?: ReactNode;
 
   // Content between filters and grid
   /** Selection summary or other content above the grid */
@@ -123,6 +131,7 @@ export function GallerySurfaceShell({
   filtersLayout = 'horizontal',
   filtersHeader,
   filtersActions,
+  filtersContent,
   selectionSummary,
   error,
   loading = false,
@@ -136,7 +145,7 @@ export function GallerySurfaceShell({
   children,
   className = '',
 }: GallerySurfaceShellProps) {
-  const showFilters = filters && onFiltersChange;
+  const showFilters = filtersContent || (filters && onFiltersChange);
   const showEmpty = !loading && itemCount === 0 && emptyState;
   const showLoading = loading && itemCount === 0 && loadingContent;
 
@@ -165,18 +174,22 @@ export function GallerySurfaceShell({
               {filtersActions}
             </div>
           )}
-          <GalleryFilters
-            filters={filters}
-            onFiltersChange={onFiltersChange}
-            showSearch={showSearch}
-            showMediaType={showMediaType}
-            showSort={showSort}
-            showProvider={showProvider}
-            showProviderStatus={showProviderStatus}
-            providers={providers}
-            extraSortOptions={extraSortOptions}
-            layout={filtersLayout}
-          />
+          {filtersContent
+            ? filtersContent
+            : filters && onFiltersChange && (
+                <GalleryFilters
+                  filters={filters}
+                  onFiltersChange={onFiltersChange}
+                  showSearch={showSearch}
+                  showMediaType={showMediaType}
+                  showSort={showSort}
+                  showProvider={showProvider}
+                  showProviderStatus={showProviderStatus}
+                  providers={providers}
+                  extraSortOptions={extraSortOptions}
+                  layout={filtersLayout}
+                />
+              )}
         </div>
       )}
 
