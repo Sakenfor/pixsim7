@@ -14,6 +14,9 @@ type AssetUpdateCallback = (asset: AssetResponse) => void;
 type AssetDeleteCallback = (assetId: number | string) => void;
 type RetryCallback = () => void;
 type OpenToolsPanelCallback = (assetIds: number[]) => void;
+type AssetViewCallback = (assetId: number | string) => void;
+type AssetPlayCallback = (assetId: number | string) => void;
+type AssetCompleteCallback = (assetId: number | string) => void;
 type ResyncCallback = () => void;
 
 class AssetEventEmitter {
@@ -23,6 +26,9 @@ class AssetEventEmitter {
   private resyncListeners: Set<ResyncCallback> = new Set();
   private retryListeners: Set<RetryCallback> = new Set();
   private openToolsPanelListeners: Set<OpenToolsPanelCallback> = new Set();
+  private viewListeners: Set<AssetViewCallback> = new Set();
+  private playListeners: Set<AssetPlayCallback> = new Set();
+  private completeListeners: Set<AssetCompleteCallback> = new Set();
 
   /**
    * Subscribe to new asset events
@@ -175,6 +181,83 @@ class AssetEventEmitter {
         callback(validIds);
       } catch (err) {
         console.error('[AssetEvents] Open tools panel listener error:', err);
+      }
+    });
+  }
+
+  /**
+   * Subscribe to asset "viewed" events — fired when an asset becomes the
+   * current viewed asset. High-frequency (every navigation); subscribers
+   * should debounce. Used by the engagement store to track "seen" assets.
+   */
+  subscribeToViews(callback: AssetViewCallback): () => void {
+    this.viewListeners.add(callback);
+    return () => {
+      this.viewListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Emit an asset "viewed" event. Intentionally not logged — fires on every
+   * navigation (incl. wheel scroll) and would flood the console.
+   */
+  emitAssetViewed(assetId: number | string): void {
+    this.viewListeners.forEach((callback) => {
+      try {
+        callback(assetId);
+      } catch (err) {
+        console.error('[AssetEvents] View listener error:', err);
+      }
+    });
+  }
+
+  /**
+   * Subscribe to asset "played" events — fired once a video plays past a short
+   * watch threshold (see activeVideoRegistry).
+   */
+  subscribeToPlays(callback: AssetPlayCallback): () => void {
+    this.playListeners.add(callback);
+    return () => {
+      this.playListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Emit an asset "played" event.
+   */
+  emitAssetPlayed(assetId: number | string): void {
+    console.log('[AssetEvents] Asset played:', assetId);
+    this.playListeners.forEach((callback) => {
+      try {
+        callback(assetId);
+      } catch (err) {
+        console.error('[AssetEvents] Play listener error:', err);
+      }
+    });
+  }
+
+  /**
+   * Subscribe to asset "completed" events — fired once playback reaches the
+   * end (or near it; see activeVideoRegistry's completion fraction). Distinct
+   * from "played" so the UI can tell started-but-abandoned from watched-fully.
+   */
+  subscribeToCompletions(callback: AssetCompleteCallback): () => void {
+    this.completeListeners.add(callback);
+    return () => {
+      this.completeListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Emit an asset "completed" event.
+   */
+  emitAssetCompleted(assetId: number | string): void {
+    console.log('[AssetEvents] Asset completed:', assetId);
+    this.completeListeners.forEach((callback) => {
+      try {
+        callback(assetId);
+      } catch (err) {
+        console.error('[AssetEvents] Complete listener error:', err);
       }
     });
   }
