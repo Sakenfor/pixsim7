@@ -214,10 +214,23 @@ export function RecentStripPanel() {
   const navigateTo = useAssetViewerStore((s) => s.navigateTo);
   const navigateToAssetId = useAssetViewerStore((s) => s.navigateToAssetId);
 
-  const assets: ViewerAsset[] = useMemo(
+  const liveAssets: ViewerAsset[] = useMemo(
     () => (activeScopeId ? scopes[activeScopeId]?.assets ?? [] : []),
     [scopes, activeScopeId],
   );
+
+  // Freeze the rendered list (and thus every thumb's absolute position) while a
+  // pointer is down on the strip. Each landed asset prepends at index 0, which
+  // shifts every existing thumb one stride to the right; without this freeze a
+  // landing between pointerdown and pointerup moves the clicked thumb out from
+  // under the cursor, so the `click` never fires on that button and the asset
+  // "doesn't open". The freeze snapshot equals the live list at freeze time, so
+  // there's no visual jump on press — positions only catch up on release.
+  // Mirrors the gallery's pointer-down prepend suppression (see useAssets).
+  const [pointerActive, setPointerActive] = useState(false);
+  const frozenAssetsRef = useRef<ViewerAsset[]>(liveAssets);
+  if (!pointerActive) frozenAssetsRef.current = liveAssets;
+  const assets = pointerActive ? frozenAssetsRef.current : liveAssets;
 
   const currentId = currentAsset?.id;
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -289,10 +302,34 @@ export function RecentStripPanel() {
     return { firstIndex: first, lastIndex: last, totalWidth: total };
   }, [assets.length, itemSize, viewportWidth, scrollLeft]);
 
+  // Hold the rendered list stable while the user interacts with the strip
+  // (click, scroll-drag, gesture). Freeze on pointerdown over the strip; release
+  // on the next pointerup/cancel anywhere (the press may end off the element).
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const onDown = () => setPointerActive(true);
+    el.addEventListener('pointerdown', onDown, true);
+    return () => el.removeEventListener('pointerdown', onDown, true);
+  }, []);
+  useEffect(() => {
+    if (!pointerActive) return;
+    const release = () => setPointerActive(false);
+    window.addEventListener('pointerup', release, true);
+    window.addEventListener('pointercancel', release, true);
+    return () => {
+      window.removeEventListener('pointerup', release, true);
+      window.removeEventListener('pointercancel', release, true);
+    };
+  }, [pointerActive]);
+
   // Auto-follow: center the active thumbnail when it changes. Reads the latest
   // asset list via ref so this only fires on a current-id change, matching the
-  // prior scrollIntoView behaviour (not on every new asset arrival).
+  // prior scrollIntoView behaviour (not on every new asset arrival). Suppressed
+  // while a pointer is down so an auto-scroll can't yank the strip out from
+  // under an in-progress click/drag; re-runs on release to recentre.
   useEffect(() => {
+    if (pointerActive) return;
     const el = scrollRef.current;
     if (!el || itemSize <= 0) return;
     const idx = assetsRef.current.findIndex((a) => a.id === currentId);
@@ -300,7 +337,7 @@ export function RecentStripPanel() {
     const left = STRIP_PAD + idx * (itemSize + STRIP_GAP);
     const target = left - (el.clientWidth - itemSize) / 2;
     el.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
-  }, [currentId, itemSize]);
+  }, [currentId, itemSize, pointerActive]);
 
   useEffect(() => {
     const el = wrapperRef.current;
