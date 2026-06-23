@@ -405,8 +405,17 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
       }),
     );
 
+    const succeeded = results.length - failures;
+
     if (failures > 0) {
       toast.error(`Failed to remove ${failures} asset(s) from provider`);
+    }
+    if (succeeded > 0) {
+      toast.success(
+        succeeded === 1
+          ? 'Removed from provider'
+          : `Removed ${succeeded} asset(s) from provider`,
+      );
     }
   }, [deleteModalAssets, closeDeleteModal, toast]);
 

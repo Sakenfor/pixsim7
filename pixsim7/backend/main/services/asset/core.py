@@ -4,7 +4,6 @@ Asset Core Service
 Core CRUD operations for assets: creation, retrieval, search, listing, and deletion.
 """
 from typing import Optional, List
-from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +13,6 @@ from pixsim7.backend.main.shared.errors import (
     InvalidOperationError,
 )
 from pixsim7.backend.main.shared.actor import resolve_effective_user_id
-from pixsim7.backend.main.shared.schemas.media_metadata import RecognitionMetadata
 from pixsim7.backend.main.infrastructure.events.bus import event_bus
 from pixsim7.backend.main.services.asset.events import ASSET_CREATED, ASSET_DELETED
 from pixsim7.backend.main.services.user.user_service import UserService
@@ -90,31 +88,6 @@ class AssetCoreService(AssetCreationMixin, AssetGroupsMixin, AssetDeletionMixin)
             if owner_user_id is None or asset.user_id != owner_user_id:
                 raise InvalidOperationError("Cannot access other users' assets")
 
-        return asset
-
-    # ===== RECOGNITION / METADATA HELPERS =====
-
-    async def update_recognition_metadata(
-        self,
-        asset: Asset,
-        recognition: RecognitionMetadata,
-    ) -> Asset:
-        """
-        Merge recognition metadata into asset.media_metadata.
-
-        This is intended to be used by offline analysis jobs that perform
-        face recognition, action recognition, etc. It keeps the structure
-        flexible and additive.
-        """
-        meta = dict(asset.media_metadata or {})
-        meta["faces"] = [f.model_dump() for f in recognition.faces]
-        meta["actions"] = [a.model_dump() for a in recognition.actions]
-        meta["interactions"] = [i.model_dump() for i in recognition.interactions]
-        asset.media_metadata = meta
-        asset.last_accessed_at = datetime.now(timezone.utc)
-        self.db.add(asset)
-        await self.db.commit()
-        await self.db.refresh(asset)
         return asset
 
     # ===== TAG MANAGEMENT =====

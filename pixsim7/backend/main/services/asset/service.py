@@ -68,13 +68,15 @@ class AssetService:
     async def delete_asset(self, *args, **kwargs):
         return await self._core.delete_asset(*args, **kwargs)
 
+    async def delete_asset_from_provider_only(self, *args, **kwargs):
+        return await self._core.delete_asset_from_provider_only(*args, **kwargs)
+
     # ===== Enrichment (delegate to AssetEnrichmentService) =====
 
     async def update_recognition_metadata(self, *args, **kwargs):
         return await self._enrichment.update_recognition_metadata(*args, **kwargs)
 
-    async def _extract_and_register_embedded(self, *args, **kwargs):
-        return await self._enrichment._extract_and_register_embedded(*args, **kwargs)
+    # ===== Composed Operations (use multiple sub-services) =====
 
     async def create_asset_from_paused_frame(
         self,
@@ -306,12 +308,6 @@ class AssetService:
 
     async def get_asset_for_provider(self, *args, **kwargs):
         return await self._sync.get_asset_for_provider(*args, **kwargs)
-
-    async def _upload_to_provider(self, *args, **kwargs):
-        return await self._sync._upload_to_provider(*args, **kwargs)
-
-    async def _download_asset_to_temp(self, *args, **kwargs):
-        return await self._sync._download_asset_to_temp(*args, **kwargs)
 
     async def cache_provider_upload(self, *args, **kwargs):
         return await self._sync.cache_provider_upload(*args, **kwargs)
