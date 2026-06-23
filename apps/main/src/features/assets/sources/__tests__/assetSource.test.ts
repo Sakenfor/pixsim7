@@ -64,7 +64,7 @@ describe('AssetSource seam parity', () => {
       expect(local.identity.typeId).toBe('local-fs');
       expect(local.capabilities).toEqual({
         fetchMode: 'client-loaded',
-        canIngest: true,
+        canIngest: false,
         canHash: true,
         hasLibraryStatus: true,
         hasFolders: true,
@@ -73,8 +73,8 @@ describe('AssetSource seam parity', () => {
       expect(typeof local.getAll).toBe('function');
       expect(typeof local.subscribe).toBe('function');
       expect(local.list).toBeUndefined();
-      // gated capabilities present because their flags are true
-      expect(typeof local.ingest).toBe('function');
+      // ingest is gated off (uploads live in the controller, not the adapter)
+      expect(local.ingest).toBeUndefined();
       expect(typeof local.hash).toBe('function');
       expect(typeof local.libraryStatus).toBe('function');
       expect(local.lifecycle.folders).toBeDefined();

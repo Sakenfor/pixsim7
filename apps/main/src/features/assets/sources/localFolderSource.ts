@@ -1,13 +1,18 @@
 /**
  * LocalFolderSource — `AssetSource` adapter over the local-folders stack.
  *
- * Wraps the `useLocalFolders` zustand store plus the pure hashing/upload
- * primitives behind the data-layer `AssetSource` seam. It is an *imperative*
- * core (no React) so that:
+ * Wraps the `useLocalFolders` zustand store plus the pure hashing primitives
+ * behind the data-layer `AssetSource` seam. It is an *imperative* core (no React)
+ * so that:
  *   - the gallery can consume it via useSyncExternalStore (`getAll`/`subscribe`),
  *   - `useLocalFoldersController` can be reduced to a thin React/UI wrapper that
  *     delegates here (the `retire-duplicated-view-logic` checkpoint),
  *   - the same shape is what MinIO/remote-root browsing plugs into later.
+ *
+ * Upload/ingest is intentionally NOT implemented here yet: it still lives in
+ * `useLocalFoldersController` (`uploadOneInternal`). An earlier `ingest` impl was
+ * a verbatim fork of that controller path and drifted, so it was removed; re-add
+ * it only when uploads genuinely migrate onto the adapter.
  *
  * Scope note (source-adapter-boundary): this defines the seam and the imperative
  * data operations. UI-only concerns that still live in the controller — preview
@@ -16,8 +21,6 @@
  * primitives and migrate with the surface collapse.
  */
 
-import { uploadAsset } from '@lib/api/upload';
-
 import { setHashWorkerPoolSize } from '../lib/hashWorkerManager';
 import {
   checkHashesAgainstBackend,
@@ -25,14 +28,11 @@ import {
   hasValidStoredHash,
   scheduleAssetsForHashing,
 } from '../lib/localHashing';
-import { extractUploadError } from '../lib/uploadActions';
 import { useLocalFolderSettingsStore } from '../stores/localFolderSettingsStore';
 import { useLocalFolders } from '../stores/localFoldersStore';
 import type { LocalAssetModel } from '../types/localFolderMeta';
 
 import type {
-  AssetIngestOptions,
-  AssetIngestResult,
   AssetLibraryStatus,
   AssetSource,
   AssetSourceLifecycle,
@@ -162,100 +162,6 @@ async function resolveLibraryStatus(keys: string[]): Promise<Record<string, Asse
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// ingest — bring one local asset into the library/provider. Ported from the
-// controller's uploadOneInternal, minus the React in-memory state mirrors
-// (the store writes here are the durable record).
-// ---------------------------------------------------------------------------
-async function ingestKey(key: string, options?: AssetIngestOptions): Promise<AssetIngestResult> {
-  const state = useLocalFolders.getState();
-  const asset = state.assets[key];
-  if (!asset) throw new Error(`[LocalFolderSource] unknown asset key: ${key}`);
-
-  const settingsProviderId = useLocalFolderSettingsStore.getState().providerId;
-  const effectiveProviderId = options?.providerId ?? settingsProviderId;
-  const saveTarget: 'provider' | 'library' =
-    options?.saveTarget ?? (effectiveProviderId ? 'provider' : 'library');
-  const targetProviderId = saveTarget === 'provider' ? (effectiveProviderId || 'local') : 'local';
-
-  try {
-    const file = await state.getFileForAsset(asset);
-    if (!file) throw new Error('Unable to read local file');
-
-    let sha256: string | undefined;
-    if (crypto.subtle) {
-      try {
-        sha256 = await ensureLocalAssetSha256(asset, file, state.updateAssetHash);
-      } catch (hashError) {
-        console.warn('[LocalFolderSource] failed to hash before upload', asset.name, hashError);
-      }
-    }
-
-    const folderName = state.folders.find((f) => f.id === asset.folderId)?.name;
-    const data = await uploadAsset({
-      file,
-      filename: asset.name,
-      saveTarget,
-      providerId: saveTarget === 'provider' ? (effectiveProviderId || undefined) : undefined,
-      uploadMethod: 'local',
-      uploadContext: {
-        client: 'web_app',
-        feature: 'local_folders',
-        save_target: saveTarget,
-        ...(folderName ? { source_folder: folderName } : undefined),
-      },
-      sourceFolderId: asset.folderId,
-      sourceRelativePath: asset.relativePath,
-    });
-
-    const note = data?.note;
-    const uploadedAssetId = typeof data?.asset_id === 'number' ? data.asset_id : undefined;
-
-    // Detect a silent provider→library fallback so the caller can surface it.
-    if (saveTarget === 'provider') {
-      const expected = String(effectiveProviderId || '').trim().toLowerCase();
-      const returned = String(data?.provider_id || '').trim().toLowerCase();
-      const lowerNote = String(note || '').toLowerCase();
-      const fellBack =
-        lowerNote.includes('provider upload failed') ||
-        returned === 'local' ||
-        (!!expected && !!returned && returned !== expected);
-      if (fellBack) {
-        throw new Error(
-          note && lowerNote.includes('provider upload failed')
-            ? note
-            : `Upload to ${effectiveProviderId || 'provider'} did not complete.`,
-        );
-      }
-    }
-
-    // Durable bookkeeping — best effort, never reverts the successful upload.
-    try {
-      if (sha256) {
-        await state.setUploadRecordByHash(sha256, {
-          status: 'success',
-          note,
-          provider_id: targetProviderId,
-          asset_id: uploadedAssetId,
-          uploaded_at: Date.now(),
-        });
-      }
-      await state.updateAssetUploadStatus(asset.key, 'success', note, {
-        providerId: targetProviderId,
-        assetId: uploadedAssetId,
-      });
-    } catch (bookkeepingError) {
-      console.warn('[LocalFolderSource] post-upload bookkeeping failed', asset.name, bookkeepingError);
-    }
-
-    return { assetId: uploadedAssetId, providerId: data?.provider_id ?? targetProviderId, note };
-  } catch (e) {
-    const errorMsg = extractUploadError(e);
-    await state.updateAssetUploadStatus(asset.key, 'error', errorMsg);
-    throw e;
-  }
-}
-
 const lifecycle: AssetSourceLifecycle = {
   load: () => useLocalFolders.getState().loadPersisted(),
   refresh: async () => {
@@ -292,7 +198,11 @@ export function createLocalFolderSource(instanceId: string = LOCAL_TYPE_ID): Ass
     },
     capabilities: {
       fetchMode: 'client-loaded',
-      canIngest: true,
+      // Ingest (upload) stays in `useLocalFoldersController`; the source seam is
+      // read-only here. Re-add an `ingest` impl when uploads actually migrate
+      // onto the adapter (see retire-duplicated-view-logic) rather than shadowing
+      // the controller's evolving upload path.
+      canIngest: false,
       canHash: true,
       hasLibraryStatus: true,
       hasFolders: true,
@@ -303,7 +213,6 @@ export function createLocalFolderSource(instanceId: string = LOCAL_TYPE_ID): Ass
     file: (key) => useLocalFolders.getState().getFileForAsset(key),
     hash: hashKeys,
     libraryStatus: resolveLibraryStatus,
-    ingest: ingestKey,
     lifecycle,
   };
 }
