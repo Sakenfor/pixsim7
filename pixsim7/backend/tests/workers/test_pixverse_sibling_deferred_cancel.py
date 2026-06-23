@@ -204,6 +204,172 @@ async def test_deferred_cancel_noop_when_no_cancel_pending(monkeypatch):
 
 
 # --------------------------------------------------------------------------
+# Within-grace periodic sibling sweep — belt-and-suspenders for cutoff misses
+# --------------------------------------------------------------------------
+
+
+class _ResultHasJob:
+    def first(self):
+        return (123,)  # truthy row -> has_provider_job=True
+
+
+class _FakeDBWithProviderJob(_FakeDB):
+    async def execute(self, _stmt):
+        return _ResultHasJob()
+
+
+def _within_grace_gen_and_model():
+    recent = datetime.now(timezone.utc) - timedelta(seconds=5)
+    gen = SimpleNamespace(
+        id=987654, deferred_action="cancel", operation_type=_IMAGE_OP
+    )
+    model = SimpleNamespace(
+        id=987654,
+        deferred_action="cancel",
+        cancel_requested_at=recent,  # well within the 120s pixverse-image grace
+        provider_id="pixverse",
+        operation_type=_IMAGE_OP,
+    )
+    return gen, model
+
+
+@pytest.fixture(autouse=True)
+def _clear_sweep_deadlines():
+    sp._cancel_grace_sibling_sweep_deadline.clear()
+    yield
+    sp._cancel_grace_sibling_sweep_deadline.clear()
+
+
+@pytest.mark.asyncio
+async def test_within_grace_first_encounter_stamps_deadline_without_sweeping(monkeypatch):
+    gen, model = _within_grace_gen_and_model()
+    db = _FakeDBWithProviderJob(model)
+    rec = _Recorder()
+
+    async def _boom(*_a, **_k):
+        raise AssertionError("sweep must not run on first encounter")
+
+    monkeypatch.setattr(sp, "_maybe_recover_pixverse_image_sibling", _boom)
+
+    out = await sp._maybe_finalize_deferred_cancel(
+        db,
+        generation=gen,
+        account=SimpleNamespace(id=2),
+        generation_service=rec,
+        account_service=rec,
+    )
+
+    assert out is False
+    assert gen.id in sp._cancel_grace_sibling_sweep_deadline
+    assert rec.calls == []
+
+
+@pytest.mark.asyncio
+async def test_within_grace_past_deadline_triggers_sweep(monkeypatch):
+    gen, model = _within_grace_gen_and_model()
+    db = _FakeDBWithProviderJob(model)
+    rec = _Recorder()
+
+    # Pre-stamp a deadline that has already passed.
+    import time as _time
+    sp._cancel_grace_sibling_sweep_deadline[gen.id] = _time.monotonic() - 1.0
+
+    sweep_calls: list[int] = []
+
+    async def _sweep(_db, *, generation_id, operation_type, provider_id, selected_submission_id):
+        sweep_calls.append(generation_id)
+        return False  # no recovery this round
+
+    monkeypatch.setattr(sp, "_maybe_recover_pixverse_image_sibling", _sweep)
+
+    out = await sp._maybe_finalize_deferred_cancel(
+        db,
+        generation=gen,
+        account=SimpleNamespace(id=2),
+        generation_service=rec,
+        account_service=rec,
+    )
+
+    assert out is False
+    assert sweep_calls == [gen.id]
+    # Deadline rolled forward, not removed.
+    assert sp._cancel_grace_sibling_sweep_deadline[gen.id] > _time.monotonic()
+
+
+@pytest.mark.asyncio
+async def test_within_grace_sweep_recovery_clears_deadline(monkeypatch):
+    gen, model = _within_grace_gen_and_model()
+    db = _FakeDBWithProviderJob(model)
+    rec = _Recorder()
+
+    import time as _time
+    sp._cancel_grace_sibling_sweep_deadline[gen.id] = _time.monotonic() - 1.0
+
+    async def _recovered(*_a, **_k):
+        return True
+
+    monkeypatch.setattr(sp, "_maybe_recover_pixverse_image_sibling", _recovered)
+
+    out = await sp._maybe_finalize_deferred_cancel(
+        db,
+        generation=gen,
+        account=SimpleNamespace(id=2),
+        generation_service=rec,
+        account_service=rec,
+    )
+
+    assert out is False  # re-armed, keep polling
+    assert gen.id not in sp._cancel_grace_sibling_sweep_deadline
+    assert rec.calls == []  # no finalize
+
+
+@pytest.mark.asyncio
+async def test_within_grace_skips_sweep_for_non_pixverse(monkeypatch):
+    gen, model = _within_grace_gen_and_model()
+    model.provider_id = "fal"  # non-pixverse → sweep gated off
+    db = _FakeDBWithProviderJob(model)
+    rec = _Recorder()
+
+    async def _boom(*_a, **_k):
+        raise AssertionError("sweep must not run for non-pixverse provider")
+
+    monkeypatch.setattr(sp, "_maybe_recover_pixverse_image_sibling", _boom)
+
+    out = await sp._maybe_finalize_deferred_cancel(
+        db,
+        generation=gen,
+        account=SimpleNamespace(id=2),
+        generation_service=rec,
+        account_service=rec,
+    )
+
+    assert out is False
+    # No deadline stamped because the periodic-sweep gate didn't fire.
+    assert gen.id not in sp._cancel_grace_sibling_sweep_deadline
+
+
+@pytest.mark.asyncio
+async def test_deadline_cleared_when_cancel_no_longer_pending(monkeypatch):
+    # A gen that previously stamped a deadline but whose deferred_action got
+    # cleared (e.g. by re-arm or by the COMPLETED branch) should drop the
+    # leftover entry on the next finalize call.
+    import time as _time
+    gen = SimpleNamespace(id=555, deferred_action=None, operation_type=_IMAGE_OP)
+    sp._cancel_grace_sibling_sweep_deadline[555] = _time.monotonic() + 60.0
+
+    out = await sp._maybe_finalize_deferred_cancel(
+        _FakeDB(None),
+        generation=gen,
+        account=SimpleNamespace(id=2),
+        generation_service=_Recorder(),
+        account_service=_Recorder(),
+    )
+
+    assert out is False
+    assert 555 not in sp._cancel_grace_sibling_sweep_deadline
+
+
+# --------------------------------------------------------------------------
 # _handle_no_submission_case — the cancel-before-submission chokepoint
 # --------------------------------------------------------------------------
 
