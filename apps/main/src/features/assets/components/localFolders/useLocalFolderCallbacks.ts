@@ -193,7 +193,10 @@ export function useLocalFolderCallbacks({
   );
 
   const handleUploadToProvider = useCallback(
-    async (asset: LocalAssetModel, providerId: string) => {
+    async (asset: LocalAssetModel, providerId: string, opts?: { silent?: boolean }) => {
+      // `silent` is used by batch uploads: suppress the per-item toast and
+      // rethrow on failure so the caller can aggregate one summary toast.
+      const silent = opts?.silent ?? false;
       try {
         let assetId: number | undefined;
         if (providerId === 'library') {
@@ -202,11 +205,11 @@ export function useLocalFolderCallbacks({
           } else {
             await controllerUploadOne(asset);
           }
-          toast.success('Saved to library');
+          if (!silent) toast.success('Saved to library');
         } else {
           const result = await controller.uploadOneToProvider(asset, providerId);
           assetId = result?.asset_id;
-          toast.success(`Uploaded to ${resolveProviderLabel(providerId)}`);
+          if (!silent) toast.success(`Uploaded to ${resolveProviderLabel(providerId)}`);
         }
         // Notify gallery so the updated asset reflects the new provider upload status
         if (assetId) {
@@ -215,6 +218,7 @@ export function useLocalFolderCallbacks({
           } catch { /* best-effort */ }
         }
       } catch (e: unknown) {
+        if (silent) throw e;
         toast.error(extractUploadError(e));
       }
     },
