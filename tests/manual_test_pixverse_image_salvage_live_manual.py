@@ -148,6 +148,7 @@ from pixsim7.backend.main.services.provider.early_cdn import (
 )
 from pixsim7.backend.main.services.provider.adapters.pixverse_status import (
     _map_pixverse_status_for,
+    _scan_image_list,
 )
 from pixsim7.backend.main.services.provider.provider_service import (
     _try_pixverse_image_cdn_salvage,
@@ -305,6 +306,10 @@ async def _submit_and_poll(
     last: dict = {}
     seen: list[str] = []
     pre_url: Optional[str] = None  # latest real URL seen across ANY poll
+    # Distinct URLs / thumbs observed across the poll lifetime — Phase B
+    # uses these for the URL-drift and thumbnail-probe observations.
+    urls_seen: list[str] = []
+    thumbs_seen: list[str] = []
     while time.monotonic() < deadline:
         await asyncio.sleep(POLL_INTERVAL_SEC)
         try:
@@ -315,14 +320,24 @@ async def _submit_and_poll(
         fields = _extract_image_fields(payload)
         mapped = _map_pixverse_status_for(payload, is_image=True)
         url = fields["url"]
-        if url and str(url).startswith("http") and not is_pixverse_placeholder_url(url):
-            pre_url = url  # mirrors submission.response URL retention
+        thumb = fields.get("thumb")
+        if url and str(url).startswith("http"):
+            if url not in urls_seen:
+                urls_seen.append(url)
+            if not is_pixverse_placeholder_url(url):
+                pre_url = url  # mirrors submission.response URL retention
+        if thumb and isinstance(thumb, str) and thumb.startswith("http"):
+            if thumb not in thumbs_seen:
+                thumbs_seen.append(thumb)
         last = {
             "job_id": job_id,
             "raw_status": fields["raw_status"],
             "mapped_status": mapped,
             "url": url,
             "pre_url": pre_url,
+            "thumb": thumb,
+            "urls_seen": urls_seen,
+            "thumbs_seen": thumbs_seen,
             "raw_payload": payload,
         }
         tag = str(fields["raw_status"])
@@ -489,6 +504,212 @@ async def _run_phase_a(client: Any) -> bool:
 
     _log(f"[{_ts()}] [A] PASS — COMPLETED, CDN URL serves (HEAD 200).")
     return True
+
+
+async def _cdn_get_probe(url: str) -> Optional[bool]:
+    """Streaming GET probe — same semantics as ``cdn_head_probe`` but uses
+    GET so we can spot CDN-edges that return HEAD-404 during propagation
+    while the object is already GET-200 retrievable.  Streams to avoid
+    downloading the body; we only inspect the response code.
+    """
+    import httpx as _httpx
+
+    if not url or not url.startswith(("http://", "https://")):
+        return None
+    try:
+        async with _httpx.AsyncClient(
+            timeout=4.0,
+            follow_redirects=True,
+            headers={"User-Agent": "PixSim7/1.0"},
+        ) as cli:
+            async with cli.stream("GET", url) as r:
+                code = r.status_code
+        if 200 <= code < 300:
+            return True
+        if 400 <= code < 500:
+            return False
+        return None
+    except Exception:
+        return None
+
+
+async def _probe_with_get_fallback(url: str) -> dict:
+    """HEAD then optional GET when HEAD is not a positive 200.  Returns
+    ``{'head': bool|None, 'get': bool|None|'-', 'differs': bool}``.  GET
+    is skipped (returned as ``'-'``) when HEAD is already True — no point
+    consuming bytes to re-confirm a positive.  ``differs`` is True iff
+    HEAD said no (or inconclusive) but GET said yes — the interesting
+    signal that a CDN propagation gap would mask the retrievable object.
+    """
+    head = await cdn_head_probe(url)
+    if head is True:
+        return {"head": True, "get": "-", "differs": False}
+    get_res = await _cdn_get_probe(url)
+    return {
+        "head": head,
+        "get": get_res,
+        "differs": get_res is True,
+    }
+
+
+def _fmt_probe(res: dict) -> str:
+    """Format a ``_probe_with_get_fallback`` result for a log line."""
+    return (
+        f"HEAD={res['head']!r} GET={res['get']!r}"
+        + ("  ⚠ HEAD/GET disagree" if res["differs"] else "")
+    )
+
+
+async def _observe_extra_recovery_paths(
+    tag: str, client: Any, result: dict
+) -> None:
+    """Diagnostic probes beyond the production salvage path.  Purely
+    observational — not asserted.  Answers four questions:
+
+    1. Does the THUMBNAIL CDN object HEAD-serve when the main one might not?
+       The salvage only probes the main render URL; a separate thumbnail
+       object surviving moderation is evidence the render happened and
+       could be a fallback retrieval path.
+    2. Does ANY EARLIER URL seen across polls HEAD-serve?  Production's
+       ``submission.response`` retains only the latest URL; if Pixverse
+       swaps URLs across polls and the last one 404s while an earlier
+       one serves, the salvage misses it.
+    3. Does the main candidate URL eventually 200 if we re-probe over
+       30s+ ?  Validates whether the new FILTERED 30s deferral window
+       is roughly right, too tight, or too loose.
+    4. Does ``check_image_status_from_list`` (the personal-image-list
+       endpoint, a different Pixverse API than ``get_image``) surface a
+       URL when ``get_image`` returns ``url=None`` for terminal-FILTERED?
+       That's a forward-path URL source the production salvage doesn't
+       currently consult on FILTERED.
+    """
+    candidate = result.get("url") or result.get("pre_url")
+    urls_seen: list[str] = result.get("urls_seen") or []
+    thumbs_seen: list[str] = result.get("thumbs_seen") or []
+    job_id = result.get("job_id")
+
+    _log(f"[{_ts()}] [{tag}] --- observational extras ---")
+
+    # (1) Thumbnails.
+    if thumbs_seen:
+        for t in thumbs_seen:
+            if (
+                isinstance(t, str)
+                and t.startswith("http")
+                and not is_pixverse_placeholder_url(t)
+            ):
+                probe = await _probe_with_get_fallback(t)
+                _log(
+                    f"[{_ts()}] [{tag}] (1) thumb {_fmt_probe(probe)}  url={t}"
+                )
+            else:
+                _log(
+                    f"[{_ts()}] [{tag}] (1) thumb skipped (placeholder/non-http)  url={t}"
+                )
+    else:
+        _log(f"[{_ts()}] [{tag}] (1) thumb: no thumbnail URL seen across polls")
+
+    # (2) Distinct URLs across polls (drift) — skip the one we already
+    #     probed as the main candidate.
+    distinct_extras = [
+        u
+        for u in urls_seen
+        if u != candidate
+        and isinstance(u, str)
+        and u.startswith("http")
+        and not is_pixverse_placeholder_url(u)
+    ]
+    if distinct_extras:
+        for u in distinct_extras:
+            probe = await _probe_with_get_fallback(u)
+            _log(
+                f"[{_ts()}] [{tag}] (2) earlier-URL {_fmt_probe(probe)}  url={u}"
+            )
+    else:
+        _log(
+            f"[{_ts()}] [{tag}] (2) URL drift: no distinct URLs beyond the "
+            f"main candidate (urls_seen={len(urls_seen)})"
+        )
+
+    # (3) Time-series probe on the main candidate.  Stops early on first
+    #     positive (HEAD-200 OR GET-200 when HEAD disagrees).
+    if (
+        candidate
+        and isinstance(candidate, str)
+        and candidate.startswith("http")
+        and not is_pixverse_placeholder_url(candidate)
+    ):
+        start = time.monotonic()
+        intervals = [0, 2, 5, 10, 20, 30]
+        first_positive_at: Optional[float] = None
+        first_positive_via: Optional[str] = None
+        for target_at in intervals:
+            now_elapsed = time.monotonic() - start
+            if now_elapsed < target_at:
+                await asyncio.sleep(target_at - now_elapsed)
+            probe = await _probe_with_get_fallback(candidate)
+            elapsed_now = round(time.monotonic() - start, 1)
+            _log(
+                f"[{_ts()}] [{tag}] (3) t≈{elapsed_now:>5}s  {_fmt_probe(probe)}"
+            )
+            if probe["head"] is True:
+                first_positive_at = elapsed_now
+                first_positive_via = "HEAD"
+                break
+            if probe["differs"]:
+                first_positive_at = elapsed_now
+                first_positive_via = "GET-only"
+                break
+        if first_positive_at is not None:
+            _log(
+                f"[{_ts()}] [{tag}] (3) candidate first 200 at ≈{first_positive_at}s "
+                f"via {first_positive_via}"
+            )
+        else:
+            _log(
+                f"[{_ts()}] [{tag}] (3) candidate never 200 across 30s window "
+                "(neither HEAD nor GET)"
+            )
+    else:
+        _log(
+            f"[{_ts()}] [{tag}] (3) time-series skipped — no probeable candidate URL"
+        )
+
+    # (4) List-endpoint URL comparison.
+    if job_id:
+        try:
+            list_res = await _scan_image_list(client, str(job_id), max_pages=5)
+        except Exception as e:
+            _log(f"[{_ts()}] [{tag}] (4) list endpoint raised: {e}")
+        else:
+            list_url = list_res.video_url
+            matched = (list_res.metadata or {}).get("matched")
+            mapped_list = getattr(list_res.status, "value", list_res.status)
+            _log(
+                f"[{_ts()}] [{tag}] (4) list endpoint matched={matched}  "
+                f"status={mapped_list}  url={list_url!r}"
+            )
+            if (
+                list_url
+                and isinstance(list_url, str)
+                and list_url.startswith("http")
+                and not is_pixverse_placeholder_url(list_url)
+            ):
+                probe = await _probe_with_get_fallback(list_url)
+                same = list_url == candidate
+                _log(
+                    f"[{_ts()}] [{tag}] (4) list-endpoint URL {_fmt_probe(probe)}  "
+                    f"(same_as_candidate={same})  url={list_url}"
+                )
+            else:
+                _log(
+                    f"[{_ts()}] [{tag}] (4) list endpoint URL not probeable "
+                    "(placeholder or absent)"
+                )
+    else:
+        _log(f"[{_ts()}] [{tag}] (4) list endpoint skipped — no job_id")
+
+    _log(f"[{_ts()}] [{tag}] --- end observational extras ---")
 
 
 async def _analyze_b_sample(
@@ -686,6 +907,13 @@ async def _run_phase_b(client: Any) -> Optional[bool]:
             verdicts.append(None)
             continue
         verdicts.append(await _analyze_b_sample(tag, result, rows))
+        # Observational diagnostic — does NOT affect the verdict.  Logs
+        # alternative recovery paths the production salvage doesn't
+        # currently consult (thumb / URL-drift / time-series / list endpoint).
+        try:
+            await _observe_extra_recovery_paths(tag, client, result)
+        except Exception as e:
+            _log(f"[{_ts()}] [{tag}] observational extras raised: {e}")
 
     # Observational table — the answer to "does HEAD serve an image across
     # error cases?".  head: 200 = false filter (recoverable), 404 = genuine,
