@@ -23,6 +23,99 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
+# ── Frame extraction (shared) ───────────────────────────────────────────────
+
+# Default frame-grab resolution for embedding.  SigLIP2-large runs at 384px, so
+# grab at model resolution rather than the 320px thumbnail size.
+DEFAULT_FRAME_SIZE = (384, 384)
+
+
+async def extract_video_frame(
+    local_path: str,
+    output_path: str,
+    *,
+    timestamp: float,
+    target_size: tuple[int, int],
+    rotation_filters: list[str] | None = None,
+    qscale: int = 3,
+    timeout: int = 30,
+    asset_id: int | None = None,
+    op: str = "frame",
+) -> bool:
+    """Extract one frame from ``local_path`` at ``timestamp``, scaled to fit
+    ``target_size`` (aspect-ratio preserved), written as JPEG to ``output_path``.
+
+    Shared by thumbnail/preview generation and the embedding frame-grab. The
+    caller owns content validation (``_validate_extracted_frame``) and rotation
+    discovery (``ensure_video_rotation`` + ``_get_video_rotation_filters``); this
+    just runs ffmpeg.
+
+    Returns True iff ffmpeg exited 0 and produced a file. ``op`` is woven into
+    the structured-log event name (``ffmpeg_{op}_failed`` / ``_timeout``) so
+    callers keep distinct log signals.
+    """
+    vf_parts = list(rotation_filters or [])
+    vf_parts.append(
+        f"scale={target_size[0]}:{target_size[1]}:force_original_aspect_ratio=decrease"
+    )
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-ss", str(timestamp),
+        "-i", local_path,
+        "-vframes", "1",
+        "-vf", ",".join(vf_parts),
+        "-q:v", str(qscale),
+        output_path,
+    ]
+
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: subprocess.run(cmd, capture_output=True, timeout=timeout),
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning(f"ffmpeg_{op}_timeout", asset_id=asset_id, timestamp=timestamp)
+        return False
+    except FileNotFoundError:
+        logger.warning(
+            "ffmpeg_not_found",
+            asset_id=asset_id,
+            detail=f"ffmpeg not available for video {op} generation",
+        )
+        return False
+
+    if result.returncode != 0:
+        logger.warning(
+            f"ffmpeg_{op}_failed",
+            asset_id=asset_id,
+            timestamp=timestamp,
+            stderr=result.stderr.decode()[:200],
+        )
+        return False
+
+    return Path(output_path).exists()
+
+
+def evenly_spaced_timestamps(duration_sec: float | None, count: int) -> list[float]:
+    """``count`` timestamps spread across a clip's duration.
+
+    Interior points at ``(i+1)/(count+1)`` of the duration, so the often
+    black / letterboxed very-first and very-last frames are skipped. Falls back
+    to a single ``0.0`` grab when the duration is unknown (best-effort first
+    frame) rather than emitting duplicate timestamps.
+    """
+    n = max(1, count)
+    duration = float(duration_sec or 0.0)
+    if duration <= 0:
+        return [0.0]
+    return [duration * (i + 1) / (n + 1) for i in range(n)]
+
+
 # ── Thumbnails ────────────────────────────────────────────────────────────
 
 async def generate_thumbnail(
@@ -105,66 +198,37 @@ async def _generate_video_thumbnail(
 
     thumb_key = get_thumbnail_key(asset)
     thumb_path = storage.get_path(thumb_key)
-    Path(thumb_path).parent.mkdir(parents=True, exist_ok=True)
 
-    thumb_size = settings.thumbnail_size
-    vf_parts = _get_video_rotation_filters(asset)
-    vf_parts.append(
-        f"scale={thumb_size[0]}:{thumb_size[1]}:force_original_aspect_ratio=decrease"
+    ok = await extract_video_frame(
+        local_path,
+        thumb_path,
+        timestamp=timestamp,
+        target_size=settings.thumbnail_size,
+        rotation_filters=_get_video_rotation_filters(asset),
+        qscale=3,
+        asset_id=asset.id,
+        op="thumbnail",
     )
+    if not ok:
+        return
 
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-ss", str(timestamp),
-        "-i", local_path,
-        "-vframes", "1",
-        "-vf", ",".join(vf_parts),
-        "-q:v", "3",
-        thumb_path
-    ]
+    # Verify the extracted frame is a valid, non-degenerate image.
+    # Partially-encoded videos can produce tiny grey placeholder frames.
+    if not _validate_extracted_frame(thumb_path, asset.id):
+        try:
+            Path(thumb_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+        return
 
-    try:
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(cmd, capture_output=True, timeout=30)
-        )
+    asset.thumbnail_key = thumb_key
 
-        if result.returncode != 0:
-            logger.warning(
-                "ffmpeg_thumbnail_failed",
-                asset_id=asset.id,
-                stderr=result.stderr.decode()[:200],
-            )
-            return
-
-        # Verify the extracted frame is a valid, non-degenerate image.
-        # Partially-encoded videos can produce tiny grey placeholder frames.
-        if not _validate_extracted_frame(thumb_path, asset.id):
-            try:
-                Path(thumb_path).unlink(missing_ok=True)
-            except OSError:
-                pass
-            return
-
-        asset.thumbnail_key = thumb_key
-
-        logger.debug(
-            "video_thumbnail_generated",
-            asset_id=asset.id,
-            sha256=asset.sha256[:16] if asset.sha256 else None,
-            key=thumb_key,
-        )
-
-    except subprocess.TimeoutExpired:
-        logger.warning("ffmpeg_thumbnail_timeout", asset_id=asset.id)
-    except FileNotFoundError:
-        logger.warning(
-            "ffmpeg_not_found",
-            asset_id=asset.id,
-            detail="ffmpeg not available for video thumbnail generation"
-        )
+    logger.debug(
+        "video_thumbnail_generated",
+        asset_id=asset.id,
+        sha256=asset.sha256[:16] if asset.sha256 else None,
+        key=thumb_key,
+    )
 
 
 # ── Previews ──────────────────────────────────────────────────────────────
@@ -295,67 +359,38 @@ async def _generate_video_preview(
     preview_key = f"u/{asset.user_id}/previews/{asset.id}.jpg"
     preview_path = storage.get_path(preview_key)
 
-    Path(preview_path).parent.mkdir(parents=True, exist_ok=True)
-
     preview_quality = settings.preview_quality
 
     # Map quality (1-100) to ffmpeg qscale (2-31, lower is better)
     qscale = max(2, min(31, int(2 + (100 - preview_quality) / 10)))
 
-    vf_parts = _get_video_rotation_filters(asset)
-    vf_parts.append(
-        f"scale={preview_size[0]}:{preview_size[1]}:force_original_aspect_ratio=decrease"
+    ok = await extract_video_frame(
+        local_path,
+        preview_path,
+        timestamp=timestamp,
+        target_size=preview_size,
+        rotation_filters=_get_video_rotation_filters(asset),
+        qscale=qscale,
+        asset_id=asset.id,
+        op="preview",
     )
+    if not ok:
+        return
 
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-ss", str(timestamp),
-        "-i", local_path,
-        "-vframes", "1",
-        "-vf", ",".join(vf_parts),
-        "-q:v", str(qscale),
-        preview_path
-    ]
+    if not _validate_extracted_frame(preview_path, asset.id):
+        try:
+            Path(preview_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+        return
 
-    try:
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(cmd, capture_output=True, timeout=30)
-        )
+    asset.preview_key = preview_key
 
-        if result.returncode != 0:
-            logger.warning(
-                "ffmpeg_preview_failed",
-                asset_id=asset.id,
-                stderr=result.stderr.decode()[:200],
-            )
-            return
-
-        if not _validate_extracted_frame(preview_path, asset.id):
-            try:
-                Path(preview_path).unlink(missing_ok=True)
-            except OSError:
-                pass
-            return
-
-        asset.preview_key = preview_key
-
-        logger.debug(
-            "video_preview_generated",
-            asset_id=asset.id,
-            key=preview_key,
-        )
-
-    except subprocess.TimeoutExpired:
-        logger.warning("ffmpeg_preview_timeout", asset_id=asset.id)
-    except FileNotFoundError:
-        logger.warning(
-            "ffmpeg_not_found",
-            asset_id=asset.id,
-            detail="ffmpeg not available for video preview generation"
-        )
+    logger.debug(
+        "video_preview_generated",
+        asset_id=asset.id,
+        key=preview_key,
+    )
 
 
 # ── Validation ────────────────────────────────────────────────────────────
