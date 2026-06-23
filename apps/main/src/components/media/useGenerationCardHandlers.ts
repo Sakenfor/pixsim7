@@ -234,7 +234,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       params: Record<string, unknown>;
       successMessage: string;
       /** Caller-owned upload phase has already happened (and shown its own
-       *  toast); skip the gate's "Uploading frame to …" interim toast to
+       *  toast); skip the gate's "Uploading image to …" interim toast to
        *  avoid double-flashing for the trailing cache-hit gate call. */
       skipUploadToast?: boolean;
       /** Suppress the per-submission success toast (e.g. a burst shows one
@@ -274,7 +274,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
                   : 'provider';
                 const toastId = useToastStore.getState().addToast({
                   type: 'info',
-                  message: `Uploading frame to ${label}…`,
+                  message: `Uploading image to ${label}…`,
                   duration: 20000,
                 });
                 return () => useToastStore.getState().removeToast(toastId);
