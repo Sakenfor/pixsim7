@@ -960,6 +960,63 @@ async def maybe_tab_identity_nudge(
     return text
 
 
+# ── Plan-hygiene soft nudge (plan `checkpoint-consistency-enforcement`) ──
+#
+# Plan-hygiene signals (e.g. "all checkpoints complete — close this plan?")
+# ride the SAME response ``nudge`` field at existing lifecycle anchors, using
+# the same per-(plan, session) participant-meta ledger + hard global cap as the
+# tab-identity nudge — on a SEPARATE meta key so the two families don't compete
+# for budget. The deliberate non-goal: never introduce a new global
+# system-reminder for plan hygiene. Feature/bugfix/refactor/task plans
+# auto-close on final-checkpoint completion (no nudge needed); umbrella/living
+# plans (open by design) get this one-line, never-mandatory suggestion instead.
+
+PLAN_HYGIENE_NUDGE_META_KEY = "plan_hygiene_nudges"
+PLAN_HYGIENE_NUDGE_GLOBAL_CAP = 2
+_PLAN_HYGIENE_NUDGE_TEXT = {
+    "all_checkpoints_complete": (
+        "All checkpoints on this plan are complete, but it wasn't auto-closed "
+        "(it's an umbrella/living plan). If the work is truly done, close it "
+        "with plans.update status='done'; otherwise add the next checkpoint. "
+        "Never required."
+    ),
+}
+
+
+async def maybe_close_plan_nudge(
+    db: AsyncSession,
+    *,
+    principal: CurrentUser,
+    plan_id: str,
+    anchor: str = "all_checkpoints_complete",
+) -> Optional[str]:
+    """Return the soft close-plan nudge for *anchor* once, else None.
+
+    Same mechanism and contract as ``maybe_tab_identity_nudge`` (idempotent per
+    anchor, hard global cap, mutates the caller's participant ``meta`` in the
+    endpoint's transaction, best-effort), on a separate ledger key so plan-
+    hygiene and tab-identity nudges don't share a budget.
+    """
+    text = _PLAN_HYGIENE_NUDGE_TEXT.get(anchor)
+    if text is None:
+        return None
+    row = await _get_caller_builder_participant(db, principal, plan_id)
+    if row is None:
+        return None
+    meta = row.meta if isinstance(row.meta, dict) else {}
+    ledger = meta.get(PLAN_HYGIENE_NUDGE_META_KEY)
+    ledger = dict(ledger) if isinstance(ledger, dict) else {}
+    if anchor in ledger:
+        return None  # once per anchor-type
+    if len(ledger) >= PLAN_HYGIENE_NUDGE_GLOBAL_CAP:
+        return None  # hard global cap
+    ledger[anchor] = utcnow().isoformat()
+    row.meta = _participant_merge_meta(
+        row.meta, {PLAN_HYGIENE_NUDGE_META_KEY: ledger}
+    )
+    return text
+
+
 async def release_claims_for_run(db: AsyncSession, run_id: str) -> int:
     """Auto-close any open claims owned by an agent run (called on run end)."""
     rid = _normalize_participant_value(run_id)

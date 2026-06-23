@@ -1448,6 +1448,33 @@ async def _emit_plan_progress_notification(
     )
 
 
+# Plan types that represent finite, deliverable work — auto-closed when their
+# final checkpoint completes (plan `checkpoint-consistency-enforcement`).
+# Everything else (umbrella group-hosts, reference/strategy/proposal/exploration
+# — open by design) is left open and gets a soft close nudge instead.
+_AUTO_CLOSE_PLAN_TYPES = frozenset({"feature", "bugfix", "refactor", "task"})
+
+
+def _plan_is_points_complete(checkpoints: Any) -> bool:
+    """True when the plan has a positive points budget and zero open points —
+    every checkpoint with a total is fully done. Mirrors the open-summary
+    completion signal (open work is ``points_done < points_total``, not status).
+    """
+    if not isinstance(checkpoints, list):
+        return False
+    total = 0
+    open_points = 0
+    for cp in checkpoints:
+        if not isinstance(cp, dict):
+            continue
+        done, cp_total = _derive_checkpoint_points(cp)
+        if cp_total:
+            total += cp_total
+            if done < cp_total:
+                open_points += cp_total - done
+    return total > 0 and open_points == 0
+
+
 @router.post("/progress/{plan_id}", response_model=PlanProgressResponse)
 async def log_plan_progress(
     plan_id: str,
@@ -1503,6 +1530,11 @@ async def log_plan_progress(
             status_code=400,
             detail="Plan has no checkpoints. Seed checkpoints via PATCH /dev/plans/{plan_id} first.",
         )
+
+    # Pristine "before" completion snapshot — captured here, before any step/
+    # points mutation below, so auto-close only fires on the call that actually
+    # completes the final checkpoint (not on every call to an already-done plan).
+    _plan_complete_before = _plan_is_points_complete(checkpoints)
 
     checkpoint_index: Optional[int] = None
     for idx, item in enumerate(checkpoints):
@@ -1777,6 +1809,30 @@ async def log_plan_progress(
     if payload.sync_plan_stage:
         updates["stage"] = normalize_plan_stage(payload.checkpoint_id, strict=False)
 
+    # Plan-level auto-close (plan `checkpoint-consistency-enforcement`): when
+    # this call completes the final checkpoint, flip a finite-work plan to
+    # done/completed in the same write. Umbrella/living plans (open by design)
+    # are left open and get a soft close nudge instead. ``just_completed`` gates
+    # on the before→after transition so this fires once, not on every call.
+    _doc = getattr(bundle, "doc", None)
+    _plan_status = str(getattr(_doc, "status", "") or "").strip().lower()
+    _close_nudge_pending = False
+    if (
+        not _plan_complete_before
+        and _plan_status not in ("done", "archived", "removed")
+        and _plan_is_points_complete(new_checkpoints)
+    ):
+        _plan_type = str(getattr(bundle.plan, "plan_type", "") or "").strip().lower()
+        _tags = getattr(_doc, "tags", None) or []
+        _is_living = isinstance(_tags, list) and any(
+            str(t).strip().lower() == "living" for t in _tags
+        )
+        if _plan_type in _AUTO_CLOSE_PLAN_TYPES and not _is_living:
+            updates["status"] = "done"
+            updates["stage"] = "completed"
+        else:
+            _close_nudge_pending = True
+
     try:
         result = await update_plan(
             db, plan_id, updates, principal=principal,
@@ -1811,20 +1867,28 @@ async def log_plan_progress(
         principal=principal,
     )
 
-    # Soft tab-identity nudge — fires once when this call flips the
-    # checkpoint to done (the completion anchor), never mid-progress.
-    # Best-effort: a nudge must never fail progress logging (plan
-    # `agent-freeform-tab-identity`).
+    # Soft nudges on the response ``nudge`` field — best-effort, never fail
+    # progress. The close-plan nudge (a now-complete umbrella/living plan that
+    # wasn't auto-closed) takes precedence over the tab-identity completion
+    # nudge: it's the more actionable signal at this anchor.
     nudge: Optional[str] = None
-    _old_status = str((checkpoint_raw or {}).get("status") or "pending") if isinstance(checkpoint_raw, dict) else "pending"
-    _new_status = str(checkpoint.get("status") or "pending")
-    if _new_status == "done" and _old_status != "done":
+    if _close_nudge_pending:
         try:
-            nudge = await maybe_tab_identity_nudge(
-                db, principal=principal, plan_id=plan_id, anchor="completion"
+            nudge = await maybe_close_plan_nudge(
+                db, principal=principal, plan_id=plan_id, anchor="all_checkpoints_complete"
             )
         except Exception:  # noqa: BLE001 — nudge is non-critical
-            logger.warning("tab-identity completion nudge failed", exc_info=True)
+            logger.warning("close-plan nudge failed", exc_info=True)
+    if nudge is None:
+        _old_status = str((checkpoint_raw or {}).get("status") or "pending") if isinstance(checkpoint_raw, dict) else "pending"
+        _new_status = str(checkpoint.get("status") or "pending")
+        if _new_status == "done" and _old_status != "done":
+            try:
+                nudge = await maybe_tab_identity_nudge(
+                    db, principal=principal, plan_id=plan_id, anchor="completion"
+                )
+            except Exception:  # noqa: BLE001 — nudge is non-critical
+                logger.warning("tab-identity completion nudge failed", exc_info=True)
 
     await db.commit()
 

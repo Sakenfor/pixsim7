@@ -1212,3 +1212,112 @@ class TestDevPlansProgressEndpoint:
             )
 
         assert response.status_code == 401
+
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
+class TestPlanLevelAutoClose:
+    """A progress call that completes the final checkpoint auto-closes a
+    finite-work plan (feature/bugfix/refactor/task) in the same write; umbrella/
+    living plans are left open. Plan ``checkpoint-consistency-enforcement``."""
+
+    @staticmethod
+    def _two_checkpoint_bundle(plan_type: str, *, tags=None, status: str = "active"):
+        # cp1 already complete (1/1); cp2 at 0/1 — so the plan is NOT complete
+        # before this call, and completing cp2 closes it.
+        return SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {"id": "cp1", "label": "C1", "status": "done",
+                     "points_done": 1, "points_total": 1},
+                    {"id": "cp2", "label": "C2", "status": "pending",
+                     "points_done": 0, "points_total": 1},
+                ],
+                plan_type=plan_type,
+            ),
+            doc=SimpleNamespace(title="Plan A", status=status, tags=list(tags or [])),
+        )
+
+    @staticmethod
+    def _update_result():
+        return SimpleNamespace(
+            plan_id="plan-a", changes=[], revision=None, commit_sha=None, new_scope=None,
+        )
+
+    async def _run(self, bundle, payload):
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle",
+                  new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan",
+                  new=AsyncMock(return_value=self._update_result())) as mock_update,
+        ):
+            async with _client(_app(authenticated=True)) as c:
+                resp = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+        return resp, mock_update
+
+    @pytest.mark.asyncio
+    async def test_feature_plan_auto_closes_on_final_completion(self):
+        resp, mock_update = await self._run(
+            self._two_checkpoint_bundle("feature"),
+            {"checkpoint_id": "cp2", "points_done": 1},
+        )
+        assert resp.status_code == 200
+        updates = mock_update.await_args.args[2]
+        assert updates.get("status") == "done"
+        assert updates.get("stage") == "completed"
+
+    @pytest.mark.asyncio
+    async def test_umbrella_plan_is_not_auto_closed(self):
+        resp, mock_update = await self._run(
+            self._two_checkpoint_bundle("umbrella"),
+            {"checkpoint_id": "cp2", "points_done": 1},
+        )
+        assert resp.status_code == 200
+        updates = mock_update.await_args.args[2]
+        assert "status" not in updates  # left open by design
+
+    @pytest.mark.asyncio
+    async def test_living_tagged_feature_is_not_auto_closed(self):
+        resp, mock_update = await self._run(
+            self._two_checkpoint_bundle("feature", tags=["living"]),
+            {"checkpoint_id": "cp2", "points_done": 1},
+        )
+        assert resp.status_code == 200
+        assert "status" not in mock_update.await_args.args[2]
+
+    @pytest.mark.asyncio
+    async def test_no_autoclose_when_not_yet_complete(self):
+        # cp1 incomplete too — completing cp2 still leaves cp1 open.
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {"id": "cp1", "label": "C1", "status": "pending",
+                     "points_done": 0, "points_total": 1},
+                    {"id": "cp2", "label": "C2", "status": "pending",
+                     "points_done": 0, "points_total": 1},
+                ],
+                plan_type="feature",
+            ),
+            doc=SimpleNamespace(title="Plan A", status="active", tags=[]),
+        )
+        resp, mock_update = await self._run(bundle, {"checkpoint_id": "cp2", "points_done": 1})
+        assert resp.status_code == 200
+        assert "status" not in mock_update.await_args.args[2]
+
+    @pytest.mark.asyncio
+    async def test_no_autoclose_when_already_complete_before(self):
+        # Both checkpoints already done — a no-op note must not re-close.
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {"id": "cp1", "label": "C1", "status": "done",
+                     "points_done": 1, "points_total": 1},
+                    {"id": "cp2", "label": "C2", "status": "done",
+                     "points_done": 1, "points_total": 1},
+                ],
+                plan_type="feature",
+            ),
+            doc=SimpleNamespace(title="Plan A", status="active", tags=[]),
+        )
+        resp, mock_update = await self._run(bundle, {"checkpoint_id": "cp1", "note": "tidy"})
+        assert resp.status_code == 200
+        assert "status" not in mock_update.await_args.args[2]
