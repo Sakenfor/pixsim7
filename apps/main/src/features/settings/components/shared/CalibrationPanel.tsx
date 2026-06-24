@@ -77,19 +77,52 @@ export function CalibrationPanel() {
       )}
 
       {data && data.current_model && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs tabular-nums">
-          <Metric label="precision" value={pct(data.current_model.precision)} />
-          <Metric label="recall" value={pct(data.current_model.recall)} />
-          <Metric label="F1" value={pct(data.current_model.f1)} />
-          <Metric label="accuracy" value={pct(data.current_model.accuracy)} />
-          <div className="col-span-2 sm:col-span-4 text-[11px] text-muted-foreground">
-            {data.current_model.fp} false positives · {data.current_model.fn} misses
-            {data.render_ratio?.suggested_cutoff && (
-              <> · best render cutoff <span className="font-medium text-foreground">
-                &lt; {data.render_ratio.suggested_cutoff.cutoff}</span> (F1 {pct(data.render_ratio.suggested_cutoff.f1)})
-                vs current {data.render_ratio.current_weak_cutoff}</>
-            )}
+        <div className="space-y-2">
+          {/* Plain-language reading of the two metrics that actually matter, so the
+              numbers below don't need ML literacy to interpret. */}
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            When it flags a clip broken it's right{' '}
+            <b className="text-foreground">{pct(data.current_model.precision)}</b> of the time, and
+            it catches{' '}
+            <b className="text-foreground">{pct(data.current_model.recall)}</b> of the clips you
+            marked broken.{' '}
+            <span className="text-foreground">{data.current_model.fp}</span> good clip
+            {data.current_model.fp === 1 ? '' : 's'} wrongly flagged ·{' '}
+            <span className="text-foreground">{data.current_model.fn}</span>{' '}
+            {data.current_model.fn === 1 ? 'broken clip slipped' : 'broken clips slipped'} through.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <Metric
+              label="precision"
+              value={pct(data.current_model.precision)}
+              hint="of clips it flags broken, the share that really are"
+            />
+            <Metric
+              label="recall"
+              value={pct(data.current_model.recall)}
+              hint="of clips you marked broken, the share it catches"
+            />
+            <Metric
+              label="F1"
+              value={pct(data.current_model.f1)}
+              hint="overall score — precision & recall combined"
+            />
+            <Metric
+              label="accuracy"
+              value={pct(data.current_model.accuracy)}
+              hint="of all clips, the share judged correctly"
+            />
           </div>
+          {data.render_ratio?.suggested_cutoff && (
+            <p className="text-[11px] text-muted-foreground">
+              Suggested tweak: flag clips that render in under{' '}
+              <span className="font-medium text-foreground">
+                {data.render_ratio.suggested_cutoff.cutoff}×
+              </span>{' '}
+              the typical time (would score F1 {pct(data.render_ratio.suggested_cutoff.f1)}) — vs the
+              current {data.render_ratio.current_weak_cutoff}×.
+            </p>
+          )}
         </div>
       )}
 
@@ -109,11 +142,14 @@ export function CalibrationPanel() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded bg-muted/30 px-2 py-1.5">
+    <div className="rounded bg-muted/30 px-2 py-1.5" title={hint}>
       <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="text-sm font-medium tabular-nums">{value}</div>
+      {hint && (
+        <div className="mt-0.5 text-[9px] leading-tight text-muted-foreground/80">{hint}</div>
+      )}
     </div>
   );
 }
