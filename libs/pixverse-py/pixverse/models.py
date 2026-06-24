@@ -41,6 +41,12 @@ class VideoModelSpec:
     # Per-second WebAPI cost overrides as ((quality, credits_per_second), ...).
     # Empty = inherit the provider-wide default WEBAPI_BASE_COSTS table.
     pricing: tuple[tuple[str, int], ...] = ()
+    # Native-audio surcharge rate in credits-per-second. 0 = use the flat
+    # NATIVE_AUDIO_COST (legacy models). v6 / pixverse-c1 charge audio per
+    # second instead: e.g. 360p+audio bills 5 credits/sec (4 video + 1 audio),
+    # so 15s=75, 14s=70, 10s=50 — confirmed on the Pixverse site. Kept as an
+    # int (not bool) so it stays out of the ``capabilities`` dict.
+    native_audio_per_second: int = 0
     # External-partner relay (e.g. fal-proxied models like grok-imagine,
     # happyhorse-1.0). Status codes have different semantics than native
     # Pixverse models — see _parse_video_response status table.
@@ -128,8 +134,8 @@ class VideoModel:
     # Advanced models (multi_shot, audio)
     V5_5 = VideoModelSpec("v5.5", camera_movement=False, audio=True, multi_shot=True, video_extend=True, badge="5.5")
     V5_6 = VideoModelSpec("v5.6", camera_movement=False, audio=True, fusion=True, badge="5.6")
-    V6 = VideoModelSpec("v6", camera_movement=False, audio=True, multi_shot=True, max_duration=15, badge="6")
-    C1 = VideoModelSpec("pixverse-c1", camera_movement=False, audio=True, fusion=True, max_duration=15, badge="C1")
+    V6 = VideoModelSpec("v6", camera_movement=False, audio=True, multi_shot=True, max_duration=15, badge="6", native_audio_per_second=1)
+    C1 = VideoModelSpec("pixverse-c1", camera_movement=False, audio=True, fusion=True, max_duration=15, badge="C1", native_audio_per_second=1)
     GROK_IMAGINE = VideoModelSpec(
         "grok-imagine",
         audio=True,

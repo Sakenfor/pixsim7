@@ -95,7 +95,12 @@ export function computeLocalCost(
     cost += duration > 5 ? table.multi_shot_long : table.multi_shot_short;
   }
   if (params.audio) {
-    cost += table.native_audio;
+    // v6 / pixverse-c1 bill audio per-second; others use the flat surcharge.
+    const perSecond = table.native_audio_per_second ?? {};
+    const audioRate =
+      (model ? perSecond[model] : undefined) ??
+      (modelKey ? perSecond[modelKey] : undefined);
+    cost += typeof audioRate === 'number' ? audioRate * duration : table.native_audio;
   }
 
   return cost;

@@ -211,9 +211,16 @@ def calculate_cost(
     if multi_shot:
         cost += MULTI_SHOT_COST_LONG if duration > 5 else MULTI_SHOT_COST_SHORT
 
-    # Add native audio cost (v5.5+ feature)
+    # Add native audio cost (v5.5+ feature).
+    # v6 / pixverse-c1 bill audio per-second (spec.native_audio_per_second,
+    # e.g. 1 credit/sec so 360p+audio = 5/sec); older models use the flat
+    # NATIVE_AUDIO_COST surcharge.
     if audio:
-        cost += NATIVE_AUDIO_COST
+        per_second = spec.native_audio_per_second if spec else 0
+        if per_second:
+            cost += int(per_second * duration)
+        else:
+            cost += NATIVE_AUDIO_COST
 
     return cost
 
