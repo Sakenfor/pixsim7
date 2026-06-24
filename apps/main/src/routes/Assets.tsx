@@ -207,10 +207,14 @@ export function AssetsRoute() {
   const [panelsDropdownOpen, setPanelsDropdownOpen] = useState(false);
 
   // Get current surface ID from URL (for remote gallery)
-  // const currentSurfaceId = useMemo(() => {
-  //   const params = new URLSearchParams(location.search);
-  //   return params.get('surface') || 'assets-default';
-  // }, [location.search]);
+  // Active gallery surface (remote-gallery only). Drives where the chrome controls
+  // render: on the default surface they fold into the gallery's own toolbar row
+  // (via toolbarExtra); on secondary surfaces (Triage/Review/Debug), which have no
+  // such row, they render in the standalone chrome bar below.
+  const activeSurfaceId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('surface') || 'assets-default';
+  }, [location.search]);
 
   // Get active source from URL
   const activeSourceId = useMemo<AssetSourceId>(() => {
@@ -355,12 +359,13 @@ export function AssetsRoute() {
         </div>
       )}
 
-      {/* Persistent gallery chrome — surface switcher + layout controls rendered
-          above EVERY remote-gallery surface. Secondary surfaces (Triage/Review)
-          early-return their own body before the default toolbar, so these controls
-          can't live there. flex-shrink-0 sibling so the gallery container below
-          keeps its bounded scroll height (MasonryGrid needs a bounded ancestor). */}
-      {activeSourceId === 'remote-gallery' && (
+      {/* Standalone chrome bar for SECONDARY surfaces only (Triage/Review/Debug).
+          They early-return their own body before the gallery toolbar, so the
+          switcher + layout controls can't fold into a toolbar row there. On the
+          default surface these live in the gallery toolbar row instead (see
+          toolbarExtra), so we skip the bar to avoid a redundant second row.
+          flex-shrink-0 sibling so the gallery container keeps its bounded height. */}
+      {activeSourceId === 'remote-gallery' && activeSurfaceId !== 'assets-default' && (
         <div className="flex-shrink-0 flex flex-wrap items-center gap-2 px-3 sm:px-6 pt-3 sm:pt-4 pb-1">
           <GallerySurfaceSwitcher mode="dropdown" />
           <GalleryLayoutControls
@@ -399,10 +404,19 @@ export function AssetsRoute() {
               toolbarExtra={
                 <>
                   {activeSourceId === 'remote-gallery' && (
-                    <SurfacePresetPicker
-                      currentPresetId={currentOverlayPresetId}
-                      onPresetChange={handleOverlayPresetChange}
-                    />
+                    <>
+                      <GallerySurfaceSwitcher mode="dropdown" />
+                      <GalleryLayoutControls
+                        layout={layout}
+                        setLayout={setLayout}
+                        cardSize={cardSize}
+                        setCardSize={setCardSize}
+                      />
+                      <SurfacePresetPicker
+                        currentPresetId={currentOverlayPresetId}
+                        onPresetChange={handleOverlayPresetChange}
+                      />
+                    </>
                   )}
                   <div className="relative">
                     <button
