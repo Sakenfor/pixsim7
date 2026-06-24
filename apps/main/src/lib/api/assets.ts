@@ -86,9 +86,16 @@ export interface SignalCalibrationReport {
   recommendation: string;
 }
 
-/** Fetch the live video-health calibration report for the current user. */
-export function getSignalCalibration(): Promise<SignalCalibrationReport> {
-  return pixsimClient.get<SignalCalibrationReport>('/assets/signal-calibration');
+/**
+ * Fetch the live video-health calibration report for the current user.
+ * `cacheBust` (e.g. a label-change counter) defeats any HTTP-layer caching so a
+ * refetch right after labelling reflects the new label immediately.
+ */
+export function getSignalCalibration(cacheBust?: number): Promise<SignalCalibrationReport> {
+  return pixsimClient.get<SignalCalibrationReport>(
+    '/assets/signal-calibration',
+    cacheBust === undefined ? undefined : { params: { _: cacheBust } },
+  );
 }
 
 /**

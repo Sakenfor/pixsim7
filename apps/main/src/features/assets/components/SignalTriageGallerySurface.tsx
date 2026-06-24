@@ -123,13 +123,18 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
     async (assetId: number, decision: 'clean' | 'broken') => {
       try {
         await setSignalOverride(assetId, decision);
-        controller.removeAsset?.(assetId);
+        // Broken/Borderline are to-do queues — acting resolves the item, so drop
+        // it from view. In Reviewed the asset stays reviewed (the override just
+        // flips clean<->broken), so keep it in place rather than making it vanish.
+        if (queue !== 'overridden') {
+          controller.removeAsset?.(assetId);
+        }
         setLabelTick((n) => n + 1);
       } catch (e) {
         console.error('[signal-triage] override failed', assetId, decision, e);
       }
     },
-    [controller],
+    [controller, queue],
   );
 
   const decisions = useMemo<ReviewDecision[]>(

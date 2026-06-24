@@ -24,7 +24,7 @@ export function SignalCalibrationStrip({ refreshKey }: { refreshKey?: number }) 
 
   useEffect(() => {
     let cancelled = false;
-    getSignalCalibration()
+    getSignalCalibration(refreshKey)
       .then((r) => {
         if (!cancelled) setData(r);
       })
