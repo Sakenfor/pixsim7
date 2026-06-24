@@ -36,7 +36,7 @@ type TriageQueue = 'broken' | 'borderline' | 'overridden';
 const TRIAGE_QUEUES: { id: TriageQueue; label: string; filter: string }[] = [
   { id: 'broken', label: 'Broken (≥3)', filter: 'signal_likely_broken' },
   { id: 'borderline', label: 'Borderline (1–2)', filter: 'signal_borderline' },
-  { id: 'overridden', label: 'Decided', filter: 'signal_overridden' },
+  { id: 'overridden', label: 'Reviewed', filter: 'signal_overridden' },
 ];
 
 /** Registry filter keys the triage surface owns directly — hidden from the shared
