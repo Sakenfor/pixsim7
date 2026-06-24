@@ -12,11 +12,12 @@
  * override decision. The focused-grid scaffold lives in ReviewModeSurface.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { setSignalOverride } from '@lib/api/assets';
+import { getAsset, setSignalOverride } from '@lib/api/assets';
 
 import type { AssetsController } from '../hooks/useAssetsController';
+import { assetEvents } from '../lib/assetEvents';
 import type { AssetModel } from '../models/asset';
 
 import { DynamicFilters } from './DynamicFilters';
@@ -91,6 +92,20 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
   // label counts move as you label.
   const [labelTick, setLabelTick] = useState(0);
 
+  // On leaving triage, clear the filters it forced (media_type=video + bucket
+  // flags) from the shared `assets_filters` session/URL so they don't leak into
+  // the default gallery. Runs only on unmount; reads the latest controller via ref
+  // (the controller object identity changes every render).
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+  useEffect(() => {
+    return () => {
+      controllerRef.current.setFilters(
+        Object.fromEntries(TRIAGE_OWNED_FILTER_KEYS.map((k) => [k, undefined])),
+      );
+    };
+  }, []);
+
   // Switch which bucket we're triaging, replacing the whole filter slate.
   //
   // We set ALL three bucket flags every time (chosen = true, the rest = false),
@@ -128,6 +143,15 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
         // flips clean<->broken), so keep it in place rather than making it vanish.
         if (queue !== 'overridden') {
           controller.removeAsset?.(assetId);
+        } else {
+          // Reviewed: keep the card, but refresh its model so the active-decision
+          // highlight (and any card state) reflects the new clean/broken choice.
+          try {
+            const refreshed = await getAsset(assetId);
+            assetEvents.emitAssetUpdated(refreshed);
+          } catch {
+            // Best effort — the highlight just won't flip until the list reloads.
+          }
         }
         setLabelTick((n) => n + 1);
       } catch (e) {
@@ -144,18 +168,20 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
         label: '✓ Keep',
         hotkey: 'k',
         hotkeyLabel: 'K',
-        variant: 'primary',
         advance: 'stay',
         run: (asset) => triage(asset.id, 'clean'),
+        // Highlight the current decision (visible mainly in Reviewed, where the
+        // card stays after deciding).
+        isActive: (asset) => readUserOverride(asset) === 'clean',
       },
       {
         id: 'flag',
         label: '⚠ Flag',
         hotkey: 'f',
         hotkeyLabel: 'F',
-        variant: 'secondary',
         advance: 'stay',
         run: (asset) => triage(asset.id, 'broken'),
+        isActive: (asset) => readUserOverride(asset) === 'broken',
       },
     ],
     [triage],
@@ -232,6 +258,15 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
       onMount={() => selectQueue('broken')}
     />
   );
+}
+
+/** Pull the user's manual keep/flag decision from the asset, if any. */
+function readUserOverride(asset: AssetModel): 'clean' | 'broken' | null {
+  const meta = (asset as AssetModel & { media_metadata?: Record<string, unknown> }).media_metadata;
+  if (!meta || typeof meta !== 'object') return null;
+  const sm = (meta as { signal_metrics?: { user_override?: unknown } }).signal_metrics;
+  const ov = sm?.user_override;
+  return ov === 'clean' || ov === 'broken' ? ov : null;
 }
 
 /** Pull the heuristic score out of the asset's media_metadata for the badge. */
