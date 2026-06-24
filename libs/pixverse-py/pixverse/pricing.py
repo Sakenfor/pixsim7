@@ -15,6 +15,7 @@ Usage:
     # OpenAPI pricing
     cost = calculate_cost("1080p", 8, api_method="open-api", model="v5")  # Returns 240 credits
 """
+import math
 from typing import Dict, Optional
 
 from .models import ImageModel, VideoModel
@@ -212,13 +213,13 @@ def calculate_cost(
         cost += MULTI_SHOT_COST_LONG if duration > 5 else MULTI_SHOT_COST_SHORT
 
     # Add native audio cost (v5.5+ feature).
-    # v6 / pixverse-c1 bill audio per-second (spec.native_audio_per_second,
-    # e.g. 1 credit/sec so 360p+audio = 5/sec); older models use the flat
-    # NATIVE_AUDIO_COST surcharge.
+    # v6 / pixverse-c1 bill audio as a fraction of the video base rate
+    # (spec.native_audio_base_fraction, e.g. 0.25 → +25%/sec, rounded up so the
+    # 540p .5 case lands on 113); older models use the flat NATIVE_AUDIO_COST.
     if audio:
-        per_second = spec.native_audio_per_second if spec else 0
-        if per_second:
-            cost += int(per_second * duration)
+        fraction = spec.native_audio_base_fraction if spec else 0.0
+        if fraction:
+            cost += math.ceil(fraction * base_cost * duration)
         else:
             cost += NATIVE_AUDIO_COST
 

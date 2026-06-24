@@ -54,11 +54,12 @@ export interface CostEstimatorPricingTable {
   multi_shot_long: number;
   native_audio: number;
   /**
-   * Per-model native-audio surcharge in credits-per-second. Models present
-   * here (v6, pixverse-c1) bill audio as `rate * duration` instead of the
-   * flat `native_audio`; absent models fall back to `native_audio`.
+   * Per-model native-audio surcharge as a fraction of the per-second video
+   * base rate. Models present here (v6, pixverse-c1) bill audio as
+   * `ceil(fraction * baseRate * duration)` instead of the flat `native_audio`;
+   * absent models fall back to `native_audio`.
    */
-  native_audio_per_second?: Record<string, number>;
+  native_audio_base_fraction?: Record<string, number>;
   image_credits: Record<string, Record<string, number>>;
   quality_aliases: Record<string, string>;
 }

@@ -6,6 +6,7 @@ Provides a single source of truth for Pixverse credit estimates.
 """
 from __future__ import annotations
 
+import math
 from typing import Any, Optional
 
 # Import from pixverse-py SDK
@@ -46,10 +47,11 @@ _FALLBACK_WEBAPI_BASE_COSTS: dict[str, int] = {
     "1080p": 16,
 }
 
-# Models that bill native audio per-second (1 credit/sec) instead of the flat
-# NATIVE_AUDIO_COST. Mirrors ``VideoModelSpec.native_audio_per_second`` and is
-# only consulted on the SDK-unavailable fallback path below.
-_AUDIO_PER_SECOND_MODELS: frozenset[str] = frozenset({"v6", "pixverse-c1"})
+# Models that bill native audio as a fraction of the video base rate (+25%)
+# instead of the flat NATIVE_AUDIO_COST. Mirrors
+# ``VideoModelSpec.native_audio_base_fraction`` and is only consulted on the
+# SDK-unavailable fallback path below.
+_AUDIO_BASE_FRACTION_MODELS: dict[str, float] = {"v6": 0.25, "pixverse-c1": 0.25}
 
 
 def get_image_credit_change(model: str, quality: str) -> Optional[int]:
@@ -139,8 +141,9 @@ def estimate_video_credit_change(
     if multi_shot:
         credits += int(_SDK_MULTI_SHOT_LONG if int(duration) > 5 else _SDK_MULTI_SHOT_SHORT)
     if audio:
-        if str(model or "").strip().lower() in _AUDIO_PER_SECOND_MODELS:
-            credits += int(duration)
+        fraction = _AUDIO_BASE_FRACTION_MODELS.get(str(model or "").strip().lower())
+        if fraction:
+            credits += math.ceil(fraction * base_cost * int(duration))
         else:
             credits += int(_SDK_NATIVE_AUDIO)
     return int(credits)
@@ -163,8 +166,9 @@ def get_client_pricing_payload() -> Optional[dict[str, Any]]:
     overrides = dict(_SDK_WEBAPI_MODEL_BASE_COSTS or {})
 
     model_pricing: dict[str, dict[str, int]] = {_DEFAULT_PRICING_KEY: dict(webapi_defaults)}
-    # model_id -> credits-per-second audio surcharge (omitted = flat native_audio).
-    audio_per_second: dict[str, int] = {}
+    # model_id -> audio surcharge as a fraction of the per-second video base
+    # rate (omitted = flat native_audio).
+    audio_fraction: dict[str, float] = {}
     try:
         from pixverse.models import VideoModel  # type: ignore
 
@@ -174,12 +178,12 @@ def get_client_pricing_payload() -> Optional[dict[str, Any]]:
                 model_pricing[model_id] = dict(spec.pricing)
             else:
                 model_pricing[model_id] = dict(webapi_defaults)
-            rate = int(getattr(spec, "native_audio_per_second", 0) or 0)
-            if rate:
-                audio_per_second[model_id] = rate
+            frac = float(getattr(spec, "native_audio_base_fraction", 0.0) or 0.0)
+            if frac:
+                audio_fraction[model_id] = frac
     except Exception:
         # SDK unavailable — fall back to the known per-second audio models.
-        audio_per_second = {m: 1 for m in _AUDIO_PER_SECOND_MODELS}
+        audio_fraction = dict(_AUDIO_BASE_FRACTION_MODELS)
         # SDK unavailable — fall back to overrides dict directly.
         for model_id, qualities in overrides.items():
             model_pricing[model_id] = dict(qualities)
@@ -206,7 +210,7 @@ def get_client_pricing_payload() -> Optional[dict[str, Any]]:
         "multi_shot_short": int(_SDK_MULTI_SHOT_SHORT),
         "multi_shot_long": int(_SDK_MULTI_SHOT_LONG),
         "native_audio": int(_SDK_NATIVE_AUDIO),
-        "native_audio_per_second": audio_per_second,
+        "native_audio_base_fraction": audio_fraction,
         "image_credits": image_credits,
         "quality_aliases": {"2k": "1440p", "4k": "2160p"},
     }

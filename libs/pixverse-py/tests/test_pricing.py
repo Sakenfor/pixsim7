@@ -1,8 +1,9 @@
 """Pricing tests — focus on native-audio billing.
 
-v6 / pixverse-c1 bill native audio per-second (1 credit/sec), so 360p+audio
-is 5 credits/sec. Legacy models (v5.5/v5.6) keep the flat NATIVE_AUDIO_COST.
-Confirmed against the Pixverse site: v6 360p+audio 15s=75, 14s=70, 10s=50.
+v6 / pixverse-c1 bill native audio as +25% of the per-second video base rate
+(rounded up). Legacy models (v5.5/v5.6) keep the flat NATIVE_AUDIO_COST.
+Confirmed against the Pixverse site: v6 360p+audio 15s=75, 14s=70, 10s=50, and
+15s+audio across resolutions 540p=113, 720p=150, 1080p=300.
 """
 import pytest
 
@@ -34,6 +35,11 @@ def test_legacy_models_keep_flat_audio(model):
     )
 
 
-def test_per_second_audio_scales_with_resolution():
-    # 540p base is 6/sec; per-second audio adds 1/sec on top → 7/sec.
-    assert calculate_cost("540p", 15, "web-api", model="v6", audio=True) == 6 * 15 + 15
+@pytest.mark.parametrize("model", ["v6", "pixverse-c1"])
+@pytest.mark.parametrize(
+    "quality,expected",
+    [("540p", 113), ("720p", 150), ("1080p", 300)],
+)
+def test_per_second_audio_scales_with_resolution(model, quality, expected):
+    # 15s+audio across resolutions: base 6/8/16 +25% (540p .5 rounds up to 113).
+    assert calculate_cost(quality, 15, "web-api", model=model, audio=True) == expected

@@ -95,12 +95,16 @@ export function computeLocalCost(
     cost += duration > 5 ? table.multi_shot_long : table.multi_shot_short;
   }
   if (params.audio) {
-    // v6 / pixverse-c1 bill audio per-second; others use the flat surcharge.
-    const perSecond = table.native_audio_per_second ?? {};
-    const audioRate =
-      (model ? perSecond[model] : undefined) ??
-      (modelKey ? perSecond[modelKey] : undefined);
-    cost += typeof audioRate === 'number' ? audioRate * duration : table.native_audio;
+    // v6 / pixverse-c1 bill audio as a fraction of the video base rate
+    // (rounded up); others use the flat surcharge.
+    const fractions = table.native_audio_base_fraction ?? {};
+    const audioFraction =
+      (model ? fractions[model] : undefined) ??
+      (modelKey ? fractions[modelKey] : undefined);
+    cost +=
+      typeof audioFraction === 'number'
+        ? Math.ceil(audioFraction * baseCost * duration)
+        : table.native_audio;
   }
 
   return cost;
