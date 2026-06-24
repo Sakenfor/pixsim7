@@ -6,6 +6,7 @@ import { stableSerialize } from '@lib/stableSerialize';
 import { hmrSingleton } from '@lib/utils/hmrSafe';
 
 import { assetEvents } from '../lib/assetEvents';
+import { isGalleryHoverLocked, subscribeGalleryHoverUnlock } from '../lib/galleryPrependLock';
 import { buildAssetSearchRequest, extractExtraRegistryFilters } from '../lib/searchParams';
 import { type AssetModel, fromAssetResponse, fromAssetResponses } from '../models/asset';
 
@@ -541,18 +542,15 @@ export function useAssets(options?: {
   const pendingPrependsRef = useRef<AssetResponse[]>([]);
   const pointerDownRef = useRef(false);
   const insertAssetSortedRef = useRef<(r: AssetResponse) => void>();
+  // Ref to the shared flush so the []-deps pointer effect below always calls the
+  // latest implementation (which also respects the hover lock).
+  const flushPendingPrependsRef = useRef<() => void>();
 
   useEffect(() => {
     const onDown = () => { pointerDownRef.current = true; };
     const onUp = () => {
       pointerDownRef.current = false;
-      const pending = pendingPrependsRef.current;
-      if (pending.length > 0) {
-        pendingPrependsRef.current = [];
-        for (const response of pending) {
-          insertAssetSortedRef.current?.(response);
-        }
-      }
+      flushPendingPrependsRef.current?.();
     };
     document.addEventListener('pointerdown', onDown, true);
     document.addEventListener('pointerup', onUp, true);
@@ -599,13 +597,40 @@ export function useAssets(options?: {
   }, [maxItems]);
   insertAssetSortedRef.current = insertAssetSorted;
 
+  // Defer a prepend while a pointer is down (don't shift the grid mid-gesture)
+  // OR while a gallery card is being hovered (don't slide the hovered card out
+  // from under the cursor mid-preview — see galleryPrependLock). Deferred items
+  // flush from `pendingPrependsRef` once both conditions clear.
   const prependAsset = useCallback((response: AssetResponse) => {
-    if (pointerDownRef.current) {
+    if (pointerDownRef.current || isGalleryHoverLocked()) {
+      // Cap the deferred queue so a long idle-hover during heavy generation
+      // can't grow it unbounded; keep the newest arrivals.
       pendingPrependsRef.current.push(response);
+      if (pendingPrependsRef.current.length > maxItems) {
+        pendingPrependsRef.current = pendingPrependsRef.current.slice(-maxItems);
+      }
       return;
     }
     insertAssetSorted(response);
-  }, [insertAssetSorted]);
+  }, [insertAssetSorted, maxItems]);
+
+  // Flush deferred prepends, but only when nothing is still holding them back
+  // (no pointer down, no active hover). Shared by the pointer-up handler and the
+  // hover-lock release subscription below.
+  const flushPendingPrepends = useCallback(() => {
+    if (pointerDownRef.current || isGalleryHoverLocked()) return;
+    const pending = pendingPrependsRef.current;
+    if (pending.length === 0) return;
+    pendingPrependsRef.current = [];
+    for (const response of pending) {
+      insertAssetSortedRef.current?.(response);
+    }
+  }, []);
+  flushPendingPrependsRef.current = flushPendingPrepends;
+
+  // Flush when the gallery hover lock fully releases (hover-out). The pointer-up
+  // path also calls flushPendingPrepends via flushPendingPrependsRef.
+  useEffect(() => subscribeGalleryHoverUnlock(flushPendingPrepends), [flushPendingPrepends]);
 
   // Update an existing asset in the list (used when asset is synced).
   // `fromAssetResponse` (object build + tag mapping) is deferred until after the
@@ -632,6 +657,67 @@ export function useAssets(options?: {
   // Remove a single asset by ID (used when asset is deleted)
   const removeAsset = useCallback((assetId: number) => {
     setItems((prev) => prev.filter((a) => a.id !== assetId));
+  }, []);
+
+  // ── Live-event coalescing ────────────────────────────────────────────────
+  // Every backend asset event (a `created` plus several `updated`/thumbnail-poll
+  // events per generation) resolves on its own async task, so React can't
+  // auto-batch the resulting setItems calls. Without coalescing, a generation
+  // burst fires one FULL gallery re-render (MasonryGrid + every MediaCard) PER
+  // event, saturating the main thread for hundreds of ms — which in turn stalls
+  // the hovered preview <video>'s loadedmetadata/canplay callbacks and leaves
+  // the scrub widget stuck on "Loading video…". We queue the raw responses
+  // (deduped by id — the last update for an asset wins, collapsing poll spam)
+  // and drain them inside a single rAF, where React 19's automatic batching
+  // folds the multiple setItems into ONE commit per frame.
+  const eventQueueRef = useRef<{
+    creates: Map<number | string, AssetResponse>;
+    updates: Map<number | string, AssetResponse>;
+    deletes: Set<number | string>;
+  }>({ creates: new Map(), updates: new Map(), deletes: new Set() });
+  const flushRafRef = useRef<number | null>(null);
+
+  const flushEventQueue = useCallback(() => {
+    flushRafRef.current = null;
+    const q = eventQueueRef.current;
+    eventQueueRef.current = { creates: new Map(), updates: new Map(), deletes: new Set() };
+    // React 19 batches all of these into a single commit. Order matters:
+    // deletes → creates → updates, so an asset created and updated within the
+    // same frame ends in its updated state (update finds the just-inserted row).
+    for (const id of q.deletes) {
+      removeAsset(typeof id === 'string' ? parseInt(id, 10) : id);
+    }
+    for (const resp of q.creates.values()) prependAsset(resp);
+    for (const resp of q.updates.values()) updateAsset(resp);
+  }, [removeAsset, prependAsset, updateAsset]);
+
+  const scheduleFlush = useCallback(() => {
+    if (flushRafRef.current != null) return;
+    flushRafRef.current = requestAnimationFrame(flushEventQueue);
+  }, [flushEventQueue]);
+
+  const queueCreate = useCallback((resp: AssetResponse) => {
+    const q = eventQueueRef.current;
+    q.deletes.delete(resp.id);
+    q.creates.set(resp.id, resp);
+    scheduleFlush();
+  }, [scheduleFlush]);
+
+  const queueUpdate = useCallback((resp: AssetResponse) => {
+    eventQueueRef.current.updates.set(resp.id, resp);
+    scheduleFlush();
+  }, [scheduleFlush]);
+
+  const queueDelete = useCallback((id: number | string) => {
+    const q = eventQueueRef.current;
+    q.creates.delete(id);
+    q.updates.delete(id);
+    q.deletes.add(id);
+    scheduleFlush();
+  }, [scheduleFlush]);
+
+  useEffect(() => () => {
+    if (flushRafRef.current != null) cancelAnimationFrame(flushRafRef.current);
   }, []);
 
   // Subscribe to new asset events (from generation completions)
@@ -692,12 +778,12 @@ export function useAssets(options?: {
       // Only live-prepend on page 1 with default sort (newest first).
       const isDefaultSort = !filterParams.sort_by || (filterParams.sort_by === 'created_at' && filterParams.sort_dir === 'desc');
       if (matchesFilters && currentPageRef.current === 1 && isDefaultSort) {
-        prependAsset(asset);
+        queueCreate(asset);
       }
     });
 
     return unsubscribe;
-  }, [livePrepend, filterParams, prependAsset]);
+  }, [livePrepend, filterParams, queueCreate]);
 
   // Re-fetch the head page when the realtime feed reconnects. The server has
   // no event replay, so asset events that fired while the socket was down (a
@@ -721,21 +807,21 @@ export function useAssets(options?: {
   // Subscribe to asset update events (from sync completions)
   useEffect(() => {
     const unsubscribe = assetEvents.subscribeToUpdates((asset) => {
-      updateAsset(asset);
+      queueUpdate(asset);
     });
 
     return unsubscribe;
-  }, [updateAsset]);
+  }, [queueUpdate]);
 
-  // Subscribe to asset delete events
+  // Subscribe to asset removal events (deleted / archived / superseded) — the
+  // gallery shows the default view, so any removal reason evicts the card.
   useEffect(() => {
-    const unsubscribe = assetEvents.subscribeToDeletes((assetId) => {
-      const id = typeof assetId === 'string' ? parseInt(assetId, 10) : assetId;
-      removeAsset(id);
+    const unsubscribe = assetEvents.subscribeToRemovals((assetId) => {
+      queueDelete(assetId);
     });
 
     return unsubscribe;
-  }, [removeAsset]);
+  }, [queueDelete]);
 
   // Reset when filters change
   useEffect(() => {

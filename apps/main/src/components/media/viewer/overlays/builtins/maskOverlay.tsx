@@ -1418,7 +1418,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
           // Order matters: add before remove so gallery is never empty.
           await notifyGalleryOfNewAsset(AssetId(newAssetId));
           if (versionWasApplied && uploadContext.version_parent_id) {
-            assetEvents.emitAssetDeleted(uploadContext.version_parent_id as number);
+            assetEvents.emitAssetRemoved(uploadContext.version_parent_id as number, 'superseded');
           }
         } catch {
           // Non-critical

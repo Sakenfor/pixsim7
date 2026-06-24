@@ -11,10 +11,7 @@
  * Must be mounted exactly once at app level — see `createCachedScopeHook`.
  */
 
-import { assetEvents } from '../lib/assetEvents';
-import { fromAssetResponse, toViewerAsset } from '../models/asset';
-
-import { bootstrapFromFilters, createCachedScopeHook } from './createCachedScopeHook';
+import { bootstrapFromFilters, createCachedScopeHook, subscribeAssetEventStream } from './createCachedScopeHook';
 
 export const useProbesScope = createCachedScopeHook({
   scopeId: 'probes',
@@ -22,26 +19,8 @@ export const useProbesScope = createCachedScopeHook({
   cap: 100,
   label: (n) => `Probes (${n})`,
   bootstrap: () => bootstrapFromFilters({ asset_kind: 'probe', sort: 'new' }, 15),
-  subscribe: ({ prepend, update, remove }) => {
-    const unsubCreate = assetEvents.subscribe((response) => {
-      const model = fromAssetResponse(response);
-      if (model.assetKind !== 'probe') return;
-      prepend(toViewerAsset(model));
-    });
-    const unsubUpdate = assetEvents.subscribeToUpdates((response) => {
-      const model = fromAssetResponse(response);
-      if (model.assetKind !== 'probe') return;
-      update(toViewerAsset(model));
-    });
-    const unsubDelete = assetEvents.subscribeToDeletes((assetId) => {
-      // Delete events don't carry assetKind. Remove unconditionally — if the
-      // id isn't in the probes cache, the mutator is a no-op anyway.
-      remove(assetId);
-    });
-    return () => {
-      unsubCreate();
-      unsubUpdate();
-      unsubDelete();
-    };
-  },
+  // Only probe-kind assets enter the scope (create/update are filtered).
+  // Removal events carry no assetKind, so they apply unconditionally — a no-op
+  // when the id isn't already in the probes cache.
+  subscribe: (mutators) => subscribeAssetEventStream(mutators, (model) => model.assetKind === 'probe'),
 });

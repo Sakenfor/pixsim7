@@ -115,7 +115,7 @@ export function AssetsRoute() {
       }
 
       for (const asset of assets) {
-        assetEvents.emitAssetDeleted(asset.id);
+        assetEvents.emitAssetRemoved(asset.id, 'deleted');
         storeRemoveAsset(asset.id);
       }
       if (isViewerOpen && viewerAsset && assets.some((a) => a.id === viewerAsset.id)) {

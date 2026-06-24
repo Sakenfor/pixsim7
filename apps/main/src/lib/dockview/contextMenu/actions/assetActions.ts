@@ -20,7 +20,7 @@ import {
   patchAssetDescriptor,
   type AssetActionDescriptor,
 } from '@features/assets/actions';
-import { archiveAsset } from '@features/assets/lib/api';
+import { archiveAsset, getAsset } from '@features/assets/lib/api';
 import { assetEvents } from '@features/assets/lib/assetEvents';
 import { assertBackendAssetId } from '@features/assets/lib/backendAssetId';
 import { applyQuickTag } from '@features/assets/lib/quickTag';
@@ -1413,11 +1413,21 @@ const archiveAssetAction: MenuAction = {
     const errorCount = results.length - successCount;
 
     if (successCount > 0) {
-      for (const assetId of succeededAssetIds) {
-        if (archive) {
-          assetEvents.emitAssetDeleted(assetId);
-        } else {
-          assetEvents.emitAssetUpdated({ id: assetId, is_archived: false } as any);
+      if (archive) {
+        for (const assetId of succeededAssetIds) {
+          assetEvents.emitAssetRemoved(assetId, 'archived');
+        }
+      } else {
+        // Unarchive: re-fetch each asset and emit the real model so live
+        // surfaces (e.g. an archived-filter gallery) update from a complete
+        // AssetModel rather than a synthetic `{ id, is_archived: false }`
+        // partial that would overwrite a cached entry with a stripped one.
+        // Fire-and-forget per id; a failed refetch just skips that emit.
+        for (const assetId of succeededAssetIds) {
+          void getAsset(assetId).then(
+            (fresh) => assetEvents.emitAssetUpdated(fresh),
+            (err) => console.error('Failed to refresh unarchived asset:', err),
+          );
         }
       }
       notify('success', `${verb} ${successCount} asset${successCount === 1 ? '' : 's'}.`);

@@ -25,8 +25,9 @@ import { listAssets } from '@lib/api/assets';
 import { authService } from '@lib/auth';
 import { hmrSingleton } from '@lib/utils';
 
+import { assetEvents } from '../lib/assetEvents';
 import { buildAssetSearchRequest } from '../lib/searchParams';
-import { fromAssetResponses, toViewerAsset } from '../models/asset';
+import { fromAssetResponse, fromAssetResponses, toViewerAsset, type AssetModel } from '../models/asset';
 import {
   useAssetViewerStore,
   selectIsViewerOpen,
@@ -180,6 +181,40 @@ export function createCachedScopeHook(opts: CachedScopeOptions): () => void {
     const snapshot = useMemo(() => [...cache.assets], [cacheVersion]);
     const label = opts.label(snapshot.length);
     useViewerScopeSync(opts.scopeId, label, snapshot, isViewerOpen && snapshot.length > 0);
+  };
+}
+
+/**
+ * Wire the standard asset-event triad — create→prepend, update→update,
+ * removal→remove — into a cached scope's mutators. This is the body every
+ * event-fed scope (Recent, Probes) shares; the only thing that varies is an
+ * optional `accept` predicate that filters create/update to a subset (e.g.
+ * `assetKind === 'probe'`). Removal events carry only an id and are applied
+ * unconditionally — `remove` no-ops when the id isn't in the cache.
+ *
+ * Returns an unsubscribe that tears down all three subscriptions.
+ */
+export function subscribeAssetEventStream(
+  { prepend, update, remove }: Pick<CachedScopeMutators, 'prepend' | 'update' | 'remove'>,
+  accept?: (model: AssetModel) => boolean,
+): () => void {
+  const unsubCreate = assetEvents.subscribe((response) => {
+    const model = fromAssetResponse(response);
+    if (accept && !accept(model)) return;
+    prepend(toViewerAsset(model));
+  });
+  const unsubUpdate = assetEvents.subscribeToUpdates((response) => {
+    const model = fromAssetResponse(response);
+    if (accept && !accept(model)) return;
+    update(toViewerAsset(model));
+  });
+  const unsubRemove = assetEvents.subscribeToRemovals((assetId) => {
+    remove(assetId);
+  });
+  return () => {
+    unsubCreate();
+    unsubUpdate();
+    unsubRemove();
   };
 }
 

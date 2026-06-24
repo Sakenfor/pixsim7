@@ -342,7 +342,7 @@ function handleAssetDeleted(message: WebSocketRecord): void {
   const assetId = getIdValue(message.asset_id) ?? getIdValue(dataRecord?.asset_id);
   if (!assetId) return;
   debugFlags.log('websocket', 'Emitting asset:deleted event to gallery');
-  assetEvents.emitAssetDeleted(assetId);
+  assetEvents.emitAssetRemoved(assetId, 'deleted');
 }
 
 function handleLegacyGenerationUpdate(message: WebSocketRecord): void {

@@ -10,31 +10,18 @@
  * Must be mounted exactly once at app level — see `createCachedScopeHook`.
  */
 
-import { assetEvents } from '../lib/assetEvents';
-import { fromAssetResponse, toViewerAsset } from '../models/asset';
-
-import { bootstrapFromFilters, createCachedScopeHook } from './createCachedScopeHook';
+import { bootstrapFromFilters, createCachedScopeHook, subscribeAssetEventStream } from './createCachedScopeHook';
 
 export const useRecentScope = createCachedScopeHook({
   scopeId: 'recent',
   cacheKey: 'viewer:recentAssetsCache',
   cap: 100,
   label: (n) => `Recent (${n})`,
+  // On full page refresh the in-memory cache is empty, so bootstrap should
+  // refill the whole visible recents window (up to cap), not just the latest
+  // micro-batch.
   bootstrap: () => bootstrapFromFilters({ sort: 'new' }, 100),
-  subscribe: ({ prepend, update, remove }) => {
-    const unsubCreate = assetEvents.subscribe((response) => {
-      prepend(toViewerAsset(fromAssetResponse(response)));
-    });
-    const unsubUpdate = assetEvents.subscribeToUpdates((response) => {
-      update(toViewerAsset(fromAssetResponse(response)));
-    });
-    const unsubDelete = assetEvents.subscribeToDeletes((assetId) => {
-      remove(assetId);
-    });
-    return () => {
-      unsubCreate();
-      unsubUpdate();
-      unsubDelete();
-    };
-  },
+  // Recent shows the default (non-archived, current) view, so it takes every
+  // create/update and drops on any removal (deleted / archived / superseded).
+  subscribe: (mutators) => subscribeAssetEventStream(mutators),
 });

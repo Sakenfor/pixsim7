@@ -9,9 +9,21 @@ import type { AssetResponse } from '@lib/api/assets';
 
 import { isBackendAssetId } from './backendAssetId';
 
+/**
+ * Why an asset is leaving the live views. All three are a single concept —
+ * "evict this card from default surfaces" — with different causes:
+ *   - 'deleted'    — the row is gone (user delete, or server delete push)
+ *   - 'archived'   — soft-hidden (is_archived=true); the asset still exists
+ *   - 'superseded' — replaced by a newer version (old head, searchable=false)
+ * List scopes ignore the reason and just remove. Anything that does
+ * irreversible cleanup (blob revocation, engagement purge, version-chain edits)
+ * MUST gate on `reason === 'deleted'` so archiving/superseding can't trigger it.
+ */
+export type AssetRemovalReason = 'deleted' | 'archived' | 'superseded';
+
 type AssetEventCallback = (asset: AssetResponse) => void;
 type AssetUpdateCallback = (asset: AssetResponse) => void;
-type AssetDeleteCallback = (assetId: number | string) => void;
+type AssetRemovalCallback = (assetId: number | string, reason: AssetRemovalReason) => void;
 type RetryCallback = () => void;
 type OpenToolsPanelCallback = (assetIds: number[]) => void;
 type AssetViewCallback = (assetId: number | string) => void;
@@ -22,7 +34,7 @@ type ResyncCallback = () => void;
 class AssetEventEmitter {
   private listeners: Set<AssetEventCallback> = new Set();
   private updateListeners: Set<AssetUpdateCallback> = new Set();
-  private deleteListeners: Set<AssetDeleteCallback> = new Set();
+  private removalListeners: Set<AssetRemovalCallback> = new Set();
   private resyncListeners: Set<ResyncCallback> = new Set();
   private retryListeners: Set<RetryCallback> = new Set();
   private openToolsPanelListeners: Set<OpenToolsPanelCallback> = new Set();
@@ -51,12 +63,14 @@ class AssetEventEmitter {
   }
 
   /**
-   * Subscribe to asset delete events
+   * Subscribe to asset removal events — fired when an asset should leave the
+   * live views. The callback receives the reason (see `AssetRemovalReason`);
+   * list scopes can ignore it, destructive handlers must gate on it.
    */
-  subscribeToDeletes(callback: AssetDeleteCallback): () => void {
-    this.deleteListeners.add(callback);
+  subscribeToRemovals(callback: AssetRemovalCallback): () => void {
+    this.removalListeners.add(callback);
     return () => {
-      this.deleteListeners.delete(callback);
+      this.removalListeners.delete(callback);
     };
   }
 
@@ -64,7 +78,13 @@ class AssetEventEmitter {
    * Emit a new asset event (called when generation completes)
    */
   emitAssetCreated(asset: AssetResponse): void {
-    console.log('[AssetEvents] New asset created:', asset.id, `(${this.listeners.size} subscriber(s))`);
+    // Gated behind DEV: this (and emitAssetUpdated) fire many times per second
+    // during a generation burst; an unconditional console.log per emit is a
+    // measurable main-thread cost with DevTools attached, adding to the storm
+    // that stalls hover-preview readiness. See useAssets live-event coalescing.
+    if (import.meta.env?.DEV) {
+      console.log('[AssetEvents] New asset created:', asset.id, `(${this.listeners.size} subscriber(s))`);
+    }
     this.listeners.forEach((callback) => {
       try {
         callback(asset);
@@ -78,7 +98,9 @@ class AssetEventEmitter {
    * Emit an asset update event (called when asset is synced/updated)
    */
   emitAssetUpdated(asset: AssetResponse): void {
-    console.log('[AssetEvents] Asset updated:', asset.id);
+    if (import.meta.env?.DEV) {
+      console.log('[AssetEvents] Asset updated:', asset.id);
+    }
     this.updateListeners.forEach((callback) => {
       try {
         callback(asset);
@@ -89,15 +111,17 @@ class AssetEventEmitter {
   }
 
   /**
-   * Emit an asset delete event
+   * Emit an asset removal event. `reason` tells subscribers *why* the asset is
+   * leaving live views (deleted / archived / superseded) — see
+   * `AssetRemovalReason`.
    */
-  emitAssetDeleted(assetId: number | string): void {
-    console.log('[AssetEvents] Asset deleted:', assetId);
-    this.deleteListeners.forEach((callback) => {
+  emitAssetRemoved(assetId: number | string, reason: AssetRemovalReason): void {
+    console.log('[AssetEvents] Asset removed:', assetId, `(${reason})`);
+    this.removalListeners.forEach((callback) => {
       try {
-        callback(assetId);
+        callback(assetId, reason);
       } catch (err) {
-        console.error('[AssetEvents] Delete listener error:', err);
+        console.error('[AssetEvents] Removal listener error:', err);
       }
     });
   }

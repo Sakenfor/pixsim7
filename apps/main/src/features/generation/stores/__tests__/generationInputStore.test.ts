@@ -20,7 +20,7 @@ vi.mock('@features/assets', () => ({
   assetEvents: {
     emitAssetCreated: vi.fn(),
     emitAssetUpdated: vi.fn(),
-    emitAssetDeleted: vi.fn(),
+    emitAssetRemoved: vi.fn(),
     subscribeToUpdates: vi.fn(() => () => {}),
   },
   fromAssetResponse: vi.fn((r: unknown) => r),
@@ -100,7 +100,12 @@ describe('generationInputStore.switchProviderInputs', () => {
     expect(store.getState().getInputs(OP).map((i) => i.asset.id)).toEqual([10, 11]);
   });
 
-  it('persists currentProviderByOp + inputsByProviderOp across store rehydration', () => {
+  it('persists currentProviderByOp across store rehydration (inputsByProviderOp is session-only)', () => {
+    // `inputsByProviderOp` is intentionally not persisted — it stores full
+    // AssetModel snapshots per provider+op and blew past the localStorage
+    // quota during normal QuickGen probing. `currentProviderByOp` and
+    // `inputsByOperation` still rehydrate; the saved-per-provider buckets
+    // simply start empty after reload.
     const storageKey = `test_rehydrate_${Date.now()}`;
     const first = createGenerationInputStore(storageKey);
     first.getState().setCurrentProviderForOp(OP, 'pixverse');
@@ -108,12 +113,14 @@ describe('generationInputStore.switchProviderInputs', () => {
     first.getState().switchProviderInputs(OP, 'runway');
 
     // Recreate store with the same key — simulates reload or scope revival.
-    // The second store should know it's currently on 'runway' from the
-    // rehydrated currentProviderByOp.
     const second = createGenerationInputStore(storageKey);
+    // currentProviderByOp must survive reload so the UI knows which
+    // provider the (now-empty) inputs bucket belongs to.
     expect(second.getState().currentProviderByOp[OP]).toBe('runway');
+    // The pre-reload pixverse snapshot is gone (not persisted), so
+    // switching back lands on an empty bucket — current behavior contract.
     second.getState().switchProviderInputs(OP, 'pixverse');
-    expect(second.getState().getInputs(OP).map((i) => i.asset.id)).toEqual([1]);
+    expect(second.getState().getInputs(OP)).toHaveLength(0);
   });
 
   it('operation-switch within same provider does not clobber other-provider entries', () => {

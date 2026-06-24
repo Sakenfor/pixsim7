@@ -13,12 +13,12 @@
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { archiveAsset } from '@lib/api/assets';
 import { useContextMenuItem } from '@lib/dockview';
 import { useCardGestures, useLongPressRadial } from '@lib/gestures';
 import { Icon } from '@lib/icons';
 
 import { useAssetEngagement, useAssetViewerStore, type ViewerAsset } from '@features/assets';
+import { archiveAssetAndBroadcast } from '@features/assets/lib/archive';
 import { toggleFavoriteById } from '@features/assets/lib/favoriteTag';
 import { getAssetDisplayUrls } from '@features/assets/models/asset';
 
@@ -56,7 +56,13 @@ const StripThumb = memo(function StripThumb({ asset, isActive, isPending, onClic
   }, [numericId]);
   const gestureActions = useMemo(
     () => ({
-      onArchive: model ? () => void archiveAsset(model.id, true) : undefined,
+      // archiveAssetAndBroadcast pairs the soft-hide PATCH with the 'archived'
+      // removal event — without that broadcast the asset gets archived in the
+      // DB but lingers in the strip (the recents scope only drops on removal).
+      onArchive: model
+        ? () => void archiveAssetAndBroadcast(model.id).catch((err) =>
+            console.error('Failed to archive asset:', err))
+        : undefined,
     }),
     [model],
   );

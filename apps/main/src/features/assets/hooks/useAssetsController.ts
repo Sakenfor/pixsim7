@@ -21,7 +21,8 @@ import { useFilterPersistence } from '@/hooks/useFilterPersistence';
 import { useViewer } from '@/hooks/useViewer';
 import type { OperationType } from '@/types/operations';
 
-import { deleteAsset, deleteAssetFromProvider, bulkDeleteAssets, uploadAssetToProvider, archiveAsset } from '../lib/api';
+import { deleteAsset, deleteAssetFromProvider, bulkDeleteAssets, uploadAssetToProvider } from '../lib/api';
+import { archiveAssetAndBroadcast } from '../lib/archive';
 import { assetEvents } from '../lib/assetEvents';
 import { isAssetIngesting } from '../lib/assetUrlResolver';
 import { setSignalOverrideById } from '../lib/signalOverride';
@@ -363,9 +364,9 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
         );
       }
 
-      // Emit delete events and clean up selection/viewer for each asset
+      // Emit removal events and clean up selection/viewer for each asset
       for (const asset of assets) {
-        assetEvents.emitAssetDeleted(asset.id);
+        assetEvents.emitAssetRemoved(asset.id, 'deleted');
         storeRemoveAsset(asset.id);
       }
       // Close viewer if viewing a deleted asset
@@ -427,8 +428,11 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
   // Handle asset archiving
   const handleArchiveAsset = useCallback(async (asset: AssetModel) => {
     try {
-      await archiveAsset(asset.id, true);
-      // Remove archived asset from view without resetting scroll position
+      // Pairs the archive PATCH with the 'archived' removal broadcast, so the
+      // asset also leaves other live surfaces (recents strip, probes).
+      await archiveAssetAndBroadcast(asset.id);
+      // Remove from this gallery immediately (scroll-stable). The broadcast
+      // above also queues this gallery's own removal — idempotent on the id.
       removeAsset(asset.id);
     } catch (err) {
       console.error('Failed to archive asset:', err);
