@@ -56,18 +56,18 @@ def test_pixverse_video_duration_clamped_for_model_limit():
         OperationType.TEXT_TO_VIDEO,
         {
             "prompt": "loop",
-            "duration": 15,
+            "duration": 20,
             "quality": "360p",
             "model": "v6",
         },
     )
 
-    # Pixverse v6 currently caps duration at 10s.
-    assert params["duration"] == 10
+    # Pixverse v6 caps duration at 15s (max_duration on the spec).
+    assert params["duration"] == 15
 
 
 def test_normalize_video_duration_fallback_clamp():
-    assert pixverse_params_module.normalize_video_duration(15, "v6") == 10
+    assert pixverse_params_module.normalize_video_duration(20, "v6") == 15
     assert pixverse_params_module.normalize_video_duration(0, "v6") == 1
 
 
