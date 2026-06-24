@@ -13,9 +13,12 @@
 import { useToast } from '@pixsim7/shared.ui';
 import { useMemo } from 'react';
 
+import { Icon, type IconName } from '@lib/icons';
+
 import { useAsset, getAssetDisplayUrls } from '@features/assets';
 
 import { useMediaThumbnailFull } from '@/hooks/useMediaThumbnail';
+import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 import { useBatchGenerationActions, type BatchActionKind } from '../hooks/useBatchGenerationActions';
 import { groupGenerations, type GenerationGroupBy } from '../lib/generationGrouping';
@@ -58,6 +61,35 @@ function retryableIds(items: GenerationModel[]): number[] {
   return items.filter((g) => g.status === 'failed' || g.status === 'cancelled').map((g) => g.id);
 }
 
+/** Icon + brand colour for an operation type. text_to_* ops carry no icon in
+ *  OPERATION_METADATA, so fall back to a sensible glyph/colour by output kind. */
+const OP_INDICATOR_FALLBACK: Partial<Record<OperationType, { icon: IconName; color: string }>> = {
+  text_to_image: { icon: 'image', color: '#8B5CF6' },
+  text_to_video: { icon: 'film', color: '#2563EB' },
+};
+function operationIndicator(opType: string): { icon: IconName; color: string } | null {
+  const meta = OPERATION_METADATA[opType as OperationType];
+  if (meta?.icon && meta.color) return { icon: meta.icon as IconName, color: meta.color };
+  return OP_INDICATOR_FALLBACK[opType as OperationType] ?? null;
+}
+
+/** Dominant (most common) operation type across a group's items — the at-a-
+ *  glance "what kind of work is this" signal shown on the row's left edge. */
+function dominantOperation(items: GenerationModel[]): { type: string; mixed: boolean } | null {
+  const counts = new Map<string, number>();
+  for (const g of items) counts.set(g.operationType, (counts.get(g.operationType) ?? 0) + 1);
+  let best: string | null = null;
+  let bestN = 0;
+  for (const [type, n] of counts) {
+    if (n > bestN) {
+      best = type;
+      bestN = n;
+    }
+  }
+  if (best == null) return null;
+  return { type: best, mixed: counts.size > 1 };
+}
+
 /** Small asset thumbnail for asset-grouped rows (mirrors GenerationsPanel's
  *  GroupAssetPreview, sized for the compact surface). */
 function GroupAssetThumb({ assetId }: { assetId: number }) {
@@ -81,6 +113,15 @@ const ACTION_LABEL: Record<BatchActionKind, string> = {
   cancel: 'Cancel',
   resume: 'Resume',
   retry: 'Retry',
+};
+
+/** Icon-only action glyphs — the count lives in the group's right-hand badge,
+ *  so the buttons stay compact (full label + count remain in the tooltip). */
+const ACTION_ICON: Record<BatchActionKind, IconName> = {
+  pause: 'pause',
+  cancel: 'x',
+  resume: 'play',
+  retry: 'refresh',
 };
 
 export function GenerationGroupList({
@@ -140,10 +181,22 @@ export function GenerationGroupList({
           (n, g) => (resolveGranularStatus(g) === 'refiltering' ? n + 1 : n),
           0,
         );
+        const op = dominantOperation(grp.items);
+        const opInd = op ? operationIndicator(op.type) : null;
+        const opLabel = op ? OPERATION_METADATA[op.type as OperationType]?.label ?? op.type : '';
         return (
           <div key={grp.key} className="px-3 py-2">
             <div className="flex items-start justify-between gap-2">
               <span className="flex items-start gap-2 min-w-0">
+                {opInd && (
+                  <span
+                    className="flex-shrink-0 w-5 h-5 mt-px rounded flex items-center justify-center"
+                    style={{ backgroundColor: opInd.color }}
+                    title={op?.mixed ? `${opLabel} (+ other operations)` : opLabel}
+                  >
+                    <Icon name={opInd.icon} size={12} color="#fff" />
+                  </span>
+                )}
                 {grp.dimension === 'asset' && grp.key !== '__no_asset__' && (
                   <GroupAssetThumb assetId={Number(grp.key)} />
                 )}
@@ -181,7 +234,7 @@ export function GenerationGroupList({
                     disabled={isRunning}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => handleGroupAction(kind, ids)}
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    className={`p-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                       kind === 'cancel'
                         ? 'bg-red-900/40 text-red-300 hover:bg-red-900/60'
                         : kind === 'pause'
@@ -189,8 +242,9 @@ export function GenerationGroupList({
                           : 'bg-neutral-700 text-neutral-200 hover:bg-neutral-600'
                     }`}
                     title={`${ACTION_LABEL[kind]} ${ids.length} generation(s) in this group`}
+                    aria-label={`${ACTION_LABEL[kind]} ${ids.length} generation(s) in this group`}
                   >
-                    {ACTION_LABEL[kind]} ({ids.length})
+                    <Icon name={ACTION_ICON[kind]} size={13} />
                   </button>
                 ) : null,
               )}

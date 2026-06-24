@@ -13,7 +13,7 @@
  */
 import { useMemo } from 'react';
 
-import { Icon } from '@lib/icons';
+import { Icon, type IconName } from '@lib/icons';
 
 import { type GenerationGroupBy } from '../lib/generationGrouping';
 import { isActiveStatus } from '../models';
@@ -70,40 +70,45 @@ export function GenerationActivityFlyout({
 
   return (
     <div className="w-[380px] h-[440px] max-h-[80vh] flex flex-col bg-neutral-900/95 border border-neutral-700/60 rounded-xl shadow-2xl backdrop-blur-md overflow-hidden">
-      {/* Header */}
+      {/* Header — compact, icon-driven. The gem widget this flyout anchors to
+          already identifies it, so the textual "Generation activity" title is
+          dropped; the active/paused count badge carries the only label. */}
       <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-neutral-700/40">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-neutral-200">Generation activity</span>
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setCountMode(countMode === 'active' ? 'paused' : 'active')}
-            className={`px-1.5 h-4 inline-flex items-center justify-center rounded-full text-[10px] font-semibold leading-none whitespace-nowrap transition-colors ${
-              countMode === 'active'
-                ? 'bg-blue-900/40 text-blue-300 hover:bg-blue-900/60'
-                : 'bg-amber-900/40 text-amber-300 hover:bg-amber-900/60'
-            }`}
-            title={`Showing ${headerLabel} count. Click to toggle active/paused.`}
-            aria-label={`Showing ${headerLabel} count. Click to toggle active or paused count.`}
-          >
-            {headerCount} {headerLabel}
-          </button>
-        </div>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setCountMode(countMode === 'active' ? 'paused' : 'active')}
+          className={`px-2 h-5 inline-flex items-center justify-center rounded-full text-[11px] font-semibold leading-none whitespace-nowrap transition-colors ${
+            countMode === 'active'
+              ? 'bg-blue-900/40 text-blue-300 hover:bg-blue-900/60'
+              : 'bg-amber-900/40 text-amber-300 hover:bg-amber-900/60'
+          }`}
+          title={`Showing ${headerLabel} count. Click to toggle active/paused.`}
+          aria-label={`Showing ${headerLabel} count. Click to toggle active or paused count.`}
+        >
+          {headerCount} {headerLabel}
+        </button>
         <div className="flex items-center gap-1">
-          <div className="flex rounded bg-neutral-800 p-0.5 text-[10px]">
-            {(['prompt', 'asset'] as const).map((dim) => (
+          <div className="flex rounded bg-neutral-800 p-0.5">
+            {([
+              ['prompt', 'prompt'],
+              ['asset', 'image'],
+            ] as Array<[GenerationGroupBy, IconName]>).map(([dim, icon]) => (
               <button
                 key={dim}
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onChangeGroupBy(dim)}
-                className={`px-1.5 py-0.5 rounded capitalize transition-colors ${
+                className={`p-1 rounded transition-colors ${
                   groupBy === dim
                     ? 'bg-neutral-600 text-white'
                     : 'text-neutral-400 hover:text-neutral-200'
                 }`}
+                title={`Group by ${dim}`}
+                aria-label={`Group by ${dim}`}
+                aria-pressed={groupBy === dim}
               >
-                {dim}
+                <Icon name={icon} size={13} />
               </button>
             ))}
           </div>
@@ -111,16 +116,18 @@ export function GenerationActivityFlyout({
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={onOpenFullPanel}
-            className="px-1.5 py-0.5 rounded text-[10px] bg-neutral-700 hover:bg-neutral-600 text-neutral-200 transition-colors"
+            className="p-1 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-200 transition-colors"
             title="Open the full generations panel"
+            aria-label="Open the full generations panel"
           >
-            Open panel
+            <Icon name="externalLink" size={14} />
           </button>
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={onClose}
-            className="text-neutral-500 hover:text-neutral-300 p-0.5 rounded hover:bg-neutral-700/50 transition-colors"
+            className="text-neutral-500 hover:text-neutral-300 p-1 rounded hover:bg-neutral-700/50 transition-colors"
+            title="Close"
             aria-label="Close"
           >
             <Icon name="x" size={14} />
