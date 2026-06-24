@@ -24,6 +24,8 @@ import { ReviewModeSurface, type ReviewDecision } from './ReviewModeSurface';
 
 export interface SignalTriageContentProps {
   controller: AssetsController;
+  /** Card edge length, driven by the shared gallery layout slider. */
+  cardSize?: number;
 }
 
 /** The mutually-exclusive score buckets you can triage, each a registered
@@ -82,7 +84,7 @@ function SignalBucketSwitcher({
   );
 }
 
-export function SignalTriageContent({ controller }: SignalTriageContentProps) {
+export function SignalTriageContent({ controller, cardSize }: SignalTriageContentProps) {
   const [queue, setQueue] = useState<TriageQueue>('broken');
 
   // Switch which bucket we're triaging, replacing the whole filter slate.
@@ -214,6 +216,7 @@ export function SignalTriageContent({ controller }: SignalTriageContentProps) {
         );
       }}
       emptyState={emptyState}
+      cardSize={cardSize}
       // Start on the Broken bucket (also clears any stale media_type/bucket flags).
       onMount={() => selectQueue('broken')}
     />

@@ -30,6 +30,7 @@ import {
 import { useControlCenterLayout } from '@features/controlCenter';
 import {
   GalleryLayoutControls,
+  GallerySurfaceSwitcher,
   SurfacePresetPicker,
   // mergeBadgeConfig,
   deriveOverlayPresetIdFromBadgeConfig,
@@ -354,6 +355,23 @@ export function AssetsRoute() {
         </div>
       )}
 
+      {/* Persistent gallery chrome — surface switcher + layout controls rendered
+          above EVERY remote-gallery surface. Secondary surfaces (Triage/Review)
+          early-return their own body before the default toolbar, so these controls
+          can't live there. flex-shrink-0 sibling so the gallery container below
+          keeps its bounded scroll height (MasonryGrid needs a bounded ancestor). */}
+      {activeSourceId === 'remote-gallery' && (
+        <div className="flex-shrink-0 flex flex-wrap items-center gap-2 px-3 sm:px-6 pt-3 sm:pt-4 pb-1">
+          <GallerySurfaceSwitcher mode="dropdown" />
+          <GalleryLayoutControls
+            layout={layout}
+            setLayout={setLayout}
+            cardSize={cardSize}
+            setCardSize={setCardSize}
+          />
+        </div>
+      )}
+
       {/* Scrollable source component with asset viewer.
           Mobile drops outer padding so card grid uses the full viewport width;
           desktop keeps the breathing room around the gallery surface. */}
@@ -386,12 +404,6 @@ export function AssetsRoute() {
                       onPresetChange={handleOverlayPresetChange}
                     />
                   )}
-                  <GalleryLayoutControls
-                    layout={layout}
-                    setLayout={setLayout}
-                    cardSize={cardSize}
-                    setCardSize={setCardSize}
-                  />
                   <div className="relative">
                     <button
                       onClick={() => setPanelsDropdownOpen(!panelsDropdownOpen)}

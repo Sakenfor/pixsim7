@@ -23,6 +23,8 @@ import { ReviewModeSurface, type ReviewDecision } from './ReviewModeSurface';
 
 export interface ReviewSurfaceContentProps {
   controller: AssetsController;
+  /** Card edge length, driven by the shared gallery layout slider. */
+  cardSize?: number;
 }
 
 const HELP_ROWS = [
@@ -33,7 +35,7 @@ const HELP_ROWS = [
   { keys: '?', label: 'Toggle help' },
 ];
 
-export function ReviewSurfaceContent({ controller }: ReviewSurfaceContentProps) {
+export function ReviewSurfaceContent({ controller, cardSize }: ReviewSurfaceContentProps) {
   // Persistent review state — survives page reloads.
   const [reviewedAssets, setReviewedAssets] = usePersistentSet('review-session:reviewed', new Set());
   const [acceptedAssets, setAcceptedAssets] = usePersistentSet('review-session:accepted', new Set());
@@ -187,6 +189,7 @@ export function ReviewSurfaceContent({ controller }: ReviewSurfaceContentProps) 
       cardClassName={cardClassName}
       overlayPresetId="media-card-review"
       helpRows={HELP_ROWS}
+      cardSize={cardSize}
     />
   );
 }

@@ -1517,7 +1517,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
         : gallerySurfaceSelectors.get(activeSurfaceId)?.component ?? null,
   );
   if (ActiveSurfaceComponent) {
-    return <ActiveSurfaceComponent controller={controller} />;
+    return <ActiveSurfaceComponent controller={controller} cardSize={cardSize} />;
   }
 
   return (

@@ -14,8 +14,6 @@
 
 import type { ReactNode } from 'react';
 
-import { GallerySurfaceSwitcher } from '@features/gallery';
-
 import type { AssetFilters } from '../../hooks/useAssets';
 
 import { GalleryFilters, type FilterOption } from './GalleryFilters';
@@ -153,20 +151,14 @@ export function GallerySurfaceShell({
 
   return (
     <div className={`p-6 space-y-4 h-full overflow-y-auto ${className}`}>
-      {/* Header */}
+      {/* Header. The surface switcher now lives in the persistent gallery chrome
+          bar (Assets.tsx), above every surface — no per-surface switcher here. */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {/* Surface switcher — secondary surfaces (Triage/Review) early-return
-              their own content before the default gallery toolbar renders, so
-              without this there's no way back to the gallery from here. Self-hides
-              when only one surface is registered. */}
-          <GallerySurfaceSwitcher mode="dropdown" />
-          <div>
-            <h1 className="text-xl font-semibold">{title}</h1>
-            {subtitle && (
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">{subtitle}</p>
-            )}
-          </div>
+        <div>
+          <h1 className="text-xl font-semibold">{title}</h1>
+          {subtitle && (
+            <p className="text-sm text-neutral-600 dark:text-neutral-400">{subtitle}</p>
+          )}
         </div>
         {headerActions && <div className="flex items-center gap-2">{headerActions}</div>}
       </div>
