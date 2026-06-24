@@ -60,6 +60,38 @@ export const archiveAsset = assetsApi.archiveAsset;
 export const setSignalOverride = assetsApi.setSignalOverride;
 
 /**
+ * Video-health calibration report — grades the current detector against the
+ * user's keep/flag labels and suggests a tuned render-ratio cutoff. Mirrors
+ * services/asset/signal_calibration.compute_calibration(). Admin-scoped.
+ */
+export interface SignalCalibrationReport {
+  scanner_version: string;
+  labels: { broken: number; clean: number; total: number };
+  sufficient: boolean;
+  min_per_class: number;
+  current_model?: {
+    tp: number; fp: number; fn: number; tn: number;
+    accuracy: number; precision: number; recall: number; f1: number;
+  };
+  render_ratio?: {
+    broken: { n: number; p10: number | null; p50: number | null; p90: number | null };
+    clean: { n: number; p10: number | null; p50: number | null; p90: number | null };
+    current_weak_cutoff: number;
+    suggested_cutoff: { cutoff: number; precision: number; recall: number; f1: number } | null;
+  };
+  broken_signal_presence?: {
+    render_fast: number; audio_quiet: number; visual_static: number;
+    no_signal: number; of_total: number;
+  };
+  recommendation: string;
+}
+
+/** Fetch the live video-health calibration report for the current user. */
+export function getSignalCalibration(): Promise<SignalCalibrationReport> {
+  return pixsimClient.get<SignalCalibrationReport>('/assets/signal-calibration');
+}
+
+/**
  * Run the broken-video heuristic scan on a single asset (re-scan on demand).
  */
 export const scanSignalMetrics = assetsApi.scanSignalMetrics;

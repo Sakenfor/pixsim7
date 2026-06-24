@@ -21,6 +21,7 @@ import type { AssetModel } from '../models/asset';
 
 import { DynamicFilters } from './DynamicFilters';
 import { ReviewModeSurface, type ReviewDecision } from './ReviewModeSurface';
+import { SignalCalibrationStrip } from './SignalCalibrationStrip';
 
 export interface SignalTriageContentProps {
   controller: AssetsController;
@@ -86,6 +87,9 @@ function SignalBucketSwitcher({
 
 export function SignalTriageContent({ controller, cardSize }: SignalTriageContentProps) {
   const [queue, setQueue] = useState<TriageQueue>('broken');
+  // Bumped after each keep/flag to refetch the calibration strip so its grade +
+  // label counts move as you label.
+  const [labelTick, setLabelTick] = useState(0);
 
   // Switch which bucket we're triaging, replacing the whole filter slate.
   //
@@ -120,6 +124,7 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
       try {
         await setSignalOverride(assetId, decision);
         controller.removeAsset?.(assetId);
+        setLabelTick((n) => n + 1);
       } catch (e) {
         console.error('[signal-triage] override failed', assetId, decision, e);
       }
@@ -176,6 +181,7 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
   const filtersContent = (
     <div className="space-y-3">
       <SignalBucketSwitcher queue={queue} onSelect={selectQueue} />
+      <SignalCalibrationStrip refreshKey={labelTick} />
       <DynamicFilters
         filters={controller.filters}
         onFiltersChange={(f) => controller.setFilters(f)}
