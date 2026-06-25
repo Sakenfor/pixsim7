@@ -82,6 +82,12 @@ export interface AssetModel {
   cohortCounts?: Record<string, number>;
   /** True when this image was CDN-salvaged from a Pixverse false-filter / stuck-processing state */
   recovered?: boolean;
+  /** Broken-video heuristic score 0-6 (mirror of signal_metrics.score). */
+  signalScore?: number | null;
+  /** User's manual keep/flag decision on the broken-video heuristic. */
+  signalOverride?: 'clean' | 'broken' | null;
+  /** Heuristic's own verdict that the video is likely broken. */
+  signalSuspicious?: boolean;
   storedKey?: string | null;
   syncStatus: AssetSyncStatus;
   tags?: TagSummary[];
@@ -206,6 +212,9 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     hasChildren: (response as any).has_children ?? false,
     cohortCounts: ((response as any).cohort_counts ?? {}) as Record<string, number>,
     recovered: response.recovered ?? false,
+    signalScore: (response as any).signal_score ?? null,
+    signalOverride: (response as any).signal_override ?? null,
+    signalSuspicious: (response as any).signal_suspicious ?? false,
     storedKey: response.stored_key,
     syncStatus: response.sync_status,
     tags: response.tags?.map((tag) => ({

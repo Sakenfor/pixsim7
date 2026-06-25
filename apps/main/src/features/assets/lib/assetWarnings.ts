@@ -12,7 +12,7 @@
 
 import type { AssetModel } from '../models/asset';
 
-export type AssetWarningId = 'noReusableLastFrame' | 'recovered';
+export type AssetWarningId = 'noReusableLastFrame' | 'recovered' | 'suspectBroken';
 
 export type AssetWarningSeverity = 'info' | 'warning' | 'error';
 
@@ -45,6 +45,26 @@ export function getAssetWarnings(asset: AssetModel | null | undefined): AssetWar
       id: 'noReusableLastFrame',
       icon: 'arrowRight',
       tooltip: 'Provider last-frame missing — synthetic extend may still fail moderation.',
+      severity: 'warning',
+    });
+  }
+  // Video-health heuristic. User's manual flag wins (authoritative); otherwise
+  // surface the heuristic's suspicion — unless the user has explicitly kept it.
+  if (asset.signalOverride === 'broken') {
+    warnings.push({
+      id: 'suspectBroken',
+      icon: 'alertTriangle',
+      tooltip: 'Marked broken.',
+      severity: 'error',
+    });
+  } else if (asset.signalSuspicious && asset.signalOverride !== 'clean') {
+    warnings.push({
+      id: 'suspectBroken',
+      icon: 'alertTriangle',
+      tooltip:
+        `Suspected broken video (low signal${
+          typeof asset.signalScore === 'number' ? `, score ${asset.signalScore}` : ''
+        }) — review in Triage.`,
       severity: 'warning',
     });
   }

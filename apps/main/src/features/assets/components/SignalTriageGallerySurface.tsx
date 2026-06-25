@@ -262,18 +262,10 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
 
 /** Pull the user's manual keep/flag decision from the asset, if any. */
 function readUserOverride(asset: AssetModel): 'clean' | 'broken' | null {
-  const meta = (asset as AssetModel & { media_metadata?: Record<string, unknown> }).media_metadata;
-  if (!meta || typeof meta !== 'object') return null;
-  const sm = (meta as { signal_metrics?: { user_override?: unknown } }).signal_metrics;
-  const ov = sm?.user_override;
-  return ov === 'clean' || ov === 'broken' ? ov : null;
+  return asset.signalOverride ?? null;
 }
 
-/** Pull the heuristic score out of the asset's media_metadata for the badge. */
+/** The heuristic score for the per-card badge (mirror of signal_metrics.score). */
 function readSignalScore(asset: AssetModel): number | null {
-  const meta = (asset as AssetModel & { media_metadata?: Record<string, unknown> }).media_metadata;
-  if (!meta || typeof meta !== 'object') return null;
-  const sm = (meta as { signal_metrics?: { score?: unknown } }).signal_metrics;
-  if (!sm || typeof sm.score !== 'number') return null;
-  return sm.score;
+  return typeof asset.signalScore === 'number' ? asset.signalScore : null;
 }

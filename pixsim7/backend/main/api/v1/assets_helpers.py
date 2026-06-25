@@ -64,6 +64,15 @@ def _compute_recovered(asset) -> bool:
     return bool(isinstance(meta, dict) and meta.get("image_false_filter_recovered"))
 
 
+def _compute_signal_suspicious(asset) -> bool:
+    """The broken-video heuristic's own verdict
+    (media_metadata.signal_metrics.suspicious). Distinct from signal_override,
+    which is the user's manual keep/flag decision."""
+    meta = getattr(asset, "media_metadata", None) or {}
+    sm = meta.get("signal_metrics") if isinstance(meta, dict) else None
+    return bool(isinstance(sm, dict) and sm.get("suspicious"))
+
+
 async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetResponse:
     """
     Build AssetResponse with tags loaded from database.
@@ -87,6 +96,7 @@ async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetRes
     counts = await AssetSiblingCountService(db).counts_map([asset], asset.user_id)
     ar.cohort_counts = counts.get(asset.id, {})
     ar.gen_seed = asset.gen_seed
+    ar.signal_suspicious = _compute_signal_suspicious(asset)
 
     return ar
 
@@ -134,6 +144,7 @@ async def build_asset_responses_with_tags(
         ar.has_children = has_children_map.get(asset.id, False)
         ar.cohort_counts = sibling_counts.get(asset.id, {})
         ar.gen_seed = asset.gen_seed
+        ar.signal_suspicious = _compute_signal_suspicious(asset)
         responses.append(ar)
 
     return responses

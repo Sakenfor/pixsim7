@@ -259,6 +259,15 @@ class AssetResponse(BaseModel):
     # status, so the gallery can surface a distinct "recovered" indicator.
     recovered: bool = False
 
+    # Signal / video-health heuristic. signal_score (0-6) and signal_override
+    # ('clean'|'broken') are flat mirrors of the Asset columns (auto-populated via
+    # from_attributes); signal_suspicious is the heuristic's own verdict, computed
+    # from media_metadata.signal_metrics at build time. Surfaced so the gallery
+    # can flag suspected-broken videos at a glance.
+    signal_score: Optional[int] = None
+    signal_override: Optional[str] = None
+    signal_suspicious: bool = False
+
     # Asset kind (purpose)
     asset_kind: AssetKind = "content"
 
