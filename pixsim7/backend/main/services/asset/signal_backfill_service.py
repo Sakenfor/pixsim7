@@ -53,14 +53,17 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
         if batch_size < 1 or batch_size > 1000:
             raise InvalidOperationError("batch_size must be between 1 and 1000")
 
-        # Refresh the per-cohort render baselines ONCE up front; each batch then
-        # loads the cached blob (the render signal feeds the scorer).
-        from pixsim7.backend.main.services.asset.cohort_baselines import (
-            refresh_cohort_baselines,
-        )
+        # Don't spawn a duplicate sweep — if this user already has an active run
+        # (pending/running), return it. The create call timing out client-side
+        # (below) used to leave users clicking Start again and stacking runs.
+        existing = await self._find_active_run(user_id=user.id)
+        if existing is not None:
+            return existing
 
-        await refresh_cohort_baselines(self.db, user_id=user.id)
-
+        # `total_assets` (for the progress bar) is a single COUNT — cheap. The
+        # heavy per-cohort render-baseline refresh is deferred to the first batch
+        # (see _prepare_batch); doing it synchronously here blocked the request
+        # past the client's 30s timeout on a full-library sweep.
         total_assets = await self._count_scope(user_id=user.id, version=version)
 
         run = SignalBackfillRun(
@@ -80,14 +83,36 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
         )
         return await self._persist_new_run(run, enqueue=enqueue)
 
+    async def _find_active_run(self, *, user_id: int) -> Optional[SignalBackfillRun]:
+        """The user's most recent still-active (pending/running) run, if any."""
+        stmt = (
+            select(SignalBackfillRun)
+            .where(
+                SignalBackfillRun.user_id == user_id,
+                SignalBackfillRun.status.in_(
+                    [BackfillStatus.PENDING, BackfillStatus.RUNNING]
+                ),
+            )
+            .order_by(SignalBackfillRun.id.desc())
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
     # ---- hooks ------------------------------------------------------------
     async def _prepare_batch(
         self, run: SignalBackfillRun
     ) -> Tuple[SignalAnalysisService, Dict[str, Any]]:
         from pixsim7.backend.main.services.asset.cohort_baselines import (
             load_cohort_baselines,
+            refresh_cohort_baselines,
         )
 
+        # Refresh the per-cohort render baselines ONCE, at the start of the run
+        # (cursor still 0), rather than synchronously in create_run — which is what
+        # blew past the client's create timeout. Later batches just load the cache.
+        if run.cursor_asset_id == 0:
+            await refresh_cohort_baselines(self.db, user_id=run.user_id)
         baselines = await load_cohort_baselines(self.db)
         return SignalAnalysisService(self.db), baselines
 
