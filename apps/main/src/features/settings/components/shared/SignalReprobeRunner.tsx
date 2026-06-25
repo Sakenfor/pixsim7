@@ -36,6 +36,10 @@ interface RunListResponse {
 
 const SURFACE = 'settings:signal-reprobe';
 const STATS_KEY = '/assets/signal-scan-stats';
+// The assets-maintenance router is mounted under /assets — sibling endpoints
+// (signal-calibration, signal-scan-stats) use that prefix; these run endpoints
+// must too, or they 404.
+const RUNS_PATH = '/assets/signal-backfill-runs';
 const ACTIVE: SignalBackfillRun['status'][] = ['pending', 'running'];
 const POLL_MS = 2000;
 const DEFAULT_BATCH = 200;
@@ -69,7 +73,7 @@ export function SignalReprobeRunner() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    maintGet<RunListResponse>(`/signal-backfill-runs?limit=1`, SURFACE)
+    maintGet<RunListResponse>(`${RUNS_PATH}?limit=1`, SURFACE)
       .then((r) => {
         if (!cancelled) setRun(r.items[0] ?? null);
       })
@@ -91,7 +95,7 @@ export function SignalReprobeRunner() {
     pollRef.current = setInterval(async () => {
       try {
         const fresh = await maintGet<SignalBackfillRun>(
-          `/signal-backfill-runs/${id}`,
+          `${RUNS_PATH}/${id}`,
           SURFACE,
         );
         setRun(fresh);
@@ -123,16 +127,16 @@ export function SignalReprobeRunner() {
 
   const start = () =>
     act(() =>
-      maintPost<SignalBackfillRun>('/signal-backfill-runs', SURFACE, {
+      maintPost<SignalBackfillRun>(RUNS_PATH, SURFACE, {
         batch_size: DEFAULT_BATCH,
       }),
     );
   const pause = () =>
-    run && act(() => maintPost(`/signal-backfill-runs/${run.id}/pause`, SURFACE));
+    run && act(() => maintPost(`${RUNS_PATH}/${run.id}/pause`, SURFACE));
   const resume = () =>
-    run && act(() => maintPost(`/signal-backfill-runs/${run.id}/resume`, SURFACE));
+    run && act(() => maintPost(`${RUNS_PATH}/${run.id}/resume`, SURFACE));
   const cancel = () =>
-    run && act(() => maintPost(`/signal-backfill-runs/${run.id}/cancel`, SURFACE));
+    run && act(() => maintPost(`${RUNS_PATH}/${run.id}/cancel`, SURFACE));
 
   const pct =
     run && run.total_assets > 0
