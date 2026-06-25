@@ -60,6 +60,29 @@ const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number; overflow
   provider_status: { icon: 'shield', order: 91, overflow: true },
 };
 
+/**
+ * Logical filter groups: member filters render inside ONE labeled chip's
+ * dropdown instead of as separate chips or loose `⋯`-menu rows. Keeps related
+ * controls (e.g. the video-health buckets) together and out of the generic
+ * overflow. Member keys are removed from both the primary bar and the overflow.
+ */
+const FILTER_GROUPS: Record<string, { label: string; icon: string; order: number; keys: string[] }> = {
+  video_health: {
+    label: 'Video health',
+    icon: 'alertTriangle',
+    order: 8,
+    keys: [
+      'signal_likely_broken',
+      'signal_borderline',
+      'signal_likely_clean',
+      'signal_overridden',
+    ],
+  },
+};
+const GROUPED_FILTER_KEYS = new Set(
+  Object.values(FILTER_GROUPS).flatMap((g) => g.keys),
+);
+
 /** Filters whose options are grouped into collapsible namespaces. */
 const GROUPED_FILTER_CONFIG: Record<string, {
   separator: string;
@@ -198,9 +221,9 @@ export function DynamicFilters({
     [filters],
   );
 
-  // Sort and split into primary bar vs overflow menu
-  const { primaryFilters, overflowFilters } = useMemo(() => {
-    if (!metadata) return { primaryFilters: [], overflowFilters: [] };
+  // Sort and split into primary bar vs overflow menu vs grouped chips
+  const { primaryFilters, overflowFilters, filterGroups } = useMemo(() => {
+    if (!metadata) return { primaryFilters: [], overflowFilters: [], filterGroups: [] };
     const availableKeys = new Set(metadata.filters.map((f) => f.key));
 
     const hasActiveSelection = (key: string) => {
@@ -231,16 +254,31 @@ export function DynamicFilters({
         return orderA - orderB;
       });
 
+    // Group chips first: collect each group's available members (in declared
+    // key order), then keep grouped keys out of the primary/overflow split.
+    const byKey = new Map(all.map((f) => [f.key, f]));
+    const groups = Object.entries(FILTER_GROUPS)
+      .map(([id, cfg]) => ({
+        id,
+        cfg,
+        members: cfg.keys
+          .map((k) => byKey.get(k))
+          .filter((f): f is FilterDefinition => !!f),
+      }))
+      .filter((g) => g.members.length > 0)
+      .sort((a, b) => a.cfg.order - b.cfg.order);
+
     const primary: FilterDefinition[] = [];
     const overflow: FilterDefinition[] = [];
     for (const f of all) {
+      if (GROUPED_FILTER_KEYS.has(f.key)) continue; // rendered by a group chip
       if (FILTER_UI_CONFIG[f.key]?.overflow) {
         overflow.push(f);
       } else {
         primary.push(f);
       }
     }
-    return { primaryFilters: primary, overflowFilters: overflow };
+    return { primaryFilters: primary, overflowFilters: overflow, filterGroups: groups };
   }, [metadata, include, exclude, pinnedKeys, readFilterValue]);
 
   const handleFilterChange = useCallback(
@@ -505,6 +543,17 @@ export function DynamicFilters({
           </div>
         );
       })}
+      {filterGroups.map((g) => (
+        <FilterGroupChip
+          key={g.id}
+          label={g.cfg.label}
+          icon={g.cfg.icon}
+          members={g.members}
+          metadata={metadata}
+          values={filters}
+          onChange={handleFilterChange}
+        />
+      ))}
       {extraChips}
       {overflowFilters.length > 0 && (
         <OverflowMenu
@@ -1059,6 +1108,124 @@ function OverflowMenu({ filters, metadata, values, onChange, hasSelection }: Ove
           </Dropdown>
         </div>,
         document.body
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FilterGroupChip — one labeled chip whose dropdown hosts a group's member
+// filters (e.g. the video-health buckets), keeping them together and out of the
+// generic ⋯ overflow. Members render via the same FilterControlSlot the primary
+// chips use, so the controls behave identically.
+// ---------------------------------------------------------------------------
+
+interface FilterGroupChipProps {
+  label: string;
+  icon: string;
+  members: FilterDefinition[];
+  metadata: FilterMetadataResponse;
+  values: AssetFilters;
+  onChange: (key: string, value: string | boolean | number | string[] | undefined) => void;
+}
+
+function FilterGroupChip({ label, icon, members, metadata, values, onChange }: FilterGroupChipProps) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef.current) {
+      setRect(null);
+      return;
+    }
+    const update = () => setRect(anchorRef.current?.getBoundingClientRect() ?? null);
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [open]);
+
+  const activeCount = members.reduce((n, m) => {
+    const v = values[m.key as keyof AssetFilters];
+    const active =
+      v !== undefined && v !== null && v !== '' && v !== false &&
+      !(Array.isArray(v) && v.length === 0);
+    return active ? n + 1 : n;
+  }, 0);
+  const hasSelection = activeCount > 0;
+
+  return (
+    <div className="relative flex-none">
+      <button
+        ref={anchorRef}
+        type="button"
+        title={label}
+        aria-expanded={open}
+        onClick={() => setOpen((p) => !p)}
+        className={`relative z-20 inline-flex items-center gap-1.5 h-7 px-1.5 rounded border text-xs transition-[background-color,border-color] duration-200 ${
+          hasSelection
+            ? 'border-accent/50 bg-accent/10 text-neutral-800 dark:text-neutral-100'
+            : open
+              ? 'border-neutral-300 dark:border-neutral-600 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200'
+              : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200'
+        }`}
+      >
+        <span className="relative flex-shrink-0">
+          <Icon name={icon} size={14} className="w-3.5 h-3.5" />
+          {hasSelection && (
+            <span className="absolute -top-1.5 -right-1.5 text-[8px] leading-none px-0.5 min-w-[12px] text-center rounded-full bg-accent text-accent-text">
+              {activeCount}
+            </span>
+          )}
+        </span>
+        <span className="font-medium whitespace-nowrap">{label}</span>
+      </button>
+      {open && rect && createPortal(
+        <div
+          className="z-popover"
+          style={{
+            position: 'fixed',
+            left: Math.max(8, Math.min(rect.left, window.innerWidth - 240 - 8)),
+            top: rect.bottom + 6,
+          }}
+        >
+          <Dropdown
+            isOpen={open}
+            onClose={() => setOpen(false)}
+            positionMode="static"
+            minWidth="220px"
+            className="max-w-[300px]"
+          >
+            <div className="flex flex-col gap-1.5">
+              {members.map((m) => (
+                <FilterControlSlot
+                  key={m.key}
+                  filter={m}
+                  baseOptions={metadata.options[m.key] || []}
+                  visible={open}
+                  includeCounts={false}
+                  value={
+                    values[m.key as keyof AssetFilters] as
+                      | string
+                      | boolean
+                      | number
+                      | string[]
+                      | undefined
+                  }
+                  onChange={(value) => onChange(m.key, value)}
+                  matchModes={m.match_modes}
+                  mode={values[`${m.key}__mode` as keyof AssetFilters] as string | undefined}
+                  onModeChange={(mode) => onChange(`${m.key}__mode`, mode)}
+                />
+              ))}
+            </div>
+          </Dropdown>
+        </div>,
+        document.body,
       )}
     </div>
   );
