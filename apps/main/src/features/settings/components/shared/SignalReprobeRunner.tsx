@@ -6,6 +6,7 @@ import {
   extractErrorMessage,
   fmt,
   maintGet,
+  maintPatch,
   maintPost,
 } from './maintenanceShared';
 
@@ -34,15 +35,32 @@ interface RunListResponse {
   total: number;
 }
 
+// Subset of backend MediaSettings (media_settings namespace) that tunes the
+// reprobe's CPU footprint. Hand-mirrored (like SignalBackfillRun above) so the
+// control doesn't depend on a regenerated api-model. Read fresh by the worker
+// each batch — changes apply on the next batch, no restart.
+interface ReprobeTuning {
+  signal_reprobe_concurrency: number;
+  signal_reprobe_ffmpeg_threads: number;
+}
+
 const SURFACE = 'settings:signal-reprobe';
 const STATS_KEY = '/assets/signal-scan-stats';
 // The assets-maintenance router is mounted under /assets — sibling endpoints
 // (signal-calibration, signal-scan-stats) use that prefix; these run endpoints
 // must too, or they 404.
 const RUNS_PATH = '/assets/signal-backfill-runs';
+const MEDIA_SETTINGS_PATH = '/media/settings';
 const ACTIVE: SignalBackfillRun['status'][] = ['pending', 'running'];
 const POLL_MS = 2000;
 const DEFAULT_BATCH = 200;
+// Bounds mirror the MediaSettings Field(ge=…, le=…) constraints.
+const CONCURRENCY_MIN = 1;
+const CONCURRENCY_MAX = 32;
+const THREADS_MIN = 0;
+const THREADS_MAX = 16;
+
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
 const isActive = (r: SignalBackfillRun | null): boolean =>
   !!r && ACTIVE.includes(r.status);
@@ -67,6 +85,7 @@ export function SignalReprobeRunner() {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tuning, setTuning] = useState<ReprobeTuning | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Initial load: surface the most recent run (resume display if still active).
@@ -87,6 +106,39 @@ export function SignalReprobeRunner() {
       cancelled = true;
     };
   }, []);
+
+  // Load the live probe-tuning knobs (media_settings) once.
+  useEffect(() => {
+    let cancelled = false;
+    maintGet<ReprobeTuning>(MEDIA_SETTINGS_PATH, SURFACE)
+      .then((s) => {
+        if (!cancelled) setTuning(s);
+      })
+      .catch(() => {
+        /* tuning is optional chrome — never block the runner on it */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Optimistically apply a tuning change, then persist (worker reads it next batch).
+  const commitTuning = useCallback(
+    async (key: keyof ReprobeTuning, value: number) => {
+      setTuning((t) => (t ? { ...t, [key]: value } : t));
+      try {
+        const next = await maintPatch<ReprobeTuning>(
+          MEDIA_SETTINGS_PATH,
+          { [key]: value },
+          SURFACE,
+        );
+        setTuning((t) => ({ ...(t ?? next), [key]: next[key] }));
+      } catch (e) {
+        setError(extractErrorMessage(e));
+      }
+    },
+    [],
+  );
 
   // Poll while the displayed run is active; bust the coverage cache when it ends.
   useEffect(() => {
@@ -240,6 +292,66 @@ export function SignalReprobeRunner() {
         )}
         {busy && <LoadingSpinner />}
       </div>
+
+      {tuning && (
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-border/40 pt-2.5">
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Concurrency
+            </span>
+            <input
+              type="number"
+              min={CONCURRENCY_MIN}
+              max={CONCURRENCY_MAX}
+              value={tuning.signal_reprobe_concurrency}
+              onChange={(e) =>
+                setTuning((t) =>
+                  t ? { ...t, signal_reprobe_concurrency: Number(e.target.value) } : t,
+                )
+              }
+              onBlur={(e) =>
+                commitTuning(
+                  'signal_reprobe_concurrency',
+                  clamp(
+                    Math.round(Number(e.target.value)) || CONCURRENCY_MIN,
+                    CONCURRENCY_MIN,
+                    CONCURRENCY_MAX,
+                  ),
+                )
+              }
+              className="w-16 rounded border border-border bg-background px-1.5 py-0.5 text-[11px] tabular-nums"
+            />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              ffmpeg threads
+            </span>
+            <input
+              type="number"
+              min={THREADS_MIN}
+              max={THREADS_MAX}
+              value={tuning.signal_reprobe_ffmpeg_threads}
+              onChange={(e) =>
+                setTuning((t) =>
+                  t ? { ...t, signal_reprobe_ffmpeg_threads: Number(e.target.value) } : t,
+                )
+              }
+              onBlur={(e) => {
+                const raw = Math.round(Number(e.target.value));
+                commitTuning(
+                  'signal_reprobe_ffmpeg_threads',
+                  clamp(Number.isFinite(raw) ? raw : THREADS_MIN, THREADS_MIN, THREADS_MAX),
+                );
+              }}
+              className="w-16 rounded border border-border bg-background px-1.5 py-0.5 text-[11px] tabular-nums"
+            />
+          </label>
+          <p className="max-w-[15rem] text-[10px] leading-snug text-muted-foreground">
+            Probe CPU footprint. Lower if the UI lags; raise for speed (threads 0 =
+            ffmpeg auto). Applies on the next batch.
+          </p>
+        </div>
+      )}
 
       {error && <p className="text-[10px] text-red-500 break-words">{error}</p>}
     </section>
