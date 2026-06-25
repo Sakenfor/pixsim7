@@ -43,8 +43,26 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
     # ffmpeg probing is process-spawn-bound, not compute-bound — each asset spawns
     # 4 ffmpeg/ffprobe calls. Probe a bounded fan-out of assets concurrently off
     # the event loop (the DB stamping stays serial — the async session isn't
-    # concurrency-safe). Capped so the maintenance worker doesn't starve the box.
+    # concurrency-safe). Live-tuned via MediaSettings; these are the fallbacks if
+    # settings can't be read.
     _PROBE_CONCURRENCY = 6
+    _FFMPEG_THREADS = 1
+
+    def _probe_tunables(self) -> Tuple[int, int]:
+        """(concurrency, ffmpeg_threads) for this batch, read fresh from
+        MediaSettings so a frontend change applies on the next batch without a
+        worker restart. Falls back to the class defaults if settings are
+        unavailable (e.g. cache not yet hydrated)."""
+        try:
+            from pixsim7.backend.main.services.media.settings import get_media_settings
+
+            settings = get_media_settings()
+            settings.reload()  # pull the latest cross-process-synced values
+            concurrency = max(1, int(settings.signal_reprobe_concurrency))
+            threads = max(0, int(settings.signal_reprobe_ffmpeg_threads))
+            return concurrency, threads
+        except Exception:  # noqa: BLE001 — never let config reads break a batch
+            return self._PROBE_CONCURRENCY, self._FFMPEG_THREADS
 
     # Per-batch ``{asset_id: raw_metrics | None}`` cache filled by
     # ``_prefetch_batch`` and consumed by ``_process_asset``. None = no prefetch
@@ -139,6 +157,7 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
         DB-free, so it's safe in a thread; the cohort render-context lookup and
         the stamp stay serial in ``_process_asset``."""
         signal_service, _ = ctx
+        concurrency, ffmpeg_threads = self._probe_tunables()
         # Release the read transaction opened by _load_batch/_prepare_batch before
         # the (potentially minute-long) probe fan-out. Holding it idle across the
         # probe phase trips Postgres' idle_in_transaction_session_timeout (30s),
@@ -146,13 +165,13 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
         # loop. expire_on_commit=False keeps the already-loaded assets usable, and
         # nothing has been written yet, so this only ends a read-only transaction.
         await self.db.commit()
-        sem = asyncio.Semaphore(self._PROBE_CONCURRENCY)
+        sem = asyncio.Semaphore(concurrency)
         cache: Dict[int, Any] = {}
 
         async def _probe(asset: Asset) -> None:
             async with sem:
                 cache[asset.id] = await asyncio.to_thread(
-                    signal_service.probe_raw, asset
+                    signal_service.probe_raw, asset, ffmpeg_threads=ffmpeg_threads
                 )
 
         await asyncio.gather(*(_probe(a) for a in assets))

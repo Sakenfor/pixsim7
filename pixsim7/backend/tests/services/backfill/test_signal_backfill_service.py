@@ -37,7 +37,7 @@ class _RecordingSignalService:
         self.probed_ids = []
         self.stamped = []
 
-    def probe_raw(self, asset):
+    def probe_raw(self, asset, *, ffmpeg_threads=0):
         self.probed_ids.append(asset.id)
         return {"raw_for": asset.id}
 

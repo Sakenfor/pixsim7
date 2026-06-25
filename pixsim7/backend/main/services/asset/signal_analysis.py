@@ -131,11 +131,25 @@ def _run(cmd: list[str], timeout: int = PROBE_TIMEOUT_SEC) -> subprocess.Complet
     return subprocess.run(cmd, capture_output=True, text=False, timeout=timeout)
 
 
-def probe_audio(source: str) -> dict[str, Optional[float]]:
+# Per-ffmpeg decode thread cap. The batch reprobe probes many clips concurrently,
+# so each ffmpeg defaulting to all cores oversubscribes the CPU (starves the UI on
+# a single box). The batch path overrides this via MediaSettings; 0 = ffmpeg auto
+# (all cores), fine for one-off inline probes where there is no concurrency.
+DEFAULT_FFMPEG_THREADS = 0
+
+
+def _threads_arg(threads: int) -> list[str]:
+    """ffmpeg decode-thread option, injected before ``-i``. Omitted for threads<1
+    (ffmpeg's auto default)."""
+    return ["-threads", str(threads)] if threads and threads >= 1 else []
+
+
+def probe_audio(source: str, *, threads: int = DEFAULT_FFMPEG_THREADS) -> dict[str, Optional[float]]:
     """Extract overall audio RMS / peak via volumedetect. `source` is a local
     file path or a fetchable URL (ffmpeg reads both)."""
     r = _run([
         "ffmpeg", "-hide_banner", "-nostats",
+        *_threads_arg(threads),
         "-i", source,
         "-af", "volumedetect",
         "-vn", "-f", "null", "-",
@@ -189,7 +203,7 @@ def _hamming(a: int, b: int) -> int:
     return bin(a ^ b).count("1")
 
 
-def probe_phash(source: str, fps: int = 4) -> dict[str, Optional[float]]:
+def probe_phash(source: str, fps: int = 4, *, threads: int = DEFAULT_FFMPEG_THREADS) -> dict[str, Optional[float]]:
     """Decode at low fps/res to grayscale, dhash each frame, return divergence stats.
 
     Cheap (~1s per 15s clip): ffmpeg drops to 9x8 grayscale at 4fps and writes
@@ -197,6 +211,7 @@ def probe_phash(source: str, fps: int = 4) -> dict[str, Optional[float]]:
     """
     r = _run([
         "ffmpeg", "-hide_banner", "-nostats",
+        *_threads_arg(threads),
         "-i", source,
         "-vf", f"fps={fps},scale=9:8,format=gray",
         "-f", "rawvideo", "-",
@@ -216,7 +231,7 @@ def probe_phash(source: str, fps: int = 4) -> dict[str, Optional[float]]:
     }
 
 
-def probe_spectral(source: str) -> dict[str, Optional[float]]:
+def probe_spectral(source: str, *, threads: int = DEFAULT_FFMPEG_THREADS) -> dict[str, Optional[float]]:
     """Decode audio to mono PCM and measure spectral flatness / tonal fraction.
 
     Per-frame spectral flatness is the geometric mean over the arithmetic mean of
@@ -235,6 +250,7 @@ def probe_spectral(source: str) -> dict[str, Optional[float]]:
 
     r = _run([
         "ffmpeg", "-hide_banner", "-nostats",
+        *_threads_arg(threads),
         "-i", source,
         "-ac", "1", "-ar", str(SPECTRAL_SR),
         "-f", "f32le", "-",
@@ -340,13 +356,15 @@ def score_metrics(
 
 # ---------- combined per-file probe ----------
 
-def probe_path(source: str | Path) -> dict[str, Any]:
+def probe_path(source: str | Path, *, ffmpeg_threads: int = DEFAULT_FFMPEG_THREADS) -> dict[str, Any]:
     """Run all probes against a video and return the full metrics dict.
 
     `source` is a local file path OR a fetchable URL (e.g. a presigned S3/MinIO
     URL for an archive-tiered asset) — ffmpeg reads both, so no local copy is
-    needed. Does NOT include `score` / `suspicious` (call `score_metrics`) and
-    does NOT touch the database.
+    needed. ``ffmpeg_threads`` caps per-ffmpeg decode threads (0 = auto); the
+    batch reprobe lowers it to avoid CPU oversubscription under concurrency. Does
+    NOT include `score` / `suspicious` (call `score_metrics`) and does NOT touch
+    the database.
 
     Raises:
         FileNotFoundError: if a LOCAL path doesn't exist (URLs aren't checked)
@@ -361,9 +379,9 @@ def probe_path(source: str | Path) -> dict[str, Any]:
         raise RuntimeError("ffmpeg/ffprobe not available in PATH")
     out: dict[str, Any] = {}
     out.update(probe_streams(s))
-    out.update(probe_audio(s))
-    out.update(probe_phash(s))
-    out.update(probe_spectral(s))
+    out.update(probe_audio(s, threads=ffmpeg_threads))
+    out.update(probe_phash(s, threads=ffmpeg_threads))
+    out.update(probe_spectral(s, threads=ffmpeg_threads))
     return out
 
 
@@ -477,14 +495,17 @@ class SignalAnalysisService:
             logger.warning("signal_analysis_resolve_failed", asset_id=asset.id, error=str(e))
             return None
 
-    def probe_raw(self, asset: Asset) -> Optional[dict[str, Any]]:
+    def probe_raw(
+        self, asset: Asset, *, ffmpeg_threads: int = DEFAULT_FFMPEG_THREADS
+    ) -> Optional[dict[str, Any]]:
         """Resolve a ffmpeg source and run the full probe — the heavy, DB-FREE
         half of :meth:`probe_and_stamp`.
 
         Touches no DB session, so it is safe to run off the event loop (e.g. via
-        ``asyncio.to_thread``) to parallelise a batch's ffmpeg spawns. Returns
-        the raw metrics dict, or ``None`` if the asset is ineligible, has no
-        resolvable source, or the probe failed.
+        ``asyncio.to_thread``) to parallelise a batch's ffmpeg spawns.
+        ``ffmpeg_threads`` caps per-ffmpeg decode threads under that concurrency.
+        Returns the raw metrics dict, or ``None`` if the asset is ineligible, has
+        no resolvable source, or the probe failed.
         """
         if not self.is_eligible(asset):
             return None
@@ -493,7 +514,7 @@ class SignalAnalysisService:
             logger.debug("signal_analysis_skip_no_source", asset_id=asset.id)
             return None
         try:
-            return probe_path(source)
+            return probe_path(source, ffmpeg_threads=ffmpeg_threads)
         except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as e:
             logger.warning("signal_analysis_probe_failed", asset_id=asset.id, error=str(e))
             return None

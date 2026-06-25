@@ -51,6 +51,30 @@ class MediaSettings(SettingsBase):
         description="Auto-download generated assets to local storage when generation completes",
     )
 
+    # ── Signal-scan reprobe (media-maintenance worker) ────────────────────
+
+    signal_reprobe_concurrency: int = Field(
+        6,
+        ge=1,
+        le=32,
+        description=(
+            "How many assets the signal-scan reprobe probes concurrently per "
+            "batch (each spawns ffmpeg/ffprobe). Higher = faster but more CPU; "
+            "lower it if the box (e.g. a shared dev machine) gets laggy. "
+            "Live-tunable — picked up on the next batch, no restart."
+        ),
+    )
+    signal_reprobe_ffmpeg_threads: int = Field(
+        1,
+        ge=0,
+        le=16,
+        description=(
+            "Decode threads per ffmpeg probe during the reprobe (0 = ffmpeg auto "
+            "/ all cores). Kept at 1 so concurrent probes don't oversubscribe the "
+            "CPU and starve the UI. Live-tunable — applies on the next batch."
+        ),
+    )
+
     # ── Storage Format ────────────────────────────────────────────────────
 
     storage_format: Optional[str] = Field(
