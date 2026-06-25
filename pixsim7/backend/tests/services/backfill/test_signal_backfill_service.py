@@ -24,9 +24,26 @@ class _FakeSignalService:
         self._result = result
         self.calls = []
 
-    async def probe_and_stamp(self, asset, *, force, commit, cohort_baselines):
-        self.calls.append({"force": force, "commit": commit})
+    async def probe_and_stamp(self, asset, *, force, commit, cohort_baselines, **kw):
+        self.calls.append({"force": force, "commit": commit, **kw})
         return self._result
+
+
+class _RecordingSignalService:
+    """Records the (DB-free) probe_raw fan-out and what gets handed back to
+    probe_and_stamp, so we can assert the parallel pre-pass wiring."""
+
+    def __init__(self):
+        self.probed_ids = []
+        self.stamped = []
+
+    def probe_raw(self, asset):
+        self.probed_ids.append(asset.id)
+        return {"raw_for": asset.id}
+
+    async def probe_and_stamp(self, asset, *, force, commit, cohort_baselines, **kw):
+        self.stamped.append({"id": asset.id, **kw})
+        return {"suspicious": False}
 
 
 def _svc() -> SignalBackfillService:
@@ -58,6 +75,39 @@ async def test_process_asset_clean_when_not_suspicious():
     fake = _FakeSignalService({"suspicious": False, "score": 0})
     out = await svc._process_asset(SimpleNamespace(id=1), run, (fake, {}))
     assert out == {"scanned": 1}
+
+
+async def test_prefetch_batch_probes_all_and_process_uses_cache():
+    """_prefetch_batch probes every asset (DB-free, off-loop) and caches the
+    result; _process_asset then forwards the cached probe as `prefetched`
+    instead of re-probing inline."""
+    svc, run = _svc(), _run()
+    # _prefetch_batch commits to release the read txn before the probe fan-out.
+    async def _noop():
+        return None
+    svc.db = SimpleNamespace(commit=_noop)
+    fake = _RecordingSignalService()
+    assets = [SimpleNamespace(id=i) for i in (10, 11, 12)]
+    ctx = (fake, {})
+
+    await svc._prefetch_batch(assets, run, ctx)
+    assert sorted(fake.probed_ids) == [10, 11, 12]
+    assert svc._probe_cache == {10: {"raw_for": 10}, 11: {"raw_for": 11}, 12: {"raw_for": 12}}
+
+    out = await svc._process_asset(assets[0], run, ctx)
+    assert out == {"scanned": 1}
+    # the cached probe is handed back as `prefetched` (no inline re-probe)
+    assert fake.stamped == [{"id": 10, "prefetched": {"raw_for": 10}}]
+
+
+async def test_process_asset_probes_inline_without_prefetch():
+    """With no prefetch cache (direct caller / Analysis-style path),
+    _process_asset omits `prefetched` so the service probes inline."""
+    svc, run = _svc(), _run()
+    fake = _FakeSignalService({"suspicious": False})
+    out = await svc._process_asset(SimpleNamespace(id=1), run, (fake, {}))
+    assert out == {"scanned": 1}
+    assert fake.calls == [{"force": True, "commit": False}]  # no `prefetched` key
 
 
 async def test_apply_outcome_rolls_up_counters():

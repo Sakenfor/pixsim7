@@ -429,6 +429,11 @@ def stale_signal_video_conditions(scanner_version: str, user_id: int) -> list:
 
 # ---------- service: stamp into Asset.media_metadata ----------
 
+# Sentinel for "no prefetched probe supplied" — distinct from a prefetched
+# ``None`` (which means "probe ran but found no usable source / failed").
+_UNSET = object()
+
+
 class SignalAnalysisService:
     """Stamp signal-analysis metrics onto Asset.media_metadata.signal_metrics."""
 
@@ -472,6 +477,30 @@ class SignalAnalysisService:
             logger.warning("signal_analysis_resolve_failed", asset_id=asset.id, error=str(e))
             return None
 
+    def probe_raw(self, asset: Asset) -> Optional[dict[str, Any]]:
+        """Resolve a ffmpeg source and run the full probe — the heavy, DB-FREE
+        half of :meth:`probe_and_stamp`.
+
+        Touches no DB session, so it is safe to run off the event loop (e.g. via
+        ``asyncio.to_thread``) to parallelise a batch's ffmpeg spawns. Returns
+        the raw metrics dict, or ``None`` if the asset is ineligible, has no
+        resolvable source, or the probe failed.
+        """
+        if not self.is_eligible(asset):
+            return None
+        source = self._resolve_probe_source(asset)
+        if source is None:
+            logger.debug("signal_analysis_skip_no_source", asset_id=asset.id)
+            return None
+        try:
+            return probe_path(source)
+        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as e:
+            logger.warning("signal_analysis_probe_failed", asset_id=asset.id, error=str(e))
+            return None
+        except Exception as e:  # noqa: BLE001 — never let a probe crash ingest
+            logger.warning("signal_analysis_probe_unexpected", asset_id=asset.id, error=str(e), exc_info=True)
+            return None
+
     async def probe_and_stamp(
         self,
         asset: Asset,
@@ -479,6 +508,7 @@ class SignalAnalysisService:
         force: bool = False,
         commit: bool = True,
         cohort_baselines: Optional[dict[str, Any]] = None,
+        prefetched: Any = _UNSET,
     ) -> Optional[dict[str, Any]]:
         """Probe `asset` and stamp signal_metrics on it.
 
@@ -503,18 +533,11 @@ class SignalAnalysisService:
         if not force and existing.get("scanner_version") == SCANNER_VERSION:
             return None
 
-        source = self._resolve_probe_source(asset)
-        if source is None:
-            logger.debug("signal_analysis_skip_no_source", asset_id=asset.id)
-            return None
-
-        try:
-            raw = probe_path(source)
-        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as e:
-            logger.warning("signal_analysis_probe_failed", asset_id=asset.id, error=str(e))
-            return None
-        except Exception as e:  # noqa: BLE001 — never let a probe crash ingest
-            logger.warning("signal_analysis_probe_unexpected", asset_id=asset.id, error=str(e), exc_info=True)
+        # Use a batch-prefetched probe when supplied (parallel ffmpeg pre-pass);
+        # otherwise probe inline. ``None`` is a valid prefetched value meaning
+        # "no usable source / probe failed" — hence the ``_UNSET`` sentinel.
+        raw = self.probe_raw(asset) if prefetched is _UNSET else prefetched
+        if raw is None:
             return None
 
         render_context = None

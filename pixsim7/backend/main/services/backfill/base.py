@@ -174,6 +174,9 @@ class BackfillRunServiceBase(ABC, Generic[TRun]):
             return run
 
         ctx = await self._prepare_batch(run)
+        # Optional concurrent pre-pass (e.g. parallel ffmpeg probes) before the
+        # serial, DB-bound per-asset loop below. No-op by default.
+        await self._prefetch_batch(assets, run, ctx)
         totals: Dict[str, int] = {}
         failed_count = 0
         last_error: Optional[str] = None
@@ -292,6 +295,20 @@ class BackfillRunServiceBase(ABC, Generic[TRun]):
 
         Returns an opaque context handed to each ``_process_asset`` call.
         Defaults to ``None``; override when the domain needs batch-wide state.
+        """
+        return None
+
+    async def _prefetch_batch(
+        self, assets: List[Asset], run: TRun, ctx: Any
+    ) -> None:
+        """Optional concurrent pre-pass over the batch, run BEFORE the serial
+        per-asset DB loop.
+
+        Override to precompute heavy, DB-free per-asset work (e.g. ffmpeg
+        probes) off the event loop via a thread pool, caching the results for
+        ``_process_asset`` to consume — so the serial DB phase isn't bottlenecked
+        on process spawns. ``ctx`` is whatever ``_prepare_batch`` returned.
+        Defaults to no-op (purely serial processing).
         """
         return None
 

@@ -11,6 +11,7 @@ and the per-asset probe.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -38,6 +39,17 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
     # Run on the isolated media-maintenance worker (single-slot) so a full-library
     # reprobe sweep doesn't contend with the generation hot path.
     queue_name = MEDIA_MAINTENANCE_QUEUE_NAME
+
+    # ffmpeg probing is process-spawn-bound, not compute-bound — each asset spawns
+    # 4 ffmpeg/ffprobe calls. Probe a bounded fan-out of assets concurrently off
+    # the event loop (the DB stamping stays serial — the async session isn't
+    # concurrency-safe). Capped so the maintenance worker doesn't starve the box.
+    _PROBE_CONCURRENCY = 6
+
+    # Per-batch ``{asset_id: raw_metrics | None}`` cache filled by
+    # ``_prefetch_batch`` and consumed by ``_process_asset``. None = no prefetch
+    # (e.g. unit tests calling _process_asset directly → inline probe).
+    _probe_cache: Optional[Dict[int, Any]] = None
 
     async def create_run(
         self,
@@ -116,6 +128,36 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
         baselines = await load_cohort_baselines(self.db)
         return SignalAnalysisService(self.db), baselines
 
+    async def _prefetch_batch(
+        self,
+        assets: List[Asset],
+        run: SignalBackfillRun,
+        ctx: Tuple[SignalAnalysisService, Dict[str, Any]],
+    ) -> None:
+        """Run each asset's ffmpeg probe concurrently (bounded) off the event
+        loop, caching results for the serial DB-stamping loop. ``probe_raw`` is
+        DB-free, so it's safe in a thread; the cohort render-context lookup and
+        the stamp stay serial in ``_process_asset``."""
+        signal_service, _ = ctx
+        # Release the read transaction opened by _load_batch/_prepare_batch before
+        # the (potentially minute-long) probe fan-out. Holding it idle across the
+        # probe phase trips Postgres' idle_in_transaction_session_timeout (30s),
+        # which terminates the connection and poisons the session for the stamp
+        # loop. expire_on_commit=False keeps the already-loaded assets usable, and
+        # nothing has been written yet, so this only ends a read-only transaction.
+        await self.db.commit()
+        sem = asyncio.Semaphore(self._PROBE_CONCURRENCY)
+        cache: Dict[int, Any] = {}
+
+        async def _probe(asset: Asset) -> None:
+            async with sem:
+                cache[asset.id] = await asyncio.to_thread(
+                    signal_service.probe_raw, asset
+                )
+
+        await asyncio.gather(*(_probe(a) for a in assets))
+        self._probe_cache = cache
+
     async def _process_asset(
         self,
         asset: Asset,
@@ -123,9 +165,17 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
         ctx: Tuple[SignalAnalysisService, Dict[str, Any]],
     ) -> Dict[str, int]:
         signal_service, baselines = ctx
-        payload = await signal_service.probe_and_stamp(
-            asset, force=True, commit=False, cohort_baselines=baselines
-        )
+        kwargs: Dict[str, Any] = {
+            "force": True,
+            "commit": False,
+            "cohort_baselines": baselines,
+        }
+        # Use the batch's parallel-probe result when present; otherwise the
+        # service probes inline (keeps direct _process_asset callers working).
+        cache = self._probe_cache
+        if cache is not None and asset.id in cache:
+            kwargs["prefetched"] = cache[asset.id]
+        payload = await signal_service.probe_and_stamp(asset, **kwargs)
         if payload is None:  # ineligible / unresolvable source / probe failed
             return {"skipped": 1}
         if payload.get("suspicious"):
