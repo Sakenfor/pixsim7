@@ -94,6 +94,10 @@ class AssetSiblingCountService:
             select(*cols, func.count(Asset.id))
             .where(Asset.user_id == owner_user_id)
             .where(tuple_(*cols).in_(list(keys)))
+            # Don't let user-confirmed-broken clips inflate the cohort counts shown
+            # on cards (consistent with hiding flagged clips). IS DISTINCT FROM
+            # keeps NULL + 'clean', drops only 'broken'.
+            .where(Asset.signal_override.is_distinct_from("broken"))
             .group_by(*cols)
         )
         counts: Dict[tuple, int] = {}
