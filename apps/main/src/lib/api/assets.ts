@@ -103,6 +103,50 @@ export function getSignalCalibration(cacheBust?: number): Promise<SignalCalibrat
  */
 export const scanSignalMetrics = assetsApi.scanSignalMetrics;
 
+/**
+ * Full stored `media_metadata.signal_metrics` for a single asset. Mirrors the
+ * payload built by `services/asset/signal_analysis.build_signal_metrics_payload`
+ * — including the heavy `chroma_fp` melody fingerprint that the list/detail
+ * AssetResponse omits. All fields are optional/nullable (partial scans, older
+ * scanner versions). Consumed by the Triage "Detection" popover.
+ */
+export interface SignalMetrics {
+  score?: number | null;
+  suspicious?: boolean | null;
+  audio_rms_db?: number | null;
+  audio_peak_db?: number | null;
+  audio_sample_rate?: number | null;
+  audio_channels?: number | null;
+  phash_first_to_last?: number | null;
+  phash_mean_div_from_first?: number | null;
+  spectral_flatness?: number | null;
+  tonal_frac?: number | null;
+  /** Flat row-major 12×48 (time-major: bin*12 + pitchClass) chroma fingerprint. */
+  chroma_fp?: number[] | null;
+  loudness_range_db?: number | null;
+  onset_rate?: number | null;
+  syllabic_mod?: number | null;
+  audio_ref_match?: number | null;
+  render_ratio?: number | null;
+  cohort_n?: number | null;
+  cohort_p50_sec?: number | null;
+  scanned_at?: string | null;
+  scanner_version?: string | null;
+  scan_mode?: string | null;
+  user_override?: 'clean' | 'broken' | null;
+  overridden_at?: string | null;
+}
+
+/**
+ * Fetch the full signal_metrics for an asset (read-only). Returns
+ * `signal_metrics: null` when the asset has never been scanned.
+ */
+export function getSignalMetrics(
+  assetId: number,
+): Promise<{ id: number; signal_metrics: SignalMetrics | null }> {
+  return pixsimClient.get(`/assets/${assetId}/signal-metrics`);
+}
+
 export const bulkDeleteAssets = assetsApi.bulkDeleteAssets;
 
 /**

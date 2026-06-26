@@ -1991,6 +1991,14 @@ async def backfill_signal_scan(
     await refresh_cohort_baselines(db, user_id=admin.id)
     baselines = await load_cohort_baselines(db)
 
+    # Load the broken-audio fingerprint references (signalref:* clips with a
+    # stored chroma_fp) once for the whole batch. Empty until those refs have
+    # been probed under v5; matching then falls back to render + corroboration.
+    from pixsim7.backend.main.services.asset.audio_fingerprint import (
+        load_reference_fingerprints,
+    )
+    ref_fingerprints = await load_reference_fingerprints(db)
+
     # Select stale rows via the fast denormalized column (no media_metadata
     # de-TOAST). Reprobe mode needs a resolvable source to decode (shared with
     # the durable SignalBackfillService); default mode needs a prior score to
@@ -2019,11 +2027,13 @@ async def backfill_signal_scan(
         try:
             if reprobe:
                 payload = await service.probe_and_stamp(
-                    asset, force=True, commit=False, cohort_baselines=baselines
+                    asset, force=True, commit=False, cohort_baselines=baselines,
+                    ref_fingerprints=ref_fingerprints,
                 )
             else:
                 payload = await service.rescore_from_stored(
-                    asset, commit=False, cohort_baselines=baselines
+                    asset, commit=False, cohort_baselines=baselines,
+                    ref_fingerprints=ref_fingerprints,
                 )
         except Exception as e:  # noqa: BLE001 — surface but don't fail the batch
             logger.warning("signal_scan_backfill_failed", asset_id=asset.id, error=str(e))
@@ -2325,11 +2335,19 @@ class CreateSignalBackfillRunRequest(BaseModel):
         None,
         description="Scanner version to bring videos up to (defaults to current SCANNER_VERSION).",
     )
+    mode: str = Field(
+        "reprobe",
+        description=(
+            "'reprobe' = full ffmpeg probe over stale videos (captures chroma_fp + "
+            "metrics); 'rescore' = no ffmpeg, re-apply the fingerprint matcher + "
+            "scoring over every previously-scored video's stored metrics."
+        ),
+    )
     batch_size: int = Field(
         100,
         ge=1,
         le=1000,
-        description="Videos probed per worker batch.",
+        description="Videos processed per worker batch.",
     )
 
 
@@ -2340,6 +2358,7 @@ class SignalBackfillRunResponse(BaseModel):
     user_id: int
     status: str
     target_scanner_version: str
+    mode: str
     batch_size: int
     cursor_asset_id: int
     total_assets: int
@@ -2366,6 +2385,7 @@ def _build_signal_backfill_response(run) -> SignalBackfillRunResponse:
         user_id=run.user_id,
         status=run.status.value if hasattr(run.status, "value") else str(run.status),
         target_scanner_version=run.target_scanner_version,
+        mode=getattr(run, "mode", "reprobe"),
         batch_size=run.batch_size,
         cursor_asset_id=run.cursor_asset_id,
         total_assets=run.total_assets,
@@ -2392,11 +2412,14 @@ async def create_signal_backfill_run(
     admin: CurrentAdminUser,
     db: DatabaseSession,
 ) -> SignalBackfillRunResponse:
-    """Start a durable signal-scan reprobe run and enqueue its first batch.
+    """Start a durable signal-scan run and enqueue its first batch.
 
-    Re-probes every stale video (full ffmpeg probe -> spectral_flatness) one
-    batch at a time, resumable across worker restarts; poll/pause/cancel via the
-    sibling endpoints.
+    ``mode='reprobe'`` (default) re-probes every stale video with ffmpeg
+    (captures chroma_fp + audio/visual metrics); ``mode='rescore'`` skips ffmpeg
+    and re-applies the fingerprint matcher + scoring over every previously-scored
+    video's stored metrics — the cheap pass for reference-curation / threshold
+    tuning. One batch at a time, resumable across worker restarts; poll/pause/
+    cancel via the sibling endpoints.
     """
     try:
         service = SignalBackfillService(db)
@@ -2404,6 +2427,7 @@ async def create_signal_backfill_run(
             user=admin,
             target_scanner_version=request.target_scanner_version,
             batch_size=request.batch_size,
+            mode=request.mode,
             enqueue=True,
         )
         return _build_signal_backfill_response(run)

@@ -14,6 +14,7 @@
 
 import { Button } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { getAsset, setSignalOverride } from '@lib/api/assets';
 import { createBindingFromValue } from '@lib/editing-core';
@@ -31,12 +32,27 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import type { AssetsController } from '../hooks/useAssetsController';
 import { assetEvents } from '../lib/assetEvents';
 import { toggleFavoriteTag } from '../lib/favoriteTag';
+import {
+  SIGNAL_REF_PRESETS,
+  signalRefTags,
+  setSignalRefTag,
+  customSignalRefTag,
+} from '../lib/signalRefTag';
 import type { AssetModel } from '../models/asset';
+import { useSurfaceChromeSlot } from '../stores/surfaceChromeSlotStore';
+import {
+  useTriagePrefsStore,
+  ROW_BATCH_MIN,
+  ROW_BATCH_MAX,
+  type TriageView,
+  type ReviewedFilter,
+} from '../stores/triagePrefsStore';
 
 import { DynamicFilters } from './DynamicFilters';
 import { ReviewModeSurface, type ReviewDecision } from './ReviewModeSurface';
 import { GallerySurfaceShell } from './shared';
 import { SignalCalibrationStrip } from './SignalCalibrationStrip';
+import { SignalDetectionButton } from './SignalDetectionPopover';
 
 export interface SignalTriageContentProps {
   controller: AssetsController;
@@ -55,17 +71,44 @@ const TRIAGE_QUEUES: { id: TriageQueue; label: string; filter: string }[] = [
   { id: 'overridden', label: 'Reviewed', filter: 'signal_overridden' },
 ];
 
-/** Registry filter keys the triage surface owns directly — hidden from the shared
- * DynamicFilters chip bar so they can't fight the queue scope: the three bucket
- * flags are driven by {@link SignalBucketSwitcher}, and media_type is force-pinned
- * to `video` by the queue selector (signal scores only exist on videos). */
-const TRIAGE_OWNED_FILTER_KEYS = [
+/** Every signal registry-filter key the triage surface drives. Reset as a slate
+ * on each queue/sub-filter switch (chosen = true, the rest = false) and cleared
+ * on leave, so a stale flag can't fight the active scope. */
+const SIGNAL_FILTER_KEYS = [
   'signal_likely_broken',
   'signal_borderline',
   'signal_overridden',
+  'signal_override_clean',
+  'signal_override_broken',
   'signal_likely_clean',
-  'media_type',
 ];
+
+/** Registry filter keys the triage surface owns directly — hidden from the shared
+ * DynamicFilters chip bar so they can't fight the queue scope: the bucket flags
+ * are driven by {@link SignalBucketSwitcher} / {@link ReviewedFilterSwitcher}, and
+ * media_type is force-pinned to `video` (signal scores only exist on videos). */
+const TRIAGE_OWNED_FILTER_KEYS = [...SIGNAL_FILTER_KEYS, 'media_type'];
+
+/**
+ * The full filter slate for a queue + Reviewed sub-filter: every signal flag set
+ * explicitly (chosen = true, rest = false) plus media_type pinned to video. Used
+ * by both the apply call and the self-healing pinned-check so they can't drift.
+ */
+function computeQueueFilters(
+  queue: TriageQueue,
+  reviewed: ReviewedFilter,
+): Record<string, boolean | 'video'> {
+  const flags: Record<string, boolean | 'video'> = Object.fromEntries(
+    SIGNAL_FILTER_KEYS.map((k) => [k, false]),
+  );
+  if (queue === 'broken') flags.signal_likely_broken = true;
+  else if (queue === 'borderline') flags.signal_borderline = true;
+  else if (reviewed === 'keep') flags.signal_override_clean = true;
+  else if (reviewed === 'flag') flags.signal_override_broken = true;
+  else flags.signal_overridden = true;
+  flags.media_type = 'video';
+  return flags;
+}
 
 /** Segmented control for picking which mutually-exclusive score bucket to triage. */
 function SignalBucketSwitcher({
@@ -100,16 +143,48 @@ function SignalBucketSwitcher({
   );
 }
 
-/** Whether triage shows the full virtualized grid or the focused row strip. */
-type TriageView = 'grid' | 'row';
+/** All / Keep / Flag sub-filter for the Reviewed queue, styled like the bucket
+ * switcher. The ✓/⚠ glyphs mirror the per-card decisions. */
+function ReviewedFilterSwitcher({
+  value,
+  onSelect,
+}: {
+  value: ReviewedFilter;
+  onSelect: (v: ReviewedFilter) => void;
+}) {
+  const options: { id: ReviewedFilter; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'keep', label: '✓ Keep' },
+    { id: 'flag', label: '⚠ Flag' },
+  ];
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+        Show
+      </span>
+      <div className="flex overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-700">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            onClick={() => onSelect(o.id)}
+            className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+              value === o.id
+                ? 'bg-accent text-accent-text'
+                : 'bg-white text-neutral-600 hover:bg-neutral-100 dark:bg-neutral-900/60 dark:text-neutral-300 dark:hover:bg-neutral-800'
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-/** Row-strip batch size: how many clips play at once. Default 3 matches the
- * global decoder-pool cap (DEFAULT_MAX_ACTIVE = 3) so the whole hovered row can
- * decode without preempting each other; above that the strip raises the cap
- * while mounted (each decoder ≈ 200–500MB native, so the ceiling stays modest). */
-const ROW_BATCH_DEFAULT = 3;
-const ROW_BATCH_MIN = 1;
-const ROW_BATCH_MAX = 6;
+// View + row-batch types/bounds live in triagePrefsStore (persisted). The strip
+// raises the global decoder cap (DEFAULT_MAX_ACTIVE = 3) to fit larger rows
+// while mounted (each decoder ≈ 200–500MB native, so the ceiling stays modest).
 
 /** Compact −/N/+ stepper for the row batch size. */
 function RowSizeStepper({
@@ -123,7 +198,7 @@ function RowSizeStepper({
     'px-1.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 dark:text-neutral-300 dark:hover:bg-neutral-800';
   return (
     <div
-      className="flex items-center overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-700"
+      className="flex h-7 items-center overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-700"
       title="Clips per row"
     >
       <button
@@ -164,13 +239,13 @@ function ViewModeSwitcher({
     { id: 'row', label: 'Row' },
   ];
   return (
-    <div className="flex overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-700">
+    <div className="flex h-7 items-center overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-700">
       {options.map((o) => (
         <button
           key={o.id}
           type="button"
           onClick={() => onSelect(o.id)}
-          className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+          className={`h-full px-2.5 text-xs font-medium transition-colors ${
             view === o.id
               ? 'bg-accent text-accent-text'
               : 'bg-white text-neutral-600 hover:bg-neutral-100 dark:bg-neutral-900/60 dark:text-neutral-300 dark:hover:bg-neutral-800'
@@ -179,6 +254,132 @@ function ViewModeSwitcher({
           {o.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Per-card reference tagger: marks the clip as a broken-audio reference
+ * (`signalref:<voice>`) that trains the fingerprint detector. Presets are quick
+ * buttons for known voices; any custom `signalref:*` tag (added via the normal
+ * tag box) shows as a chip too — the matcher unions all of them. Uses optimistic
+ * per-tag state so taps reflect instantly and toggling one voice never blocks or
+ * clobbers another; re-syncs from the asset when its server tags change.
+ */
+function SignalRefTagger({ asset }: { asset: AssetModel }) {
+  const serverTags = signalRefTags(asset);
+  // Optimistic active set + per-tag in-flight, so the buttons reflect taps
+  // instantly and toggling one never blocks/clobbers another (multiple
+  // signalref:* tags coexist). Re-sync from the asset when its server tags
+  // change (the surfaces re-emit a fresh AssetModel on assetEvents updates).
+  const serverKey = serverTags.slice().sort().join(',');
+  const [active, setActive] = useState<string[]>(serverTags);
+  const [busyTags, setBusyTags] = useState<Set<string>>(() => new Set());
+  const [draft, setDraft] = useState<string | null>(null); // null = input hidden
+  useEffect(() => {
+    setActive(signalRefTags(asset));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverKey]);
+
+  const presetTags = new Set(SIGNAL_REF_PRESETS.map((p) => p.tag));
+  const toggle = async (tag: string) => {
+    const next = !active.includes(tag);
+    setActive((prev) => (next ? [...prev, tag] : prev.filter((t) => t !== tag)));
+    setBusyTags((prev) => new Set(prev).add(tag));
+    try {
+      await setSignalRefTag(asset.id, tag, next);
+    } catch (e) {
+      console.error('[signal-triage] ref tag failed', asset.id, tag, e);
+      setActive((prev) => (next ? prev.filter((t) => t !== tag) : [...prev, tag])); // revert
+    } finally {
+      setBusyTags((prev) => {
+        const n = new Set(prev);
+        n.delete(tag);
+        return n;
+      });
+    }
+  };
+
+  const commitDraft = () => {
+    const tag = draft != null ? customSignalRefTag(draft) : null;
+    setDraft(null);
+    if (tag && !active.includes(tag)) void toggle(tag);
+  };
+  return (
+    <div
+      className="mt-2 flex flex-wrap items-center gap-1"
+      title="Tag as a broken-audio reference — trains the melody/pitch detector"
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+        ref
+      </span>
+      {SIGNAL_REF_PRESETS.map((p) => {
+        const on = active.includes(p.tag);
+        return (
+          <button
+            key={p.tag}
+            type="button"
+            disabled={busyTags.has(p.tag)}
+            onClick={(e) => {
+              e.stopPropagation();
+              void toggle(p.tag);
+            }}
+            title={p.title}
+            className={`rounded border px-1.5 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+              on
+                ? 'border-purple-500 bg-purple-600 text-white'
+                : 'border-neutral-300 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-400 dark:hover:bg-neutral-800'
+            }`}
+          >
+            {p.glyph} {p.label}
+          </button>
+        );
+      })}
+      {active
+        .filter((t) => !presetTags.has(t))
+        .map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void toggle(t);
+            }}
+            disabled={busyTags.has(t)}
+            title={`Custom reference: ${t} — click to remove`}
+            className="rounded bg-purple-600/80 px-1.5 py-0.5 text-[10px] text-white hover:bg-purple-700 disabled:opacity-50"
+          >
+            {t.split(':').slice(1).join(':')}
+          </button>
+        ))}
+      {draft == null ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setDraft('');
+          }}
+          title="Add a custom voice label (e.g. weird-warble) — doubles as a short note"
+          className="rounded border border-dashed border-neutral-300 px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-400 dark:hover:bg-neutral-800"
+        >
+          + label
+        </button>
+      ) : (
+        <input
+          autoFocus
+          value={draft}
+          placeholder="voice label…"
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') commitDraft();
+            else if (e.key === 'Escape') setDraft(null);
+          }}
+          onBlur={commitDraft}
+          className="w-28 rounded border border-neutral-300 bg-white px-1.5 py-0.5 text-xs text-neutral-700 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200"
+        />
+      )}
     </div>
   );
 }
@@ -204,12 +405,23 @@ function TriageHints() {
 }
 
 export function SignalTriageContent({ controller, cardSize }: SignalTriageContentProps) {
-  const [queue, setQueue] = useState<TriageQueue>('broken');
-  const [view, setView] = useState<TriageView>('grid');
-  const [rowSize, setRowSize] = useState(ROW_BATCH_DEFAULT);
+  // View / row size / queue persist across reloads (triagePrefsStore).
+  const view = useTriagePrefsStore((s) => s.view);
+  const setView = useTriagePrefsStore((s) => s.setView);
+  const rowSize = useTriagePrefsStore((s) => s.rowSize);
+  const setRowSize = useTriagePrefsStore((s) => s.setRowSize);
+  const queue = useTriagePrefsStore((s) => s.queue);
+  const setQueue = useTriagePrefsStore((s) => s.setQueue);
+  const reviewedFilter = useTriagePrefsStore((s) => s.reviewedFilter);
+  const setReviewedFilter = useTriagePrefsStore((s) => s.setReviewedFilter);
+  // Portal target in the top chrome strip (next to grid/masonry + size slider).
+  const chromeSlotEl = useSurfaceChromeSlot((s) => s.el);
   // Bumped after each keep/flag to refetch the calibration strip so its grade +
   // label counts move as you label.
   const [labelTick, setLabelTick] = useState(0);
+  // Row-mode batch cursor (front index of the visible strip), lifted here so the
+  // pager can live in the pinned controls row instead of a separate strip row.
+  const [cursor, setCursor] = useState(0);
   // Last keep/flag, so a mis-click is one keystroke to undo. Holds the asset and
   // its PRIOR override (usually null in the to-do queues) to restore.
   const [lastAction, setLastAction] = useState<
@@ -248,9 +460,8 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
   // hidden from this surface's chip bar (see TRIAGE_OWNED_FILTER_KEYS), so it's
   // otherwise unclearable here.
   const applyQueueFilters = useCallback(
-    (q: TriageQueue) => {
-      const flags = Object.fromEntries(TRIAGE_QUEUES.map((x) => [x.filter, x.id === q]));
-      controller.replaceFilters({ ...flags, media_type: 'video' });
+    (q: TriageQueue, reviewed: ReviewedFilter) => {
+      controller.replaceFilters(computeQueueFilters(q, reviewed));
     },
     [controller],
   );
@@ -268,11 +479,12 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
   // the bucket intact) is preserved and does NOT trigger a heal.
   const triageFilters = controller.filters as Record<string, unknown>;
   useEffect(() => {
-    const pinned =
-      triageFilters.media_type === 'video' &&
-      TRIAGE_QUEUES.every((x) => Boolean(triageFilters[x.filter]) === (x.id === queue));
-    if (!pinned) applyQueueFilters(queue);
-  }, [queue, triageFilters, applyQueueFilters]);
+    const expected = computeQueueFilters(queue, reviewedFilter);
+    const pinned = Object.entries(expected).every(([k, v]) =>
+      k === 'media_type' ? triageFilters[k] === v : Boolean(triageFilters[k]) === v,
+    );
+    if (!pinned) applyQueueFilters(queue, reviewedFilter);
+  }, [queue, reviewedFilter, triageFilters, applyQueueFilters]);
 
   const triage = useCallback(
     async (assetId: number, decision: 'clean' | 'broken') => {
@@ -362,6 +574,33 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
     [triage],
   );
 
+  // ── Row-mode batch paging (lifted so the pager sits in the pinned header) ──
+  const rowTotal = controller.assets.length;
+  const rowRangeEnd = Math.min(cursor + rowSize, rowTotal);
+  const nextBatch = useCallback(
+    () => setCursor((c) => (c + rowSize >= rowTotal ? c : c + rowSize)),
+    [rowSize, rowTotal],
+  );
+  const prevBatch = useCallback(() => setCursor((c) => Math.max(0, c - rowSize)), [rowSize]);
+
+  // Reset to the front of the queue when the queue, sub-filter, or view changes.
+  useEffect(() => {
+    setCursor(0);
+  }, [queue, reviewedFilter, view]);
+
+  // Row-only: clamp the cursor when the queue shrinks under it (to-do Keep/Flag
+  // removes cards), and keep a small look-ahead loaded so the strip never starves.
+  useEffect(() => {
+    if (view !== 'row') return;
+    if (cursor > 0 && cursor >= rowTotal) setCursor(Math.max(0, rowTotal - rowSize));
+  }, [view, cursor, rowTotal, rowSize]);
+  useEffect(() => {
+    if (view !== 'row') return;
+    if (controller.hasMore && !controller.loading && cursor + rowSize * 2 >= rowTotal) {
+      controller.loadMore();
+    }
+  }, [view, controller, cursor, rowTotal, rowSize]);
+
   // Queue segmented control + the same registry-driven chip bar the default
   // gallery uses (minus triage-owned keys), so the filter UX matches.
   //
@@ -369,10 +608,15 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
   // gallery surface switcher above, and the verbose "Keep = …/Flag = …" copy is
   // compacted into the icon hints on the queue row (✓/⚠ mirror the card buttons).
   const filtersContent = (
-    <div className="space-y-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <SignalBucketSwitcher queue={queue} onSelect={setQueue} />
-        <div className="flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400">
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <SignalBucketSwitcher queue={queue} onSelect={setQueue} />
+          {queue === 'overridden' && (
+            <ReviewedFilterSwitcher value={reviewedFilter} onSelect={setReviewedFilter} />
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
           <span className="tabular-nums">
             {controller.assets.length}
             {controller.hasMore ? '+' : ''} left
@@ -388,8 +632,6 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
               ↶ Undo
             </button>
           )}
-          {view === 'row' && <RowSizeStepper size={rowSize} onChange={setRowSize} />}
-          <ViewModeSwitcher view={view} onSelect={setView} />
         </div>
       </div>
       <SignalCalibrationStrip refreshKey={labelTick} />
@@ -414,11 +656,36 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
     </div>
   );
 
+  // View controls (Grid/Row + row stepper + batch pager) live in the top chrome
+  // strip next to grid/masonry + size, via a portal — so navigation sits with the
+  // other "how am I viewing" controls instead of inside the filter block. Falls
+  // back to rendering inline above the body if the slot isn't mounted yet.
+  const viewControls = (
+    <div className="flex flex-wrap items-center gap-2">
+      {view === 'row' && (
+        <>
+          <RowSizeStepper size={rowSize} onChange={setRowSize} />
+          <BatchPager
+            rangeStart={rowTotal === 0 ? 0 : cursor + 1}
+            rangeEnd={rowRangeEnd}
+            total={rowTotal}
+            hasMore={controller.hasMore}
+            onPrev={prevBatch}
+            onNext={nextBatch}
+            prevDisabled={cursor <= 0}
+            nextDisabled={rowRangeEnd >= rowTotal && !controller.hasMore}
+          />
+        </>
+      )}
+      <ViewModeSwitcher view={view} onSelect={setView} />
+    </div>
+  );
+
   // Row mode: a focused strip of a few clips that play together on hover, for
   // eyeballing several at a time instead of scanning a whole page. Reuses the
   // same shell/filters/empty state as the grid so only the body differs.
-  if (view === 'row') {
-    return (
+  const body =
+    view === 'row' ? (
       <GallerySurfaceShell
         title=""
         filtersContent={filtersContent}
@@ -426,6 +693,7 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
         loading={controller.loading}
         itemCount={controller.assets.length}
         emptyState={emptyState}
+        pinHeader
       >
         <TriageRowStrip
           controller={controller}
@@ -433,26 +701,82 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
           cardActions={cardActions}
           cardSize={cardSize}
           rowSize={rowSize}
+          cursor={cursor}
+          onNext={nextBatch}
+          onPrev={prevBatch}
         />
       </GallerySurfaceShell>
+    ) : (
+      <ReviewModeSurface
+        controller={controller}
+        // Empty title → no header row (name is in the surface switcher above).
+        title=""
+        filtersContent={filtersContent}
+        decisions={decisions}
+        cardActions={cardActions}
+        cardFooter={(asset) => (
+          <>
+            <SignalRefTagger asset={asset} />
+            <SignalDetectionButton asset={asset} />
+          </>
+        )}
+        gestureSurfaceId="signal-triage"
+        cardWidgets={buildSignalScoreWidgets}
+        emptyState={emptyState}
+        cardSize={cardSize}
+        pinHeader
+        // Initial queue ('broken') + any drift is pinned by the self-healing effect
+        // above — no one-shot onMount (it raced the controller's first fetch).
+      />
     );
-  }
 
   return (
-    <ReviewModeSurface
-      controller={controller}
-      // Empty title → no header row (name is in the surface switcher above).
-      title=""
-      filtersContent={filtersContent}
-      decisions={decisions}
-      cardActions={cardActions}
-      gestureSurfaceId="signal-triage"
-      cardWidgets={buildSignalScoreWidgets}
-      emptyState={emptyState}
-      cardSize={cardSize}
-      // Initial queue ('broken') + any drift is pinned by the self-healing effect
-      // above — no one-shot onMount (it raced the controller's first fetch).
-    />
+    <>
+      {chromeSlotEl ? (
+        createPortal(viewControls, chromeSlotEl)
+      ) : (
+        <div className="px-6 pt-3">{viewControls}</div>
+      )}
+      {body}
+    </>
+  );
+}
+
+/** Compact ◂ N–M of T ▸ pager for the pinned controls row (row mode). */
+function BatchPager({
+  rangeStart,
+  rangeEnd,
+  total,
+  hasMore,
+  onPrev,
+  onNext,
+  prevDisabled,
+  nextDisabled,
+}: {
+  rangeStart: number;
+  rangeEnd: number;
+  total: number;
+  hasMore?: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+  prevDisabled: boolean;
+  nextDisabled: boolean;
+}) {
+  const btn =
+    'h-full px-1.5 text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed dark:text-neutral-300 dark:hover:bg-neutral-800';
+  return (
+    <div className="flex h-7 items-center overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-700">
+      <button type="button" className={btn} onClick={onPrev} disabled={prevDisabled} title="Previous batch (←)">
+        ◂
+      </button>
+      <span className="min-w-[5rem] px-1 text-center tabular-nums">
+        {total === 0 ? '0' : `${rangeStart}–${rangeEnd}`} of {total}
+        {hasMore ? '+' : ''}
+      </span>
+      <button type="button" className={btn} onClick={onNext} disabled={nextDisabled} title="Next batch (→)">
+        ▸
+      </button>
+    </div>
   );
 }
 
@@ -471,16 +795,21 @@ function TriageRowStrip({
   cardActions,
   cardSize,
   rowSize,
+  cursor,
+  onNext,
+  onPrev,
 }: {
   controller: AssetsController;
   decisions: ReviewDecision[];
   cardActions: (asset: AssetModel) => Partial<MediaCardActions>;
   cardSize: number;
   rowSize: number;
+  /** Front index of the visible batch (paging lives in the pinned header). */
+  cursor: number;
+  onNext: () => void;
+  onPrev: () => void;
 }) {
   const assets = controller.assets;
-  const total = assets.length;
-  const [cursor, setCursor] = useState(0);
   const [rowHovered, setRowHovered] = useState(false);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
 
@@ -495,28 +824,7 @@ function TriageRowStrip({
     return () => setVideoActivationCap(original);
   }, [rowSize]);
 
-  // Clamp the cursor back into range when the queue shrinks under it (Keep/Flag
-  // removes from the to-do queues, so the front slides up beneath a held cursor).
-  useEffect(() => {
-    if (cursor > 0 && cursor >= total) {
-      setCursor(Math.max(0, total - rowSize));
-    }
-  }, [total, cursor, rowSize]);
-
-  // Keep a small look-ahead loaded so the strip never starves mid-pass.
-  useEffect(() => {
-    if (controller.hasMore && !controller.loading && cursor + rowSize * 2 >= total) {
-      controller.loadMore();
-    }
-  }, [controller, total, cursor, rowSize]);
-
   const windowAssets = assets.slice(cursor, cursor + rowSize);
-
-  const next = useCallback(
-    () => setCursor((c) => (c + rowSize >= total ? c : c + rowSize)),
-    [total, rowSize],
-  );
-  const prev = useCallback(() => setCursor((c) => Math.max(0, c - rowSize)), [rowSize]);
 
   // Apply a decision to EVERY clip currently in the row — the throughput point of
   // row mode. In the to-do queues this clears the batch and the next slides in.
@@ -527,9 +835,10 @@ function TriageRowStrip({
     [windowAssets],
   );
 
-  // Hotkeys: ←/→ page the batch; a decision key (K/F) acts on the hovered card
-  // (fallback to the first); Shift+key applies it to the whole row. Bare keys
-  // require shift NOT held (see useKeyboardShortcuts), so the two never collide.
+  // Hotkeys: ←/→ page the batch (paging owned by the parent); a decision key
+  // (K/F) acts on the hovered card (fallback to the first); Shift+key applies it
+  // to the whole row. Bare keys require shift NOT held (see useKeyboardShortcuts),
+  // so the two never collide.
   useKeyboardShortcuts(
     useMemo(() => {
       const actOne = (run: ReviewDecision['run']) => {
@@ -537,8 +846,8 @@ function TriageRowStrip({
         if (target) void run(target);
       };
       return [
-        { key: 'ArrowRight', description: 'Next batch', callback: next },
-        { key: 'ArrowLeft', description: 'Previous batch', callback: prev },
+        { key: 'ArrowRight', description: 'Next batch', callback: onNext },
+        { key: 'ArrowLeft', description: 'Previous batch', callback: onPrev },
         ...decisions.flatMap((d) => [
           { key: d.hotkey, description: d.label, callback: () => actOne(d.run) },
           {
@@ -549,33 +858,13 @@ function TriageRowStrip({
           },
         ]),
       ];
-    }, [decisions, windowAssets, hoveredId, next, prev, actAll]),
+    }, [decisions, windowAssets, hoveredId, onNext, onPrev, actAll]),
   );
-
-  const rangeEnd = Math.min(cursor + rowSize, total);
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
-        <Button variant="secondary" className="text-xs" onClick={prev} disabled={cursor <= 0}>
-          ◂ Prev
-        </Button>
-        <span className="tabular-nums">
-          {total === 0 ? '0' : `${cursor + 1}–${rangeEnd}`} of {total}
-          {controller.hasMore ? '+' : ''} · hover the row to play all
-        </span>
-        <Button
-          variant="secondary"
-          className="text-xs"
-          onClick={next}
-          disabled={rangeEnd >= total && !controller.hasMore}
-        >
-          Next ▸
-        </Button>
-      </div>
-
       {/* Bulk actions — decide the whole visible row in one click. */}
-      <div className="flex items-center justify-center gap-2 text-xs">
+      <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs">
         <span className="text-neutral-500 dark:text-neutral-400">
           Whole row ({windowAssets.length}):
         </span>
@@ -591,6 +880,7 @@ function TriageRowStrip({
             {d.label} all
           </Button>
         ))}
+        <span className="text-neutral-400 dark:text-neutral-500">· hover the row to play all</span>
       </div>
 
       <div
@@ -623,20 +913,24 @@ function TriageRowStrip({
               customWidgets={buildSignalScoreWidgets(asset)}
               gestureSurfaceId="signal-triage"
             />
-            <div className="flex gap-2 border-t border-neutral-200 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900">
-              {decisions.map((d) => {
-                const active = d.isActive?.(asset) ?? false;
-                return (
-                  <Button
-                    key={d.id}
-                    variant={active ? 'primary' : d.variant ?? 'secondary'}
-                    className="flex-1 text-sm"
-                    onClick={() => void d.run(asset)}
-                  >
-                    {d.label}
-                  </Button>
-                );
-              })}
+            <div className="border-t border-neutral-200 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900">
+              <div className="flex gap-2">
+                {decisions.map((d) => {
+                  const active = d.isActive?.(asset) ?? false;
+                  return (
+                    <Button
+                      key={d.id}
+                      variant={active ? 'primary' : d.variant ?? 'secondary'}
+                      className="flex-1 text-sm"
+                      onClick={() => void d.run(asset)}
+                    >
+                      {d.label}
+                    </Button>
+                  );
+                })}
+              </div>
+              <SignalRefTagger asset={asset} />
+              <SignalDetectionButton asset={asset} />
             </div>
           </div>
         ))}

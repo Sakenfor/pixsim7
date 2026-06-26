@@ -646,6 +646,39 @@ async def scan_signal_metrics(
         raise HTTPException(status_code=500, detail=f"Failed to scan signal metrics: {str(e)}")
 
 
+class SignalMetricsResponse(BaseModel):
+    id: int
+    signal_metrics: Optional[dict] = Field(
+        default=None,
+        description="Full media_metadata.signal_metrics (incl. chroma_fp); null if never scanned",
+    )
+
+
+@router.get("/{asset_id}/signal-metrics", response_model=SignalMetricsResponse)
+async def get_signal_metrics(
+    asset_id: int,
+    user: CurrentUser,
+    asset_service: AssetSvc,
+):
+    """Return the full stored signal_metrics for an asset (read-only).
+
+    The list/detail AssetResponse only carries the flat score/override mirror
+    columns — the heavy fields (the 12×48 ``chroma_fp`` fingerprint, dynamics,
+    per-axis probe values) live in ``media_metadata.signal_metrics`` and are
+    fetched on demand by the Triage "Detection" popover (chroma heatmap, melody
+    playback, score breakdown). Returns null metrics when the asset has never
+    been scanned.
+    """
+    try:
+        asset = await asset_service.get_asset_for_user(asset_id, user)
+        metrics = (asset.media_metadata or {}).get("signal_metrics")
+        return SignalMetricsResponse(id=asset.id, signal_metrics=metrics)
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
 class SignalOverrideRequest(BaseModel):
     override: Optional[str] = Field(
         default=None,

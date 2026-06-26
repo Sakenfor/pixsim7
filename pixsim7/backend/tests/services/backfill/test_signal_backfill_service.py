@@ -23,9 +23,14 @@ class _FakeSignalService:
     def __init__(self, result):
         self._result = result
         self.calls = []
+        self.rescore_calls = []
 
     async def probe_and_stamp(self, asset, *, force, commit, cohort_baselines, **kw):
         self.calls.append({"force": force, "commit": commit, **kw})
+        return self._result
+
+    async def rescore_from_stored(self, asset, *, commit, cohort_baselines, **kw):
+        self.rescore_calls.append({"commit": commit, **kw})
         return self._result
 
 
@@ -50,31 +55,59 @@ def _svc() -> SignalBackfillService:
     return SignalBackfillService(db=None)  # hooks under test don't touch db
 
 
-def _run() -> SignalBackfillRun:
-    return SignalBackfillRun(user_id=1, target_scanner_version="v3")
+def _run(mode: str = "reprobe") -> SignalBackfillRun:
+    return SignalBackfillRun(user_id=1, target_scanner_version="v3", mode=mode)
+
+
+# Batch ctx is (signal_service, baselines, ref_fingerprints).
+def _ctx(fake, refs=None):
+    return (fake, {}, refs if refs is not None else [])
 
 
 async def test_process_asset_skipped_when_probe_returns_none():
     svc, run = _svc(), _run()
     fake = _FakeSignalService(None)
-    out = await svc._process_asset(SimpleNamespace(id=1), run, (fake, {}))
+    out = await svc._process_asset(SimpleNamespace(id=1), run, _ctx(fake))
     assert out == {"skipped": 1}
-    # always a forced, uncommitted probe (the base owns the commit)
-    assert fake.calls == [{"force": True, "commit": False}]
+    # always a forced, uncommitted probe (the base owns the commit), with the
+    # batch's reference fingerprints folded in for the matcher.
+    assert fake.calls == [{"force": True, "commit": False, "ref_fingerprints": []}]
 
 
 async def test_process_asset_broken_when_suspicious():
     svc, run = _svc(), _run()
     fake = _FakeSignalService({"suspicious": True, "score": 4})
-    out = await svc._process_asset(SimpleNamespace(id=1), run, (fake, {}))
+    out = await svc._process_asset(SimpleNamespace(id=1), run, _ctx(fake))
     assert out == {"scanned": 1, "broken": 1}
 
 
 async def test_process_asset_clean_when_not_suspicious():
     svc, run = _svc(), _run()
     fake = _FakeSignalService({"suspicious": False, "score": 0})
-    out = await svc._process_asset(SimpleNamespace(id=1), run, (fake, {}))
+    out = await svc._process_asset(SimpleNamespace(id=1), run, _ctx(fake))
     assert out == {"scanned": 1}
+
+
+async def test_rescore_mode_routes_to_rescore_from_stored():
+    """In rescore mode _process_asset re-scores stored metrics (no probe), and
+    forwards the batch's reference fingerprints to the matcher."""
+    svc, run = _svc(), _run(mode="rescore")
+    fake = _FakeSignalService({"suspicious": True, "score": 5})
+    refs = ["ref-a", "ref-b"]
+    out = await svc._process_asset(SimpleNamespace(id=1), run, _ctx(fake, refs))
+    assert out == {"scanned": 1, "broken": 1}
+    assert fake.calls == []  # no ffmpeg probe
+    assert fake.rescore_calls == [{"commit": False, "ref_fingerprints": refs}]
+
+
+async def test_prefetch_batch_skipped_in_rescore_mode():
+    """rescore needs no ffmpeg, so the probe fan-out is a no-op."""
+    svc, run = _svc(), _run(mode="rescore")
+    fake = _RecordingSignalService()
+    assets = [SimpleNamespace(id=i) for i in (10, 11)]
+    await svc._prefetch_batch(assets, run, _ctx(fake))
+    assert fake.probed_ids == []
+    assert svc._probe_cache is None
 
 
 async def test_prefetch_batch_probes_all_and_process_uses_cache():
@@ -88,7 +121,7 @@ async def test_prefetch_batch_probes_all_and_process_uses_cache():
     svc.db = SimpleNamespace(commit=_noop)
     fake = _RecordingSignalService()
     assets = [SimpleNamespace(id=i) for i in (10, 11, 12)]
-    ctx = (fake, {})
+    ctx = _ctx(fake)
 
     await svc._prefetch_batch(assets, run, ctx)
     assert sorted(fake.probed_ids) == [10, 11, 12]
@@ -97,7 +130,7 @@ async def test_prefetch_batch_probes_all_and_process_uses_cache():
     out = await svc._process_asset(assets[0], run, ctx)
     assert out == {"scanned": 1}
     # the cached probe is handed back as `prefetched` (no inline re-probe)
-    assert fake.stamped == [{"id": 10, "prefetched": {"raw_for": 10}}]
+    assert fake.stamped == [{"id": 10, "ref_fingerprints": [], "prefetched": {"raw_for": 10}}]
 
 
 async def test_process_asset_probes_inline_without_prefetch():
@@ -105,9 +138,10 @@ async def test_process_asset_probes_inline_without_prefetch():
     _process_asset omits `prefetched` so the service probes inline."""
     svc, run = _svc(), _run()
     fake = _FakeSignalService({"suspicious": False})
-    out = await svc._process_asset(SimpleNamespace(id=1), run, (fake, {}))
+    out = await svc._process_asset(SimpleNamespace(id=1), run, _ctx(fake))
     assert out == {"scanned": 1}
-    assert fake.calls == [{"force": True, "commit": False}]  # no `prefetched` key
+    # no `prefetched` key; ref_fingerprints still forwarded
+    assert fake.calls == [{"force": True, "commit": False, "ref_fingerprints": []}]
 
 
 async def test_apply_outcome_rolls_up_counters():

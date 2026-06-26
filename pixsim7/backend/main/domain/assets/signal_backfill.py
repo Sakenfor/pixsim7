@@ -40,6 +40,14 @@ class SignalBackfillRun(SQLModel, table=True):
     # The scanner version this run is bringing assets up to (e.g. "v3"). Stale
     # videos are those whose signal_scanner_version is distinct from this.
     target_scanner_version: str = Field(max_length=20)
+    # Run mode:
+    #   "reprobe" — full ffmpeg probe (captures chroma_fp + audio/visual metrics)
+    #               over STALE videos (scanner_version distinct from target).
+    #   "rescore" — no ffmpeg: re-apply the fingerprint matcher + scoring over
+    #               every previously-scored video's STORED metrics. The pass you
+    #               repeat after curating signalref:* references / retuning
+    #               thresholds, so it is NOT gated on stale-version.
+    mode: str = Field(default="reprobe", max_length=16)
     batch_size: int = Field(default=100)
 
     cursor_asset_id: int = Field(default=0, index=True)
@@ -72,6 +80,7 @@ class SignalBackfillRun(SQLModel, table=True):
             "status": self.status.value,
             "run_id": self.id,
             "target_scanner_version": self.target_scanner_version,
+            "mode": self.mode,
             "processed_assets": self.processed_assets,
             "scanned_assets": self.scanned_assets,
             "broken_assets": self.broken_assets,

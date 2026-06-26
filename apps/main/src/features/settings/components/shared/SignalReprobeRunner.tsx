@@ -11,10 +11,13 @@ import {
 } from './maintenanceShared';
 
 // Mirrors backend SignalBackfillRunResponse (api/v1/assets_maintenance.py).
+type ReprobeMode = 'reprobe' | 'rescore';
+
 interface SignalBackfillRun {
   id: number;
   status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
   target_scanner_version: string;
+  mode: ReprobeMode;
   batch_size: number;
   cursor_asset_id: number;
   total_assets: number;
@@ -62,6 +65,34 @@ const THREADS_MAX = 16;
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
+// How many recent runs to show in the history strip.
+const HISTORY_LIMIT = 5;
+
+// Themed form-control classes. Native <select>/<input> don't inherit the
+// shadcn `bg-background` token reliably (they keep the UA white), so mirror the
+// shared Input/Select primitives: explicit white / dark-neutral surfaces +
+// readable text, and option styling for the dropdown.
+const FIELD_CLS =
+  'rounded border border-neutral-300 bg-white text-neutral-900 ' +
+  'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 disabled:opacity-50';
+const SELECT_CLS =
+  'rounded border border-neutral-300 bg-white text-neutral-900 ' +
+  'dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 ' +
+  '[&>option]:bg-white [&>option]:text-neutral-900 ' +
+  'dark:[&>option]:bg-neutral-800 dark:[&>option]:text-neutral-100 disabled:opacity-50';
+
+/** Short, local date+time for a run's most relevant timestamp. */
+function formatRunDate(r: SignalBackfillRun): string {
+  const iso = r.completed_at ?? r.started_at ?? r.created_at;
+  if (!iso) return '';
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 const isActive = (r: SignalBackfillRun | null): boolean =>
   !!r && ACTIVE.includes(r.status);
 
@@ -75,10 +106,11 @@ const STATUS_CLASS: Record<SignalBackfillRun['status'], string> = {
 };
 
 /**
- * Drives a durable signal-scan reprobe run (full ffmpeg probe -> spectral_flatness)
- * from the Video Health row. Unlike the cheap "Scan" (re-scores stored metrics and
- * can't compute the v3 tonal axis), this re-probes every stale video, resumable
- * across worker restarts. Self-contained: create -> poll -> pause/resume/cancel.
+ * Drives a durable signal-scan reprobe run (full ffmpeg probe -> chroma fingerprint
+ * + audio/visual metrics) from the Video Health row. Unlike the cheap "Scan"
+ * (re-scores stored metrics and can't compute the probe-derived fields), this
+ * re-probes every stale video, resumable across worker restarts. Self-contained:
+ * create -> poll -> pause/resume/cancel.
  */
 export function SignalReprobeRunner() {
   const [run, setRun] = useState<SignalBackfillRun | null>(null);
@@ -86,15 +118,29 @@ export function SignalReprobeRunner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tuning, setTuning] = useState<ReprobeTuning | null>(null);
+  // Mode for the NEXT run to start (existing runs carry their own mode).
+  const [mode, setMode] = useState<ReprobeMode>('reprobe');
+  // Recent runs (incl. the live one at index 0) for the history strip.
+  const [history, setHistory] = useState<SignalBackfillRun[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Initial load: surface the most recent run (resume display if still active).
+  // Refetch the recent-runs list (history strip + latest tracker). Best-effort.
+  const refreshHistory = useCallback(async (): Promise<SignalBackfillRun[]> => {
+    const r = await maintGet<RunListResponse>(
+      `${RUNS_PATH}?limit=${HISTORY_LIMIT}`,
+      SURFACE,
+    );
+    setHistory(r.items);
+    return r.items;
+  }, []);
+
+  // Initial load: surface the recent runs (resume display if the latest is active).
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    maintGet<RunListResponse>(`${RUNS_PATH}?limit=1`, SURFACE)
-      .then((r) => {
-        if (!cancelled) setRun(r.items[0] ?? null);
+    refreshHistory()
+      .then((items) => {
+        if (!cancelled) setRun(items[0] ?? null);
       })
       .catch((e) => {
         if (!cancelled) setError(extractErrorMessage(e));
@@ -105,7 +151,7 @@ export function SignalReprobeRunner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshHistory]);
 
   // Load the live probe-tuning knobs (media_settings) once.
   useEffect(() => {
@@ -151,7 +197,10 @@ export function SignalReprobeRunner() {
           SURFACE,
         );
         setRun(fresh);
-        if (!isActive(fresh)) bustStatsCache(STATS_KEY);
+        if (!isActive(fresh)) {
+          bustStatsCache(STATS_KEY);
+          void refreshHistory().catch(() => {}); // capture the final counters
+        }
       } catch (e) {
         setError(extractErrorMessage(e));
       }
@@ -168,19 +217,21 @@ export function SignalReprobeRunner() {
       setError(null);
       try {
         setRun(await fn());
+        void refreshHistory().catch(() => {});
       } catch (e) {
         setError(extractErrorMessage(e));
       } finally {
         setBusy(false);
       }
     },
-    [],
+    [refreshHistory],
   );
 
   const start = () =>
     act(() =>
       maintPost<SignalBackfillRun>(RUNS_PATH, SURFACE, {
         batch_size: DEFAULT_BATCH,
+        mode,
       }),
     );
   const pause = () =>
@@ -200,22 +251,26 @@ export function SignalReprobeRunner() {
     <section className="rounded-md border border-border/60 bg-muted/10 px-4 py-3 space-y-3">
       <header className="flex items-baseline justify-between gap-3 flex-wrap">
         <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Durable reprobe — full ffmpeg (tonal axis)
+          Durable signal backfill (v5 fingerprint)
         </h3>
         {run && (
           <span
             className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_CLASS[run.status]}`}
           >
             {run.status}
+            {run.mode ? ` · ${run.mode}` : ''}
             {run.target_scanner_version ? ` · ${run.target_scanner_version}` : ''}
           </span>
         )}
       </header>
 
       <p className="text-[11px] leading-snug text-muted-foreground">
-        Re-probes every stale video with ffmpeg (computes <code>spectral_flatness</code>),
-        unlike the cheap Scan above which only re-scores stored metrics. Runs one batch at
-        a time in the background; resumable across worker restarts.
+        <strong>Reprobe</strong> re-runs ffmpeg over every <em>stale</em> video to capture the
+        chroma fingerprint + audio/visual metrics (slow, ~1s/clip).{' '}
+        <strong>Rescore</strong> skips ffmpeg and re-applies the fingerprint matcher + scoring
+        over every previously-scored clip&apos;s stored metrics — the cheap pass to repeat after
+        curating <code>signalref:*</code> references or retuning thresholds. Runs one batch at a
+        time in the background; resumable across worker restarts.
       </p>
 
       {loading && !run ? (
@@ -251,14 +306,29 @@ export function SignalReprobeRunner() {
 
       <div className="flex flex-wrap items-center gap-2">
         {!running && (
-          <button
-            type="button"
-            onClick={start}
-            disabled={busy}
-            className="rounded bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground disabled:opacity-50"
-          >
-            {run ? 'Start new reprobe' : 'Start reprobe'}
-          </button>
+          <>
+            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="uppercase tracking-wider text-[10px]">Mode</span>
+              <select
+                value={mode}
+                onChange={(e) => setMode(e.target.value as ReprobeMode)}
+                disabled={busy}
+                className={`${SELECT_CLS} px-1.5 py-1 text-[11px]`}
+                title="Reprobe = full ffmpeg over stale videos; Rescore = re-apply the matcher over stored metrics (no ffmpeg)"
+              >
+                <option value="reprobe">Reprobe (full ffmpeg)</option>
+                <option value="rescore">Rescore (stored metrics)</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={start}
+              disabled={busy}
+              className="rounded bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground disabled:opacity-50"
+            >
+              {run ? `Start new ${mode}` : `Start ${mode}`}
+            </button>
+          </>
         )}
         {run?.status === 'running' && (
           <button
@@ -319,7 +389,7 @@ export function SignalReprobeRunner() {
                   ),
                 )
               }
-              className="w-16 rounded border border-border bg-background px-1.5 py-0.5 text-[11px] tabular-nums"
+              className={`w-16 ${FIELD_CLS} px-1.5 py-0.5 text-[11px] tabular-nums`}
             />
           </label>
           <label className="flex flex-col gap-0.5">
@@ -343,13 +413,45 @@ export function SignalReprobeRunner() {
                   clamp(Number.isFinite(raw) ? raw : THREADS_MIN, THREADS_MIN, THREADS_MAX),
                 );
               }}
-              className="w-16 rounded border border-border bg-background px-1.5 py-0.5 text-[11px] tabular-nums"
+              className={`w-16 ${FIELD_CLS} px-1.5 py-0.5 text-[11px] tabular-nums`}
             />
           </label>
           <p className="max-w-[15rem] text-[10px] leading-snug text-muted-foreground">
-            Probe CPU footprint. Lower if the UI lags; raise for speed (threads 0 =
-            ffmpeg auto). Applies on the next batch.
+            Probe CPU footprint (reprobe only — rescore runs no ffmpeg). Lower if the
+            UI lags; raise for speed (threads 0 = ffmpeg auto). Applies on the next batch.
           </p>
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="space-y-1 border-t border-border/40 pt-2.5">
+          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            Recent runs
+          </div>
+          <ul className="space-y-0.5">
+            {history.map((h) => (
+              <li
+                key={h.id}
+                className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground"
+              >
+                <span
+                  className={`rounded px-1 py-0.5 font-medium ${STATUS_CLASS[h.status]}`}
+                >
+                  {h.status}
+                </span>
+                <span className="uppercase tracking-wide">{h.mode}</span>
+                <span>· {h.target_scanner_version}</span>
+                <span className="text-emerald-600">{fmt(h.scanned_assets)} scanned</span>
+                {h.broken_assets > 0 && (
+                  <span className="text-red-600">{fmt(h.broken_assets)} broken</span>
+                )}
+                {h.failed_assets > 0 && (
+                  <span className="text-red-500">{fmt(h.failed_assets)} failed</span>
+                )}
+                <span className="ml-auto whitespace-nowrap">{formatRunDate(h)}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
