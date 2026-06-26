@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { listAssetGroups } from '@lib/api/assets';
 import type { AssetGroupListResponse, AssetGroupRequest } from '@lib/api/assets';
+import type { AssetSearchRequest } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { Icon, type IconName } from '@lib/icons';
 import { gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
@@ -49,6 +50,7 @@ import { useAssetSets, useAssetSetStore, type ManualAssetSet } from '../stores/a
 import { useAssetViewerStore, selectIsViewerOpen } from '../stores/assetViewerStore';
 import { useFilterPresetStore } from '../stores/filterPresetStore';
 import { useGalleryApplyTargetStore } from '../stores/galleryApplyTargetStore';
+import { useGalleryViewPrefsStore } from '../stores/galleryViewPrefsStore';
 import { useSetAddRecencyStore } from '../stores/setAddRecencyStore';
 import { useSurfaceSetBadgesExpanded } from '../stores/setBadgeExpansionStore';
 
@@ -585,6 +587,17 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     [openFloatingPanel],
   );
 
+  // Hide manually-flagged-broken clips from the DEFAULT gallery only — review
+  // surfaces (?surface=…) must still see them. Computed from the same ?surface
+  // param the surface dispatch below reads, but early (the controller is created
+  // here). Injected as a request override so it never shows as a user filter chip.
+  const isDefaultGallerySurface = useMemo(
+    () => (new URLSearchParams(location.search).get('surface') || 'assets-default') === 'assets-default',
+    [location.search],
+  );
+  const hideFlagged = useGalleryViewPrefsStore((s) => s.hideFlagged);
+  const setHideFlagged = useGalleryViewPrefsStore((s) => s.setHideFlagged);
+
   const groupSearchOverrides = useMemo(() => {
     // Build union of asset IDs from checked filter sets
     let asset_ids: number[] | undefined;
@@ -607,9 +620,14 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
 
     const groupPart = isLeafGroup ? { group_path: groupPathPayload, group_filter: groupFilter } : {};
     const idsPart = asset_ids ? { asset_ids } : {};
-    const merged = { ...groupPart, ...idsPart };
+    const hidePart =
+      isDefaultGallerySurface && hideFlagged ? { exclude_override_broken: true } : {};
+    // exclude_override_broken is a registry filter not in the generated
+    // AssetSearchRequest type; the backend accepts it. Cast like other
+    // pass-through registry filters.
+    const merged = { ...groupPart, ...idsPart, ...hidePart } as Partial<AssetSearchRequest>;
     return Object.keys(merged).length > 0 ? merged : undefined;
-  }, [groupFilter, groupPathPayload, isLeafGroup, filterSetIds, allSets, setsStatus]);
+  }, [groupFilter, groupPathPayload, isLeafGroup, filterSetIds, allSets, setsStatus, isDefaultGallerySurface, hideFlagged]);
   const initialPageRef = useRef(parsePageParam(location.search));
   const controller = useAssetsController({
     initialPage: initialPageRef.current,
@@ -695,6 +713,14 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   }, [controller.selectAll, controller.assets]);
 
   const pageFromUrl = useMemo(() => parsePageParam(location.search), [location.search]);
+  // Whether a non-default gallery surface (review/triage/debug) is active. Those
+  // surfaces drive `controller.goToPage` directly and do NOT mirror their page in
+  // the URL, so the URL→controller page sync below must stand down for them — else
+  // it snaps them straight back to the URL's page (1) on every page change.
+  const isDefaultSurface = useMemo(
+    () => (new URLSearchParams(location.search).get('surface') || 'assets-default') === 'assets-default',
+    [location.search],
+  );
   const groupRequest = useMemo<AssetGroupRequest | null>(() => {
     if (!hasGrouping || isLeafGroup || !currentGroupBy) return null;
     const groupOffset = (groupPage - 1) * GROUP_PAGE_SIZE;
@@ -1273,6 +1299,9 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
 
   useEffect(() => {
     if (controller.loading) return;
+    // Custom surfaces own their pagination in-memory (no ?page= in the URL), so
+    // skip the URL→controller sync for them — see `isDefaultSurface`.
+    if (!isDefaultSurface) return;
     const pendingPage = pendingPageUrlRef.current;
     if (pendingPage !== null) {
       if (pageFromUrl !== pendingPage) return;
@@ -1291,7 +1320,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     }
 
     controller.goToPage(pageFromUrl);
-  }, [controller.currentPage, controller.goToPage, controller.loading, controller.totalPages, pageFromUrl, syncPageInUrl]);
+  }, [controller.currentPage, controller.goToPage, controller.loading, controller.totalPages, pageFromUrl, syncPageInUrl, isDefaultSurface]);
 
   // Convert selected IDs to GalleryAsset objects
   const selectedAssets: GalleryAsset[] = useMemo(() => {
@@ -1581,6 +1610,21 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
               <option value="old">Oldest First</option>
               <option value="alpha">A-Z</option>
             </select>
+
+            {/* Show/hide clips you've manually flagged broken (hidden by default,
+                this surface only). Persisted via galleryViewPrefsStore. */}
+            <label
+              className="inline-flex items-center gap-1.5 h-7 px-2 text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              title="Show clips you've flagged broken (hidden by default)"
+            >
+              <input
+                type="checkbox"
+                className="accent-accent"
+                checked={!hideFlagged}
+                onChange={(e) => setHideFlagged(!e.target.checked)}
+              />
+              Show flagged
+            </label>
 
             {/* Injected toolbar controls from parent shell */}
             {toolbarExtra}

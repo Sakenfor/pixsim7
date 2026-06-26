@@ -1399,6 +1399,38 @@ def register_default_asset_filters() -> None:
             condition_builder=lambda v: _signal_override.isnot(None) if v else None,
         )
     )
+    # Value-scoped slices of `signal_overridden`, so the Reviewed triage queue can
+    # show only your Keep (clean) or only your Flag (broken) decisions.
+    asset_filter_registry.register(
+        FilterSpec(
+            key="signal_override_clean",
+            type="boolean",
+            label="Signal: kept (clean)",
+            description="Assets you manually marked Keep (override = clean).",
+            condition_builder=lambda v: (_signal_override == "clean") if v else None,
+        )
+    )
+    asset_filter_registry.register(
+        FilterSpec(
+            key="signal_override_broken",
+            type="boolean",
+            label="Signal: flagged (broken)",
+            description="Assets you manually marked Flag (override = broken).",
+            condition_builder=lambda v: (_signal_override == "broken") if v else None,
+        )
+    )
+    # Inverse of signal_override_broken: hide your manual Flags. Applied by the
+    # default gallery to keep confirmed-broken clips out of view (NULL/'clean'
+    # kept, only 'broken' dropped); a "Show flagged" toggle turns it off.
+    asset_filter_registry.register(
+        FilterSpec(
+            key="exclude_override_broken",
+            type="boolean",
+            label="Hide flagged (broken)",
+            description="Exclude clips you manually flagged broken (override = broken).",
+            condition_builder=lambda v: _signal_override.is_distinct_from("broken") if v else None,
+        )
+    )
 
 
 register_default_asset_filters()
