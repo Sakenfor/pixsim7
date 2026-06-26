@@ -111,3 +111,94 @@ class HttpEmbeddingService(EmbeddingService):
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+
+
+class HttpTextEmbeddingService(EmbeddingService):
+    """Embeds texts via the launcher-managed ``text-embedding-daemon`` service.
+
+    Talks to ``pixsim7.embedding.text_server`` over HTTP. The daemon keeps the
+    local text model warm, so this avoids the per-call model reload of the
+    one-shot ``CommandEmbeddingProvider``. Graceful failure: an unreachable /
+    not-yet-warm daemon raises ``EmbeddingServiceError`` and the composite falls
+    back to the subprocess provider, so a down daemon never blocks embedding."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        model_id: str,
+        connect_timeout: float = 2.0,
+        read_timeout: float = 120.0,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._model_id = model_id
+        # Short connect timeout so a down daemon fails fast into the fallback;
+        # long read timeout to cover a cold warm-up window on first request.
+        self._timeout = httpx.Timeout(
+            connect=connect_timeout, read=read_timeout, write=10.0, pool=connect_timeout
+        )
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(base_url=self._base_url, timeout=self._timeout)
+        return self._client
+
+    async def embed_images(self, request: EmbedRequest) -> EmbedResult:
+        raise NotImplementedError(
+            "HttpTextEmbeddingService embeds text only; image embedding is "
+            "routed to the image daemon by the bound composite."
+        )
+
+    async def embed_texts(self, request: EmbedTextRequest) -> EmbedResult:
+        if not request.texts:
+            return EmbedResult(vectors=[], dim=0, model_id=request.model_id)
+
+        payload: dict[str, object] = {
+            "texts": list(request.texts),
+            "model": request.model_id,
+        }
+        try:
+            response = await self._get_client().post("/embed_texts", json=payload)
+        except httpx.HTTPError as exc:
+            raise EmbeddingServiceError(
+                f"text embedding service unreachable at {self._base_url}: {exc}"
+            ) from exc
+
+        if response.status_code != 200:
+            raise EmbeddingServiceError(
+                f"text embedding service returned HTTP {response.status_code}: "
+                f"{response.text[:200]!r}"
+            )
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise EmbeddingServiceError(
+                f"text embedding service returned non-JSON: {response.text[:200]!r}"
+            ) from exc
+
+        vectors_raw = data.get("embeddings")
+        if not isinstance(vectors_raw, list):
+            raise EmbeddingServiceError("text embedding response missing 'embeddings' list")
+
+        vectors: list[list[float]] = []
+        for v in vectors_raw:
+            if not isinstance(v, list):
+                raise EmbeddingServiceError("non-list vector in text embedding response")
+            vectors.append([float(x) for x in v])
+
+        dim = len(vectors[0]) if vectors else 0
+        if any(len(v) != dim for v in vectors):
+            raise EmbeddingServiceError(
+                "text embedding service returned vectors with mixed dims"
+            )
+
+        # Provenance is the requested (prefixed) model_id — the daemon serves the
+        # local model that id resolves to, and callers persist the prefixed form.
+        return EmbedResult(vectors=vectors, dim=dim, model_id=request.model_id)
+
+    async def shutdown(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None

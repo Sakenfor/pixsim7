@@ -29,6 +29,7 @@ The image path is an HTTP client to the standalone `embedding-daemon` service
 """
 from __future__ import annotations
 
+import logging
 import os
 
 from pixsim7.backend.main.services.ai_model.registry import ai_model_registry
@@ -36,19 +37,26 @@ from pixsim7.backend.main.services.embedding.embedding_service import (
     EmbeddingModelError,
 )
 from pixsim7.backend.main.services.embedding.registry import embedding_registry
-from pixsim7.embedding.http_client import HttpEmbeddingService
+from pixsim7.embedding.http_client import (
+    HttpEmbeddingService,
+    HttpTextEmbeddingService,
+)
 from pixsim7.embedding.locator import bind_embedding_service, try_get_embedding_service
 from pixsim7.embedding.protocol import (
     EmbedRequest,
     EmbedResult,
     EmbedTextRequest,
     EmbeddingService,
+    EmbeddingServiceError,
 )
 from pixsim7.embedding.validation import validate_embeddings
 
 
+logger = logging.getLogger(__name__)
+
 _DEFAULT_URL = "http://localhost:8002"
 _DEFAULT_MODEL_ID = "google/siglip2-large-patch16-384"
+_DEFAULT_TEXT_MODEL_ID = "BAAI/bge-base-en-v1.5"
 
 
 def _build_image_service() -> EmbeddingService:
@@ -57,23 +65,56 @@ def _build_image_service() -> EmbeddingService:
     return HttpEmbeddingService(base_url=base_url, model_id=model_id)
 
 
+def _build_text_daemon_service() -> EmbeddingService | None:
+    """HTTP client to the text-embedding-daemon, or None when no daemon URL is
+    configured (the card isn't installed). The URL is auto-derived from the
+    card's port and exported to every service even while the daemon is stopped,
+    so a configured-but-down daemon is handled by the runtime fallback, not here."""
+    base_url = os.environ.get("PIXSIM_TEXT_EMBEDDING_BASE_URL")
+    if not base_url:
+        return None
+    model_id = os.environ.get("PIXSIM_TEXT_EMBED_MODEL", _DEFAULT_TEXT_MODEL_ID)
+    return HttpTextEmbeddingService(base_url=base_url, model_id=model_id)
+
+
 def _extract_bare_model(model_id: str) -> str:
     """Strip the provider prefix: 'openai:text-embedding-3-small' → 'text-embedding-3-small'."""
     return model_id.split(":", 1)[1] if ":" in model_id else model_id
 
 
 class CompositeEmbeddingService(EmbeddingService):
-    """Routes embed_images to the image daemon and embed_texts to the
-    backend text-provider registry. Bound into the locator at startup so a
-    single `get_embedding_service()` reaches both modalities."""
+    """Routes embed_images to the image daemon and embed_texts to the local text
+    daemon (for local ``cmd:`` models) or the backend text-provider registry
+    (OpenAI etc., and as the fallback when the daemon is down). Bound into the
+    locator at startup so a single `get_embedding_service()` reaches both
+    modalities."""
 
-    def __init__(self, image_service: EmbeddingService) -> None:
+    def __init__(
+        self,
+        image_service: EmbeddingService,
+        text_daemon: EmbeddingService | None = None,
+    ) -> None:
         self._image_service = image_service
+        self._text_daemon = text_daemon
 
     async def embed_images(self, request: EmbedRequest) -> EmbedResult:
         return await self._image_service.embed_images(request)
 
     async def embed_texts(self, request: EmbedTextRequest) -> EmbedResult:
+        # Local (cmd:*) text models embed via the warm daemon when one is
+        # configured; on any daemon error fall through to the one-shot
+        # subprocess provider so embedding still works (just slow). OpenAI and
+        # other hosted text models always go through the registry.
+        if self._text_daemon is not None and self._is_local_text_model(request.model_id):
+            try:
+                return await self._text_daemon.embed_texts(request)
+            except EmbeddingServiceError as exc:
+                logger.info(
+                    "text daemon unavailable for %s; falling back to subprocess: %s",
+                    request.model_id,
+                    exc,
+                )
+
         provider = self._resolve_text_provider(request.model_id)
         bare_model = _extract_bare_model(request.model_id)
         texts = list(request.texts)
@@ -85,8 +126,16 @@ class CompositeEmbeddingService(EmbeddingService):
         )
         return EmbedResult(vectors=vectors, dim=dims, model_id=request.model_id)
 
+    @staticmethod
+    def _is_local_text_model(model_id: str) -> bool:
+        """The text daemon hosts the local command-backed model (``cmd:*``).
+        Hosted-API models (``openai:*``) must go through the provider registry."""
+        return model_id.split(":", 1)[0] == "cmd"
+
     async def shutdown(self) -> None:
         await self._image_service.shutdown()
+        if self._text_daemon is not None:
+            await self._text_daemon.shutdown()
 
     @staticmethod
     def _resolve_text_provider(model_id: str):
@@ -117,7 +166,10 @@ class CompositeEmbeddingService(EmbeddingService):
 
 
 def _build_default_service() -> EmbeddingService:
-    return CompositeEmbeddingService(image_service=_build_image_service())
+    return CompositeEmbeddingService(
+        image_service=_build_image_service(),
+        text_daemon=_build_text_daemon_service(),
+    )
 
 
 def bind_embedding_capabilities() -> None:

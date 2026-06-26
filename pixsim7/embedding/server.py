@@ -46,7 +46,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 
@@ -54,6 +53,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from pixsim7.embedding._daemon import InFlight, evaluate_health
 from pixsim7.embedding._siglip import (
     MODEL_ID,
     embed_images,
@@ -77,25 +77,6 @@ def _parse_config() -> tuple[str, set[str], int]:
     except ValueError:
         capacity = 2
     return default, allowed, capacity
-
-
-class _InFlight:
-    """In-flight inference bookkeeping for the wedge guard.
-
-    Only *inference* time is tracked — model loads are deliberately excluded so
-    a cold lazy-load doesn't masquerade as a wedge."""
-
-    def __init__(self) -> None:
-        self.starts: list[float] = []
-
-    @property
-    def count(self) -> int:
-        return len(self.starts)
-
-    def oldest_age(self) -> float | None:
-        if not self.starts:
-            return None
-        return time.monotonic() - min(self.starts)
 
 
 class _ModelRegistry:
@@ -209,7 +190,8 @@ def _build_registry() -> _ModelRegistry:
 
 
 registry = _build_registry()
-inflight = _InFlight()
+# Wedge guard shared with the text daemon (pixsim7.embedding._daemon).
+inflight = InFlight()
 
 
 @asynccontextmanager
@@ -252,35 +234,20 @@ def _health_extra() -> dict:
 
 @app.get("/health")
 async def health():
-    # The hosted set is known even while loading/erroring, so callers (the UI's
-    # daemon-status surface) can always show which models are served.
-    if registry.load_error:
-        return JSONResponse(
-            status_code=503,
-            content={"status": "error", "error": registry.load_error, **_health_extra()},
-        )
-    if not registry.default_ready:
-        return JSONResponse(
-            status_code=503,
-            content={"status": "loading", "model_loaded": False, **_health_extra()},
-        )
-    age = inflight.oldest_age()
-    if age is not None and age > _WEDGE_THRESHOLD_SEC:
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "wedged",
-                "in_flight": inflight.count,
-                "oldest_age_sec": round(age, 1),
-                **_health_extra(),
-            },
-        )
-    return {
-        "status": "ok",
-        "model_loaded": True,
-        "in_flight": inflight.count,
-        **_health_extra(),
-    }
+    # Shared loading/error/wedged/ok response shape (pixsim7.embedding._daemon).
+    # Readiness is computed live from the registry, which owns the dynamic
+    # multi-model state; the hosted set (via _health_extra) is reported even
+    # while loading/erroring so the UI can always show which models are served.
+    code, body = evaluate_health(
+        registry.default_ready,
+        registry.load_error,
+        inflight,
+        _WEDGE_THRESHOLD_SEC,
+        _health_extra(),
+    )
+    if code == 200:
+        return body
+    return JSONResponse(status_code=code, content=body)
 
 
 @app.post("/config/allowed-models")
@@ -327,17 +294,13 @@ async def embed(body: EmbedBody):
         )
 
     # Bracket the wedge guard around inference only (not the load above).
-    start = time.monotonic()
-    inflight.starts.append(start)
-    try:
-        # torch inference is blocking — run off the event loop so /health stays
-        # responsive (and a genuine hang shows up via the wedge guard, not a
-        # frozen server).
+    # torch inference is blocking — run off the event loop so /health stays
+    # responsive (and a genuine hang shows up via the wedge guard, not a frozen
+    # server).
+    with inflight.track():
         vectors = await asyncio.to_thread(
             embed_images, model, processor, device, body.paths
         )
-    finally:
-        inflight.starts.remove(start)
 
     dim = len(vectors[0]) if vectors else 0
     return {"embeddings": vectors, "dim": dim, "model_id": model_id}

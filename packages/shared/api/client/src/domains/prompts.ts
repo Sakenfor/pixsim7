@@ -171,8 +171,15 @@ export function createPromptsApi(client: PixSimApiClient) {
     // ===== Similarity search =====
 
     async searchSimilar(query: SearchSimilarPromptsQuery): Promise<SimilarPromptsResponse> {
+      // Vector mode embeds the query text on demand. The default text embedder
+      // (cmd:embedding-default) spawns a one-shot subprocess that reloads the
+      // model each call (~15-25s cold), which blows past the client's 30s
+      // default and surfaces as "timeout of 30000ms exceeded". Mirror the
+      // /assets/search semantic-search budget (120s) so the cold query can
+      // complete; the result + query-vector caches make repeats instant.
       return client.get<SimilarPromptsResponse>('/prompts/search/similar', {
         params: query,
+        timeout: 120_000,
       });
     },
 

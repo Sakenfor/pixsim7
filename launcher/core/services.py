@@ -456,7 +456,13 @@ class InferenceConverter(ServiceConverter):
         return f"{base} · {short}"
 
     def _resolve_model_id(self, config) -> Optional[str]:
-        """Effective model_id: persisted setting -> env -> inference schema default."""
+        """Effective model_id: persisted setting -> env -> inference schema default.
+
+        The env var name is per-card (``model_id_env``) so each daemon reflects
+        its own live model on the label — the text daemon reads
+        ``PIXSIM_TEXT_EMBED_MODEL`` rather than the image daemon's model env.
+        Defaults to ``PIXSIM_EMBEDDING_MODEL_ID`` for back-compat with the image
+        card, which predates the field."""
         from .service_settings import TYPE_BASE_SCHEMAS, load_persisted
 
         sid = config.get("id")
@@ -464,9 +470,14 @@ class InferenceConverter(ServiceConverter):
             persisted = load_persisted(sid)
             if persisted.get("model_id"):
                 return str(persisted["model_id"])
-        env_val = os.environ.get("PIXSIM_EMBEDDING_MODEL_ID")
+        env_val = os.environ.get(config.get("model_id_env", "PIXSIM_EMBEDDING_MODEL_ID"))
         if env_val:
             return env_val
+        # A card-declared default wins over the shared inference base-schema
+        # default (which is image-centric — siglip), so each daemon labels its
+        # own model.
+        if config.get("model_id"):
+            return str(config["model_id"])
         for field in TYPE_BASE_SCHEMAS.get("inference", []):
             if field.get("key") == "model_id":
                 return field.get("default")

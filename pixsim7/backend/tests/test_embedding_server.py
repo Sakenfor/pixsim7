@@ -36,7 +36,7 @@ def _install_registry(monkeypatch, *, default="m/default", allowed=None, capacit
         default_model_id=default, allowed=allowed_set, capacity=capacity
     )
     srv.registry = reg
-    srv.inflight = srv._InFlight()
+    srv.inflight = srv.InFlight()
     return reg, loads
 
 

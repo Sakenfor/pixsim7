@@ -1,0 +1,36 @@
+{
+  "id": "text-embedding-daemon",
+  "category": "models",
+  "type": "inference",
+  "name": "Text Embedding Daemon",
+  "description": "Local BGE text embedding service. Loads the model once and serves /embed_texts over HTTP so prompt/block text embedding shares one warm model instead of spawning a subprocess that reloads the model (~15-25s) every call — the cause of the composer's 'find similar prompts' 30s timeout. /health detects warm-up and wedges. Backend falls back to a one-shot subprocess when this is down.",
+  "module": "pixsim7.embedding.text_server:app",
+  "model_id": "BAAI/bge-base-en-v1.5",
+  "model_id_env": "PIXSIM_TEXT_EMBED_MODEL",
+  "port_env": "PIXSIM_TEXT_EMBEDDING_PORT",
+  "default_port": 8003,
+  "base_url_env": "PIXSIM_TEXT_EMBEDDING_BASE_URL",
+  "health_endpoint": "/health",
+  "ports": [
+    {
+      "name": "Text Embedding Daemon",
+      "env": "PIXSIM_TEXT_EMBEDDING_PORT",
+      "default_port": 8003
+    }
+  ],
+  "auto_start": false,
+  "enabled": true,
+  "settings": [
+    {
+      "key": "port",
+      "default": 8003,
+      "description": "HTTP port the text embedding daemon listens on",
+      "env_export": "PIXSIM_TEXT_EMBEDDING_PORT"
+    },
+    {
+      "key": "base_url",
+      "description": "Public base URL consumers reach the daemon at (empty = auto-derived from port and exported to every service as PIXSIM_TEXT_EMBEDDING_BASE_URL)",
+      "env_export": "PIXSIM_TEXT_EMBEDDING_BASE_URL"
+    }
+  ]
+}

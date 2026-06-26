@@ -168,6 +168,7 @@ export const SERVICE_ICON_MAP: Record<string, IconComponent> = {
   'generation-api': Sparkles,
   'ai-client': Bot,
   'embedding-daemon': Cpu,
+  'text-embedding-daemon': Cpu,
 }
 
 // ── Toolbar controls (log viewers) ───────────────────────────────────
