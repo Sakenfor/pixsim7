@@ -10,6 +10,8 @@ Core CRUD operations. Additional endpoints split into:
 - assets_tags.py: Tag management
 - assets_upload_helper.py: Shared upload preparation logic
 """
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi import status as http_status
 from fastapi.responses import FileResponse
@@ -679,8 +681,15 @@ async def set_signal_override(
         signal_metrics = dict(meta.get("signal_metrics") or {})
         if request.override is None:
             signal_metrics.pop("user_override", None)
+            signal_metrics.pop("overridden_at", None)
         else:
             signal_metrics["user_override"] = request.override
+            # When the human review happened — audit trail + lets the UI find the
+            # most recent decision (e.g. an "undo last" affordance). Stored in
+            # media_metadata (no schema migration); not indexed.
+            signal_metrics["overridden_at"] = datetime.now(timezone.utc).isoformat(
+                timespec="seconds"
+            )
         meta["signal_metrics"] = signal_metrics
         asset.media_metadata = meta
         # Keep the denormalized mirror column in sync (dashboard aggregates it).
