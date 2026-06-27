@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { Icon } from '@lib/icons';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import type { OverlayWidget } from '@lib/ui/overlay';
+import { hmrSingleton } from '@lib/utils/hmrSafe';
 import type { OverlayContextId } from '@lib/widgets';
 
 
@@ -342,6 +343,245 @@ const GRID_GAP = 8;
 // Render this many px of cards beyond each viewport edge so a fast scroll doesn't
 // expose un-mounted blanks before they fill in.
 const GRID_OVERSCAN = 400;
+const MINI_GALLERY_SCROLL_CACHE_LIMIT = 32;
+
+interface MiniGalleryScrollSnapshot {
+  scrollTop: number;
+  updatedAt: number;
+}
+
+interface MiniGalleryInitialFiltersSnapshot {
+  filters: AssetFilters;
+  updatedAt: number;
+}
+
+const miniGalleryScrollSnapshots = hmrSingleton(
+  'miniGallery:scrollSnapshots',
+  () => new Map<string, MiniGalleryScrollSnapshot>(),
+);
+const miniGalleryInitialFiltersSnapshots = hmrSingleton(
+  'miniGallery:initialFiltersSnapshots',
+  () => new Map<string, MiniGalleryInitialFiltersSnapshot>(),
+);
+
+const MAIN_GALLERY_FILTER_SESSION_KEY = 'assets_filters';
+const MAIN_GALLERY_URL_ONLY_KEYS = new Set([
+  'page',
+  'source',
+  'surface',
+  'group_by',
+  'group_view',
+  'group_scope',
+  'group_key',
+  'group_path',
+  'group_page',
+]);
+const INHERITABLE_MAIN_GALLERY_FILTER_KEYS = [
+  'q',
+  'tag',
+  'tag__mode',
+  'provider_id',
+  'effective_provider_id',
+  'sort',
+  'media_type',
+  'provider_status',
+  'upload_method',
+  'include_archived',
+  'archived_only',
+  'created_from',
+  'created_to',
+  'min_width',
+  'max_width',
+  'min_height',
+  'max_height',
+  'content_domain',
+  'content_category',
+  'content_rating',
+  'searchable',
+  'operation_type',
+  'has_parent',
+  'has_children',
+  'content_elements',
+  'style_tags',
+  'prompt_success_rate',
+] as const;
+const MAIN_GALLERY_ARRAY_FILTER_KEYS = new Set([
+  'tag',
+  'provider_id',
+  'effective_provider_id',
+  'media_type',
+  'operation_type',
+  'upload_method',
+  'content_elements',
+  'style_tags',
+]);
+const MAIN_GALLERY_NUMERIC_FILTER_KEYS = new Set([
+  'min_width',
+  'max_width',
+  'min_height',
+  'max_height',
+  'prompt_success_rate',
+]);
+const MAIN_GALLERY_BOOLEAN_FILTER_KEYS = new Set([
+  'include_archived',
+  'archived_only',
+  'searchable',
+  'has_parent',
+  'has_children',
+]);
+const FALSE_IS_MEANINGFUL_FILTER_KEYS = new Set(['searchable', 'has_parent']);
+
+function rememberMiniGalleryScroll(key: string | null, scrollTop: number) {
+  if (!key || !Number.isFinite(scrollTop)) return;
+
+  miniGalleryScrollSnapshots.set(key, {
+    scrollTop: Math.max(0, scrollTop),
+    updatedAt: Date.now(),
+  });
+
+  if (miniGalleryScrollSnapshots.size <= MINI_GALLERY_SCROLL_CACHE_LIMIT) return;
+
+  let oldestKey: string | null = null;
+  let oldestUpdatedAt = Number.POSITIVE_INFINITY;
+  for (const [entryKey, snapshot] of miniGalleryScrollSnapshots) {
+    if (snapshot.updatedAt < oldestUpdatedAt) {
+      oldestKey = entryKey;
+      oldestUpdatedAt = snapshot.updatedAt;
+    }
+  }
+  if (oldestKey) miniGalleryScrollSnapshots.delete(oldestKey);
+}
+
+function forgetMiniGalleryScroll(key: string | null) {
+  if (key) miniGalleryScrollSnapshots.delete(key);
+}
+
+function readMiniGalleryScroll(key: string | null): number | null {
+  if (!key) return null;
+  const scrollTop = miniGalleryScrollSnapshots.get(key)?.scrollTop;
+  return typeof scrollTop === 'number' && Number.isFinite(scrollTop) ? scrollTop : null;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readStoredMainGalleryFilters(): Record<string, unknown> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.sessionStorage.getItem(MAIN_GALLERY_FILTER_SESSION_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return isPlainObject(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseUrlFilterValue(key: string, values: string[]): unknown {
+  if (MAIN_GALLERY_ARRAY_FILTER_KEYS.has(key)) {
+    const entries = values.length === 1 && values[0].includes(',')
+      ? values[0].split(',').map((v) => v.trim()).filter(Boolean)
+      : values.filter((v) => v !== '');
+    return entries.length === 1 && !['tag', 'media_type', 'provider_id', 'effective_provider_id'].includes(key)
+      ? entries[0]
+      : entries;
+  }
+  const raw = values[values.length - 1];
+  if (raw === undefined || raw === '') return undefined;
+  if (MAIN_GALLERY_NUMERIC_FILTER_KEYS.has(key)) {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  if (MAIN_GALLERY_BOOLEAN_FILTER_KEYS.has(key)) {
+    return raw === 'true' ? true : raw === 'false' ? false : undefined;
+  }
+  return raw;
+}
+
+function hasFilterValue(key: string, value: unknown): boolean {
+  if (value === undefined || value === null || value === '' || value === 'all') return false;
+  if (value === false && !FALSE_IS_MEANINGFUL_FILTER_KEYS.has(key)) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
+
+function pickInheritedMainGalleryFilters(source: Record<string, unknown>): AssetFilters {
+  const inherited: AssetFilters = {};
+  for (const key of INHERITABLE_MAIN_GALLERY_FILTER_KEYS) {
+    const value = source[key];
+    if (!hasFilterValue(key, value)) continue;
+    (inherited as Record<string, unknown>)[key] = value;
+  }
+  return inherited;
+}
+
+function readCurrentMainGalleryFilters(): AssetFilters {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  const isAssetsRoute = /\/assets(?:\/|$)/.test(window.location.pathname);
+  if (!isAssetsRoute) {
+    return pickInheritedMainGalleryFilters(readStoredMainGalleryFilters());
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const hasNonExcludedUrlParams = Array.from(params.keys()).some(
+    (key) => !MAIN_GALLERY_URL_ONLY_KEYS.has(key),
+  );
+  const inherited = hasNonExcludedUrlParams
+    ? {}
+    : pickInheritedMainGalleryFilters(readStoredMainGalleryFilters());
+
+  if (!hasNonExcludedUrlParams) {
+    return inherited;
+  }
+
+  for (const key of INHERITABLE_MAIN_GALLERY_FILTER_KEYS) {
+    const values = params.getAll(key);
+    if (values.length === 0) continue;
+    const parsed = parseUrlFilterValue(key, values);
+    if (hasFilterValue(key, parsed)) {
+      (inherited as Record<string, unknown>)[key] = parsed;
+    } else {
+      delete (inherited as Record<string, unknown>)[key];
+    }
+  }
+  return inherited;
+}
+
+function readInheritedMiniGalleryFilters(key: string | null): AssetFilters {
+  if (key) {
+    const cached = miniGalleryInitialFiltersSnapshots.get(key)?.filters;
+    if (cached) return { ...cached };
+  }
+
+  const filters = readCurrentMainGalleryFilters();
+  if (key && Object.keys(filters).length > 0) {
+    miniGalleryInitialFiltersSnapshots.set(key, {
+      filters: { ...filters },
+      updatedAt: Date.now(),
+    });
+
+    if (miniGalleryInitialFiltersSnapshots.size > MINI_GALLERY_SCROLL_CACHE_LIMIT) {
+      let oldestKey: string | null = null;
+      let oldestUpdatedAt = Number.POSITIVE_INFINITY;
+      for (const [entryKey, snapshot] of miniGalleryInitialFiltersSnapshots) {
+        if (snapshot.updatedAt < oldestUpdatedAt) {
+          oldestKey = entryKey;
+          oldestUpdatedAt = snapshot.updatedAt;
+        }
+      }
+      if (oldestKey) miniGalleryInitialFiltersSnapshots.delete(oldestKey);
+    }
+  }
+  return filters;
+}
+
+function forgetMiniGalleryInitialFilters(key: string | null) {
+  if (key) miniGalleryInitialFiltersSnapshots.delete(key);
+}
 
 function MiniGalleryContent({
   initialFilters: propInitialFilters,
@@ -374,11 +614,17 @@ function MiniGalleryContent({
   const useExternalData = externalItems !== undefined;
   const showFilters = showFiltersProp ?? !useExternalData;
   const usePaging = paginationMode === 'page';
+  const hasExplicitInitialFilters = propInitialFilters !== undefined || context?.initialFilters !== undefined;
   const resultCap =
     typeof maxItems === 'number' && Number.isFinite(maxItems) && maxItems > 0
       ? Math.floor(maxItems)
       : undefined;
   const [cardSize, setCardSize] = useState(DEFAULT_CARD_SIZE);
+  const scrollSnapshotKey = _floatingPanelId ? `floating:${_floatingPanelId}` : null;
+  const inheritedInitialFilters = useMemo<AssetFilters>(
+    () => (hasExplicitInitialFilters || useExternalData ? {} : readInheritedMiniGalleryFilters(scrollSnapshotKey)),
+    [hasExplicitInitialFilters, scrollSnapshotKey, useExternalData],
+  );
 
   // Variant switching — merge passed variants with dynamically discovered peer panels
   const allVariants = useMemo(() => {
@@ -406,11 +652,12 @@ function MiniGalleryContent({
   const mergedInitialFilters = useMemo<AssetFilters>(
     () => ({
       sort: 'new' as const,
+      ...inheritedInitialFilters,
       ...context?.initialFilters,
       ...propInitialFilters,
       ...variantFilters,
     }),
-    [context?.initialFilters, propInitialFilters, variantFilters],
+    [context?.initialFilters, inheritedInitialFilters, propInitialFilters, variantFilters],
   );
   const mergedInitialFiltersKey = useMemo(
     () => JSON.stringify(mergedInitialFilters ?? {}),
@@ -540,15 +787,26 @@ function MiniGalleryContent({
       if (raf != null) return;
       raf = requestAnimationFrame(() => {
         raf = null;
-        setGridScrollTop(el.scrollTop);
+        const nextScrollTop = el.scrollTop;
+        setGridScrollTop(nextScrollTop);
+        rememberMiniGalleryScroll(scrollSnapshotKey, nextScrollTop);
       });
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       el.removeEventListener('scroll', onScroll);
       if (raf != null) cancelAnimationFrame(raf);
+      const panelStillOpen = _floatingPanelId
+        ? useWorkspaceStore.getState().floatingPanels.some((panel) => panel.id === _floatingPanelId)
+        : false;
+      if (panelStillOpen) {
+        rememberMiniGalleryScroll(scrollSnapshotKey, el.scrollTop);
+      } else {
+        forgetMiniGalleryScroll(scrollSnapshotKey);
+        forgetMiniGalleryInitialFilters(scrollSnapshotKey);
+      }
     };
-  }, []);
+  }, [_floatingPanelId, scrollSnapshotKey]);
 
   const gridWindow = useMemo(() => {
     const n = displayItems.length;
@@ -571,6 +829,28 @@ function MiniGalleryContent({
     const lastIndex = Math.min(n - 1, (lastRow + 1) * columns - 1);
     return { columns, colWidth, rowHeight, totalHeight, firstIndex, lastIndex };
   }, [displayItems.length, gridViewport.width, gridViewport.height, gridScrollTop, cardSize]);
+
+  const restoredScrollSnapshotKeyRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (!scrollSnapshotKey || restoredScrollSnapshotKeyRef.current === scrollSnapshotKey) {
+      return;
+    }
+    const savedScrollTop = readMiniGalleryScroll(scrollSnapshotKey);
+    if (!savedScrollTop || savedScrollTop <= 0) {
+      restoredScrollSnapshotKeyRef.current = scrollSnapshotKey;
+      return;
+    }
+    const el = gridScrollRef.current;
+    if (!el || displayItems.length === 0 || gridWindow.totalHeight <= 0 || gridViewport.height <= 0) {
+      return;
+    }
+
+    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    const nextScrollTop = Math.min(savedScrollTop, maxScrollTop);
+    el.scrollTop = nextScrollTop;
+    setGridScrollTop(nextScrollTop);
+    restoredScrollSnapshotKeyRef.current = scrollSnapshotKey;
+  }, [displayItems.length, gridViewport.height, gridWindow.totalHeight, scrollSnapshotKey]);
 
   // ── Scroll anchoring on live prepend ─────────────────────────────────────
   // Live generations insert at the FRONT of the sorted list (useAssets.insert-
