@@ -421,6 +421,9 @@ function shadowClickHandler(callbacks: ShadowAnalysisCallbacks) {
     click: (e, view) => {
       if (!callbacks.onCandidateClick) return false;
       if (!(e.target instanceof Node)) return false;
+      // A drag-to-select gesture ends in a `click` too; don't open the popover
+      // over text the user is selecting to edit. Only act on a plain click.
+      if (!view.state.selection.main.empty) return false;
 
       // Only treat direct hits on decorated candidate text as valid clicks.
       // This avoids opening the popover from line gutters, end-of-line space,

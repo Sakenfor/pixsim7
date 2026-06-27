@@ -1,9 +1,10 @@
 /**
  * variableTransforms — frontend mirror of the backend transform registry
- * (services/prompt/variable_transforms.py). Applied by resolvePromptVariables to
- * a variable's resolved value for the "resolved preview"; the backend is
- * authoritative on the outbound generation path. A parity test keeps the two
- * registries in lockstep (same ids, same outputs) — keep them in sync.
+ * (services/prompt/variable_transforms.py). Used client-side for the transform
+ * PICKER preview in the variable popover (live "what will this do" sample); the
+ * backend resolver is authoritative on the actual resolved preview + outbound
+ * generation path. A parity test keeps the two registries in lockstep (same ids,
+ * same outputs) — keep them in sync.
  *
  * Spec format: `id` or `id:arg` — the first `:` separates the transform id from
  * a single free-text argument (e.g. the separator for `spaced`). Unknown ids are

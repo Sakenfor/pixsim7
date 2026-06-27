@@ -50,6 +50,13 @@ from pixsim7.backend.main.services.prompt.variable_registry import (
     write_prompt_projection_mode,
     write_prompt_variables,
 )
+from pixsim7.backend.main.services.prompt.facet_registry import (
+    add_prompt_facet,
+    normalize_facet_class_name,
+    normalize_facet_token,
+    read_prompt_facets,
+    remove_prompt_facet,
+)
 from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 
 from .operations import (
@@ -545,6 +552,62 @@ async def delete_prompt_variable(
     updated_preferences = write_prompt_variables(preferences, next_entries)
     updated_user = await user_service.update_user(owner_user_id, preferences=updated_preferences)
     return _variables_response(read_prompt_variable_entries(updated_user.preferences))
+
+
+# ── registered facets (class-wide facet recognition) ──────────────────────────
+
+
+class SavedFacetsResponse(BaseModel):
+    facets: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="Registered facets per entity class (CLASS -> [FACET, ...]), uppercase + sorted.",
+    )
+
+
+class UpsertFacetRequest(BaseModel):
+    class_name: str = Field(..., description="Entity class the facet belongs to, e.g. ACTOR.")
+    facet: str = Field(..., description="Facet token to register class-wide, e.g. METHODS.")
+
+
+@router.get("/meta/facets", response_model=SavedFacetsResponse)
+async def list_prompt_facets(
+    principal: CurrentUser,
+    user_service: UserSvc,
+):
+    """Registered facets per entity class for the current owner."""
+    _, preferences = await _load_preferences_for_prompt_variables(principal, user_service)
+    return SavedFacetsResponse(facets=read_prompt_facets(preferences))
+
+
+@router.post("/meta/facets", response_model=SavedFacetsResponse)
+async def register_prompt_facet(
+    request: UpsertFacetRequest,
+    principal: CurrentUser,
+    user_service: UserSvc,
+):
+    """Register a facet token class-wide so it reads as recognised everywhere."""
+    class_name = normalize_facet_class_name(request.class_name)
+    facet = normalize_facet_token(request.facet)
+    owner_user_id, preferences = await _load_preferences_for_prompt_variables(principal, user_service)
+    updated_preferences = add_prompt_facet(preferences, class_name, facet)
+    updated_user = await user_service.update_user(owner_user_id, preferences=updated_preferences)
+    return SavedFacetsResponse(facets=read_prompt_facets(updated_user.preferences))
+
+
+@router.delete("/meta/facets/{class_name}/{facet}", response_model=SavedFacetsResponse)
+async def unregister_prompt_facet(
+    class_name: str,
+    facet: str,
+    principal: CurrentUser,
+    user_service: UserSvc,
+):
+    """Unregister a previously registered class-wide facet (no-op if absent)."""
+    cls = normalize_facet_class_name(class_name)
+    token = normalize_facet_token(facet)
+    owner_user_id, preferences = await _load_preferences_for_prompt_variables(principal, user_service)
+    updated_preferences = remove_prompt_facet(preferences, cls, token)
+    updated_user = await user_service.update_user(owner_user_id, preferences=updated_preferences)
+    return SavedFacetsResponse(facets=read_prompt_facets(updated_user.preferences))
 
 
 @router.get("/meta/projection", response_model=ProjectionModeResponse)

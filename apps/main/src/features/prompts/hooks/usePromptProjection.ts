@@ -1,3 +1,4 @@
+import type { ProjectionModeRequest, ProjectionModeResponse } from '@pixsim7/shared.api.model';
 import { useCallback, useEffect, useState } from 'react';
 
 import { useApi } from '@/hooks/useApi';
@@ -12,10 +13,6 @@ import { useApi } from '@/hooks/useApi';
  * mounted consumer.
  */
 export type ProjectionMode = 'off' | 'rule_template' | 'llm';
-
-interface ProjectionResponse {
-  mode?: string;
-}
 
 function normalizeMode(raw: unknown): ProjectionMode {
   return raw === 'rule_template' || raw === 'llm' ? raw : 'off';
@@ -34,7 +31,7 @@ async function fetchMode(api: ReturnType<typeof useApi>): Promise<ProjectionMode
   if (cachedMode !== null) return cachedMode;
   if (inflight) return inflight;
   inflight = api
-    .get<ProjectionResponse>('/prompts/meta/projection')
+    .get<ProjectionModeResponse>('/prompts/meta/projection')
     .then((payload) => {
       const mode = normalizeMode(payload?.mode);
       cachedMode = mode;
@@ -79,7 +76,8 @@ export function usePromptProjection() {
       const prev = cachedMode ?? 'off';
       publish(next); // optimistic
       try {
-        const payload = await api.put<ProjectionResponse>('/prompts/meta/projection', { mode: next });
+        const body: ProjectionModeRequest = { mode: next };
+        const payload = await api.put<ProjectionModeResponse>('/prompts/meta/projection', body);
         publish(normalizeMode(payload?.mode));
       } catch {
         publish(prev);

@@ -15,19 +15,12 @@ import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi'
 
 import { usePromptProjection } from '../hooks/usePromptProjection';
 import { usePromptVariables } from '../hooks/usePromptVariables';
-import { useRelationRecipes } from '../hooks/useRelationRecipes';
+import { useResolvedPreview } from '../hooks/useResolvedPreview';
 import type { PromptTokenLine, ShadowAnalysisState } from '../hooks/useShadowAnalysis';
-import { extractInlineVarValues } from '../lib/inlineVarValues';
 import {
   extractPrimitiveMatches,
   type CandidateWithPrimitiveMatch,
 } from '../lib/parsePrimitiveMatch';
-import { projectStructuredPrompt } from '../lib/projectStructuredPrompt';
-import {
-  buildVariableTransformMap,
-  buildVariableValueMap,
-  resolvePromptVariables,
-} from '../lib/resolvePromptVariables';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptBlockCandidate } from '../types';
 
@@ -266,7 +259,6 @@ export function ShadowSidePanel({
     saveVariable,
   } = usePromptVariables();
   const { mode: projectionMode } = usePromptProjection();
-  const relationRecipes = useRelationRecipes();
   const toast = useToast();
 
   // Scroll the pinned role section into view within the panel's own scroll
@@ -337,27 +329,16 @@ export function ShadowSidePanel({
     if (Array.isArray(hinted)) return hinted;
     return detectedVariables.filter((name) => !savedVariableSet.has(name));
   }, [result?.variableHints?.unsaved_detected, detectedVariables, savedVariableSet]);
-  // Phase-2 resolved preview: expand variables that have a value. Null when
-  // resolution is a no-op (no var with a value appears in the prompt), so the
-  // section only shows when there's something to preview.
-  const resolvedPreview = useMemo(() => {
-    const source = result?.analyzedPrompt ?? '';
-    if (!source) return null;
-    // Mirror the backend outbound pipeline: inline-collapse -> project -> resolve.
-    // Inline VAR(value) bindings win over stored values; projection (opt-in)
-    // compiles chain operators to prose before substitution.
-    const { values: inlineValues, collapsed } = extractInlineVarValues(source);
-    const projected =
-      projectionMode !== 'off'
-        ? projectStructuredPrompt(collapsed, relationRecipes.recipes)
-        : collapsed;
-    const resolved = resolvePromptVariables(
-      projected,
-      { ...buildVariableValueMap(savedEntries), ...inlineValues },
-      buildVariableTransformMap(savedEntries),
-    );
-    return resolved !== source ? resolved : null;
-  }, [result?.analyzedPrompt, savedEntries, projectionMode, relationRecipes.recipes]);
+  // Phase-2 resolved preview: the backend runs the outbound pipeline
+  // (inline-collapse → project → resolve) via /prompts/resolve-preview. Null
+  // when resolution is a no-op (nothing to preview) or while a fetch is in
+  // flight. Variable values/transforms come from the saved registry we already
+  // hold, keeping the endpoint stateless.
+  const resolvedPreview = useResolvedPreview({
+    text: result?.analyzedPrompt ?? '',
+    project: projectionMode !== 'off',
+    entries: savedEntries,
+  });
 
   const handleSaveVariable = async (rawName: string) => {
     const name = rawName.trim().toUpperCase();

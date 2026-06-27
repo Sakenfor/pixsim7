@@ -9,6 +9,7 @@
  * frontend popover reads this hook's result instead of duplicating
  * those values.
  */
+import type { OperatorVocabularyResponse } from '@pixsim7/shared.api.model';
 import { useEffect, useState } from 'react';
 
 import { useApi } from '@/hooks/useApi';
@@ -27,16 +28,6 @@ export interface OperatorVocabulary {
   swapTargets: string[];
   maxRunLength: number;
   contexts: OperatorContext[];
-}
-
-interface OperatorVocabularyResponse {
-  swap_targets: string[];
-  max_run_length: number;
-  contexts?: Array<{
-    line_kind: string;
-    swap_targets?: string[];
-    max_run_length?: number;
-  }>;
 }
 
 const FALLBACK: OperatorVocabulary = {

@@ -1,19 +1,14 @@
+import type {
+  PromptVariableEntry,
+  PromptVariablesResponse,
+  RenamePromptVariableRequest,
+  UpsertPromptVariableRequest,
+} from '@pixsim7/shared.api.model';
 import { useCallback, useEffect, useState } from 'react';
 
 import { useApi } from '@/hooks/useApi';
 
-export interface PromptVariableEntry {
-  name: string;
-  description?: string;
-  /** Substitution text (phase 2). When set the variable expands to this. */
-  value?: string;
-  /** Transform spec ('id' or 'id:arg', e.g. 'spaced:__') applied to the resolved value. */
-  transform?: string;
-}
-
-interface PromptVariablesResponse {
-  variables: PromptVariableEntry[];
-}
+export type { PromptVariableEntry };
 
 interface PromptVariableApiError extends Error {
   response?: {
@@ -208,7 +203,7 @@ export function usePromptVariables() {
       }
 
       try {
-        const body: Record<string, unknown> = {
+        const body: UpsertPromptVariableRequest = {
           name,
           allow_existing: options.allowExisting ?? false,
         };
@@ -259,9 +254,10 @@ export function usePromptVariables() {
       }
 
       try {
+        const renameBody: RenamePromptVariableRequest = { new_name: newName };
         const payload = await api.patch<PromptVariablesResponse>(
           `/prompts/meta/variables/${encodeURIComponent(name)}`,
-          { new_name: newName },
+          renameBody,
         );
         const next = normalizeResponseEntries(payload);
         applyEntries(next);

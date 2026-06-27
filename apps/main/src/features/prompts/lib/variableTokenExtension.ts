@@ -10,7 +10,7 @@ import { expandValueGroups } from '@pixsim7/core.prompt';
 
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 
-import { resolveFacet, type FacetVocab } from './facetRecognition';
+import { EMPTY_FACET_RECOGNITION, resolveFacet, type FacetRecognition } from './facetRecognition';
 import { facetAxesForClass, isDefaultVariableClass, parseVariableName, splitVarCall } from './promptVariableName';
 import { getVariableClassVisual } from './variableClassVisuals';
 
@@ -62,16 +62,16 @@ export interface VariableTokenCallbacks {
 export interface VariableTokensConfig {
   tokenLines: PromptTokenLine[] | undefined;
   savedNames: ReadonlySet<string>;
-  /** Vocab members for value-level facet recognition (`HIP` → `part:hip`).
-   *  Empty/omitted = axis-level only (`POSE` still resolves; concrete values
-   *  fall back to unrecognised). Threaded from `useVocabularies`. */
-  facetVocab?: FacetVocab;
+  /** Facet-recognition input bundle (vocab + user-registered facets). Required
+   *  so every surface supplies the full set — see `useFacetRecognition`. Pass
+   *  `EMPTY_FACET_RECOGNITION` for axis-only recognition. */
+  facetRecognition: FacetRecognition;
 }
 
 const EMPTY_CONFIG: VariableTokensConfig = {
   tokenLines: undefined,
   savedNames: new Set(),
-  facetVocab: {},
+  facetRecognition: EMPTY_FACET_RECOGNITION,
 };
 
 const variableTokensFacet = Facet.define<VariableTokensConfig, VariableTokensConfig>({
@@ -91,7 +91,8 @@ export interface TextSlice {
 
 /** Exported for unit tests — the host uses the extension, not this directly. */
 export function collectVariableRanges(config: VariableTokensConfig, doc: TextSlice): VariableRange[] {
-  const { tokenLines, savedNames, facetVocab } = config;
+  const { tokenLines, savedNames, facetRecognition } = config;
+  const { facetVocab, savedFacets } = facetRecognition;
   if (!tokenLines) return [];
   const out: VariableRange[] = [];
   const docLength = doc.length;
@@ -134,7 +135,7 @@ export function collectVariableRanges(config: VariableTokensConfig, doc: TextSli
         if (us > 0 && us < name.length - 1) {
           const facetFrom = from + us + 1;
           if (facetFrom < to && to <= docLength) {
-            const resolved = resolveFacet(parsed.className, parsed.facets[0], facetVocab ?? {});
+            const resolved = resolveFacet(parsed.className, parsed.facets[0], facetVocab ?? {}, savedFacets);
             facet = { from: facetFrom, to, known: resolved.known };
           }
         }
@@ -316,6 +317,11 @@ function variableClickHandler(callbacks: VariableTokenCallbacks) {
     click: (e, view) => {
       if (!callbacks.onVariableClick && !callbacks.onFacetClick) return false;
       if (!(e.target instanceof HTMLElement)) return false;
+      // A drag-to-select gesture ends in a `click` too. When the user has
+      // selected a range (e.g. to type-replace part of the text that overlaps a
+      // var token), opening the popover would cover what they're editing — so
+      // only act on a plain click with a collapsed cursor.
+      if (!view.state.selection.main.empty) return false;
       // Defer to the operator/facet handler when the click lands on an operator
       // mark. The intra-token access `_` is a `.cm-prompt-op` nested inside the
       // variable span, so without this guard a click on `_` would open both the

@@ -24,6 +24,7 @@ import type { Extension } from '@codemirror/state';
 import { Popover, PromptEditor, useToast } from '@pixsim7/shared.ui';
 import { useMemo, useState } from 'react';
 
+import { useFacetRecognition } from '../hooks/useFacetRecognition';
 import { usePromptVariables } from '../hooks/usePromptVariables';
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 import { operatorEditExtension } from '../lib/operatorEditExtension';
@@ -68,6 +69,9 @@ export function PromptCodeMirrorViewer({
     () => new Set(savedVariableEntries.map((entry) => entry.name)),
     [savedVariableEntries],
   );
+  // Facet recognition parity with the composer (vocab + registered facets) as
+  // one required bundle — module-cached, shared fetch.
+  const facetRecognition = useFacetRecognition();
   const [varPopover, setVarPopover] = useState<{
     anchor: HTMLElement;
     variable: VariableRange;
@@ -97,7 +101,7 @@ export function PromptCodeMirrorViewer({
       if (enableVariableSave) {
         exts.push(
           variableTokenExtension(
-            { tokenLines, savedNames: savedVariableNames },
+            { tokenLines, savedNames: savedVariableNames, facetRecognition },
             {
               onVariableClick: (variable, anchor) => {
                 setVarPopover({ variable, anchor });
@@ -128,6 +132,7 @@ export function PromptCodeMirrorViewer({
     emphasizedRole,
     enableVariableSave,
     savedVariableNames,
+    facetRecognition,
     showStructure,
   ]);
 

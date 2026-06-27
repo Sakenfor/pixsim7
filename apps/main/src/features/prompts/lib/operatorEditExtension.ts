@@ -302,6 +302,9 @@ function operatorClickHandler(callbacks: OperatorEditCallbacks) {
     click: (e, view) => {
       if (!callbacks.onOperatorClick) return false;
       if (!(e.target instanceof HTMLElement)) return false;
+      // A drag-to-select gesture ends in a `click` too; don't open the popover
+      // over text the user is selecting to edit. Only act on a plain click.
+      if (!view.state.selection.main.empty) return false;
       const opEl = e.target.closest<HTMLElement>('.cm-prompt-op');
       if (!opEl) return false;
 

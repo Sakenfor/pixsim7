@@ -22,6 +22,7 @@ from pixsim7.backend.main.services.prompt.family_candidates import (
     DEFAULT_LEXICAL_FLOOR,
     DEFAULT_MAX_CLUSTERS,
     DEFAULT_MIN_SIZE,
+    InducedTemplate,
     PromptFamilyCandidateService,
     _LEXICAL_METHODS,
 )
@@ -31,7 +32,13 @@ from pixsim7.backend.main.services.analysis.analyzer_defaults import (
     resolve_prompt_default_analyzer_id,
 )
 from pixsim7.backend.main.services.prompt.parser import AnalyzerTarget
-from pixsim7.backend.main.services.prompt.parser.tokenizer import tokenize as _tokenize_prompt
+from pixsim7.backend.main.services.prompt.parser.tokenizer import (
+    tokenize as _tokenize_prompt,
+    expand_value_groups as _expand_value_groups,
+)
+from pixsim7.backend.main.services.prompt.inline_values import extract_inline_var_values
+from pixsim7.backend.main.services.prompt.projection import project_prompt
+from pixsim7.backend.main.services.prompt.resolver import resolve_prompt_variables
 from pixsim7.backend.main.services.prompt.variable_registry import (
     normalize_prompt_variable_name,
     read_prompt_variables,
@@ -400,6 +407,9 @@ async def find_family_candidates(
                     {"family_id": str(fid), "title": titles.get(fid), "count": cnt}
                     for fid, cnt in c.existing_families
                 ],
+                # Full id list (lightweight) so the client can promote the whole
+                # cluster even though `members` previews are capped at member_limit.
+                "member_version_ids": [str(m.version_id) for m in c.members],
                 "members": [
                     _shape_member(m, is_rep=(m.version_id == rep_id)) for m in shown
                 ],
@@ -422,6 +432,105 @@ async def find_family_candidates(
         "count": len(out),
         "candidates": out,
     }
+
+
+class PromoteFamilyCandidateRequest(BaseModel):
+    version_ids: List[UUID]
+    # None → create a new family (title required). Set → merge into that family.
+    family_id: Optional[UUID] = None
+    title: Optional[str] = None
+    category: Optional[str] = None
+    prompt_type: str = "visual"
+
+
+@router.post("/family-candidates/promote")
+async def promote_family_candidate(
+    request: PromoteFamilyCandidateRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """Group a candidate cluster into a family (create new, or merge into existing).
+
+    Only currently-ungrouped versions are moved; already-grouped members and
+    prompt_hash collisions are skipped and reported. See plan
+    prompt-family-candidates, checkpoint confirm-into-family.
+    """
+    if not request.version_ids:
+        raise HTTPException(status_code=400, detail="version_ids must not be empty")
+    if request.family_id is None and not (request.title and request.title.strip()):
+        raise HTTPException(
+            status_code=400, detail="title is required when creating a new family"
+        )
+
+    service = PromptFamilyCandidateService(db)
+    try:
+        result = await service.promote_to_family(
+            version_ids=request.version_ids,
+            family_id=request.family_id,
+            title=request.title,
+            prompt_type=request.prompt_type,
+            category=request.category,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
+
+
+# ===== Template Induction (skeleton + variable slots) =====
+
+
+class InduceTemplateRequest(BaseModel):
+    version_ids: List[UUID]
+    # Min keep-fraction for a token to count as stable skeleton (vs a slot).
+    stable_ratio: float = 0.6
+    max_variants: int = 8
+
+
+def _shape_induced_template(t: InducedTemplate) -> dict:
+    return {
+        "member_count": t.member_count,
+        "stable_pct": t.stable_pct,
+        "slot_count": t.slot_count,
+        "segments": [
+            {"kind": "text", "text": seg.text}
+            if seg.kind == "text"
+            else {
+                "kind": "slot",
+                "index": seg.slot.index,
+                "values": list(seg.slot.values),
+                "total": seg.slot.total,
+            }
+            for seg in t.segments
+        ],
+    }
+
+
+@router.post("/family-candidates/template")
+async def induce_family_template(
+    request: InduceTemplateRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """Induce a template (stable skeleton + variable slots) from a set of prompt
+    versions — works on an ungrouped cluster or an existing family alike. See
+    plan prompt-family-candidates (template-induction)."""
+    if not request.version_ids:
+        raise HTTPException(status_code=400, detail="version_ids must not be empty")
+
+    stable_ratio = min(1.0, max(0.1, request.stable_ratio))
+    max_variants = min(20, max(1, request.max_variants))
+
+    service = PromptFamilyCandidateService(db)
+    result = await service.induce_template(
+        request.version_ids,
+        stable_ratio=stable_ratio,
+        max_variants=max_variants,
+    )
+    if result is None:
+        return {"member_count": 0, "stable_pct": 0, "slot_count": 0, "segments": []}
+    return _shape_induced_template(result)
 
 
 # ===== Template Validation (Phase 3) =====
@@ -1187,3 +1296,78 @@ async def _resolve_saved_prompt_variables_for_principal(user: Any, db: AsyncSess
     if not user_record or not isinstance(user_record.preferences, dict):
         return []
     return read_prompt_variables(user_record.preferences)
+
+
+# ── structure layer (lightweight, stateless) ──────────────────────────────────
+#
+# These two endpoints serve the editor's mini-language structure layer
+# (variables / operators / facets / click-to-edit + resolved preview) directly
+# from the authoritative Python parser. They are PURE: no analyzer, no DB, no
+# auth — just parse the supplied text — so they are cheap enough to call on a
+# fast per-keystroke debounce. This replaces the former in-browser TS tokenizer
+# port (and its parity machinery); the backend is now the single source of truth
+# for the structure layer, decoupled from the heavy role-ANALYSIS path.
+
+
+class TokenizeStructureRequest(BaseModel):
+    text: str = Field("", max_length=10000, description="Prompt text to tokenize.")
+
+
+@router.post("/structure", response_model=PromptTokensPayload)
+async def tokenize_prompt_structure(request: TokenizeStructureRequest):
+    """Tokenize prompt text into structural line nodes for the editor.
+
+    Returns the flat token lines PLUS expanded group sub-chains (bare `( … )`
+    operands re-tokenized into the document frame), so the editor can decorate a
+    group's inner vars/operators. Pure parse — no auth/DB/analyzer.
+    """
+    text = request.text or ""
+    base = _tokenize_prompt(text)["lines"]
+    expanded = _expand_value_groups(base)
+    return PromptTokensPayload(lines=base + expanded)
+
+
+class ResolvePreviewRequest(BaseModel):
+    text: str = Field("", max_length=10000, description="Prompt text to resolve.")
+    project: bool = Field(
+        False,
+        description="Apply chain→prose projection before variable resolution.",
+    )
+    values: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Saved variable values (NAME→value), supplied by the client.",
+    )
+    transforms: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Saved variable transforms (NAME→spec), supplied by the client.",
+    )
+
+
+class ResolvePreviewResponse(BaseModel):
+    resolved: Optional[str] = Field(
+        None,
+        description="Resolved prompt, or null when resolution is a no-op (== input).",
+    )
+
+
+@router.post("/resolve-preview", response_model=ResolvePreviewResponse)
+async def resolve_prompt_preview(request: ResolvePreviewRequest):
+    """Resolved-preview of a prompt: mirrors the outbound generation pipeline
+    (inline-collapse → project → resolve) so the composer can show what
+    generation will send.
+
+    Variable values/transforms are supplied by the client (it already holds the
+    user's saved registry in memory), keeping this endpoint pure — no auth/DB.
+    Inline `NAME(value)` bindings win over the supplied stored values. Returns
+    `resolved=null` when the result equals the input (nothing to preview).
+    """
+    source = request.text or ""
+    if not source:
+        return ResolvePreviewResponse(resolved=None)
+    inline_values, collapsed = extract_inline_var_values(source)
+    projected = project_prompt(collapsed) if request.project else collapsed
+    merged_values = {**request.values, **inline_values}
+    resolved = resolve_prompt_variables(
+        projected, merged_values, transforms=request.transforms
+    )
+    return ResolvePreviewResponse(resolved=resolved if resolved != source else None)

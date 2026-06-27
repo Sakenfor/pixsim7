@@ -54,16 +54,17 @@ import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi'
 import { useClientTokens } from '../hooks/useClientTokens';
 import { useCmFacetInput } from '../hooks/useCmFacetInput';
 import { useCmReferenceInput } from '../hooks/useCmReferenceInput';
+import { useFacetRecognition } from '../hooks/useFacetRecognition';
 import { resolveOperatorContract, useOperatorVocabulary } from '../hooks/useOperatorVocabulary';
 import { usePromptHistory } from '../hooks/usePromptHistory';
 import { usePromptProjection } from '../hooks/usePromptProjection';
 import { usePromptVariables } from '../hooks/usePromptVariables';
 import { matchOperator, matchRecipe, useRelationRecipes } from '../hooks/useRelationRecipes';
+import { useSavedFacets } from '../hooks/useSavedFacets';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 import { useSimilarPromptsSearch } from '../hooks/useSimilarPromptsSearch';
 import { useVariantOutcomes } from '../hooks/useVariantOutcomes';
-import { useVocabularies } from '../hooks/useVocabularies';
 import { relatedFacets, resolveFacet, suggestFacets } from '../lib/facetRecognition';
 import { ghostDiffExtension, type GhostDiffConfig } from '../lib/ghostDiffExtension';
 import { operatorEditExtension, type OperatorRange } from '../lib/operatorEditExtension';
@@ -75,7 +76,11 @@ import {
   type SequenceContext,
 } from '../lib/promptAnalysisCache';
 import { PROMPT_BOX_SKIN_PANEL_ID } from '../lib/promptBoxSkin';
-import { allFacetVocabCategories } from '../lib/promptVariableName';
+import {
+  facetAxesForClass,
+  isDefaultVariableClass,
+  parseVariableName,
+} from '../lib/promptVariableName';
 import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
 import { shiftCandidates } from '../lib/shiftAnalysisPositions';
 import {
@@ -728,10 +733,13 @@ export function PromptComposer({
     from: number;
     to: number;
   } | null>(null);
-  // Vocab members backing facet recognition + the suggestion hints. One fetch
-  // for every category any default class references (parts/poses/locations/…);
-  // cached at module level by useVocabularies.
-  const facetVocab = useVocabularies(useMemo(() => allFacetVocabCategories(), []));
+  // Complete facet-recognition inputs (vocab + user-registered facets) as one
+  // bundle, so the decoration config can't under-supply. Destructured for the
+  // direct resolveFacet/suggestFacets calls below.
+  const facetRecognition = useFacetRecognition();
+  const { facetVocab, savedFacets } = facetRecognition;
+  // registerFacet drives the "Register as a facet" action in the var popover.
+  const { registerFacet } = useSavedFacets();
 
   // --- Compare-button dropdown menu (chevron next to the compare-media button) ---
   const [compareMenuAnchor, setCompareMenuAnchor] = useState<HTMLElement | null>(null);
@@ -810,13 +818,13 @@ export function PromptComposer({
   const cmFacetInput = useCmFacetInput(facetPickerRef, promptEditorRef);
   const facetItems = useMemo<ReferenceItem[]>(() => {
     if (!cmFacetInput.active) return [];
-    return suggestFacets(cmFacetInput.className, cmFacetInput.partial, facetVocab).map((s) => ({
+    return suggestFacets(cmFacetInput.className, cmFacetInput.partial, facetVocab, savedFacets).map((s) => ({
       type: 'facet',
       id: s.value,
       label: s.label,
       detail: s.detail,
     }));
-  }, [cmFacetInput.active, cmFacetInput.className, cmFacetInput.partial, facetVocab]);
+  }, [cmFacetInput.active, cmFacetInput.className, cmFacetInput.partial, facetVocab, savedFacets]);
   const handleFacetComplete = useCallback(
     (item: ReferenceItem) => {
       cmFacetInput.complete(item.id, (fn) => {
@@ -1512,6 +1520,40 @@ export function PromptComposer({
       shadowAnalysis.result?.tokens,
     ],
   );
+  // Route a facet click (from the `_` access operator OR the facet text) to the
+  // right popover. A recognised facet → the facet swap popover. An unrecognised
+  // one has no class vocab to save into (vocab is a read-only ontology), so open
+  // the variable popover for the whole token instead — letting the user save the
+  // full token (e.g. ACTOR1_NEWFACET) as a known variable rather than dead-ending
+  // on a read-only "Not a known facet" card.
+  const openFacetPopover = useCallback(
+    (target: {
+      anchor: HTMLElement;
+      varName: string;
+      className: string;
+      facet: string;
+      from: number;
+      to: number;
+    }) => {
+      const resolved = resolveFacet(target.className, target.facet, facetVocab, savedFacets);
+      if (resolved.known) {
+        setCmFacetPopover(target);
+        return;
+      }
+      setCmVariablePopover({
+        anchor: target.anchor,
+        variable: {
+          from: target.from,
+          to: target.to,
+          name: target.varName,
+          saved: savedVariableNames.has(target.varName),
+          defaultClass: isDefaultVariableClass(target.varName),
+        },
+      });
+    },
+    [facetVocab, savedFacets, savedVariableNames],
+  );
+
   // Base extensions — stable, do not depend on legend emphasis. The shadow
   // analysis extension is appended per-render inside `buildCmExtensions`
   // because its `emphasizedRole` arg flows from PromptAnalysisLayout's
@@ -1535,7 +1577,7 @@ export function PromptComposer({
           // — route it to the facet popover instead of the type-swap popover.
           if (operator.context === 'access' && operator.access) {
             const a = operator.access;
-            setCmFacetPopover({
+            openFacetPopover({
               anchor,
               varName: a.varName,
               className: a.className,
@@ -1549,13 +1591,13 @@ export function PromptComposer({
         },
       }),
       variableTokenExtension(
-        { tokenLines: structureTokenLines, savedNames: savedVariableNames, facetVocab },
+        { tokenLines: structureTokenLines, savedNames: savedVariableNames, facetRecognition },
         {
           onVariableClick: (variable, anchor) => {
             setCmVariablePopover({ variable, anchor });
           },
           onFacetClick: (facet, anchor) => {
-            setCmFacetPopover({
+            openFacetPopover({
               anchor,
               varName: facet.varName,
               className: facet.className,
@@ -1576,7 +1618,8 @@ export function PromptComposer({
       cmRefInput.extension,
       cmFacetInput.extension,
       savedVariableNames,
-      facetVocab,
+      facetRecognition,
+      openFacetPopover,
     ],
   );
   const hasShadowExt =
@@ -2542,7 +2585,7 @@ export function PromptComposer({
                       // operands row (class + recognised/unknown facet).
                       const operandFor = (kind?: string, facet?: string) => {
                         if (!kind || !facet) return undefined;
-                        const resolved = resolveFacet(kind, facet, facetVocab);
+                        const resolved = resolveFacet(kind, facet, facetVocab, savedFacets);
                         return {
                           kind,
                           facet: resolved.facet,
@@ -2591,11 +2634,44 @@ export function PromptComposer({
                       const { variable } = cmVariablePopover;
                       const entry = savedVariableEntries.find((e) => e.name === variable.name);
                       const saved = savedVariableNames.has(variable.name);
+                      // Flag a facet-bearing name whose facet isn't recognised for
+                      // its class (e.g. METHODS in ACTOR1_METHODS): the class can be
+                      // a default while the facet itself is unknown.
+                      const parsedVar = parseVariableName(variable.name);
+                      const varFacet = parsedVar.facets[0];
+                      const unrecognizedFacet =
+                        varFacet &&
+                        !saved &&
+                        facetAxesForClass(parsedVar.className).length > 0 &&
+                        !resolveFacet(parsedVar.className, varFacet, facetVocab, savedFacets).known
+                          ? { facet: varFacet, className: parsedVar.className }
+                          : undefined;
                       return (
                         <VariableEditPopover
                           name={variable.name}
                           saved={saved}
                           defaultClass={variable.defaultClass}
+                          unrecognizedFacet={unrecognizedFacet}
+                          onRegisterFacet={
+                            unrecognizedFacet
+                              ? async () => {
+                                  setCmVariablePopover(null);
+                                  const result = await registerFacet(
+                                    unrecognizedFacet.className,
+                                    unrecognizedFacet.facet,
+                                  );
+                                  if (result.ok)
+                                    toast.success(
+                                      `Registered ${unrecognizedFacet.facet} as a facet of ${unrecognizedFacet.className}`,
+                                    );
+                                  else
+                                    toast.error(
+                                      result.message ??
+                                        `Failed to register ${unrecognizedFacet.facet}`,
+                                    );
+                                }
+                              : undefined
+                          }
                           description={entry?.description}
                           value={entry?.value}
                           transform={entry?.transform}
@@ -2632,17 +2708,17 @@ export function PromptComposer({
                   >
                     {cmFacetPopover && (() => {
                       const fp = cmFacetPopover;
-                      const resolved = resolveFacet(fp.className, fp.facet, facetVocab);
+                      const resolved = resolveFacet(fp.className, fp.facet, facetVocab, savedFacets);
                       // Related = swap candidates (siblings of the facet's axis);
                       // falls back to all class facets for an unrecognised facet.
-                      const suggestions = relatedFacets(fp.className, resolved, facetVocab);
+                      const suggestions = relatedFacets(fp.className, resolved, facetVocab, savedFacets);
                       return (
                         <FacetEditPopover
                           varName={fp.varName}
                           className={fp.className}
                           resolved={resolved}
                           suggestions={suggestions}
-                          searchFacets={(q) => suggestFacets(fp.className, q, facetVocab)}
+                          searchFacets={(q) => suggestFacets(fp.className, q, facetVocab, savedFacets)}
                           onReplace={(value) => {
                             const view = promptEditorRef.current;
                             if (view) {

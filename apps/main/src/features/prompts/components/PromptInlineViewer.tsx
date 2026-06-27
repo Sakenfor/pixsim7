@@ -17,6 +17,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { getPromptRoleBadgeClass, getPromptRoleInlineClasses, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
+import { useFacetRecognition } from '../hooks/useFacetRecognition';
 import { usePromptVariables } from '../hooks/usePromptVariables';
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 import {
@@ -94,6 +95,8 @@ export function PromptInlineViewer({
     () => new Set(savedVariableEntries.map((entry) => entry.name)),
     [savedVariableEntries],
   );
+  // Facet recognition parity with the composer (module-cached, shared fetches).
+  const facetRecognition = useFacetRecognition();
   const [varPopover, setVarPopover] = useState<{
     anchor: HTMLElement;
     variable: PromptVariableSpan;
@@ -103,10 +106,11 @@ export function PromptInlineViewer({
   // surface uses), positioned against the original prompt text.
   const variableRanges = useMemo<VariableSpanInput[]>(() => {
     if (!enableVariableSave || !tokenLines) return [];
-    return collectVariableRangesFromString({ tokenLines, savedNames: savedVariableNames }, prompt).map(
-      (r) => ({ from: r.from, to: r.to, name: r.name, saved: r.saved, defaultClass: r.defaultClass }),
-    );
-  }, [enableVariableSave, tokenLines, savedVariableNames, prompt]);
+    return collectVariableRangesFromString(
+      { tokenLines, savedNames: savedVariableNames, facetRecognition },
+      prompt,
+    ).map((r) => ({ from: r.from, to: r.to, name: r.name, saved: r.saved, defaultClass: r.defaultClass }));
+  }, [enableVariableSave, tokenLines, savedVariableNames, facetRecognition, prompt]);
 
   const spans = useMemo(
     () =>

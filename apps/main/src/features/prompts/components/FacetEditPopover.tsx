@@ -45,7 +45,8 @@ export function FacetEditPopover({
 }: FacetEditPopoverProps) {
   const visual = getVariableClassVisual(varName);
   const isValue = resolved.known && resolved.valueId !== undefined;
-  const isAxis = resolved.known && !isValue;
+  const isSaved = resolved.known && !!resolved.saved;
+  const isAxis = resolved.known && !isValue && !isSaved;
 
   const canSearch = !!onReplace && !!searchFacets;
   const [query, setQuery] = useState('');
@@ -78,7 +79,7 @@ export function FacetEditPopover({
           >
             {resolved.known ? (
               <>
-                <Icon name="check" size={11} /> {isValue ? 'Value' : 'Axis'}
+                <Icon name="check" size={11} /> {isSaved ? 'Registered' : isValue ? 'Value' : 'Axis'}
               </>
             ) : (
               'Unrecognised'
@@ -114,6 +115,11 @@ export function FacetEditPopover({
                 · {resolved.axis.label ?? resolved.axis.name} axis
               </span>
             )}
+          </div>
+        ) : isSaved ? (
+          <div className="text-xs text-neutral-700 dark:text-neutral-300">
+            Registered facet of{' '}
+            <span className="font-medium text-neutral-900 dark:text-neutral-100">{className}</span>
           </div>
         ) : isAxis ? (
           <div className="text-xs text-neutral-700 dark:text-neutral-300">

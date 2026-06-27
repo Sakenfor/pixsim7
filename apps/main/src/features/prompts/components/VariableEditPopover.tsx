@@ -15,6 +15,13 @@ export interface VariableEditPopoverProps {
   saved: boolean;
   /** Whether the name's class is a hard-coded default (recognised by default). */
   defaultClass?: boolean;
+  /** When the name carries a facet (e.g. `_METHODS` in `ACTOR1_METHODS`) that
+   *  isn't recognised for the class, the facet token + class so the popover can
+   *  flag it — the class may be recognised by default while the facet is not. */
+  unrecognizedFacet?: { facet: string; className: string };
+  /** When provided (with an `unrecognizedFacet`), registers that facet token
+   *  class-wide so it reads as recognised everywhere — not just this token. */
+  onRegisterFacet?: () => void;
   /** Optional description shown for an already-saved variable (read-only here). */
   description?: string;
   /** Current substitution value (phase 2). */
@@ -39,6 +46,8 @@ export function VariableEditPopover({
   name,
   saved,
   defaultClass = false,
+  unrecognizedFacet,
+  onRegisterFacet,
   description,
   value,
   transform,
@@ -46,6 +55,9 @@ export function VariableEditPopover({
   onRemove,
   onCancel,
 }: VariableEditPopoverProps) {
+  // Flag an unrecognised facet only when the token isn't already saved (a saved
+  // token is recognised as a whole, facet included).
+  const showUnrecognizedFacet = !!unrecognizedFacet && !saved;
   const [draft, setDraft] = useState(value ?? '');
 
   // Split the incoming spec into the picker's id + arg. An unknown id (newer
@@ -78,15 +90,19 @@ export function VariableEditPopover({
               'inline-flex items-center gap-1 normal-case tracking-normal',
               saved
                 ? 'text-emerald-600 dark:text-emerald-400'
-                : defaultClass
-                  ? 'text-emerald-600/80 dark:text-emerald-400/80'
-                  : 'text-neutral-400 dark:text-neutral-500',
+                : showUnrecognizedFacet
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : defaultClass
+                    ? 'text-emerald-600/80 dark:text-emerald-400/80'
+                    : 'text-neutral-400 dark:text-neutral-500',
             )}
           >
             {saved ? (
               <>
                 <Icon name="check" size={11} /> Saved
               </>
+            ) : showUnrecognizedFacet ? (
+              'Unknown facet'
             ) : defaultClass ? (
               'Recognised (default)'
             ) : (
@@ -107,6 +123,25 @@ export function VariableEditPopover({
           })()}
           <span className="font-mono text-sm text-neutral-800 dark:text-neutral-200">{name}</span>
         </div>
+        {showUnrecognizedFacet && unrecognizedFacet && (
+          <div className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+            <span className="font-mono">{unrecognizedFacet.facet}</span> isn&apos;t a known facet of{' '}
+            <span className="font-mono">{unrecognizedFacet.className}</span>
+            {' '}— the class is recognised, this facet isn&apos;t. Saving stores{' '}
+            <span className="font-mono">{name}</span> as a variable.
+          </div>
+        )}
+        {showUnrecognizedFacet && unrecognizedFacet && onRegisterFacet && (
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onRegisterFacet}
+            className="mt-1.5 w-full px-2 py-1 rounded text-[11px] font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-colors"
+          >
+            Register <span className="font-mono">{unrecognizedFacet.facet}</span> as a facet of{' '}
+            <span className="font-mono">{unrecognizedFacet.className}</span>
+          </button>
+        )}
         {description && (
           <div className="mt-1 text-[11px] italic text-neutral-500 dark:text-neutral-400">
             {description}

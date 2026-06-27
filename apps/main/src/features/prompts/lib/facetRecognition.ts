@@ -27,6 +27,26 @@ export interface FacetVocabItem {
 /** Vocab members keyed by vocab-type (e.g. `parts`, `poses`). */
 export type FacetVocab = Record<string, FacetVocabItem[]>;
 
+/**
+ * The complete set of inputs that drive facet recognition — vocab members plus
+ * user-registered class-wide facets. Bundled so every surface supplies the whole
+ * set as one unit (see `useFacetRecognition`) instead of threading each input
+ * separately and risking silent under-supply (the bug this fixed: viewers that
+ * passed neither, so registered/vocab facets read as unknown there). Required on
+ * `VariableTokensConfig`, so a surface that forgets it is a compile error.
+ */
+export interface FacetRecognition {
+  facetVocab: FacetVocab;
+  savedFacets?: ReadonlySet<string>;
+}
+
+/** Empty recognition (no vocab, no registered facets) — for surfaces that
+ *  genuinely want axis-only recognition. A stable ref for memo dependencies. */
+export const EMPTY_FACET_RECOGNITION: FacetRecognition = {
+  facetVocab: {},
+  savedFacets: new Set(),
+};
+
 export interface ResolvedFacet {
   /** The facet token, uppercased. */
   facet: string;
@@ -38,6 +58,15 @@ export interface ResolvedFacet {
   /** Set when the token resolved to a concrete vocab member (value-level). */
   valueId?: string;
   valueLabel?: string;
+  /** Set when recognition came from a user-registered class-wide facet (neither
+   *  an axis nor a vocab value) — see `facetKey` / the prompt facet registry. */
+  saved?: boolean;
+}
+
+/** Canonical key for a user-registered class-wide facet, e.g. `ACTOR:METHODS`.
+ *  Both parts uppercased; matches the backend facet registry shape. */
+export function facetKey(className: string, facet: string): string {
+  return `${className.trim().toUpperCase()}:${facet.trim().toUpperCase()}`;
 }
 
 function norm(s: string): string {
@@ -67,7 +96,12 @@ function itemMatchesExact(item: FacetVocabItem, token: string): boolean {
  * value and looks it up in each vocab-backed axis's members (`HIP` → part:hip).
  * Returns `known:false` when neither matches.
  */
-export function resolveFacet(className: string, facet: string, vocab: FacetVocab): ResolvedFacet {
+export function resolveFacet(
+  className: string,
+  facet: string,
+  vocab: FacetVocab,
+  savedFacets?: ReadonlySet<string>,
+): ResolvedFacet {
   const base = classifyFacet(className, facet);
   if (base.known) {
     return { facet: base.facet, known: true, axis: base.axis };
@@ -80,14 +114,23 @@ export function resolveFacet(className: string, facet: string, vocab: FacetVocab
       return { facet: base.facet, known: true, axis, valueId: hit.id, valueLabel: hit.label };
     }
   }
+  // User-registered class-wide facet — recognised even though it's neither a
+  // declared axis nor a vocab value.
+  if (savedFacets?.has(facetKey(className, base.facet))) {
+    return { facet: base.facet, known: true, saved: true };
+  }
   return { facet: base.facet, known: false };
 }
 
 /** Resolve the leading facet of a full variable name (e.g. `ACTOR1_HIP`). Null when facetless. */
-export function resolveVariableFacet(name: string, vocab: FacetVocab): ResolvedFacet | null {
+export function resolveVariableFacet(
+  name: string,
+  vocab: FacetVocab,
+  savedFacets?: ReadonlySet<string>,
+): ResolvedFacet | null {
   const parsed = parseVariableName(name);
   if (parsed.facets.length === 0) return null;
-  return resolveFacet(parsed.className, parsed.facets[0], vocab);
+  return resolveFacet(parsed.className, parsed.facets[0], vocab, savedFacets);
 }
 
 export interface FacetSuggestion {
@@ -95,9 +138,10 @@ export interface FacetSuggestion {
   value: string;
   /** Human label for the suggestion list. */
   label: string;
-  /** Source hint — the vocab category / `freeform` for axes, the axis name for values. */
+  /** Source hint — the vocab category / `freeform` for axes, the axis name for
+   *  values, `registered` for user-registered class-wide facets. */
   detail: string;
-  kind: 'axis' | 'value';
+  kind: 'axis' | 'value' | 'saved';
 }
 
 /**
@@ -111,8 +155,9 @@ export function relatedFacets(
   className: string,
   resolved: ResolvedFacet,
   vocab: FacetVocab,
+  savedFacets?: ReadonlySet<string>,
 ): FacetSuggestion[] {
-  const all = suggestFacets(className, '', vocab);
+  const all = suggestFacets(className, '', vocab, savedFacets);
   const axisName = resolved.known ? resolved.axis?.name : undefined;
   if (!axisName) return all;
   const siblings = all.filter(
@@ -133,6 +178,7 @@ export function suggestFacets(
   className: string,
   partial: string,
   vocab: FacetVocab,
+  savedFacets?: ReadonlySet<string>,
 ): FacetSuggestion[] {
   const p = norm(partial);
   const matches = (s: string): boolean => norm(s).startsWith(p);
@@ -140,7 +186,7 @@ export function suggestFacets(
 
   const out: FacetSuggestion[] = [];
   const seen = new Set<string>();
-  const push = (value: string, label: string, detail: string, kind: 'axis' | 'value'): void => {
+  const push = (value: string, label: string, detail: string, kind: FacetSuggestion['kind']): void => {
     const v = value.toUpperCase();
     if (!v || seen.has(v)) return;
     seen.add(v);
@@ -162,6 +208,15 @@ export function suggestFacets(
       if (!p || matches(token) || matches(item.label) || (item.keywords ?? []).some(matches)) {
         push(token, item.label, axis.name, 'value');
       }
+    }
+  }
+  // User-registered class-wide facets (keys `CLASS:FACET`).
+  if (savedFacets) {
+    const prefix = `${className.trim().toUpperCase()}:`;
+    for (const key of savedFacets) {
+      if (!key.startsWith(prefix)) continue;
+      const token = key.slice(prefix.length);
+      if (!p || matches(token)) push(token, token, 'registered', 'saved');
     }
   }
   return out;

@@ -643,3 +643,56 @@ def _node_to_dict(n: LineNode) -> dict:
         "start": n.start,
         "end": n.end,
     }
+
+
+# ── group expansion (decoration aid; NOT part of the parity contract) ─────────
+
+
+def _shift_chain_line(line: dict, delta: int) -> dict:
+    out = dict(line)
+    out["start"] = line["start"] + delta
+    out["end"] = line["end"] + delta
+    out["elements"] = [
+        {**e, "start": e["start"] + delta, "end": e["end"] + delta}
+        for e in line.get("elements", [])
+    ]
+    out["operators"] = [
+        {**o, "op_start": o["op_start"] + delta, "op_end": o["op_end"] + delta}
+        for o in line.get("operators", [])
+    ]
+    return out
+
+
+def expand_value_groups(lines: List[dict]) -> List[dict]:
+    """Expand grouped sub-chains for the editor's structure layer.
+
+    For every ``value`` element that is a bare ``( … )`` group whose contents
+    form a chain (i.e. contain operators), re-tokenize the inner text and return
+    those inner chain lines with offsets mapped back into the original document
+    frame. Recurses into nested groups.
+
+    Faithful port of the TS ``expandValueGroups`` — callers append these to the
+    top-level ``tokenize()`` lines so a group's inner vars/operators decorate
+    too. NOT part of the Python↔TS parity contract (the tokenizer itself stays
+    flat; the group remains one opaque ``value`` element in ``tokenize()``).
+    """
+    extra: List[dict] = []
+    for line in lines:
+        if line.get("kind") != "chain":
+            continue
+        for el in line.get("elements", []):
+            if el.get("kind") != "value":
+                continue
+            text = el.get("text", "")
+            open_i = text.find("(")
+            if open_i < 0 or not text.endswith(")"):
+                continue
+            inner_start = el["start"] + open_i + 1
+            inner_text = text[open_i + 1 : -1]
+            for inner in tokenize(inner_text)["lines"]:
+                if inner.get("kind") != "chain":
+                    continue
+                shifted = _shift_chain_line(inner, inner_start)
+                extra.append(shifted)
+                extra.extend(expand_value_groups([shifted]))
+    return extra

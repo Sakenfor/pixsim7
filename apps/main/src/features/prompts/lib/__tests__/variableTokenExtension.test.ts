@@ -24,7 +24,7 @@ function rangesFor(text: string, facetVocab: FacetVocab = VOCAB) {
   const config: VariableTokensConfig = {
     tokenLines: [varLine(text)],
     savedNames: new Set<string>(),
-    facetVocab,
+    facetRecognition: { facetVocab },
   };
   return collectVariableRanges(config, Text.of([text]));
 }

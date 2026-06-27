@@ -9,26 +9,16 @@
  * result rather than duplicating any vocab values. Sister to
  * `useOperatorVocabulary` (same fetch-once-and-cache shape).
  */
+import type { VocabItemModel, VocabulariesResponse } from '@pixsim7/shared.api.model';
 import { useEffect, useState } from 'react';
 
 import { useApi } from '@/hooks/useApi';
 
-export interface VocabItem {
-  id: string;
-  label: string;
-  category: string;
-  keywords: string[];
-}
+/** Vocab member shape — the generated `/prompts/meta/vocabularies` item model. */
+export type VocabItem = VocabItemModel;
 
 /** Vocab members keyed by vocab-type (e.g. `parts`, `poses`). */
-export type Vocabularies = Record<string, VocabItem[]>;
-
-interface VocabulariesResponse {
-  vocabularies?: Array<{
-    type: string;
-    items?: Array<{ id: string; label: string; category?: string; keywords?: string[] }>;
-  }>;
-}
+export type Vocabularies = Record<string, VocabItemModel[]>;
 
 const EMPTY: Vocabularies = {};
 
