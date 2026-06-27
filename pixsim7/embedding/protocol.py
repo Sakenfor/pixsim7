@@ -11,7 +11,7 @@ Design invariants:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, Sequence
+from typing import Mapping, Protocol, Sequence
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,10 +23,16 @@ class EmbedRequest:
     serving that exact model or it rejects the request (so a mismatch fails the
     analysis cleanly rather than silently embedding with the wrong model). When
     None the daemon uses whatever model it has loaded.
+
+    `caller` / `context` are observability-only metadata. HTTP clients forward
+    them as headers so daemon logs can name the backend code path/job that
+    initiated inference without putting that metadata in the embedding payload.
     """
 
     paths: Sequence[str]
     model_id: str | None = None
+    caller: str | None = None
+    context: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,10 +43,16 @@ class EmbedTextRequest:
     models (text-embedding-3-small, BGE, …) selected per request. `model_id`
     is the prefixed identifier (e.g. "openai:text-embedding-3-small"); the
     bound service resolves it to a concrete provider.
+
+    `caller` / `context` are observability-only metadata. HTTP clients forward
+    them as headers so daemon logs can name the backend code path/job that
+    initiated inference without putting that metadata in the embedding payload.
     """
 
     texts: Sequence[str]
     model_id: str
+    caller: str | None = None
+    context: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)

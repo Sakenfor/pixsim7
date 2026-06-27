@@ -18,11 +18,12 @@ migrated onto it separately; new daemons build on it directly.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from contextlib import asynccontextmanager, contextmanager
 from typing import Awaitable, Callable, Iterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 
@@ -69,6 +70,87 @@ class InFlight:
         if not self.starts:
             return None
         return time.monotonic() - min(self.starts)
+
+
+def _request_header(request: Request, name: str) -> str | None:
+    value = request.headers.get(name)
+    if not value:
+        return None
+    value = value.strip()
+    return value or None
+
+
+def install_daemon_request_logging(
+    app: FastAPI,
+    *,
+    daemon_name: str,
+    logger_name: str = "pixsim7.embedding.daemon",
+) -> None:
+    """Install shared request logging for embedding daemons.
+
+    Backend clients can set ``X-PixSim-Caller`` and ``X-PixSim-Context`` to make
+    daemon logs identify the code path/job that initiated an inference request.
+    When those headers are absent, the log still records peer/forwarded IP and
+    user-agent. Health probes are logged at debug level because launcher probes
+    are frequent and usually not actionable.
+    """
+    request_logger = logging.getLogger(logger_name)
+
+    @app.middleware("http")
+    async def _log_request(request: Request, call_next):
+        start = time.perf_counter()
+        path = request.url.path
+        caller = _request_header(request, "x-pixsim-caller") or "unknown"
+        caller_context = _request_header(request, "x-pixsim-context")
+        request_id = (
+            _request_header(request, "x-pixsim-request-id")
+            or _request_header(request, "x-request-id")
+            or _request_header(request, "x-correlation-id")
+        )
+        forwarded_for = _request_header(request, "x-forwarded-for")
+        user_agent = _request_header(request, "user-agent")
+        client = request.client.host if request.client else None
+
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_ms = round((time.perf_counter() - start) * 1000, 1)
+            request_logger.exception(
+                "daemon_request_failed daemon=%s caller=%s method=%s path=%s "
+                "duration_ms=%s client=%s forwarded_for=%s user_agent=%s "
+                "request_id=%s caller_context=%s",
+                daemon_name,
+                caller,
+                request.method,
+                path,
+                duration_ms,
+                client,
+                forwarded_for,
+                user_agent,
+                request_id,
+                caller_context,
+            )
+            raise
+
+        duration_ms = round((time.perf_counter() - start) * 1000, 1)
+        log = request_logger.debug if path == "/health" else request_logger.info
+        log(
+            "daemon_request daemon=%s caller=%s method=%s path=%s status_code=%s "
+            "duration_ms=%s client=%s forwarded_for=%s user_agent=%s "
+            "request_id=%s caller_context=%s",
+            daemon_name,
+            caller,
+            request.method,
+            path,
+            response.status_code,
+            duration_ms,
+            client,
+            forwarded_for,
+            user_agent,
+            request_id,
+            caller_context,
+        )
+        return response
 
 
 def evaluate_health(
@@ -135,6 +217,7 @@ def build_daemon_app(
             task.cancel()
 
     app = FastAPI(title=title, lifespan=lifespan)
+    install_daemon_request_logging(app, daemon_name=title)
 
     @app.get("/health")
     async def health():

@@ -11,16 +11,23 @@ embedding service locator (long-lived daemon process) — purely local
 compute, no provider account needed.
 """
 from datetime import datetime, timezone
-from pathlib import Path
+from types import SimpleNamespace
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.domain.assets.analysis import AssetAnalysis, AnalysisStatus
 from pixsim7.backend.main.services.analysis import AnalysisService
 from pixsim7.backend.main.services.account import AccountService
 from pixsim7.backend.main.services.provider import ProviderService
 from pixsim7.backend.main.services.user import UserService
 from pixsim7.backend.main.services.storage import get_storage_service
+from pixsim7.backend.main.services.media.embedding_input_config import (
+    resolve_embedding_input_config,
+)
+from pixsim7.backend.main.services.media.embedding_inputs import (
+    aggregate_embedding_vectors,
+    cleanup_embedding_input_paths,
+    resolve_embedding_input_paths,
+)
 from pixsim7.backend.main.infrastructure.database.session import get_db
 from pixsim7.backend.main.shared.errors import (
     NoAccountAvailableError,
@@ -91,7 +98,7 @@ async def process_analysis(ctx: dict, analysis_id: int) -> dict:
 
             analysis = await analysis_service.get_analysis(analysis_id)
 
-            user = await user_service.get_user(analysis.user_id)
+            await user_service.get_user(analysis.user_id)
             debug = DebugLogger()
             debug.worker("loaded_analysis", analysis_id=analysis.id, status=str(analysis.status))
 
@@ -253,9 +260,10 @@ async def _process_embedding_analysis(
 ) -> dict:
     """Run an asset:embedding analysis via the embedding service locator.
 
-    Resolves the asset's path (preferring thumbnail), invokes the daemon, and
-    marks the analysis completed with the resulting vector. The applier picks
-    the result up via the standard `mark_completed` hook.
+    Resolves image-safe embedding inputs, invokes the daemon, and marks the
+    analysis completed with the resulting vector. Videos are embedded from
+    extracted JPEG frames, never the raw ``.mp4``. The applier picks the result
+    up via the standard `mark_completed` hook.
     """
     from pixsim7.embedding.locator import get_embedding_service
     from pixsim7.embedding.protocol import EmbedRequest, EmbeddingServiceError
@@ -267,32 +275,30 @@ async def _process_embedding_analysis(
         await analysis_service.mark_failed(analysis.id, "asset not found")
         return {"status": "failed", "reason": "missing_asset"}
 
-    storage = get_storage_service()
-    embed_path: str | None = None
-    if asset.thumbnail_key:
-        candidate = storage.get_path(asset.thumbnail_key)
-        if Path(candidate).exists():
-            embed_path = candidate
-    if embed_path is None and asset.stored_key:
-        candidate = storage.get_path(asset.stored_key)
-        if Path(candidate).exists():
-            embed_path = candidate
-
-    if embed_path is None:
-        await analysis_service.mark_failed(analysis.id, "no readable asset path")
-        return {"status": "failed", "reason": "no_path"}
-
     # Capture everything we need from the ORM objects before releasing the
     # session below — afterwards `analysis`/`asset` are detached.
     asset_id = asset.id
     analysis_id = analysis.id
     embedder_id = analysis.embedder_id
     model_id = analysis.model_id
+    config = resolve_embedding_input_config(analysis.params)
+    embedding_asset = SimpleNamespace(
+        id=asset.id,
+        user_id=asset.user_id,
+        media_type=asset.media_type,
+        stored_key=asset.stored_key,
+        thumbnail_key=asset.thumbnail_key,
+        preview_key=asset.preview_key,
+        local_path=asset.local_path,
+        duration_sec=asset.duration_sec,
+        media_metadata=asset.media_metadata,
+    )
+    storage = get_storage_service()
 
     await analysis_service.mark_started(analysis_id)
-    analysis_logger.info("embedding_started", asset_id=asset_id, path=embed_path)
+    analysis_logger.info("embedding_input_preparing", asset_id=asset_id)
 
-    # Release the DB connection for the duration of the (≤180s) daemon call.
+    # Release the DB connection for frame extraction + the (≤180s) daemon call.
     # mark_started commits and then *refreshes*, which leaves the session
     # holding a connection in an idle transaction. Pinning it across the long
     # embed both starves the pool when embeds run concurrently (QueuePool
@@ -303,22 +309,67 @@ async def _process_embedding_analysis(
     # pre-pinged connection on the same session object.
     await db.close()
 
+    embed_paths, cleanup_paths, input_kind = await resolve_embedding_input_paths(
+        asset=embedding_asset,
+        storage=storage,
+        config=config,
+        log=analysis_logger,
+    )
+
+    if not embed_paths:
+        await analysis_service.mark_failed(
+            analysis_id,
+            f"no readable embedding input ({input_kind})",
+        )
+        return {"status": "failed", "reason": "no_path", "input_kind": input_kind}
+
+    analysis_logger.info(
+        "embedding_started",
+        asset_id=asset_id,
+        input_kind=input_kind,
+        path=embed_paths[0],
+        path_count=len(embed_paths),
+        paths=embed_paths[:3],
+    )
+
     try:
         result = await get_embedding_service().embed_images(
-            EmbedRequest(paths=[embed_path], model_id=model_id)
+            EmbedRequest(
+                paths=embed_paths,
+                model_id=model_id,
+                caller="worker:process_analysis:asset_embedding",
+                context={
+                    "analysis_id": str(analysis_id),
+                    "asset_id": str(asset_id),
+                    "input_kind": input_kind,
+                },
+            )
         )
     except EmbeddingServiceError as exc:
         await analysis_service.mark_failed(analysis_id, str(exc))
         analysis_logger.error("embedding_failed", error=str(exc))
         return {"status": "failed", "reason": "embedding_service_error"}
+    finally:
+        cleanup_embedding_input_paths(cleanup_paths, log=analysis_logger)
 
     if not result.vectors:
         await analysis_service.mark_failed(analysis_id, "embedding service returned no vectors")
         return {"status": "failed", "reason": "empty_result"}
 
+    try:
+        embedding = aggregate_embedding_vectors(
+            result.vectors,
+            input_kind=input_kind,
+            config=config,
+        )
+    except ValueError as exc:
+        await analysis_service.mark_failed(analysis_id, str(exc))
+        analysis_logger.error("embedding_aggregation_failed", error=str(exc))
+        return {"status": "failed", "reason": "embedding_aggregation_error"}
+
     await analysis_service.mark_completed(
         analysis_id,
-        {"embedding": result.vectors[0]},
+        {"embedding": embedding},
     )
     analysis_logger.info(
         "embedding_completed",
@@ -326,12 +377,16 @@ async def _process_embedding_analysis(
         embedder_id=embedder_id,
         model_id=result.model_id,
         dim=result.dim,
+        input_kind=input_kind,
+        input_count=len(embed_paths),
     )
 
     return {
         "status": "completed",
         "analysis_id": analysis_id,
         "dim": result.dim,
+        "input_kind": input_kind,
+        "input_count": len(embed_paths),
     }
 
 

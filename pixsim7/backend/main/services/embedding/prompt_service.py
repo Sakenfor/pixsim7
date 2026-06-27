@@ -108,7 +108,12 @@ class PromptEmbeddingService(EntityEmbeddingService[PromptVersion]):
     ) -> list[list[float]]:
         texts = [v.prompt_text for v in entities]
         result = await get_embedding_service().embed_texts(
-            EmbedTextRequest(texts=texts, model_id=model_id)
+            EmbedTextRequest(
+                texts=texts,
+                model_id=model_id,
+                caller="service:prompt_embedding:batch",
+                context={"entity_count": str(len(texts))},
+            )
         )
         return _validate_embeddings(
             result.vectors,
@@ -131,7 +136,12 @@ class PromptEmbeddingService(EntityEmbeddingService[PromptVersion]):
             _QUERY_VECTOR_CACHE.move_to_end(key)
             return cached
         result = await get_embedding_service().embed_texts(
-            EmbedTextRequest(texts=[text], model_id=model_id)
+            EmbedTextRequest(
+                texts=[text],
+                model_id=model_id,
+                caller="service:prompt_embedding:query",
+                context={"query_count": "1"},
+            )
         )
         vector = _validate_embeddings(
             result.vectors,

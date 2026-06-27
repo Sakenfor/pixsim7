@@ -45,16 +45,23 @@ Configuration (env):
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections import OrderedDict
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from pixsim7.embedding._daemon import InFlight, evaluate_health
+from pixsim7.embedding._daemon import (
+    InFlight,
+    evaluate_health,
+    install_daemon_request_logging,
+)
 from pixsim7.embedding._siglip import (
+    EmbeddingImageLoadError,
     MODEL_ID,
     embed_images,
     empty_cuda_cache,
@@ -62,6 +69,8 @@ from pixsim7.embedding._siglip import (
 )
 
 _WEDGE_THRESHOLD_SEC = float(os.environ.get("PIXSIM_EMBEDDING_WEDGE_SEC", "120"))
+logger = logging.getLogger("pixsim7.embedding.server")
+_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tif", ".tiff"}
 
 
 def _parse_config() -> tuple[str, set[str], int]:
@@ -207,6 +216,11 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="PixSim Embedding Daemon", lifespan=lifespan)
+install_daemon_request_logging(
+    app,
+    daemon_name="PixSim Embedding Daemon",
+    logger_name="pixsim7.embedding.server",
+)
 
 
 class EmbedBody(BaseModel):
@@ -283,6 +297,29 @@ async def embed(body: EmbedBody):
     if not body.paths:
         return {"embeddings": [], "dim": 0, "model_id": model_id}
 
+    non_image_paths = [
+        path for path in body.paths
+        if Path(path).suffix.lower() and Path(path).suffix.lower() not in _IMAGE_EXTENSIONS
+    ]
+    if non_image_paths:
+        logger.warning(
+            "embedding_request_contains_non_images model_id=%s path_count=%s non_image_count=%s examples=%s",
+            model_id,
+            len(body.paths),
+            len(non_image_paths),
+            non_image_paths[:3],
+        )
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "non_image_paths",
+                "model_id": model_id,
+                "path_count": len(body.paths),
+                "non_image_count": len(non_image_paths),
+                "examples": non_image_paths[:3],
+            },
+        )
+
     try:
         model, processor, device = await registry.acquire(model_id)
     except Exception as exc:
@@ -298,9 +335,27 @@ async def embed(body: EmbedBody):
     # responsive (and a genuine hang shows up via the wedge guard, not a frozen
     # server).
     with inflight.track():
-        vectors = await asyncio.to_thread(
-            embed_images, model, processor, device, body.paths
-        )
+        try:
+            vectors = await asyncio.to_thread(
+                embed_images, model, processor, device, body.paths
+            )
+        except EmbeddingImageLoadError as exc:
+            logger.warning(
+                "embedding_image_load_failed model_id=%s path_count=%s detail=%s",
+                model_id,
+                len(body.paths),
+                str(exc),
+            )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "image_load_failed",
+                    "model_id": model_id,
+                    "path_count": len(body.paths),
+                    "path": exc.path,
+                    "detail": str(exc),
+                },
+            )
 
     dim = len(vectors[0]) if vectors else 0
     return {"embeddings": vectors, "dim": dim, "model_id": model_id}

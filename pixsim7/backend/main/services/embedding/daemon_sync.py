@@ -79,7 +79,15 @@ async def push_allowed_models(model_ids: list[str], default: str | None = None) 
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(connect=3.0, read=5.0, write=3.0, pool=3.0)
         ) as client:
-            resp = await client.post(f"{base_url}/config/allowed-models", json=payload)
+            resp = await client.post(
+                f"{base_url}/config/allowed-models",
+                json=payload,
+                headers={
+                    "X-PixSim-Caller": "backend:embedding_daemon_sync",
+                    "X-PixSim-Request-Kind": "config_allowed_models",
+                    "X-PixSim-Item-Count": str(len(model_ids)),
+                },
+            )
         if resp.status_code != 200:
             logger.warning(
                 "embedding_daemon_sync_rejected status=%s body=%s",

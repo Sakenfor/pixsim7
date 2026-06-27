@@ -147,7 +147,12 @@ class BlockEmbeddingService(EntityEmbeddingService[BlockPrimitive]):
     ) -> list[list[float]]:
         texts = [_build_embed_text(b) for b in entities]
         result = await get_embedding_service().embed_texts(
-            EmbedTextRequest(texts=texts, model_id=model_id)
+            EmbedTextRequest(
+                texts=texts,
+                model_id=model_id,
+                caller="service:block_embedding:batch",
+                context={"entity_count": str(len(texts))},
+            )
         )
         # Re-validate at the block's column dimension (768). The composite
         # already validated against the provider's dims; this guards against a
@@ -156,7 +161,12 @@ class BlockEmbeddingService(EntityEmbeddingService[BlockPrimitive]):
 
     async def _embed_query(self, query: Any, *, model_id: str) -> list[float]:
         result = await get_embedding_service().embed_texts(
-            EmbedTextRequest(texts=[query], model_id=model_id)
+            EmbedTextRequest(
+                texts=[query],
+                model_id=model_id,
+                caller="service:block_embedding:query",
+                context={"query_count": "1"},
+            )
         )
         return validate_embeddings(result.vectors, expected_count=1)[0]
 

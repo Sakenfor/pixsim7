@@ -12,6 +12,9 @@ down daemon never blocks other work.
 """
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
+
 import httpx
 
 from pixsim7.embedding.protocol import (
@@ -23,6 +26,37 @@ from pixsim7.embedding.protocol import (
 )
 
 
+_CONTEXT_HEADER_MAX_LEN = 2048
+
+
+def _caller_headers(
+    *,
+    default_caller: str,
+    request_caller: str | None,
+    context: object,
+    request_kind: str,
+    item_count: int,
+    model_id: str | None,
+) -> dict[str, str]:
+    caller = request_caller or default_caller
+    headers = {
+        "X-PixSim-Caller": caller,
+        "X-PixSim-Request-Kind": request_kind,
+        "X-PixSim-Item-Count": str(item_count),
+    }
+    if model_id:
+        headers["X-PixSim-Model-Id"] = model_id
+    if isinstance(context, Mapping) and context:
+        safe_context = {str(key): str(value) for key, value in context.items()}
+        headers["X-PixSim-Context"] = json.dumps(
+            safe_context,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )[:_CONTEXT_HEADER_MAX_LEN]
+    return headers
+
+
 class HttpEmbeddingService(EmbeddingService):
     """Embeds images via the embedding-daemon HTTP service."""
 
@@ -31,11 +65,13 @@ class HttpEmbeddingService(EmbeddingService):
         *,
         base_url: str,
         model_id: str,
+        caller: str = "backend:image-embedding",
         connect_timeout: float = 5.0,
         read_timeout: float = 180.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model_id = model_id
+        self._caller = caller
         # Short connect timeout so an unreachable service fails fast (graceful
         # fallback); long read timeout to cover cold-batch inference.
         self._timeout = httpx.Timeout(
@@ -57,8 +93,20 @@ class HttpEmbeddingService(EmbeddingService):
         payload: dict[str, object] = {"paths": list(request.paths)}
         if request.model_id is not None:
             payload["model_id"] = request.model_id
+        headers = _caller_headers(
+            default_caller=self._caller,
+            request_caller=request.caller,
+            context=request.context,
+            request_kind="embed_images",
+            item_count=len(request.paths),
+            model_id=request.model_id or self._model_id,
+        )
         try:
-            response = await self._get_client().post("/embed", json=payload)
+            response = await self._get_client().post(
+                "/embed",
+                json=payload,
+                headers=headers,
+            )
         except httpx.HTTPError as exc:
             raise EmbeddingServiceError(
                 f"embedding service unreachable at {self._base_url}: {exc}"
@@ -127,11 +175,13 @@ class HttpTextEmbeddingService(EmbeddingService):
         *,
         base_url: str,
         model_id: str,
+        caller: str = "backend:text-embedding",
         connect_timeout: float = 2.0,
         read_timeout: float = 120.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model_id = model_id
+        self._caller = caller
         # Short connect timeout so a down daemon fails fast into the fallback;
         # long read timeout to cover a cold warm-up window on first request.
         self._timeout = httpx.Timeout(
@@ -158,8 +208,20 @@ class HttpTextEmbeddingService(EmbeddingService):
             "texts": list(request.texts),
             "model": request.model_id,
         }
+        headers = _caller_headers(
+            default_caller=self._caller,
+            request_caller=request.caller,
+            context=request.context,
+            request_kind="embed_texts",
+            item_count=len(request.texts),
+            model_id=request.model_id,
+        )
         try:
-            response = await self._get_client().post("/embed_texts", json=payload)
+            response = await self._get_client().post(
+                "/embed_texts",
+                json=payload,
+                headers=headers,
+            )
         except httpx.HTTPError as exc:
             raise EmbeddingServiceError(
                 f"text embedding service unreachable at {self._base_url}: {exc}"

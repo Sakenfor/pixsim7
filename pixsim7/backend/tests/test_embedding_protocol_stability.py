@@ -15,8 +15,6 @@ import dataclasses
 import inspect
 from typing import get_type_hints
 
-import pytest
-
 from pixsim7.embedding.protocol import (
     EmbedRequest,
     EmbedResult,
@@ -69,11 +67,11 @@ def test_only_documented_methods_on_protocol() -> None:
 
 
 def test_embed_request_fields() -> None:
-    assert _field_names(EmbedRequest) == ["paths", "model_id"]
+    assert _field_names(EmbedRequest) == ["paths", "model_id", "caller", "context"]
 
 
 def test_embed_text_request_fields() -> None:
-    assert _field_names(EmbedTextRequest) == ["texts", "model_id"]
+    assert _field_names(EmbedTextRequest) == ["texts", "model_id", "caller", "context"]
 
 
 def test_embed_result_fields() -> None:

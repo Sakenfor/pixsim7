@@ -11,7 +11,7 @@ import json
 import httpx
 import pytest
 
-from pixsim7.embedding.http_client import HttpEmbeddingService
+from pixsim7.embedding.http_client import HttpEmbeddingService, HttpTextEmbeddingService
 from pixsim7.embedding.protocol import (
     EmbeddingServiceError,
     EmbedRequest,
@@ -28,11 +28,22 @@ def _svc(handler) -> HttpEmbeddingService:
     return svc
 
 
+def _text_svc(handler) -> HttpTextEmbeddingService:
+    svc = HttpTextEmbeddingService(base_url="http://test", model_id="text-m")
+    svc._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://test"
+    )
+    return svc
+
+
 @pytest.mark.asyncio
 async def test_embed_success() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/embed"
         assert json.loads(request.content) == {"paths": ["/a.jpg", "/b.jpg"]}
+        assert request.headers["x-pixsim-caller"] == "backend:image-embedding"
+        assert request.headers["x-pixsim-request-kind"] == "embed_images"
+        assert request.headers["x-pixsim-item-count"] == "2"
         return httpx.Response(
             200, json={"embeddings": [[0.1, 0.2], [0.3, 0.4]], "dim": 2, "model_id": "x"}
         )
@@ -58,6 +69,29 @@ async def test_model_id_forwarded_in_payload() -> None:
         EmbedRequest(paths=["/a.jpg"], model_id="google/siglip2")
     )
     assert res.model_id == "google/siglip2"
+
+
+@pytest.mark.asyncio
+async def test_image_caller_context_forwarded_as_headers() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content) == {"paths": ["/a.jpg"], "model_id": "m2"}
+        assert request.headers["x-pixsim-caller"] == "worker:test"
+        assert request.headers["x-pixsim-model-id"] == "m2"
+        assert json.loads(request.headers["x-pixsim-context"]) == {
+            "analysis_id": "123",
+            "asset_id": "456",
+        }
+        return httpx.Response(200, json={"embeddings": [[0.1]], "dim": 1, "model_id": "m2"})
+
+    res = await _svc(handler).embed_images(
+        EmbedRequest(
+            paths=["/a.jpg"],
+            model_id="m2",
+            caller="worker:test",
+            context={"analysis_id": "123", "asset_id": "456"},
+        )
+    )
+    assert res.model_id == "m2"
 
 
 @pytest.mark.asyncio
@@ -119,3 +153,27 @@ async def test_embed_texts_not_implemented() -> None:
     svc = HttpEmbeddingService(base_url="http://test", model_id="m")
     with pytest.raises(NotImplementedError):
         await svc.embed_texts(EmbedTextRequest(texts=["hi"], model_id="x"))
+
+
+@pytest.mark.asyncio
+async def test_text_caller_context_forwarded_as_headers() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/embed_texts"
+        assert json.loads(request.content) == {"texts": ["hi"], "model": "text-m"}
+        assert request.headers["x-pixsim-caller"] == "service:prompt_embedding:query"
+        assert request.headers["x-pixsim-request-kind"] == "embed_texts"
+        assert request.headers["x-pixsim-item-count"] == "1"
+        assert request.headers["x-pixsim-model-id"] == "text-m"
+        assert json.loads(request.headers["x-pixsim-context"]) == {"query_count": "1"}
+        return httpx.Response(200, json={"embeddings": [[0.2]], "dim": 1})
+
+    res = await _text_svc(handler).embed_texts(
+        EmbedTextRequest(
+            texts=["hi"],
+            model_id="text-m",
+            caller="service:prompt_embedding:query",
+            context={"query_count": "1"},
+        )
+    )
+    assert res.vectors == [[0.2]]
+    assert res.model_id == "text-m"

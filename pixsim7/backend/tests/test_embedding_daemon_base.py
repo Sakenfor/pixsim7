@@ -6,9 +6,18 @@ InferenceConverter rely on. Pure: no server, no model, no torch.
 """
 from __future__ import annotations
 
+import logging
 import time
 
-from pixsim7.embedding._daemon import DaemonState, InFlight, evaluate_health
+import httpx
+import pytest
+
+from pixsim7.embedding._daemon import (
+    DaemonState,
+    InFlight,
+    build_daemon_app,
+    evaluate_health,
+)
 
 
 def test_health_loading() -> None:
@@ -61,3 +70,42 @@ def test_inflight_track_cleans_up() -> None:
         assert inflight.oldest_age() is not None
     assert inflight.count == 0
     assert inflight.oldest_age() is None
+
+
+@pytest.mark.asyncio
+async def test_build_daemon_app_logs_caller_headers(caplog) -> None:
+    state = DaemonState()
+    state.ready = True
+    inflight = InFlight()
+
+    async def warmup() -> None:
+        return None
+
+    app = build_daemon_app(
+        title="Unit Daemon",
+        warmup=warmup,
+        state=state,
+        inflight=inflight,
+        wedge_threshold_sec=120,
+    )
+
+    @app.get("/work")
+    async def work():
+        return {"ok": True}
+
+    caplog.set_level(logging.INFO, logger="pixsim7.embedding.daemon")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        response = await client.get(
+            "/work",
+            headers={
+                "X-PixSim-Caller": "unit:test",
+                "X-PixSim-Context": '{"job":"1"}',
+            },
+        )
+
+    assert response.status_code == 200
+    assert "daemon_request daemon=Unit Daemon caller=unit:test" in caplog.text
+    assert 'caller_context={"job":"1"}' in caplog.text

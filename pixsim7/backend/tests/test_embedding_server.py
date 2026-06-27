@@ -143,6 +143,32 @@ async def test_embed_empty_paths_no_load(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_embed_rejects_non_image_paths_before_model_load(monkeypatch) -> None:
+    _reg, loads = _install_registry(monkeypatch)
+    code, body = _resp(await srv.embed(EmbedBody(paths=["/clip.mp4"])))
+    assert code == 400
+    assert body["error"] == "non_image_paths"
+    assert body["examples"] == ["/clip.mp4"]
+    assert loads == {}
+
+
+@pytest.mark.asyncio
+async def test_embed_rejects_unreadable_image_paths(monkeypatch) -> None:
+    _reg, _loads = _install_registry(monkeypatch)
+
+    def fail_load(_model, _processor, _device, _paths):
+        raise srv.EmbeddingImageLoadError("/bad.jpg", "cannot identify image file")
+
+    monkeypatch.setattr(srv, "embed_images", fail_load)
+
+    code, body = _resp(await srv.embed(EmbedBody(paths=["/bad.jpg"])))
+    assert code == 400
+    assert body["error"] == "image_load_failed"
+    assert body["path"] == "/bad.jpg"
+    assert "cannot identify image file" in body["detail"]
+
+
+@pytest.mark.asyncio
 async def test_embed_model_load_failure_is_503(monkeypatch) -> None:
     # A model in the allowed set that fails to load -> 503 (graceful retry),
     # not a 500.
