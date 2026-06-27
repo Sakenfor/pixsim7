@@ -1,0 +1,114 @@
+"""
+Broken-audio fingerprint matching.
+
+Many degenerate i2v outputs carry a *recurring signature melody* (and a couple
+of pitchy-syllable variants). Spectral flatness can't tell that melody from
+legitimate tonal music — but a chroma fingerprint matched against curated
+reference clips can, because it keys on the *specific* pitch-class sequence.
+
+References are clips tagged ``signalref:*`` (open-ended; the matcher unions every
+voice). Each clip's compact chroma fingerprint (``signal_metrics.chroma_fp``,
+12×CHROMA_POOL_BINS, persisted by ``signal_analysis.probe_spectral``) is matched
+by best **time-lag × pitch-rotation** normalized cross-correlation, so a melody
+that's shifted in time or transposed still matches. ``audio_ref_match`` is the
+max similarity over all references — fed into ``score_metrics`` as a primary
+"broken" axis. Because fingerprints are stored, adding a reference later just
+re-runs matching over the DB — no reprobe.
+
+numpy is imported lazily so importing this module stays cheap.
+"""
+from __future__ import annotations
+
+from typing import Any, Optional
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# Time-lag search (in pooled bins); pitch rotation is the full 12 semitones.
+# Scoring thresholds (when a match counts as broken) live in signal_analysis.
+_MAX_LAG = 8
+
+
+def _to_chroma(fp: Any) -> Optional[Any]:
+    """Reshape a stored flat ``chroma_fp`` (12×N row-major) to a (12, N) array.
+
+    Returns None for missing/malformed fingerprints (length not a multiple of 12).
+    """
+    import numpy as np
+
+    if not fp:
+        return None
+    arr = np.asarray(fp, dtype=np.float32).ravel()
+    if arr.size < 24 or arr.size % 12 != 0:
+        return None
+    bins = arr.size // 12
+    # Stored row-major as (bins, 12) → transpose to (12, bins) for pitch-axis rotation.
+    return arr.reshape(bins, 12).T
+
+
+def _best_lag_xcorr(a: Any, b: Any) -> float:
+    """Max normalized cross-correlation of two (12, N) chromagrams over time lag."""
+    import numpy as np
+
+    t = min(a.shape[1], b.shape[1])
+    best = -1.0
+    for lag in range(-_MAX_LAG, _MAX_LAG + 1):
+        if lag >= 0:
+            xa, xb = a[:, lag:lag + t - abs(lag)], b[:, : t - abs(lag)]
+        else:
+            xa, xb = a[:, : t - abs(lag)], b[:, -lag:-lag + t - abs(lag)]
+        xa = xa - xa.mean()
+        xb = xb - xb.mean()
+        d = float(np.sqrt((xa * xa).sum() * (xb * xb).sum()))
+        if d > 0:
+            best = max(best, float((xa * xb).sum()) / d)
+    return best
+
+
+def match_fingerprint(candidate_fp: Any, references: list[Any]) -> Optional[float]:
+    """Best similarity (0..1) of ``candidate_fp`` to any reference chromagram.
+
+    Pitch-rotation invariant: tries all 12 semitone rotations of each reference
+    (catches transposed/pitched variants of the same melody). ``references`` are
+    pre-decoded (12, N) arrays from {@link load_reference_fingerprints}. Returns
+    None when the candidate has no usable fingerprint.
+    """
+    import numpy as np
+
+    cand = _to_chroma(candidate_fp)
+    if cand is None or not references:
+        return None
+    best = 0.0
+    for ref in references:
+        for r in range(12):
+            best = max(best, _best_lag_xcorr(cand, np.roll(ref, r, axis=0)))
+    return round(max(0.0, best), 4)
+
+
+async def load_reference_fingerprints(db: AsyncSession) -> list[Any]:
+    """Decoded (12, N) chromagrams for every `signalref:*`-tagged clip that has a
+    stored fingerprint. Empty until the references have been probed under the
+    fingerprint-capable scanner. Cheap enough to load once per (re)score batch.
+    """
+    rows = await db.execute(text(
+        """
+        SELECT DISTINCT (a.media_metadata::jsonb)->'signal_metrics'->'chroma_fp' AS fp
+        FROM assets a
+        JOIN asset_tag at ON at.asset_id = a.id
+        JOIN tag t ON t.id = at.tag_id
+        WHERE t.namespace = 'signalref'
+          AND (a.media_metadata::jsonb)->'signal_metrics'->'chroma_fp' IS NOT NULL
+        """
+    ))
+    out: list[Any] = []
+    import json as _json
+    for (fp,) in rows.all():
+        if isinstance(fp, str):
+            try:
+                fp = _json.loads(fp)
+            except ValueError:
+                continue
+        arr = _to_chroma(fp)
+        if arr is not None:
+            out.append(arr)
+    return out

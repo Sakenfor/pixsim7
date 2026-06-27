@@ -1419,16 +1419,25 @@ def register_default_asset_filters() -> None:
             condition_builder=lambda v: (_signal_override == "broken") if v else None,
         )
     )
-    # Inverse of signal_override_broken: hide your manual Flags. Applied by the
-    # default gallery to keep confirmed-broken clips out of view (NULL/'clean'
-    # kept, only 'broken' dropped); a "Show flagged" toggle turns it off.
+    # "Hide broken" used by the default gallery's "Show broken" toggle: drops BOTH
+    # manual flags AND current-version heuristic high-score (>= 3) clips that
+    # aren't user-kept. Supersedes the old manual-only `exclude_override_broken`
+    # (retired — `exclude_broken` covers it). Shares one predicate with the
+    # cohort/sibling badge counts so the gallery and the card badge agree on what
+    # "broken" means. Triage + the explicit signal_* filters opt back in to see
+    # these. This is plumbing for the chrome-bar toggle, not a user-facing filter
+    # chip (the frontend hides it from the filter bar). See effectively_broken_clause.
+    from pixsim7.backend.main.services.asset.signal_analysis import (
+        not_effectively_broken_clause,
+    )
+
     asset_filter_registry.register(
         FilterSpec(
-            key="exclude_override_broken",
+            key="exclude_broken",
             type="boolean",
-            label="Hide flagged (broken)",
-            description="Exclude clips you manually flagged broken (override = broken).",
-            condition_builder=lambda v: _signal_override.is_distinct_from("broken") if v else None,
+            label="Hide broken",
+            description="Exclude broken clips: manually flagged OR current-version heuristic score >= 3 (minus your Keeps).",
+            condition_builder=lambda v: not_effectively_broken_clause() if v else None,
         )
     )
 

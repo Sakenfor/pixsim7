@@ -43,7 +43,12 @@ from pixsim7.backend.main.shared.errors import InvalidOperationError
 # Run modes. "reprobe" = full ffmpeg; "rescore" = stored-metrics re-score.
 REPROBE_MODE = "reprobe"
 RESCORE_MODE = "rescore"
-VALID_MODES = (REPROBE_MODE, RESCORE_MODE)
+# Like reprobe (full ffmpeg) but restricted to clips with a LOCAL file — defers
+# archive-tiered clips that fetch slowly over the network. Run this first to get
+# the bulk + the local signalref references onto the scanner fast, then a normal
+# reprobe mops up the archive tier.
+LOCAL_REPROBE_MODE = "reprobe_local"
+VALID_MODES = (REPROBE_MODE, RESCORE_MODE, LOCAL_REPROBE_MODE)
 
 
 class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
@@ -174,7 +179,10 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
                 Asset.is_archived == False,  # noqa: E712
                 Asset.signal_score.isnot(None),
             ]
-        return stale_signal_video_conditions(version, user_id)
+        # reprobe (all) or reprobe_local (defer archive-tiered / remote-fetch clips).
+        return stale_signal_video_conditions(
+            version, user_id, local_only=(mode == LOCAL_REPROBE_MODE)
+        )
 
     # ---- hooks ------------------------------------------------------------
     async def _prepare_batch(

@@ -75,13 +75,18 @@ from pixsim_logging import get_logger
 logger = get_logger()
 
 # Bump when scoring changes so re-scans can be detected via prev_scanner_version.
-SCANNER_VERSION = "v4"
+SCANNER_VERSION = "v5"
 
 # Corroborating-axis thresholds. Each axis ORs its two sub-signals (they are
 # highly correlated; summing them was the v1 double-counting bug) and
 # contributes at most +1.
-RMS_DB_THRESHOLD = -28.0            # audio-quiet axis: rms below this
-PEAK_DB_THRESHOLD = -10.0          # audio-quiet axis: peak below this
+# v5: rms/peak now come from probe_spectral's f32 PCM (one fewer decode — the
+# separate ffmpeg `volumedetect` pass is gone). PCM dBFS reads ~+2.8 dB (rms) /
+# ~+2.2 dB (peak) HIGHER than volumedetect's reference, so the thresholds are
+# shifted up by that offset to keep the (now corroboration-only) audio-quiet axis
+# firing equivalently. Approximate by design — it's a +1 nudge, not a primary.
+RMS_DB_THRESHOLD = -25.0            # audio-quiet axis: rms below this (was -28 @ volumedetect)
+PEAK_DB_THRESHOLD = -8.0           # audio-quiet axis: peak below this (was -10 @ volumedetect)
 PHASH_FIRST_TO_LAST_THRESHOLD = 20  # visual-static axis: first→last below this
 PHASH_MEAN_DIV_THRESHOLD = 22.0    # visual-static axis: mean-div below this
 
@@ -91,6 +96,59 @@ RENDER_RATIO_MODERATE = 0.7        # below this → +2
 RENDER_RATIO_WEAK = 0.85           # below this → +1
 
 SUSPICIOUS_THRESHOLD = 3           # score >= this is flagged broken
+
+
+def effectively_broken_clause():
+    """SQLAlchemy predicate for "this clip is broken" — the single source of
+    truth shared by every surface that hides broken clips by default.
+
+    A clip is effectively broken when EITHER:
+      * the user manually flagged it (``signal_override == 'broken'``), OR
+      * the CURRENT-version heuristic scored it suspicious
+        (``signal_score >= SUSPICIOUS_THRESHOLD``) AND the user hasn't rescued it
+        with a manual Keep (``signal_override != 'clean'``).
+
+    Stale-version scores never count (a bumped SCANNER_VERSION must be re-scanned
+    before its flags take effect), matching the ``signal_likely_broken`` filter.
+    The default gallery and the cohort/sibling badge both exclude these; Triage
+    and the explicit ``signal_*`` filters opt back in to see them.
+
+    Every leaf is NULL-safe (``IS [NOT] DISTINCT FROM`` / ``coalesce``) so the
+    whole expression is three-valued-logic-free: an un-scanned clip (NULL score,
+    version, and override) evaluates to ``False`` here, never NULL. That makes
+    :func:`not_effectively_broken_clause` (a plain ``~``) keep it, as intended —
+    a bare ``score >= 3`` or ``== 'broken'`` would yield NULL and silently drop
+    un-scanned rows from a ``WHERE NOT (...)`` filter.
+    """
+    from sqlalchemy import and_, func, or_
+
+    return or_(
+        # Manual flag — NULL-safe equality (NULL override is not a flag).
+        Asset.signal_override.is_not_distinct_from("broken"),
+        and_(
+            # Current-version heuristic, score >= threshold, not user-kept.
+            Asset.signal_scanner_version.is_not_distinct_from(SCANNER_VERSION),
+            func.coalesce(Asset.signal_score, 0) >= SUSPICIOUS_THRESHOLD,
+            Asset.signal_override.is_distinct_from("clean"),
+        ),
+    )
+
+
+def not_effectively_broken_clause():
+    """Inverse of :func:`effectively_broken_clause` — keep only non-broken clips.
+
+    A plain ``~`` is sound here because every leaf of the wrapped expression is
+    NULL-safe, so an un-scanned clip is kept rather than silently dropped.
+    """
+    return ~effectively_broken_clause()
+
+# Audio-fingerprint axis (v5 — PRIMARY). Best chroma cross-correlation to the
+# curated signalref:* references (audio_fingerprint.match_fingerprint). Validated
+# on 425 user labels: ~0.6 ≈ 86% precision. Strong flags broken alone (+4); weak
+# needs a corroborating axis (+2). Tunable WITHOUT a reprobe — re-scoring reads
+# the stored chroma_fp. See plan signal-scan-recalibration.
+AUDIO_REF_MATCH_STRONG = 0.60
+AUDIO_REF_MATCH_WEAK = 0.50
 
 # Tonal-audio axis (v3 — PRIMARY, alongside render). Genuine i2v outputs carry a
 # broadband music+ambience soundtrack; degenerate/guardrail outputs (a canned
@@ -115,6 +173,11 @@ SPECTRAL_HOP = 1024        # hop between frames (samples)
 # rather than risk a false "broken". Real broken hums are tonal throughout (100+
 # frames), so this only mutes genuinely under-sampled clips.
 MIN_SPECTRAL_FRAMES = 15
+# Chroma fingerprint: the (T×12) chromagram is mean-pooled to this many time bins
+# so it's fixed-size + storable (12×48 = 576 floats ≈ ~3KB/clip in signal_metrics).
+# 48 bins over a ~10s clip ≈ 4–5 bins/sec — enough melodic contour for lag/rotation
+# matching against the signalref:* references without persisting every frame.
+CHROMA_POOL_BINS = 48
 
 # Probe budget: ffmpeg should be sub-second per clip. Generous timeout to
 # absorb cold-cache or contention; if exceeded, treat as probe failure.
@@ -231,20 +294,31 @@ def probe_phash(source: str, fps: int = 4, *, threads: int = DEFAULT_FFMPEG_THRE
     }
 
 
-def probe_spectral(source: str, *, threads: int = DEFAULT_FFMPEG_THREADS) -> dict[str, Optional[float]]:
-    """Decode audio to mono PCM and measure spectral flatness / tonal fraction.
+def probe_spectral(source: str, *, threads: int = DEFAULT_FFMPEG_THREADS) -> dict[str, Optional[Any]]:
+    """Decode audio ONCE to mono PCM and derive every audio feature in one pass.
 
-    Per-frame spectral flatness is the geometric mean over the arithmetic mean of
-    the magnitude spectrum (~0 for a pure tone, ~1 for white noise). Degenerate
-    generations (canned refusal voice, pitched "hum" melody, silent gibberish)
-    carry narrowband synthetic audio → low flatness; genuine clips carry a
-    broadband music+ambience mix → high flatness. `source` is a local file path
-    or a fetchable URL (ffmpeg reads both). numpy is imported lazily so importing
-    this module stays cheap for callers that never probe.
+    The expensive part of a (re)probe is the ffmpeg decode, so we extract all
+    audio signals from a single decode rather than N passes:
 
-    Returns the median flatness across frames and the fraction of "tonal" frames
-    (flatness < FRAME_TONAL_FLATNESS). Values are None when there is no decodable
-    audio (≥ ~1s required).
+    * **spectral flatness / tonal_frac** — legacy v4 tonal axis (kept for
+      back-compat / corroboration, no longer the primary).
+    * **chroma_fp** — a compact 12×CHROMA_POOL_BINS pitch-class fingerprint
+      (per-frame L1-normalized so it's timbre/loudness-invariant, then mean-pooled
+      over time). This is the persisted melody fingerprint: matching a candidate
+      against the `signalref:*` reference fingerprints (best lag × pitch-rotation
+      cross-correlation) is what catches the recurring broken melody — and because
+      it's stored, adding new references later re-matches in memory with NO reprobe.
+    * **loudness_range_db** — p95−p10 of per-frame loudness; the broken melody is
+      flat/lifeless (~6 dB) while a genuine lively clip carrying the same tune has
+      real dynamics (~15 dB). The precision gate for "melody present but is it
+      actually broken" (see plan: good-melody contamination).
+    * **onset_rate** — spectral-flux onsets/sec (drum/transient density).
+    * **syllabic_mod** — fraction of loudness-envelope energy in the 2–8 Hz band
+      (speech syllabic rate); a cheap voice-rhythm descriptor for the pitchy-
+      syllable broken mode.
+
+    `source` is a local path or fetchable URL. numpy is imported lazily. Scalar
+    fields are None / chroma_fp is None when there's < ~1s of audible audio.
     """
     import numpy as np
 
@@ -256,29 +330,107 @@ def probe_spectral(source: str, *, threads: int = DEFAULT_FFMPEG_THREADS) -> dic
         "-f", "f32le", "-",
     ])
     x = np.frombuffer(r.stdout, dtype=np.float32)
-    none = {"spectral_flatness": None, "tonal_frac": None, "spectral_frames": 0}
+
+    # Overall loudness (RMS / peak in dBFS) from the SAME PCM — replaces a
+    # separate ffmpeg `volumedetect` decode (one fewer decode per clip). Float
+    # PCM is full-scale ±1.0 → 0 dBFS, matching volumedetect's reference, so the
+    # audio-quiet thresholds carry over. Computed over the whole signal (incl.
+    # silence) like volumedetect, before the <1s early-out.
+    if x.size:
+        peak = float(np.max(np.abs(x)))
+        rms = float(np.sqrt(np.mean(x.astype(np.float64) ** 2)))
+        audio_peak_db = round(20.0 * np.log10(peak), 1) if peak > 0 else None
+        audio_rms_db = round(20.0 * np.log10(rms), 1) if rms > 0 else None
+    else:
+        audio_peak_db = audio_rms_db = None
+
+    none: dict[str, Optional[Any]] = {
+        "spectral_flatness": None, "tonal_frac": None, "spectral_frames": 0,
+        "chroma_fp": None, "loudness_range_db": None, "onset_rate": None,
+        "syllabic_mod": None,
+        "audio_rms_db": audio_rms_db, "audio_peak_db": audio_peak_db,
+    }
     if x.size < SPECTRAL_SR:  # under ~1s of audio — not enough to judge
         return none
     win, hop = SPECTRAL_WIN, SPECTRAL_HOP
     window = np.hanning(win)
+
+    # Per-frame pitch-class map (bins → 0..11 semitone class), restricted to a
+    # musically meaningful band. Computed once per call (cheap vs the FFT loop).
+    freqs = np.fft.rfftfreq(win, 1.0 / SPECTRAL_SR)
+    with np.errstate(divide="ignore"):
+        midi = 69 + 12 * np.log2(np.where(freqs > 0, freqs, 1) / 440.0)
+    pc = np.mod(np.round(midi).astype(int), 12)
+    chroma_band = (freqs >= 60) & (freqs <= 5000)
+    pc_band = pc[chroma_band]
+
     flats: list[float] = []
     tonal = 0
+    chroma_rows: list[Any] = []   # per audible frame: L1-normalized 12-vector
+    energy: list[float] = []      # per audible frame: linear power (for envelope)
+    loud: list[float] = []        # per audible frame: loudness in dB
+    flux: list[float] = []        # spectral flux between consecutive audible frames
+    prev_mag: Optional[Any] = None
     for i in range(0, len(x) - win, hop):
         mag = np.abs(np.fft.rfft(x[i:i + win] * window)) + 1e-9
-        if mag.sum() < 1e-3:  # silent frame — skip so leading/trailing silence doesn't skew
+        if mag.sum() < 1e-3:  # silent frame — skip; also breaks the flux chain
+            prev_mag = None
             continue
         flat = float(np.exp(np.log(mag).mean()) / mag.mean())
         flats.append(flat)
         if flat < FRAME_TONAL_FLATNESS:
             tonal += 1
+        c = np.bincount(pc_band, weights=mag[chroma_band], minlength=12)
+        c = c / (c.sum() + 1e-9)
+        chroma_rows.append(c)
+        p = float((mag * mag).sum())
+        energy.append(p)
+        loud.append(10.0 * np.log10(p + 1e-9))
+        if prev_mag is not None:
+            flux.append(float(np.maximum(mag - prev_mag, 0.0).sum()))
+        prev_mag = mag
+
     if len(flats) < MIN_SPECTRAL_FRAMES:
-        # Too little audible audio to judge tonal-ness — abstain (don't flag),
-        # but keep the audible-frame count for diagnostics.
-        return {"spectral_flatness": None, "tonal_frac": None, "spectral_frames": len(flats)}
+        # Too little audible audio to judge — abstain (don't flag), keep the count.
+        return {**none, "spectral_frames": len(flats)}
+
+    # --- chroma fingerprint: mean-pool the (T×12) chromagram to CHROMA_POOL_BINS
+    # time bins (coarse melodic contour, fixed-size + storable). ---
+    C = np.asarray(chroma_rows)  # (T, 12)
+    edges = np.linspace(0, len(C), CHROMA_POOL_BINS + 1).astype(int)
+    fp = np.stack([
+        C[edges[k]:max(edges[k] + 1, edges[k + 1])].mean(axis=0)
+        for k in range(CHROMA_POOL_BINS)
+    ])  # (CHROMA_POOL_BINS, 12)
+    chroma_fp = [round(float(v), 4) for v in fp.flatten()]
+
+    # --- dynamics ---
+    loud_arr = np.asarray(loud)
+    loudness_range_db = float(np.percentile(loud_arr, 95) - np.percentile(loud_arr, 10))
+    dur_sec = len(x) / float(SPECTRAL_SR)
+    flux_arr = np.asarray(flux)
+    onsets = int((flux_arr > flux_arr.mean() + flux_arr.std()).sum()) if flux_arr.size else 0
+    onset_rate = onsets / dur_sec if dur_sec > 0 else 0.0
+
+    # --- syllabic modulation: energy of the loudness envelope in the 2–8 Hz
+    # speech-rate band (FFT of the per-frame power envelope; frame rate = SR/hop). ---
+    env = np.asarray(energy)
+    env = env - env.mean()
+    emag = np.abs(np.fft.rfft(env))
+    efreq = np.fft.rfftfreq(len(env), hop / float(SPECTRAL_SR))
+    band = (efreq >= 2.0) & (efreq <= 8.0)
+    syllabic_mod = float(emag[band].sum() / (emag.sum() + 1e-9))
+
     return {
         "spectral_flatness": round(float(np.median(flats)), 4),
         "tonal_frac":        round(tonal / len(flats), 4),
         "spectral_frames":   len(flats),
+        "chroma_fp":         chroma_fp,
+        "loudness_range_db": round(loudness_range_db, 2),
+        "onset_rate":        round(float(onset_rate), 2),
+        "syllabic_mod":      round(syllabic_mod, 4),
+        "audio_rms_db":      audio_rms_db,
+        "audio_peak_db":     audio_peak_db,
     }
 
 
@@ -298,38 +450,53 @@ def _render_points(render_ratio: Optional[float]) -> int:
 
 
 def _tonal_points(flatness: Optional[float]) -> int:
-    """Graded points for the tonal-audio (spectral-flatness) primary signal.
+    """CORROBORATING points for low spectral flatness (≤ +1).
 
-    Only the DEEP band (< FLATNESS_STRONG) flags broken on its own (+4). The
-    0.25–0.38 mid-zone is weak (+1) and needs a corroborating axis to reach
-    'broken' — v3 scored 0.25–0.32 as +3 (flagged alone), which false-flagged
-    genuine clips carrying tonal/musical audio (action clips with a sustained
-    score). See plan signal-scan-recalibration.
+    v5 DEMOTED this from a primary axis. On 425 user labels tonal flatness did
+    NOT separate broken from kept (clean 0.265 vs broken 0.242) — it fired on
+    legitimate tonal MUSIC beds, and the old <0.25→+4 (flags-alone) band was the
+    main false-positive engine. The audio-fingerprint match is the new primary
+    audio signal; flatness is now just one corroborating axis (any tonal-ish
+    audio nudges +1, never flags broken on its own). See signal-scan-recalibration.
     """
     if flatness is None:
         return 0
-    if flatness < FLATNESS_STRONG:
+    return 1 if flatness < FLATNESS_WEAK else 0
+
+
+def _audio_ref_points(audio_ref_match: Optional[float]) -> int:
+    """Graded points for the broken-audio fingerprint match (PRIMARY, v5).
+
+    Match against the curated `signalref:*` references (best time-lag × pitch-
+    rotation chroma xcorr). Strong match flags broken on its own; a weaker match
+    needs a corroborating axis to reach 'broken'. None = no fingerprint / no
+    references loaded → 0 (falls back to render + corroboration).
+    """
+    if audio_ref_match is None:
+        return 0
+    if audio_ref_match >= AUDIO_REF_MATCH_STRONG:
         return 4
-    if flatness < FLATNESS_WEAK:
-        return 1
+    if audio_ref_match >= AUDIO_REF_MATCH_WEAK:
+        return 2
     return 0
 
 
 def score_metrics(
     metrics: dict[str, Any],
     render_ratio: Optional[float] = None,
+    audio_ref_match: Optional[float] = None,
 ) -> tuple[int, bool]:
     """Compute (score, suspicious) from probed metrics + optional render ratio.
 
     Two PRIMARY axes, each graded and each able to flag on its own:
-      * tonal audio (spectral flatness): 0/+1/+3/+4 — the strongest discriminator
-        for current data (narrowband synthetic "broken" audio vs broadband
-        genuine soundtracks);
+      * audio-fingerprint match vs the curated signalref:* references: 0/+2/+4
+        (v5's strongest audio discriminator — see _audio_ref_points);
       * render time vs cohort: 0/+1/+2/+4.
-    Plus two CORROBORATING axes worth at most +1 each — audio-quiet and
-    visual-static — each ORing its two correlated sub-signals rather than summing
-    them. ``suspicious`` (score >= 3) is reachable via either primary axis;
-    corroborating axes alone cap at 2 → borderline, never broken.
+    Plus three CORROBORATING axes worth at most +1 each — tonal flatness (v5
+    demoted it here from a primary axis), audio-quiet, and visual-static; the
+    latter two each OR their two correlated sub-signals rather than summing them.
+    ``suspicious`` (score >= 3) is reachable via either primary axis alone; a
+    single corroborating axis never flags, but all three lit together reach 3.
     """
     rms  = metrics.get("audio_rms_db")
     peak = metrics.get("audio_peak_db")
@@ -346,7 +513,10 @@ def score_metrics(
         (mdf  is not None and mdf  < PHASH_MEAN_DIV_THRESHOLD)
     )
 
-    score = _tonal_points(flatness) + _render_points(render_ratio)
+    # Primaries (each can flag broken alone): audio-fingerprint match + render.
+    # Corroborating (≤ +1 each): tonal flatness, audio-quiet, visual-static.
+    score = _audio_ref_points(audio_ref_match) + _render_points(render_ratio)
+    score += _tonal_points(flatness)
     if audio_quiet:
         score += 1
     if visual_static:
@@ -379,8 +549,9 @@ def probe_path(source: str | Path, *, ffmpeg_threads: int = DEFAULT_FFMPEG_THREA
         raise RuntimeError("ffmpeg/ffprobe not available in PATH")
     out: dict[str, Any] = {}
     out.update(probe_streams(s))
-    out.update(probe_audio(s, threads=ffmpeg_threads))
     out.update(probe_phash(s, threads=ffmpeg_threads))
+    # probe_spectral now also yields audio_rms_db/peak from its PCM decode, so the
+    # separate probe_audio (volumedetect) pass is no longer needed.
     out.update(probe_spectral(s, threads=ffmpeg_threads))
     return out
 
@@ -388,18 +559,22 @@ def probe_path(source: str | Path, *, ffmpeg_threads: int = DEFAULT_FFMPEG_THREA
 def build_signal_metrics_payload(
     metrics: dict[str, Any],
     render_context: Optional[dict[str, Any]] = None,
+    audio_ref_match: Optional[float] = None,
 ) -> dict[str, Any]:
     """Wrap a probed metrics dict into the canonical `signal_metrics` shape.
 
     ``render_context`` (from ``cohort_baselines.render_context_for_asset``)
-    supplies the primary render-time signal; when absent the score is
-    corroboration-only (borderline at most). Excludes `user_override` — that
-    field is only written by the override endpoint and must never be clobbered
-    by a re-scan.
+    supplies the render-time signal. ``audio_ref_match`` (from
+    ``audio_fingerprint.match_fingerprint`` against the `signalref:*` references)
+    is the primary audio signal — passed in by the caller because it needs the
+    loaded reference set. Both default to None → corroboration-only scoring.
+    Excludes `user_override` (only the override endpoint writes that).
     """
     rc = render_context or {}
     render_ratio = rc.get("render_ratio")
-    score, suspicious = score_metrics(metrics, render_ratio=render_ratio)
+    score, suspicious = score_metrics(
+        metrics, render_ratio=render_ratio, audio_ref_match=audio_ref_match
+    )
     return {
         "score":                     score,
         "suspicious":                suspicious,
@@ -411,6 +586,13 @@ def build_signal_metrics_payload(
         "phash_mean_div_from_first": metrics.get("phash_mean_div_from_first"),
         "spectral_flatness":         metrics.get("spectral_flatness"),
         "tonal_frac":                metrics.get("tonal_frac"),
+        # Audio fingerprint + dynamics (v5) — persisted so reference matching and
+        # the future kick-gate run on stored data without another decode.
+        "chroma_fp":                 metrics.get("chroma_fp"),
+        "loudness_range_db":         metrics.get("loudness_range_db"),
+        "onset_rate":                metrics.get("onset_rate"),
+        "syllabic_mod":              metrics.get("syllabic_mod"),
+        "audio_ref_match":           audio_ref_match,
         "render_ratio":              render_ratio,
         "cohort_n":                  rc.get("cohort_n"),
         "cohort_p50_sec":            rc.get("cohort_p50_sec"),
@@ -419,9 +601,32 @@ def build_signal_metrics_payload(
     }
 
 
+def _match_audio_ref(
+    chroma_fp: Any, ref_fingerprints: Optional[list[Any]]
+) -> Optional[float]:
+    """Best fingerprint match of a stored/probed chroma_fp to the references.
+
+    Best-effort: returns None when there's no fingerprint, no references, or the
+    matcher errors — so scoring cleanly falls back to render + corroboration.
+    Imported lazily to keep this module's import cheap and avoid a cycle.
+    """
+    if not chroma_fp or not ref_fingerprints:
+        return None
+    try:
+        from pixsim7.backend.main.services.asset.audio_fingerprint import (
+            match_fingerprint,
+        )
+        return match_fingerprint(chroma_fp, ref_fingerprints)
+    except Exception as e:  # noqa: BLE001 — fingerprint match is best-effort
+        logger.warning("signal_audio_ref_match_failed", error=str(e))
+        return None
+
+
 # ---------- stale-video selection (shared by sync endpoint + durable run) ----------
 
-def stale_signal_video_conditions(scanner_version: str, user_id: int) -> list:
+def stale_signal_video_conditions(
+    scanner_version: str, user_id: int, *, local_only: bool = False
+) -> list:
     """SQLAlchemy WHERE conditions selecting probe-eligible STALE videos.
 
     "Stale" = signal_scanner_version distinct from ``scanner_version``;
@@ -429,20 +634,28 @@ def stale_signal_video_conditions(scanner_version: str, user_id: int) -> list:
     path OR a stored_key — the same bar as ``SignalAnalysisService.is_eligible``,
     so archive-tiered files probed via presigned URL are included).
 
+    ``local_only=True`` additionally restricts to clips with a LOCAL file
+    (``local_path`` present), excluding archive-tiered clips that would otherwise
+    be fetched per-clip over the network (MinIO/ZeroTier) — by far the slowest
+    path. A local-first reprobe gets the bulk (and the local `signalref:*`
+    references) to the new scanner fast, so the matcher can go live without
+    waiting on the remote tier; a normal run mops up the archive afterward.
+
     The single source of truth for "which videos need a (re)probe", composed by
-    both the synchronous ``/backfill-signal-scan?reprobe=true`` endpoint and the
-    durable ``SignalBackfillService`` (cursor-paged). Returns a list of
-    conditions to splat into ``select(...).where(*conds)``.
+    the sync endpoint and the durable ``SignalBackfillService`` (cursor-paged).
     """
     from sqlalchemy import or_
 
-    return [
+    conds = [
         Asset.user_id == user_id,
         Asset.media_type == "VIDEO",
         Asset.is_archived == False,  # noqa: E712
         Asset.signal_scanner_version.is_distinct_from(scanner_version),
         or_(Asset.local_path.isnot(None), Asset.stored_key.isnot(None)),
     ]
+    if local_only:
+        conds.append(Asset.local_path.isnot(None))
+    return conds
 
 
 # ---------- service: stamp into Asset.media_metadata ----------
@@ -529,6 +742,7 @@ class SignalAnalysisService:
         force: bool = False,
         commit: bool = True,
         cohort_baselines: Optional[dict[str, Any]] = None,
+        ref_fingerprints: Optional[list[Any]] = None,
         prefetched: Any = _UNSET,
     ) -> Optional[dict[str, Any]]:
         """Probe `asset` and stamp signal_metrics on it.
@@ -573,7 +787,10 @@ class SignalAnalysisService:
             except Exception as e:  # noqa: BLE001 — render signal is best-effort
                 logger.warning("signal_analysis_render_ctx_failed", asset_id=asset.id, error=str(e))
 
-        payload = build_signal_metrics_payload(raw, render_context)
+        audio_ref_match = _match_audio_ref(raw.get("chroma_fp"), ref_fingerprints)
+        payload = build_signal_metrics_payload(
+            raw, render_context, audio_ref_match=audio_ref_match
+        )
 
         # Merge into media_metadata, preserving an existing user_override.
         meta = dict(asset.media_metadata or {})
@@ -598,6 +815,7 @@ class SignalAnalysisService:
     _STORED_PROBE_KEYS = (
         "audio_rms_db", "audio_peak_db",
         "phash_first_to_last", "phash_mean_div_from_first",
+        "chroma_fp",
     )
 
     async def rescore_from_stored(
@@ -605,6 +823,7 @@ class SignalAnalysisService:
         asset: Asset,
         *,
         cohort_baselines: Optional[dict[str, Any]] = None,
+        ref_fingerprints: Optional[list[Any]] = None,
         commit: bool = True,
     ) -> Optional[dict[str, Any]]:
         """Recompute the score from ALREADY-STORED ffmpeg metrics — no probing.
@@ -636,7 +855,12 @@ class SignalAnalysisService:
 
         # build_signal_metrics_payload reads the same metric keys the stored
         # dict already carries, so the prior probe values flow straight through.
-        payload = build_signal_metrics_payload(existing, render_context)
+        # The fingerprint match is recomputed from the stored chroma_fp vs the
+        # loaded references — so adding/removing references needs only a re-score.
+        audio_ref_match = _match_audio_ref(existing.get("chroma_fp"), ref_fingerprints)
+        payload = build_signal_metrics_payload(
+            existing, render_context, audio_ref_match=audio_ref_match
+        )
         if existing.get("user_override") is not None:
             payload["user_override"] = existing["user_override"]
 
