@@ -100,26 +100,38 @@ SUSPICIOUS_THRESHOLD = 3           # score >= this is flagged broken
 
 def effectively_broken_clause():
     """SQLAlchemy predicate for "this clip is broken" — the single source of
-    truth shared by every surface that hides broken clips by default (the default
-    gallery's "Show broken" toggle, the cohort/sibling badge counts, the Recent
-    scope bootstrap, the similarity mini-gallery).
+    truth shared by every surface that hides broken clips by default.
 
-    A clip is broken ONLY when the user manually flagged it
-    (``signal_override == 'broken'``). The heuristic score (``signal_score >= 3``,
-    the ``signal_likely_broken`` filter) is deliberately NOT included here.
+    A clip is effectively broken when EITHER:
+      * the user manually flagged it (``signal_override == 'broken'``), OR
+      * the CURRENT-version heuristic scored it suspicious
+        (``signal_score >= SUSPICIOUS_THRESHOLD``) AND the user hasn't rescued it
+        with a manual Keep (``signal_override != 'clean'``).
 
-    Why manual-only: on this library the heuristic fires on ~27% of scanned
-    videos (~26k of ~97k) versus ~276 manual flags — its precision is far too low
-    to *hide* by default; folding it in buried a quarter of the gallery. The
-    heuristic remains a TRIAGE signal (the Triage "Likely broken (>=3)" queue and
-    the explicit ``signal_*`` filters) and a non-destructive review cue (the
-    Recent strip's outline), but it never auto-hides or auto-discounts a clip.
+    Stale-version scores never count (a bumped SCANNER_VERSION must be re-scanned
+    before its flags take effect), matching the ``signal_likely_broken`` filter.
+    The default gallery and the cohort/sibling badge both exclude these; Triage
+    and the explicit ``signal_*`` filters opt back in to see them.
 
-    NULL-safe: ``IS NOT DISTINCT FROM`` makes a NULL override read as "not a flag"
-    rather than NULL, so :func:`not_effectively_broken_clause` (a plain ``~``)
-    keeps un-flagged clips instead of dropping them via three-valued logic.
+    Every leaf is NULL-safe (``IS [NOT] DISTINCT FROM`` / ``coalesce``) so the
+    whole expression is three-valued-logic-free: an un-scanned clip (NULL score,
+    version, and override) evaluates to ``False`` here, never NULL. That makes
+    :func:`not_effectively_broken_clause` (a plain ``~``) keep it, as intended —
+    a bare ``score >= 3`` or ``== 'broken'`` would yield NULL and silently drop
+    un-scanned rows from a ``WHERE NOT (...)`` filter.
     """
-    return Asset.signal_override.is_not_distinct_from("broken")
+    from sqlalchemy import and_, func, or_
+
+    return or_(
+        # Manual flag — NULL-safe equality (NULL override is not a flag).
+        Asset.signal_override.is_not_distinct_from("broken"),
+        and_(
+            # Current-version heuristic, score >= threshold, not user-kept.
+            Asset.signal_scanner_version.is_not_distinct_from(SCANNER_VERSION),
+            func.coalesce(Asset.signal_score, 0) >= SUSPICIOUS_THRESHOLD,
+            Asset.signal_override.is_distinct_from("clean"),
+        ),
+    )
 
 
 def not_effectively_broken_clause():
