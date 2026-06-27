@@ -14,6 +14,7 @@ from .event_bus import EventBus, get_event_bus, Event, EventTypes
 from .process_manager import ProcessManager
 from .health_manager import HealthManager
 from .log_manager import LogManager
+from .restart_supervisor import RestartSupervisor, RestartPolicy
 
 
 class LauncherContainer:
@@ -65,6 +66,7 @@ class LauncherContainer:
         self._process_mgr: Optional[ProcessManager] = None
         self._health_mgr: Optional[HealthManager] = None
         self._log_mgr: Optional[LogManager] = None
+        self._restart_supervisor: Optional[RestartSupervisor] = None
 
         # Shared state dictionary (all managers reference the same states)
         self._states: Optional[dict] = None
@@ -131,6 +133,36 @@ class LauncherContainer:
 
         return self._log_mgr
 
+    def get_restart_supervisor(self) -> RestartSupervisor:
+        """
+        Get or create the restart supervisor.
+
+        Consumes HEALTH_UPDATE events off the bus and auto-restarts
+        launcher-managed services that crash while still wanted up (e.g. after
+        a suspend/resume severs a worker's dependencies). HealthManager stays a
+        pure sensor; this is the only component that acts on crashes.
+
+        Returns:
+            RestartSupervisor instance
+        """
+        if self._restart_supervisor is None:
+            process_mgr = self.get_process_manager()
+            rc = self.config.restart
+            self._restart_supervisor = RestartSupervisor(
+                states=process_mgr.states,
+                process_manager=process_mgr,
+                event_bus=self.event_bus,
+                policy=RestartPolicy(
+                    enabled=rc.enabled,
+                    backoff_delays=tuple(rc.backoff_delays),
+                    max_attempts_in_window=rc.max_attempts_in_window,
+                    window_sec=rc.window_sec,
+                    exclude_keys=frozenset(rc.exclude_keys),
+                ),
+            )
+
+        return self._restart_supervisor
+
     def get_event_bus(self) -> EventBus:
         """
         Get the event bus.
@@ -157,6 +189,11 @@ class LauncherContainer:
             if self.config.log.monitor_enabled and not log_mgr.is_monitoring():
                 log_mgr.start_monitoring()
 
+            if self.config.restart.enabled:
+                supervisor = self.get_restart_supervisor()
+                if not supervisor.is_running():
+                    supervisor.start()
+
     def stop_all(self):
         """
         Stop all managers.
@@ -164,6 +201,9 @@ class LauncherContainer:
         Stops health and log monitoring, and optionally stops all services.
         """
         # Stop monitoring
+        if self._restart_supervisor and self._restart_supervisor.is_running():
+            self._restart_supervisor.stop()
+
         if self._health_mgr and self._health_mgr.is_running():
             self._health_mgr.stop()
 

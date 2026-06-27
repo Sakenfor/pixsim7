@@ -84,6 +84,21 @@ class LogManagerConfig:
 
 
 @dataclass
+class RestartSupervisorConfig:
+    """
+    Configuration for RestartSupervisor.
+
+    Mirrors restart_supervisor.RestartPolicy; kept as a plain config object so
+    it round-trips through from_dict/to_dict like the other manager configs.
+    """
+    enabled: bool = True
+    backoff_delays: tuple = (3.0, 5.0, 15.0, 30.0, 60.0)
+    max_attempts_in_window: int = 5
+    window_sec: float = 600.0
+    exclude_keys: frozenset = field(default_factory=frozenset)
+
+
+@dataclass
 class LauncherConfig:
     """
     Master configuration for entire launcher system.
@@ -94,6 +109,7 @@ class LauncherConfig:
     process: ProcessManagerConfig = field(default_factory=ProcessManagerConfig)
     health: HealthManagerConfig = field(default_factory=HealthManagerConfig)
     log: LogManagerConfig = field(default_factory=LogManagerConfig)
+    restart: RestartSupervisorConfig = field(default_factory=RestartSupervisorConfig)
 
     # Global settings
     root_dir: Optional[Path] = None  # Project root directory
@@ -122,11 +138,15 @@ class LauncherConfig:
         log_config = LogManagerConfig(
             **config_dict.get('log', {})
         )
+        restart_config = RestartSupervisorConfig(
+            **config_dict.get('restart', {})
+        )
 
         return cls(
             process=process_config,
             health=health_config,
             log=log_config,
+            restart=restart_config,
             root_dir=config_dict.get('root_dir'),
             auto_start_managers=config_dict.get('auto_start_managers', True),
             stop_services_on_exit=config_dict.get('stop_services_on_exit', False)
@@ -167,6 +187,13 @@ class LauncherConfig:
                 'monitor_enabled': self.log.monitor_enabled,
                 'persist_logs': self.log.persist_logs,
                 'log_file_buffering': self.log.log_file_buffering,
+            },
+            'restart': {
+                'enabled': self.restart.enabled,
+                'backoff_delays': list(self.restart.backoff_delays),
+                'max_attempts_in_window': self.restart.max_attempts_in_window,
+                'window_sec': self.restart.window_sec,
+                'exclude_keys': list(self.restart.exclude_keys),
             },
             'root_dir': str(self.root_dir) if self.root_dir else None,
             'auto_start_managers': self.auto_start_managers,
