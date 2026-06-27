@@ -128,7 +128,11 @@ class LauncherContainer:
                 log_dir=self.config.log.log_dir,
                 max_log_lines=self.config.log.max_log_lines,
                 monitor_interval=self.config.log.monitor_interval,
-                log_callback=self._on_log_line
+                # log_callback intentionally unwired: see _on_log_line. The
+                # frontend reads logs via HTTP polling (getLogs), not the WS,
+                # so broadcasting a `log.line` event per line was an unconsumed
+                # firehose that flooded the asyncio loop at backend-startup log
+                # bursts. Re-wire here if/when live WS log streaming is built.
             )
 
         return self._log_mgr
@@ -238,7 +242,13 @@ class LauncherContainer:
             )
 
     def _on_log_line(self, service_key: str, line: str):
-        """Publish log events to event bus."""
+        """Publish a `log.line` event to the event bus per log line.
+
+        Currently unwired (see get_log_manager). Nothing consumes `log.line`
+        over the WS today — the launcher UI polls getLogs — so this was pure
+        per-line overhead on the asyncio loop. Pass this as LogManager's
+        log_callback again to resurrect push-based live log streaming.
+        """
         self.event_bus.publish_simple(
             event_type=EventTypes.LOG_LINE,
             source="LogManager",
