@@ -65,29 +65,53 @@ def _best_lag_xcorr(a: Any, b: Any) -> float:
     return best
 
 
-def match_fingerprint(candidate_fp: Any, references: list[Any]) -> Optional[float]:
-    """Best similarity (0..1) of ``candidate_fp`` to any reference chromagram.
+def expand_reference_rotations(references: list[Any]) -> list[Any]:
+    """Pre-compute all 12 semitone pitch-rotations of each (12, N) reference.
 
-    Pitch-rotation invariant: tries all 12 semitone rotations of each reference
-    (catches transposed/pitched variants of the same melody). ``references`` are
-    pre-decoded (12, N) arrays from {@link load_reference_fingerprints}. Returns
-    None when the candidate has no usable fingerprint.
+    The matcher is pitch-rotation invariant: a candidate must be compared to
+    every reference under all 12 semitone shifts (catches transposed/pitched
+    variants of the same melody). Rotating per candidate repeats the same
+    ``np.roll`` work for every scored clip (96k+ × refs × 12); expanding the
+    rotations ONCE per run and matching them flat removes that redundancy.
+    ``load_reference_fingerprints`` returns an already-expanded list, so callers
+    never rotate again.
     """
     import numpy as np
 
+    rotated: list[Any] = []
+    for ref in references:
+        # r == 0 is the identity rotation — reuse the array, skip a needless copy.
+        rotated.append(ref)
+        for r in range(1, 12):
+            rotated.append(np.roll(ref, r, axis=0))
+    return rotated
+
+
+def match_fingerprint(candidate_fp: Any, references: list[Any]) -> Optional[float]:
+    """Best similarity (0..1) of ``candidate_fp`` to any reference chromagram.
+
+    ``references`` are the PRE-ROTATED (12, N) arrays from
+    {@link load_reference_fingerprints} / {@link expand_reference_rotations} —
+    they already include all 12 semitone rotations of each curated reference, so
+    this is a flat best-normalized-cross-correlation with NO per-candidate
+    ``np.roll``. Result is identical to rotating inline (max over ref × rotation),
+    just hoisted out of the hot loop. Returns None when the candidate has no
+    usable fingerprint.
+    """
     cand = _to_chroma(candidate_fp)
     if cand is None or not references:
         return None
     best = 0.0
     for ref in references:
-        for r in range(12):
-            best = max(best, _best_lag_xcorr(cand, np.roll(ref, r, axis=0)))
+        best = max(best, _best_lag_xcorr(cand, ref))
     return round(max(0.0, best), 4)
 
 
 async def load_reference_fingerprints(db: AsyncSession) -> list[Any]:
     """Decoded (12, N) chromagrams for every `signalref:*`-tagged clip that has a
-    stored fingerprint. Empty until the references have been probed under the
+    stored fingerprint, PRE-EXPANDED through all 12 pitch-rotations
+    (``expand_reference_rotations``) so the matcher does no per-candidate
+    ``np.roll``. Empty until the references have been probed under the
     fingerprint-capable scanner. Cheap enough to load once per (re)score batch.
     """
     rows = await db.execute(text(
@@ -111,4 +135,6 @@ async def load_reference_fingerprints(db: AsyncSession) -> list[Any]:
         arr = _to_chroma(fp)
         if arr is not None:
             out.append(arr)
-    return out
+    # Expand the 12 pitch-rotations once here (not per scored clip) — see
+    # expand_reference_rotations / match_fingerprint.
+    return expand_reference_rotations(out)

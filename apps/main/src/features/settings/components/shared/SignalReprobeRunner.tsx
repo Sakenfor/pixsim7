@@ -11,7 +11,16 @@ import {
 } from './maintenanceShared';
 
 // Mirrors backend SignalBackfillRunResponse (api/v1/assets_maintenance.py).
-type ReprobeMode = 'reprobe' | 'rescore';
+// Modes mirror service VALID_MODES (signal_backfill_service.py).
+type ReprobeMode = 'reprobe' | 'reprobe_local' | 'rescore';
+
+// Short labels for the start-button + dropdown (keeps the raw mode token, e.g.
+// "reprobe_local", out of the button copy).
+const MODE_LABELS: Record<ReprobeMode, string> = {
+  reprobe: 'reprobe',
+  reprobe_local: 'local reprobe',
+  rescore: 'rescore',
+};
 
 interface SignalBackfillRun {
   id: number;
@@ -267,6 +276,8 @@ export function SignalReprobeRunner() {
       <p className="text-[11px] leading-snug text-muted-foreground">
         <strong>Reprobe</strong> re-runs ffmpeg over every <em>stale</em> video to capture the
         chroma fingerprint + audio/visual metrics (slow, ~1s/clip).{' '}
+        <strong>Local reprobe</strong> is the same probe but skips archive-tiered / remote-fetch
+        clips, so it grinds only the locally-resolvable library (defer the slow archive tail).{' '}
         <strong>Rescore</strong> skips ffmpeg and re-applies the fingerprint matcher + scoring
         over every previously-scored clip&apos;s stored metrics — the cheap pass to repeat after
         curating <code>signalref:*</code> references or retuning thresholds. Runs one batch at a
@@ -314,10 +325,11 @@ export function SignalReprobeRunner() {
                 onChange={(e) => setMode(e.target.value as ReprobeMode)}
                 disabled={busy}
                 className={`${SELECT_CLS} px-1.5 py-1 text-[11px]`}
-                title="Reprobe = full ffmpeg over stale videos; Rescore = re-apply the matcher over stored metrics (no ffmpeg)"
+                title="Reprobe = full ffmpeg over stale videos; Local reprobe = same but skips archive/remote clips; Rescore = re-apply the matcher over stored metrics (no ffmpeg)"
               >
-                <option value="reprobe">Reprobe (full ffmpeg)</option>
-                <option value="rescore">Rescore (stored metrics)</option>
+                <option value="reprobe">Reprobe (all, full ffmpeg)</option>
+                <option value="reprobe_local">Local reprobe (skip archive/remote)</option>
+                <option value="rescore">Rescore (stored metrics, no ffmpeg)</option>
               </select>
             </label>
             <button
@@ -326,7 +338,7 @@ export function SignalReprobeRunner() {
               disabled={busy}
               className="rounded bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground disabled:opacity-50"
             >
-              {run ? `Start new ${mode}` : `Start ${mode}`}
+              {run ? `Start new ${MODE_LABELS[mode]}` : `Start ${MODE_LABELS[mode]}`}
             </button>
           </>
         )}
