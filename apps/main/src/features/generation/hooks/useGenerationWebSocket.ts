@@ -74,6 +74,38 @@ function refreshAsset(assetId: number): Promise<AssetResponse> {
   return pixsimClient.get<AssetResponse>(`/assets/${assetId}`, { dedup: true });
 }
 
+// ── asset:updated fan-out coalescing ──────────────────────────────────────
+// Every landed asset fires an `asset:updated` (ingestion_completed) on top of
+// its `asset:created`, and a saturated derivative worker can land a cluster of
+// them in the same frame. Each `emitAssetUpdated` fans out to every update
+// subscriber (gallery cards, viewer scopes, the viewer store) and resolves on
+// its own async task, so React can't auto-batch them — a burst becomes one
+// commit PER event, saturating the main thread and stalling click-to-play /
+// hover-preview readiness even on already-loaded clips. Queue the responses
+// (last write per id wins, collapsing repeat updates for the same asset within
+// a frame) and drain inside a single rAF, where React 19 folds the whole
+// batch's subscriber setStates into ONE commit. Mirrors the consumer-side
+// live-event coalescing in `useAssets`.
+const pendingAssetUpdates = new Map<number, AssetResponse>();
+let assetUpdateFlushRaf: number | null = null;
+
+function flushAssetUpdates(): void {
+  assetUpdateFlushRaf = null;
+  if (pendingAssetUpdates.size === 0) return;
+  const batch = [...pendingAssetUpdates.values()];
+  pendingAssetUpdates.clear();
+  for (const asset of batch) {
+    assetEvents.emitAssetUpdated(asset);
+  }
+}
+
+function queueAssetUpdated(asset: AssetResponse): void {
+  pendingAssetUpdates.set(asset.id, asset);
+  if (assetUpdateFlushRaf == null) {
+    assetUpdateFlushRaf = requestAnimationFrame(flushAssetUpdates);
+  }
+}
+
 function hasUsableThumbnail(asset: AssetResponse): boolean {
   if (asset.thumbnail_key || asset.preview_key) return true;
   const url = asset.thumbnail_url || asset.preview_url;
@@ -129,7 +161,7 @@ async function scheduleThumbnailRefresh(assetId: number, attempt = 0): Promise<v
       const previousSignature = lastThumbnailSignatures.get(assetId);
       if (nextSignature !== previousSignature && hasUsableThumbnail(refreshed)) {
         lastThumbnailSignatures.set(assetId, nextSignature);
-        assetEvents.emitAssetUpdated(refreshed);
+        queueAssetUpdated(refreshed);
       }
       if (!shouldContinueThumbnailPolling(refreshed)) {
         pendingThumbnailPolls.delete(assetId);
@@ -269,7 +301,7 @@ function handleJobEvent(message: WebSocketRecord): void {
         try {
           await pixsimClient.post(`/assets/${assetId}/sync`);
           const syncedAsset = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
-          assetEvents.emitAssetUpdated(syncedAsset);
+          queueAssetUpdated(syncedAsset);
         } catch (err) {
           console.error('[WebSocket] Failed to auto-sync asset:', assetId, err);
         }
@@ -339,7 +371,7 @@ async function handleAssetUpdated(message: WebSocketRecord): Promise<void> {
   try {
     const refreshed = await refreshAsset(assetId);
     debugFlags.log('websocket', 'Asset updated, refreshing in gallery:', assetId);
-    assetEvents.emitAssetUpdated(refreshed);
+    queueAssetUpdated(refreshed);
   } catch (err) {
     debugFlags.log('websocket', 'Failed to fetch updated asset:', assetId, err);
   }
