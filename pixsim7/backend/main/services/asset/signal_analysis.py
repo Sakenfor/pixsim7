@@ -100,38 +100,26 @@ SUSPICIOUS_THRESHOLD = 3           # score >= this is flagged broken
 
 def effectively_broken_clause():
     """SQLAlchemy predicate for "this clip is broken" — the single source of
-    truth shared by every surface that hides broken clips by default.
+    truth shared by every surface that hides broken clips by default (the default
+    gallery's "Show broken" toggle, the cohort/sibling badge counts, the Recent
+    scope bootstrap, the similarity mini-gallery).
 
-    A clip is effectively broken when EITHER:
-      * the user manually flagged it (``signal_override == 'broken'``), OR
-      * the CURRENT-version heuristic scored it suspicious
-        (``signal_score >= SUSPICIOUS_THRESHOLD``) AND the user hasn't rescued it
-        with a manual Keep (``signal_override != 'clean'``).
+    A clip is broken ONLY when the user manually flagged it
+    (``signal_override == 'broken'``). The heuristic score (``signal_score >= 3``,
+    the ``signal_likely_broken`` filter) is deliberately NOT included here.
 
-    Stale-version scores never count (a bumped SCANNER_VERSION must be re-scanned
-    before its flags take effect), matching the ``signal_likely_broken`` filter.
-    The default gallery and the cohort/sibling badge both exclude these; Triage
-    and the explicit ``signal_*`` filters opt back in to see them.
+    Why manual-only: on this library the heuristic fires on ~27% of scanned
+    videos (~26k of ~97k) versus ~276 manual flags — its precision is far too low
+    to *hide* by default; folding it in buried a quarter of the gallery. The
+    heuristic remains a TRIAGE signal (the Triage "Likely broken (>=3)" queue and
+    the explicit ``signal_*`` filters) and a non-destructive review cue (the
+    Recent strip's outline), but it never auto-hides or auto-discounts a clip.
 
-    Every leaf is NULL-safe (``IS [NOT] DISTINCT FROM`` / ``coalesce``) so the
-    whole expression is three-valued-logic-free: an un-scanned clip (NULL score,
-    version, and override) evaluates to ``False`` here, never NULL. That makes
-    :func:`not_effectively_broken_clause` (a plain ``~``) keep it, as intended —
-    a bare ``score >= 3`` or ``== 'broken'`` would yield NULL and silently drop
-    un-scanned rows from a ``WHERE NOT (...)`` filter.
+    NULL-safe: ``IS NOT DISTINCT FROM`` makes a NULL override read as "not a flag"
+    rather than NULL, so :func:`not_effectively_broken_clause` (a plain ``~``)
+    keeps un-flagged clips instead of dropping them via three-valued logic.
     """
-    from sqlalchemy import and_, func, or_
-
-    return or_(
-        # Manual flag — NULL-safe equality (NULL override is not a flag).
-        Asset.signal_override.is_not_distinct_from("broken"),
-        and_(
-            # Current-version heuristic, score >= threshold, not user-kept.
-            Asset.signal_scanner_version.is_not_distinct_from(SCANNER_VERSION),
-            func.coalesce(Asset.signal_score, 0) >= SUSPICIOUS_THRESHOLD,
-            Asset.signal_override.is_distinct_from("clean"),
-        ),
-    )
+    return Asset.signal_override.is_not_distinct_from("broken")
 
 
 def not_effectively_broken_clause():
@@ -601,6 +589,12 @@ def build_signal_metrics_payload(
     }
 
 
+# Sentinel: "no precomputed match supplied — compute inline". Distinct from a
+# real None result (= candidate didn't match any reference). Imported by the
+# backfill service so its batch-parallel matcher can pass a precomputed value.
+_UNSET: Any = object()
+
+
 def _match_audio_ref(
     chroma_fp: Any, ref_fingerprints: Optional[list[Any]]
 ) -> Optional[float]:
@@ -824,6 +818,7 @@ class SignalAnalysisService:
         *,
         cohort_baselines: Optional[dict[str, Any]] = None,
         ref_fingerprints: Optional[list[Any]] = None,
+        precomputed_match: Any = _UNSET,
         commit: bool = True,
     ) -> Optional[dict[str, Any]]:
         """Recompute the score from ALREADY-STORED ffmpeg metrics — no probing.
@@ -857,7 +852,12 @@ class SignalAnalysisService:
         # dict already carries, so the prior probe values flow straight through.
         # The fingerprint match is recomputed from the stored chroma_fp vs the
         # loaded references — so adding/removing references needs only a re-score.
-        audio_ref_match = _match_audio_ref(existing.get("chroma_fp"), ref_fingerprints)
+        # The batch backfill can run the (CPU-heavy) matcher in a thread pool and
+        # hand the result in via precomputed_match; otherwise compute it inline.
+        if precomputed_match is _UNSET:
+            audio_ref_match = _match_audio_ref(existing.get("chroma_fp"), ref_fingerprints)
+        else:
+            audio_ref_match = precomputed_match
         payload = build_signal_metrics_payload(
             existing, render_context, audio_ref_match=audio_ref_match
         )

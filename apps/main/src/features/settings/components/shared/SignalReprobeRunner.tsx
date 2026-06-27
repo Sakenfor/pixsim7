@@ -54,6 +54,8 @@ interface RunListResponse {
 interface ReprobeTuning {
   signal_reprobe_concurrency: number;
   signal_reprobe_ffmpeg_threads: number;
+  // Rescore-only: matcher threads (no ffmpeg). Capped low backend-side.
+  signal_rescore_concurrency: number;
 }
 
 const SURFACE = 'settings:signal-reprobe';
@@ -71,6 +73,8 @@ const CONCURRENCY_MIN = 1;
 const CONCURRENCY_MAX = 32;
 const THREADS_MIN = 0;
 const THREADS_MAX = 16;
+const RESCORE_CONC_MIN = 1;
+const RESCORE_CONC_MAX = 4;
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
@@ -428,9 +432,38 @@ export function SignalReprobeRunner() {
               className={`w-16 ${FIELD_CLS} px-1.5 py-0.5 text-[11px] tabular-nums`}
             />
           </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Rescore threads
+            </span>
+            <input
+              type="number"
+              min={RESCORE_CONC_MIN}
+              max={RESCORE_CONC_MAX}
+              value={tuning.signal_rescore_concurrency}
+              onChange={(e) =>
+                setTuning((t) =>
+                  t ? { ...t, signal_rescore_concurrency: Number(e.target.value) } : t,
+                )
+              }
+              onBlur={(e) =>
+                commitTuning(
+                  'signal_rescore_concurrency',
+                  clamp(
+                    Math.round(Number(e.target.value)) || RESCORE_CONC_MIN,
+                    RESCORE_CONC_MIN,
+                    RESCORE_CONC_MAX,
+                  ),
+                )
+              }
+              className={`w-16 ${FIELD_CLS} px-1.5 py-0.5 text-[11px] tabular-nums`}
+            />
+          </label>
           <p className="max-w-[15rem] text-[10px] leading-snug text-muted-foreground">
             Probe CPU footprint (reprobe only — rescore runs no ffmpeg). Lower if the
-            UI lags; raise for speed (threads 0 = ffmpeg auto). Applies on the next batch.
+            UI lags; raise for speed (threads 0 = ffmpeg auto). Rescore threads
+            parallelise the fingerprint matcher (rescore only); capped at 4 —
+            throughput peaks there. Applies on the next batch.
           </p>
         </div>
       )}

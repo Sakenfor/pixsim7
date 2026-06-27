@@ -89,6 +89,20 @@ class MediaSettings(SettingsBase):
             "CPU and starve the UI. Live-tunable — applies on the next batch."
         ),
     )
+    signal_rescore_concurrency: int = Field(
+        4,
+        ge=1,
+        le=4,
+        description=(
+            "Worker threads the RESCORE pass uses to run the (ffmpeg-free) "
+            "fingerprint matcher across a batch's clips. Distinct from the "
+            "reprobe knobs — rescore does no ffmpeg, this parallelises the numpy "
+            "matcher only. Capped at 4 on purpose: the matcher's per-lag Python "
+            "loop holds the GIL, so throughput peaks around 4 threads and "
+            "regresses beyond it (measured). 1 = serial. Live-tunable — applies "
+            "on the next batch."
+        ),
+    )
 
     # ── Storage Format ────────────────────────────────────────────────────
 

@@ -34,6 +34,8 @@ from pixsim7.backend.main.domain.assets.signal_backfill import SignalBackfillRun
 from pixsim7.backend.main.infrastructure.queue import MEDIA_MAINTENANCE_QUEUE_NAME
 from pixsim7.backend.main.services.backfill import BackfillRunServiceBase
 from pixsim7.backend.main.services.asset.signal_analysis import (
+    _UNSET,
+    _match_audio_ref,
     SCANNER_VERSION,
     SignalAnalysisService,
     stale_signal_video_conditions,
@@ -94,6 +96,20 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
             return max(1, int(raw)), threads
         except Exception:  # noqa: BLE001 — never let config reads break a batch
             return self._PROBE_CONCURRENCY, self._FFMPEG_THREADS
+
+    async def _rescore_concurrency(self) -> int:
+        """Thread count for the rescore matcher fan-out, from MediaSettings
+        (``signal_rescore_concurrency``). Hard-capped at 4: the matcher's per-lag
+        Python loop holds the GIL, so throughput peaks ~4 threads and regresses
+        beyond (measured). Falls back to 1 (serial) if settings can't be read."""
+        try:
+            from pixsim7.backend.main.services.media.settings import get_media_settings
+
+            settings = get_media_settings()
+            settings.reload()
+            return max(1, min(4, int(settings.signal_rescore_concurrency)))
+        except Exception:  # noqa: BLE001 — never let config reads break a batch
+            return 1
 
     async def _generation_active(self) -> bool:
         """True if any generation is queued or running right now. The reprobe
@@ -250,11 +266,45 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
         DB-free, so it's safe in a thread; the cohort render-context lookup and
         the stamp stay serial in ``_process_asset``.
 
-        No-op in rescore mode — that path re-scores stored metrics with no ffmpeg.
+        In rescore mode there's no ffmpeg, but the (pure-numpy) fingerprint
+        matcher is the hot path, so fan IT out across threads instead — the
+        matcher is DB-free (chroma_fp is already in the loaded asset), releases
+        the GIL on its big array ops, and the per-asset result is cached for the
+        serial stamp loop. Width capped by signal_rescore_concurrency.
         """
         if run.mode == RESCORE_MODE:
             self._probe_cache = None
+            _, _, ref_fingerprints = ctx
+            # Pull the DB-free matcher inputs on the loop thread (no ORM access
+            # inside the worker threads), then match in a bounded pool.
+            items = [
+                (a.id, ((a.media_metadata or {}).get("signal_metrics") or {}).get("chroma_fp"))
+                for a in assets
+            ]
+            cache: Dict[int, Any] = {}
+            if items:
+                # First match runs serially to WARM audio_fingerprint's shared
+                # ref-stack cache, so the threads only ever read it (no race).
+                aid0, fp0 = items[0]
+                cache[aid0] = _match_audio_ref(fp0, ref_fingerprints)
+                rest = items[1:]
+                concurrency = await self._rescore_concurrency()
+                if concurrency > 1 and ref_fingerprints and rest:
+                    sem = asyncio.Semaphore(concurrency)
+
+                    async def _match(aid: int, fp: Any) -> None:
+                        async with sem:
+                            cache[aid] = await asyncio.to_thread(
+                                _match_audio_ref, fp, ref_fingerprints
+                            )
+
+                    await asyncio.gather(*(_match(aid, fp) for aid, fp in rest))
+                else:
+                    for aid, fp in rest:
+                        cache[aid] = _match_audio_ref(fp, ref_fingerprints)
+            self._match_cache = cache
             return
+        self._match_cache = None
         signal_service, _, _ = ctx
         concurrency, ffmpeg_threads = await self._probe_tunables()
         # Release the read transaction opened by _load_batch/_prepare_batch before
@@ -284,12 +334,18 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
     ) -> Dict[str, int]:
         signal_service, baselines, ref_fingerprints = ctx
         if run.mode == RESCORE_MODE:
-            # No ffmpeg: re-apply the matcher + scoring over stored metrics.
+            # No ffmpeg: re-apply the matcher + scoring over stored metrics. The
+            # matcher ran in the parallel prefetch; pass its cached result so the
+            # serial stamp loop doesn't recompute it. Falls back to inline
+            # (_UNSET) if the asset somehow isn't cached.
+            cache = getattr(self, "_match_cache", None)
+            match = cache.get(asset.id, _UNSET) if cache is not None else _UNSET
             payload = await signal_service.rescore_from_stored(
                 asset,
                 commit=False,
                 cohort_baselines=baselines,
                 ref_fingerprints=ref_fingerprints,
+                precomputed_match=match,
             )
         else:
             kwargs: Dict[str, Any] = {
