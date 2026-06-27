@@ -14,7 +14,12 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 
 import { useApplyAppearance } from '@features/appearance';
-import { useAroundTimeScope, useHistoryScope, useProbesScope, useRecentScope, useSameFolderScope, useSamePromptScope } from '@features/assets';
+import { useAroundTimeScope } from '@features/assets/hooks/useAroundTimeScope';
+import { useHistoryScope } from '@features/assets/hooks/useHistoryScope';
+import { useProbesScope } from '@features/assets/hooks/useProbesScope';
+import { useRecentScope } from '@features/assets/hooks/useRecentScope';
+import { useSameFolderScope } from '@features/assets/hooks/useSameFolderScope';
+import { useSamePromptScope } from '@features/assets/hooks/useSamePromptScope';
 import { ContextHubHost } from '@features/contextHub/components/ContextHubHost';
 import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';

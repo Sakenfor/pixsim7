@@ -2,13 +2,22 @@ import type { ActionDefinition } from '@pixsim7/shared.types';
 import { createElement } from 'react';
 import { Navigate } from 'react-router-dom';
 
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { useDockUiStore } from '@features/docks/stores';
-import { DOCK_IDS } from '@features/panels/lib/panelIds';
-
 import { defineModule } from '@app/modules/types';
 
 // === Generation Actions ===
+
+type GenerationControlModule = 'quickGenerate' | 'presets' | 'providers';
+
+async function openGenerationControlModule(module: GenerationControlModule): Promise<void> {
+  const [{ useControlCenterStore }, { useDockUiStore }, { DOCK_IDS }] = await Promise.all([
+    import('@features/controlCenter/stores/controlCenterStore'),
+    import('@features/docks/stores'),
+    import('@features/panels/lib/panelIds'),
+  ]);
+
+  useControlCenterStore.getState().setActiveModule(module);
+  useDockUiStore.getState().setDockOpen(DOCK_IDS.controlCenter, true);
+}
 
 const quickGenerateAction: ActionDefinition = {
   id: 'generation.quick-generate',
@@ -18,10 +27,7 @@ const quickGenerateAction: ActionDefinition = {
   icon: 'zap',
   shortcut: 'Ctrl+G',
   category: 'quick-add',
-  execute: () => {
-    useControlCenterStore.getState().setActiveModule('quickGenerate');
-    useDockUiStore.getState().setDockOpen(DOCK_IDS.controlCenter, true);
-  },
+  execute: () => openGenerationControlModule('quickGenerate'),
 };
 
 const openPresetsAction: ActionDefinition = {
@@ -31,10 +37,7 @@ const openPresetsAction: ActionDefinition = {
   description: 'Open generation presets',
   icon: 'palette',
   category: 'quick-add',
-  execute: () => {
-    useControlCenterStore.getState().setActiveModule('presets');
-    useDockUiStore.getState().setDockOpen(DOCK_IDS.controlCenter, true);
-  },
+  execute: () => openGenerationControlModule('presets'),
 };
 
 const selectProviderAction: ActionDefinition = {
@@ -44,10 +47,7 @@ const selectProviderAction: ActionDefinition = {
   description: 'Select generation provider',
   icon: 'globe',
   category: 'quick-add',
-  execute: () => {
-    useControlCenterStore.getState().setActiveModule('providers');
-    useDockUiStore.getState().setDockOpen(DOCK_IDS.controlCenter, true);
-  },
+  execute: () => openGenerationControlModule('providers'),
 };
 
 function GenerationRedirect() {

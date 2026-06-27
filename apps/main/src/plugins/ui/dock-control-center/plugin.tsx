@@ -5,13 +5,39 @@
  * Familiar, lightweight, and works on all edges (bottom, top, left, right, floating).
  */
 
+import { lazy, Suspense } from 'react';
+
 import type { ControlCenterPluginManifest, ControlCenterPlugin } from '@lib/plugins/controlCenterPlugin';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
-import { ControlCenterDock } from '@features/controlCenter/components/ControlCenterDock';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { useDockUiStore } from '@features/docks/stores';
-import { DOCK_IDS } from '@features/panels/lib/panelIds';
+import type { ControlModule } from '@features/controlCenter/stores/controlCenterStore';
+
+const LazyControlCenterDock = lazy(() =>
+  import('@features/controlCenter/components/ControlCenterDock').then((module) => ({
+    default: module.ControlCenterDock,
+  }))
+);
+
+async function setDockOpen(open: boolean): Promise<void> {
+  const [{ useDockUiStore }, { DOCK_IDS }] = await Promise.all([
+    import('@features/docks/stores'),
+    import('@features/panels/lib/panelIds'),
+  ]);
+  useDockUiStore.getState().setDockOpen(DOCK_IDS.controlCenter, open);
+}
+
+async function toggleDockOpen(): Promise<void> {
+  const [{ useDockUiStore }, { DOCK_IDS }] = await Promise.all([
+    import('@features/docks/stores'),
+    import('@features/panels/lib/panelIds'),
+  ]);
+  useDockUiStore.getState().toggleDockOpen(DOCK_IDS.controlCenter);
+}
+
+async function setActiveControlCenterModule(module: string): Promise<void> {
+  const { useControlCenterStore } = await import('@features/controlCenter/stores/controlCenterStore');
+  useControlCenterStore.getState().setActiveModule(module as ControlModule);
+}
 
 export const manifest: ControlCenterPluginManifest = {
   id: 'dock-control-center',
@@ -48,23 +74,27 @@ export const manifest: ControlCenterPluginManifest = {
 
 export const plugin: ControlCenterPlugin = {
   render() {
-    return <ControlCenterDock />;
+    return (
+      <Suspense fallback={null}>
+        <LazyControlCenterDock />
+      </Suspense>
+    );
   },
 
   open() {
-    useDockUiStore.getState().setDockOpen(DOCK_IDS.controlCenter, true);
+    void setDockOpen(true);
   },
 
   close() {
-    useDockUiStore.getState().setDockOpen(DOCK_IDS.controlCenter, false);
+    void setDockOpen(false);
   },
 
   toggle() {
-    useDockUiStore.getState().toggleDockOpen(DOCK_IDS.controlCenter);
+    void toggleDockOpen();
   },
 
   setModule(module: string) {
-    useControlCenterStore.getState().setActiveModule(module as any);
+    void setActiveControlCenterModule(module);
   },
 
   cleanup() {

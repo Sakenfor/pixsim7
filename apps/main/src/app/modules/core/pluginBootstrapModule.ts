@@ -40,7 +40,7 @@ export const pluginBootstrapModule = defineModule({
     await initializePluginKernel({ verbose: true, strict: false });
 
     if (useAuthStore.getState().isAuthenticated) {
-      await usePluginCatalogStore.getState().syncRuntimeCatalog();
+      void usePluginCatalogStore.getState().syncRuntimeCatalog();
     }
   },
 });

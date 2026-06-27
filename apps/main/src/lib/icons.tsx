@@ -216,6 +216,7 @@ import {
   Shapes,
   Circle,
 } from 'lucide-react';
+import { useSyncExternalStore } from 'react';
 import type { ComponentType, SVGProps } from 'react';
 
 
@@ -593,8 +594,44 @@ export interface IconSetDefinition extends Identifiable {
 }
 
 class IconSetRegistry extends BaseRegistry<IconSetDefinition> {
+  private version = 0;
+
   getDefault(): IconSetDefinition | undefined {
     return this.get('outline') ?? this.get('default') ?? this.getAll()[0];
+  }
+
+  getSnapshot = () => this.version;
+
+  override register(item: IconSetDefinition): boolean {
+    if (this.items.has(item.id)) {
+      return false;
+    }
+    this.items.set(item.id, item);
+    this.bumpVersion();
+    return true;
+  }
+
+  override forceRegister(item: IconSetDefinition): void {
+    this.items.set(item.id, item);
+    this.bumpVersion();
+  }
+
+  override unregister(id: string): boolean {
+    const wasDeleted = this.items.delete(id);
+    if (wasDeleted) {
+      this.bumpVersion();
+    }
+    return wasDeleted;
+  }
+
+  override clear(): void {
+    this.items.clear();
+    this.bumpVersion();
+  }
+
+  private bumpVersion(): void {
+    this.version += 1;
+    this.notifyListeners();
   }
 }
 
@@ -707,6 +744,11 @@ export function Icon({
   // Hooks must be called unconditionally at the top
   const iconTheme = useAppearanceStore((state) => state.iconTheme);
   const iconSetId = useAppearanceStore((state) => state.iconSetId);
+  useSyncExternalStore(
+    (listener) => iconSetRegistry.subscribe(listener),
+    iconSetRegistry.getSnapshot,
+    iconSetRegistry.getSnapshot,
+  );
 
   if (typeof name === 'string' && name.trim().length === 0) {
     return null;

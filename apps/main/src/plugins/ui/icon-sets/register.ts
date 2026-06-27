@@ -7,14 +7,21 @@
  * reuse the same resolver — only `weight` differs.
  */
 
-import * as PhosphorIcons from '@phosphor-icons/react';
-
-import { iconSetRegistry, normalizeIconName, type IconComponent } from '@lib/icons';
+import {
+  iconSetRegistry,
+  normalizeIconName,
+  type IconComponent,
+  type IconSetDefinition,
+} from '@lib/icons';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
 import { iconSetsManifest } from './manifest';
 
 type PhosphorIconMap = Record<string, IconComponent>;
+
+let phosphorIcons: PhosphorIconMap | null = null;
+let phosphorIconsPromise: Promise<PhosphorIconMap> | null = null;
+let hasLoggedPhosphorLoadError = false;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lucide → Phosphor name mapping
@@ -175,8 +182,6 @@ const phosphorAliases: Record<string, string> = {
   activity: 'Activity',
 };
 
-const phosphorIcons = PhosphorIcons as unknown as PhosphorIconMap;
-
 function toPascalCase(value: string): string {
   return value
     .replace(/[-_\s]+/g, ' ')
@@ -187,7 +192,35 @@ function toPascalCase(value: string): string {
     .join('');
 }
 
+function loadPhosphorIcons(): Promise<PhosphorIconMap> {
+  if (phosphorIcons) {
+    return Promise.resolve(phosphorIcons);
+  }
+
+  phosphorIconsPromise ??= import('@phosphor-icons/react')
+    .then((module) => {
+      phosphorIcons = module as unknown as PhosphorIconMap;
+      refreshPhosphorIconSets();
+      return phosphorIcons;
+    })
+    .catch((error) => {
+      phosphorIconsPromise = null;
+      if (!hasLoggedPhosphorLoadError) {
+        hasLoggedPhosphorLoadError = true;
+        console.warn('[IconSets] Failed to load Phosphor icons:', error);
+      }
+      throw error;
+    });
+
+  return phosphorIconsPromise;
+}
+
 function resolvePhosphorIcon(name: string): IconComponent | undefined {
+  if (!phosphorIcons) {
+    void loadPhosphorIcons().catch(() => undefined);
+    return undefined;
+  }
+
   const normalized = normalizeIconName(name);
   const alias = phosphorAliases[normalized];
   const candidates = [alias, toPascalCase(normalized)].filter(Boolean) as string[];
@@ -200,6 +233,51 @@ function resolvePhosphorIcon(name: string): IconComponent | undefined {
   }
 
   return undefined;
+}
+
+function getPhosphorProps(weight: string) {
+  return phosphorIcons ? { weight } : {};
+}
+
+const phosphorIconSets: IconSetDefinition[] = [
+  {
+    id: 'filled-solid',
+    label: 'Filled Solid (Phosphor)',
+    description: 'Solid fill icons from the Phosphor set.',
+    icon: 'square',
+    getIcon: resolvePhosphorIcon,
+    getProps: () => getPhosphorProps('fill'),
+  },
+  {
+    id: 'phosphor-duotone',
+    label: 'Duotone (Phosphor)',
+    description: 'Two-tone icons with a secondary fill layer.',
+    icon: 'layers',
+    getIcon: resolvePhosphorIcon,
+    getProps: () => getPhosphorProps('duotone'),
+  },
+  {
+    id: 'phosphor-bold',
+    label: 'Bold (Phosphor)',
+    description: 'Bold outline icons with thicker strokes.',
+    icon: 'edit',
+    getIcon: resolvePhosphorIcon,
+    getProps: () => getPhosphorProps('bold'),
+  },
+  {
+    id: 'phosphor-light',
+    label: 'Light (Phosphor)',
+    description: 'Thin, elegant outline icons.',
+    icon: 'edit',
+    getIcon: resolvePhosphorIcon,
+    getProps: () => getPhosphorProps('light'),
+  },
+];
+
+function refreshPhosphorIconSets(): void {
+  for (const iconSet of phosphorIconSets) {
+    iconSetRegistry.forceRegister(iconSet);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -219,51 +297,9 @@ export async function registerIconSetsPlugin(): Promise<void> {
     activationState: iconSetsManifest.activationState,
   });
 
-  // ── Phosphor Fill (solid) ──────────────────────────────────────────
-  if (!iconSetRegistry.has('filled-solid')) {
-    iconSetRegistry.register({
-      id: 'filled-solid',
-      label: 'Filled Solid (Phosphor)',
-      description: 'Solid fill icons from the Phosphor set.',
-      icon: 'square',
-      getIcon: resolvePhosphorIcon,
-      getProps: () => ({ weight: 'fill' }),
-    });
-  }
-
-  // ── Phosphor Duotone — the signature two-tone look ─────────────────
-  if (!iconSetRegistry.has('phosphor-duotone')) {
-    iconSetRegistry.register({
-      id: 'phosphor-duotone',
-      label: 'Duotone (Phosphor)',
-      description: 'Two-tone icons with a secondary fill layer.',
-      icon: 'layers',
-      getIcon: resolvePhosphorIcon,
-      getProps: () => ({ weight: 'duotone' }),
-    });
-  }
-
-  // ── Phosphor Bold — thicker strokes than Lucide ────────────────────
-  if (!iconSetRegistry.has('phosphor-bold')) {
-    iconSetRegistry.register({
-      id: 'phosphor-bold',
-      label: 'Bold (Phosphor)',
-      description: 'Bold outline icons with thicker strokes.',
-      icon: 'edit',
-      getIcon: resolvePhosphorIcon,
-      getProps: () => ({ weight: 'bold' }),
-    });
-  }
-
-  // ── Phosphor Light — thinner, elegant strokes ──────────────────────
-  if (!iconSetRegistry.has('phosphor-light')) {
-    iconSetRegistry.register({
-      id: 'phosphor-light',
-      label: 'Light (Phosphor)',
-      description: 'Thin, elegant outline icons.',
-      icon: 'edit',
-      getIcon: resolvePhosphorIcon,
-      getProps: () => ({ weight: 'light' }),
-    });
+  for (const iconSet of phosphorIconSets) {
+    if (!iconSetRegistry.has(iconSet.id)) {
+      iconSetRegistry.register(iconSet);
+    }
   }
 }

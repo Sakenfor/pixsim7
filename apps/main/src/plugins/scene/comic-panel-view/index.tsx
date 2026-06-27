@@ -23,20 +23,29 @@
  * ```
  */
 
-/* eslint-disable react-refresh/only-export-components */
+import { lazy, Suspense } from 'react';
 
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import type { SceneViewPlugin } from '@lib/plugins/sceneViewPlugin';
 
 import { manifest } from './manifest';
-import { ComicPanelSceneView } from './PluginSceneView';
+
+const LazyComicPanelSceneView = lazy(() =>
+  import('./PluginSceneView').then((module) => ({
+    default: module.ComicPanelSceneView,
+  }))
+);
 
 /**
  * Plugin instance implementing the SceneViewPlugin interface.
  */
 export const plugin: SceneViewPlugin = {
   render(props) {
-    return <ComicPanelSceneView {...props} />;
+    return (
+      <Suspense fallback={null}>
+        <LazyComicPanelSceneView {...props} />
+      </Suspense>
+    );
   },
 };
 
@@ -53,4 +62,3 @@ export async function registerComicPanelView(): Promise<void> {
 
 // Re-export for manual usage
 export { manifest };
-export { ComicPanelSceneView } from './PluginSceneView';

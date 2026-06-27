@@ -7,11 +7,7 @@
  */
 import { create } from 'zustand';
 
-import {
-  loadRemotePluginBundles,
-  unregisterPlugin,
-} from '@lib/plugins/bundleRegistrar';
-import { isBundleFamily, type BundleFamily } from '@lib/plugins/types';
+import { isBundleFamily, type BundleFamily } from '@lib/plugins/normalization';
 
 import type { PluginInfo } from '../lib/api/plugins';
 import {
@@ -54,6 +50,9 @@ interface PluginCatalogState {
 
 // ===== STORE =====
 
+let initializePromise: Promise<void> | null = null;
+let syncRuntimeCatalogPromise: Promise<void> | null = null;
+
 export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
   // Initial state
   plugins: [],
@@ -69,53 +68,62 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
    */
   initialize: async () => {
     const state = get();
-    if (state.isInitialized || state.isLoading) return;
-
-    set({ isLoading: true, error: null });
-
-    try {
-      let apiAvailable = true;
-      // Fetch all plugins and enabled plugins in parallel
-      const [allPlugins, enabled] = await Promise.all([
-        getPlugins().catch((error: any) => {
-          if (error?.response?.status === 404) {
-            console.warn('[PluginCatalog] Plugin API not available (getPlugins).');
-            apiAvailable = false;
-            return [];
-          }
-          throw error;
-        }),
-        getEnabledPlugins().catch((error: any) => {
-          if (error?.response?.status === 404) {
-            console.warn('[PluginCatalog] Plugin API not available (getEnabledPlugins).');
-            apiAvailable = false;
-            return [];
-          }
-          throw error;
-        }),
-      ]);
-
-      set({
-        plugins: allPlugins,
-        enabledPlugins: enabled,
-        isInitialized: true,
-        isLoading: false,
-        isApiAvailable: apiAvailable,
-      });
-
-      await loadBundlesForPlugins(enabled);
-
-      console.log('[PluginCatalog] Initialized with', allPlugins.length, 'plugins,', enabled.length, 'enabled');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load plugins';
-      console.error('[PluginCatalog] Initialization failed:', error);
-      set({
-        error: message,
-        isLoading: false,
-        isApiAvailable: false,
-        isInitialized: true, // Mark as initialized even on error to prevent loops
-      });
+    if (state.isInitialized) return;
+    if (initializePromise) {
+      return initializePromise;
     }
+
+    initializePromise = (async () => {
+      set({ isLoading: true, error: null });
+
+      try {
+        let apiAvailable = true;
+        // Fetch all plugins and enabled plugins in parallel
+        const [allPlugins, enabled] = await Promise.all([
+          getPlugins().catch((error: any) => {
+            if (error?.response?.status === 404) {
+              console.warn('[PluginCatalog] Plugin API not available (getPlugins).');
+              apiAvailable = false;
+              return [];
+            }
+            throw error;
+          }),
+          getEnabledPlugins().catch((error: any) => {
+            if (error?.response?.status === 404) {
+              console.warn('[PluginCatalog] Plugin API not available (getEnabledPlugins).');
+              apiAvailable = false;
+              return [];
+            }
+            throw error;
+          }),
+        ]);
+
+        set({
+          plugins: allPlugins,
+          enabledPlugins: enabled,
+          isInitialized: true,
+          isLoading: false,
+          isApiAvailable: apiAvailable,
+        });
+
+        await loadBundlesForPlugins(enabled);
+
+        console.log('[PluginCatalog] Initialized with', allPlugins.length, 'plugins,', enabled.length, 'enabled');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to load plugins';
+        console.error('[PluginCatalog] Initialization failed:', error);
+        set({
+          error: message,
+          isLoading: false,
+          isApiAvailable: false,
+          isInitialized: true, // Mark as initialized even on error to prevent loops
+        });
+      }
+    })().finally(() => {
+      initializePromise = null;
+    });
+
+    return initializePromise;
   },
 
   /**
@@ -239,6 +247,7 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
 
       const targetPlugin = get().plugins.find(p => p.plugin_id === pluginId);
       if (targetPlugin && isBundleFamily(targetPlugin.family)) {
+        const { unregisterPlugin } = await import('@lib/plugins/bundleRegistrar');
         await unregisterPlugin(pluginId, targetPlugin.family);
       }
 
@@ -309,34 +318,48 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
    * Creates only missing entries and never overwrites existing catalog rows.
    */
   syncRuntimeCatalog: async () => {
-    const state = get();
-    if (!state.isInitialized || !state.isApiAvailable) {
-      return;
+    if (syncRuntimeCatalogPromise) {
+      return syncRuntimeCatalogPromise;
     }
 
-    try {
-      const [{ pluginCatalog }, { fromPluginSystemMetadata }] = await Promise.all([
-        import('@lib/plugins/pluginSystem'),
-        import('@lib/plugins/converters'),
-      ]);
+    syncRuntimeCatalogPromise = (async () => {
+      if (initializePromise) {
+        await initializePromise;
+      }
 
-      const backendPluginIds = new Set(get().plugins.map((plugin) => plugin.plugin_id));
-      const runtimeDescriptors = pluginCatalog.getAll().map(fromPluginSystemMetadata);
-      const missing = runtimeDescriptors
-        .filter((descriptor) => !backendPluginIds.has(descriptor.id))
-        .map(mapDescriptorToSyncItem);
-
-      if (!missing.length) {
+      const state = get();
+      if (!state.isInitialized || !state.isApiAvailable) {
         return;
       }
 
-      const response = await apiSyncPlugins({ plugins: missing });
-      if (response.created > 0) {
-        await get().refresh();
+      try {
+        const [{ pluginCatalog }, { fromPluginSystemMetadata }] = await Promise.all([
+          import('@lib/plugins/pluginSystem'),
+          import('@lib/plugins/converters'),
+        ]);
+
+        const backendPluginIds = new Set(get().plugins.map((plugin) => plugin.plugin_id));
+        const runtimeDescriptors = pluginCatalog.getAll().map(fromPluginSystemMetadata);
+        const missing = runtimeDescriptors
+          .filter((descriptor) => !backendPluginIds.has(descriptor.id))
+          .map(mapDescriptorToSyncItem);
+
+        if (!missing.length) {
+          return;
+        }
+
+        const response = await apiSyncPlugins({ plugins: missing });
+        if (response.created > 0) {
+          await get().refresh();
+        }
+      } catch (error) {
+        console.warn('[PluginCatalog] Failed to sync runtime catalog:', error);
       }
-    } catch (error) {
-      console.warn('[PluginCatalog] Failed to sync runtime catalog:', error);
-    }
+    })().finally(() => {
+      syncRuntimeCatalogPromise = null;
+    });
+
+    return syncRuntimeCatalogPromise;
   },
 }));
 
@@ -390,6 +413,7 @@ async function loadBundlesForPlugins(plugins: PluginInfo[]) {
 
   if (!descriptors.length) return;
 
+  const { loadRemotePluginBundles } = await import('@lib/plugins/bundleRegistrar');
   await loadRemotePluginBundles(descriptors);
 }
 
