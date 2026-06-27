@@ -84,6 +84,23 @@ export interface ApiClientConfig {
    * If not provided, 401 errors are just thrown.
    */
   onUnauthorized?: () => void;
+
+  /**
+   * Global ceiling on concurrent in-flight GET requests. Excess GETs queue and
+   * drain as slots free — a safety bound so a burst (e.g. a generation flood
+   * driving per-asset thumbnail polls) can't open dozens of sockets at once
+   * against a busy backend. 0 / undefined = unlimited (default). Only GETs are
+   * capped; writes (POST/PUT/PATCH/DELETE) are never queued.
+   */
+  maxConcurrentGets?: number;
+
+  /**
+   * When true, GET requests are in-flight-deduplicated by default (concurrent
+   * identical GETs share one round-trip). Per-request `dedup`/`fresh` overrides
+   * still win. Default false — opt in per-call with `{ dedup: true }` to avoid
+   * surprising read-after-write sites. See `GetRequestConfig`.
+   */
+  dedupGetsByDefault?: boolean;
 }
 
 /**

@@ -62,6 +62,12 @@ async function markUnauthorizedInStore(): Promise<void> {
 const client = createApiClient({
   baseUrl: BACKEND_BASE,
   tokenProvider: getAuthTokenProvider(),
+  // Bound concurrent GETs so a generation burst (per-asset thumbnail polls +
+  // WS asset refreshes) can't stampede the backend while it's busy with
+  // ffmpeg/derivatives. Generous enough not to throttle normal page loads.
+  // Dedup stays opt-in per-call (`{ dedup: true }`) to avoid stale
+  // read-after-write; not flipped on globally.
+  maxConcurrentGets: 8,
   onUnauthorized: () => {
     void markUnauthorizedInStore();
 

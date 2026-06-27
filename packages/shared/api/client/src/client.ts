@@ -13,6 +13,29 @@ import type {
   VersionInfo,
 } from './types';
 
+/**
+ * Per-request options for {@link PixSimApiClient.get}, extending the raw axios
+ * config with the client's coalescing controls.
+ */
+export interface GetRequestConfig extends AxiosRequestConfig {
+  /**
+   * Force in-flight dedup on (`true`) or off (`false`) for this request,
+   * overriding the client's `dedupGetsByDefault`. Dedup is **in-flight only**:
+   * it collapses requests that overlap in time and drops the shared promise the
+   * instant it settles — it never serves a cached response across time, so a
+   * later read always re-fetches. Safe for idempotent reads.
+   */
+  dedup?: boolean;
+  /**
+   * Escape hatch when dedup is on-by-default: force a distinct request that
+   * neither joins nor registers an in-flight share. Use for a read that must
+   * reflect a write you just issued (read-after-write), which could otherwise
+   * piggyback on an older in-flight read of the same URL. Ignored when `dedup`
+   * is set explicitly.
+   */
+  fresh?: boolean;
+}
+
 function _generateCorrelationId(): string {
   const cryptoObj = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
   if (cryptoObj?.randomUUID) return cryptoObj.randomUUID();
@@ -52,6 +75,17 @@ export class PixSimApiClient {
   private onUnauthorized: (() => void) | undefined;
   private readonly clientTraceId: string;
 
+  // ── GET coalescing: in-flight dedup + global concurrency cap ──────────────
+  // The cheapest request is the one never sent. `inFlightGets` lets concurrent
+  // identical GETs share one round-trip (keyed by url+params); the slot
+  // semaphore bounds how many distinct GETs hit the wire at once so a burst
+  // can't stampede the backend. Both are GET-only — writes are never queued.
+  private readonly maxConcurrentGets: number;
+  private readonly dedupGetsByDefault: boolean;
+  private readonly inFlightGets = new Map<string, Promise<unknown>>();
+  private activeGets = 0;
+  private readonly getQueue: Array<() => void> = [];
+
   /**
    * Flag to prevent multiple unauthorized callbacks.
    * Reset when a successful authenticated request is made.
@@ -65,6 +99,8 @@ export class PixSimApiClient {
     this.tokenProvider = config.tokenProvider;
     this.onUnauthorized = config.onUnauthorized;
     this.clientTraceId = _generateCorrelationId();
+    this.maxConcurrentGets = config.maxConcurrentGets ?? 0;
+    this.dedupGetsByDefault = config.dedupGetsByDefault ?? false;
 
     this.client = axios.create({
       baseURL,
@@ -129,10 +165,65 @@ export class PixSimApiClient {
 
   /**
    * Make a GET request.
+   *
+   * Subject to the client's GET coalescing: an optional global concurrency cap
+   * (`maxConcurrentGets`) and optional in-flight dedup. Dedup is off unless
+   * `dedupGetsByDefault` is set or `{ dedup: true }` is passed; `{ fresh: true }`
+   * bypasses it. See {@link GetRequestConfig}.
    */
-  async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    const response = await this.client.get<T>(url, config);
-    return response.data;
+  async get<T>(url: string, config?: GetRequestConfig): Promise<T> {
+    const { dedup, fresh, ...axiosConfig } = config ?? {};
+    const shouldDedup = dedup ?? (this.dedupGetsByDefault && !fresh);
+
+    if (!shouldDedup) {
+      return this._runCappedGet<T>(url, axiosConfig);
+    }
+
+    const key = this._dedupKey(url, axiosConfig);
+    const existing = this.inFlightGets.get(key) as Promise<T> | undefined;
+    if (existing) return existing;
+
+    const promise = this._runCappedGet<T>(url, axiosConfig).finally(() => {
+      // In-flight only: drop the share the instant it settles so the next call
+      // re-fetches rather than reusing a stale response across time.
+      this.inFlightGets.delete(key);
+    });
+    this.inFlightGets.set(key, promise);
+    return promise;
+  }
+
+  /** Run a GET under the global concurrency cap (no-op cap when unset). */
+  private async _runCappedGet<T>(url: string, axiosConfig: AxiosRequestConfig): Promise<T> {
+    await this._acquireGetSlot();
+    try {
+      const response = await this.client.get<T>(url, axiosConfig);
+      return response.data;
+    } finally {
+      this._releaseGetSlot();
+    }
+  }
+
+  private _dedupKey(url: string, config: AxiosRequestConfig): string {
+    // url + params is enough: auth/headers are session-constant, and a key miss
+    // just costs one redundant request (safe), never a wrong response.
+    const params = config.params ? JSON.stringify(config.params) : '';
+    return `${url}?${params}`;
+  }
+
+  private _acquireGetSlot(): Promise<void> {
+    if (this.maxConcurrentGets <= 0 || this.activeGets < this.maxConcurrentGets) {
+      this.activeGets++;
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => this.getQueue.push(resolve));
+  }
+
+  private _releaseGetSlot(): void {
+    // Hand the freed slot straight to the next waiter (active count holds);
+    // only decrement when nobody is queued.
+    const next = this.getQueue.shift();
+    if (next) next();
+    else this.activeGets--;
   }
 
   /**

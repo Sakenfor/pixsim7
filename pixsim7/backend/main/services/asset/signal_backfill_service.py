@@ -69,21 +69,52 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
     _PROBE_CONCURRENCY = 6
     _FFMPEG_THREADS = 1
 
-    def _probe_tunables(self) -> Tuple[int, int]:
+    async def _probe_tunables(self) -> Tuple[int, int]:
         """(concurrency, ffmpeg_threads) for this batch, read fresh from
         MediaSettings so a frontend change applies on the next batch without a
-        worker restart. Falls back to the class defaults if settings are
-        unavailable (e.g. cache not yet hydrated)."""
+        worker restart.
+
+        Concurrency adapts to box load: the lower ``signal_reprobe_concurrency``
+        while any generation is active (the sweep shares CPU with the hot path),
+        the higher ``signal_reprobe_concurrency_idle`` when the box is idle so a
+        background sweep drains faster. Falls back to the class defaults if
+        settings are unavailable (e.g. cache not yet hydrated)."""
         try:
             from pixsim7.backend.main.services.media.settings import get_media_settings
 
             settings = get_media_settings()
             settings.reload()  # pull the latest cross-process-synced values
-            concurrency = max(1, int(settings.signal_reprobe_concurrency))
             threads = max(0, int(settings.signal_reprobe_ffmpeg_threads))
-            return concurrency, threads
+            busy = await self._generation_active()
+            raw = (
+                settings.signal_reprobe_concurrency
+                if busy
+                else settings.signal_reprobe_concurrency_idle
+            )
+            return max(1, int(raw)), threads
         except Exception:  # noqa: BLE001 — never let config reads break a batch
             return self._PROBE_CONCURRENCY, self._FFMPEG_THREADS
+
+    async def _generation_active(self) -> bool:
+        """True if any generation is queued or running right now. The reprobe
+        runs on its own single-slot worker but still shares the machine's CPU
+        with the generation pipeline, so this gates the interactive-vs-idle
+        concurrency choice. Box-wide (no user filter): any user's generation
+        loads the same shared dev box."""
+        from pixsim7.backend.main.domain import Generation
+        from pixsim7.backend.main.domain.enums import GenerationStatus
+
+        stmt = (
+            select(Generation.id)
+            .where(
+                Generation.status.in_(
+                    [GenerationStatus.PENDING, GenerationStatus.PROCESSING]
+                )
+            )
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none() is not None
 
     # Per-batch ``{asset_id: raw_metrics | None}`` cache filled by
     # ``_prefetch_batch`` and consumed by ``_process_asset``. None = no prefetch
@@ -225,7 +256,7 @@ class SignalBackfillService(BackfillRunServiceBase[SignalBackfillRun]):
             self._probe_cache = None
             return
         signal_service, _, _ = ctx
-        concurrency, ffmpeg_threads = self._probe_tunables()
+        concurrency, ffmpeg_threads = await self._probe_tunables()
         # Release the read transaction opened by _load_batch/_prepare_batch before
         # the (potentially minute-long) probe fan-out. Holding it idle across the
         # probe phase trips Postgres' idle_in_transaction_session_timeout (30s),

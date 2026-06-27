@@ -41,6 +41,7 @@
 
 // Core client
 export { PixSimApiClient, createApiClient } from './client';
+export type { GetRequestConfig } from './client';
 
 // Types
 export type {

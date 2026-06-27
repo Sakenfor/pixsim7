@@ -59,9 +59,24 @@ class MediaSettings(SettingsBase):
         le=32,
         description=(
             "How many assets the signal-scan reprobe probes concurrently per "
-            "batch (each spawns ffmpeg/ffprobe). Higher = faster but more CPU; "
-            "lower it if the box (e.g. a shared dev machine) gets laggy. "
+            "batch (each spawns ffmpeg/ffprobe) WHILE A GENERATION IS ACTIVE — "
+            "the interactive ceiling, kept low so the sweep doesn't steal CPU "
+            "from the generation hot path / UI. When the box is idle the worker "
+            "uses signal_reprobe_concurrency_idle instead. Lower this if a "
+            "shared dev machine still gets laggy mid-generation. "
             "Live-tunable — picked up on the next batch, no restart."
+        ),
+    )
+    signal_reprobe_concurrency_idle: int = Field(
+        8,
+        ge=1,
+        le=32,
+        description=(
+            "Concurrency ceiling for the signal-scan reprobe when the box is "
+            "IDLE (no generation pending/processing). Lets a background sweep "
+            "drain faster when nothing competes for CPU; the worker drops back "
+            "to signal_reprobe_concurrency the moment a generation becomes "
+            "active. Live-tunable — applies on the next batch."
         ),
     )
     signal_reprobe_ffmpeg_threads: int = Field(

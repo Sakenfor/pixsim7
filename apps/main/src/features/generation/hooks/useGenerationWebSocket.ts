@@ -65,6 +65,15 @@ const lastThumbnailSignatures = new Map<number, string>();
 // permanently thumbless.
 const deficientThumbnails = new Set<number>();
 
+// Derivative-driven asset refreshes (poll chain, asset created/updated) share a
+// single `GET /assets/{id}` round-trip when they overlap, and ride the client's
+// global GET concurrency cap so a burst can't stampede the backend. Both come
+// from the shared client now: `{ dedup: true }` for the in-flight share, and
+// `maxConcurrentGets` configured on the browser client for the cap.
+function refreshAsset(assetId: number): Promise<AssetResponse> {
+  return pixsimClient.get<AssetResponse>(`/assets/${assetId}`, { dedup: true });
+}
+
 function hasUsableThumbnail(asset: AssetResponse): boolean {
   if (asset.thumbnail_key || asset.preview_key) return true;
   const url = asset.thumbnail_url || asset.preview_url;
@@ -110,7 +119,7 @@ async function scheduleThumbnailRefresh(assetId: number, attempt = 0): Promise<v
   const delay = THUMBNAIL_POLL_DELAYS_MS[attempt];
   const timeout = setTimeout(async () => {
     try {
-      const refreshed = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
+      const refreshed = await refreshAsset(assetId);
       const nextSignature = [
         refreshed.thumbnail_key ?? '',
         refreshed.preview_key ?? '',
@@ -314,7 +323,7 @@ async function handleAssetCreated(message: WebSocketRecord): Promise<void> {
     return;
   }
   try {
-    const assetData = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
+    const assetData = await refreshAsset(assetId);
     assetEvents.emitAssetCreated(assetData);
     if (shouldContinueThumbnailPolling(assetData)) {
       scheduleThumbnailRefresh(assetId);
@@ -328,7 +337,7 @@ async function handleAssetUpdated(message: WebSocketRecord): Promise<void> {
   const assetId = extractAssetId(message);
   if (assetId === null) return;
   try {
-    const refreshed = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
+    const refreshed = await refreshAsset(assetId);
     debugFlags.log('websocket', 'Asset updated, refreshing in gallery:', assetId);
     assetEvents.emitAssetUpdated(refreshed);
   } catch (err) {
