@@ -87,6 +87,71 @@ def expand_reference_rotations(references: list[Any]) -> list[Any]:
     return rotated
 
 
+# Single-slot cache of the width-grouped, stacked reference tensor. The SAME
+# pre-rotated `references` list is reused for every clip in a (re)score batch, so
+# stacking the 360 arrays once per batch (keyed on the list's identity) — instead
+# of per clip — saves ~96k re-stacks. We hold a ref to the list so its id() can't
+# be recycled out from under the cache mid-run.
+_REF_STACK_CACHE: dict[str, Any] = {"key": None, "list": None, "groups": None}
+
+
+def _grouped_ref_stacks(references: list[Any]) -> dict[int, Any]:
+    """``{width: (G, 12, width) float32}`` — references stacked per fingerprint
+    width so the matcher can vectorise the ref axis. Cached for the batch."""
+    import numpy as np
+
+    key = id(references)
+    if _REF_STACK_CACHE["key"] == key and _REF_STACK_CACHE["list"] is references:
+        return _REF_STACK_CACHE["groups"]
+    by_w: dict[int, list] = {}
+    for r in references:
+        by_w.setdefault(int(r.shape[1]), []).append(r)
+    groups = {w: np.stack(g) for w, g in by_w.items()}
+    _REF_STACK_CACHE.update(key=key, list=references, groups=groups)
+    return groups
+
+
+def _best_xcorr_over_refs(cand: Any, references: list[Any]) -> float:
+    """Best normalized cross-correlation of ``cand`` (12, Tc) to ANY reference,
+    over the full time-lag search — vectorised across all references at once.
+
+    Equivalent to ``max(_best_lag_xcorr(cand, ref) for ref in references)`` but
+    the per-lag mean-centering + normalized dot are computed against the whole
+    stacked ``(G, 12, w)`` reference tensor in a handful of numpy ops, instead of
+    ~G×17 tiny per-ref calls (the profiled hot path). Returns -1.0 when no
+    reference yields a valid (non-degenerate) overlap.
+    """
+    import numpy as np
+
+    groups = _grouped_ref_stacks(references)
+    tc = cand.shape[1]
+    best = -1.0
+    for tr, refs in groups.items():  # refs: (G, 12, tr)
+        t = min(tc, tr)
+        for lag in range(-_MAX_LAG, _MAX_LAG + 1):
+            w = t - abs(lag)
+            if w <= 0:
+                continue
+            if lag >= 0:
+                xa = cand[:, lag : lag + w]          # (12, w) — shared by all refs
+                xb = refs[:, :, :w]                  # (G, 12, w)
+            else:
+                xa = cand[:, :w]
+                xb = refs[:, :, -lag : -lag + w]
+            xa = xa - xa.mean()                                   # scalar-centered
+            xbc = xb - xb.mean(axis=(1, 2), keepdims=True)        # per-ref centered
+            num = (xa[None] * xbc).sum(axis=(1, 2))               # (G,)
+            da = float((xa * xa).sum())                           # scalar
+            db = (xbc * xbc).sum(axis=(1, 2))                     # (G,)
+            denom = np.sqrt(da * db)                              # (G,)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                corr = np.where(denom > 0, num / denom, -1.0)
+            m = float(corr.max())
+            if m > best:
+                best = m
+    return best
+
+
 def match_fingerprint(candidate_fp: Any, references: list[Any]) -> Optional[float]:
     """Best similarity (0..1) of ``candidate_fp`` to any reference chromagram.
 
@@ -94,16 +159,14 @@ def match_fingerprint(candidate_fp: Any, references: list[Any]) -> Optional[floa
     {@link load_reference_fingerprints} / {@link expand_reference_rotations} —
     they already include all 12 semitone rotations of each curated reference, so
     this is a flat best-normalized-cross-correlation with NO per-candidate
-    ``np.roll``. Result is identical to rotating inline (max over ref × rotation),
-    just hoisted out of the hot loop. Returns None when the candidate has no
-    usable fingerprint.
+    ``np.roll``. The ref axis is vectorised (see {@link _best_xcorr_over_refs});
+    the result is the same ``max over ref × rotation × lag`` as the scalar path.
+    Returns None when the candidate has no usable fingerprint.
     """
     cand = _to_chroma(candidate_fp)
     if cand is None or not references:
         return None
-    best = 0.0
-    for ref in references:
-        best = max(best, _best_lag_xcorr(cand, ref))
+    best = _best_xcorr_over_refs(cand, references)
     return round(max(0.0, best), 4)
 
 
