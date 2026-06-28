@@ -34,6 +34,18 @@ export interface GetRequestConfig extends AxiosRequestConfig {
    * is set explicitly.
    */
   fresh?: boolean;
+  /**
+   * Mark this as a user-initiated, latency-sensitive read so it BYPASSES the
+   * global GET concurrency cap instead of queueing behind it. The cap (FIFO)
+   * exists to stop background bursts — per-asset thumbnail polls + WS asset
+   * refreshes — from stampeding a busy backend, but it also means an
+   * interactive read (e.g. opening an asset's details) appended to the back of
+   * a saturated queue can appear to hang until the slow background GETs ahead
+   * of it clear. Priority reads are rare and user-paced, so letting them skip
+   * the line (briefly over-subscribing the cap) is safe. Use sparingly — only
+   * for reads a human is actively waiting on.
+   */
+  priority?: boolean;
 }
 
 function _generateCorrelationId(): string {
@@ -172,18 +184,18 @@ export class PixSimApiClient {
    * bypasses it. See {@link GetRequestConfig}.
    */
   async get<T>(url: string, config?: GetRequestConfig): Promise<T> {
-    const { dedup, fresh, ...axiosConfig } = config ?? {};
+    const { dedup, fresh, priority, ...axiosConfig } = config ?? {};
     const shouldDedup = dedup ?? (this.dedupGetsByDefault && !fresh);
 
     if (!shouldDedup) {
-      return this._runCappedGet<T>(url, axiosConfig);
+      return this._runCappedGet<T>(url, axiosConfig, priority);
     }
 
     const key = this._dedupKey(url, axiosConfig);
     const existing = this.inFlightGets.get(key) as Promise<T> | undefined;
     if (existing) return existing;
 
-    const promise = this._runCappedGet<T>(url, axiosConfig).finally(() => {
+    const promise = this._runCappedGet<T>(url, axiosConfig, priority).finally(() => {
       // In-flight only: drop the share the instant it settles so the next call
       // re-fetches rather than reusing a stale response across time.
       this.inFlightGets.delete(key);
@@ -193,8 +205,8 @@ export class PixSimApiClient {
   }
 
   /** Run a GET under the global concurrency cap (no-op cap when unset). */
-  private async _runCappedGet<T>(url: string, axiosConfig: AxiosRequestConfig): Promise<T> {
-    await this._acquireGetSlot();
+  private async _runCappedGet<T>(url: string, axiosConfig: AxiosRequestConfig, priority?: boolean): Promise<T> {
+    await this._acquireGetSlot(priority);
     try {
       const response = await this.client.get<T>(url, axiosConfig);
       return response.data;
@@ -210,8 +222,12 @@ export class PixSimApiClient {
     return `${url}?${params}`;
   }
 
-  private _acquireGetSlot(): Promise<void> {
-    if (this.maxConcurrentGets <= 0 || this.activeGets < this.maxConcurrentGets) {
+  private _acquireGetSlot(priority?: boolean): Promise<void> {
+    // Priority (user-initiated) reads skip the cap entirely so they never wait
+    // behind a queue of slow background GETs. This can briefly push activeGets
+    // above the cap; `_releaseGetSlot` lets it drain back down as requests
+    // settle. Background reads stay capped/queued as before.
+    if (priority || this.maxConcurrentGets <= 0 || this.activeGets < this.maxConcurrentGets) {
       this.activeGets++;
       return Promise.resolve();
     }

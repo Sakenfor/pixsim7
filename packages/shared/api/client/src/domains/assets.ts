@@ -105,8 +105,11 @@ export function createAssetsApi(client: PixSimApiClient) {
       return client.post<AssetGroupListResponse>('/assets/groups', request, { timeout: 120_000 });
     },
 
-    async getAsset(assetId: number): Promise<AssetResponse> {
-      return client.get<AssetResponse>(`/assets/${assetId}`);
+    async getAsset(assetId: number, opts?: { priority?: boolean }): Promise<AssetResponse> {
+      // `priority` lets a user-initiated read (e.g. the asset detail modal)
+      // skip the global GET concurrency cap so it can't starve behind a queue
+      // of slow background thumbnail-poll / WS-refresh GETs on a busy backend.
+      return client.get<AssetResponse>(`/assets/${assetId}`, opts?.priority ? { priority: true } : undefined);
     },
 
     async deleteAsset(

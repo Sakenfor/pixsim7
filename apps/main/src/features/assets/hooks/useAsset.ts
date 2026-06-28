@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+
 import { getAsset } from '@lib/api/assets';
+
 import { type AssetModel, fromAssetResponse } from '../models/asset';
 
 export function useAsset(id: number | string | null) {
@@ -15,7 +17,9 @@ export function useAsset(id: number | string | null) {
       setError(null);
       try {
         const assetId = typeof id === 'string' ? parseInt(id, 10) : id;
-        const response = await getAsset(assetId);
+        // This hook backs the asset detail modal — a read a human is actively
+        // waiting on — so mark it priority to skip the background GET queue.
+        const response = await getAsset(assetId, { priority: true });
         if (active) setAsset(fromAssetResponse(response));
       } catch (e: unknown) {
         if (active) setError(e instanceof Error ? e.message : 'Failed to load asset');
