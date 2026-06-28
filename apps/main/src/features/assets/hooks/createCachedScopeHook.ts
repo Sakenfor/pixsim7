@@ -115,23 +115,52 @@ export function createCachedScopeHook(opts: CachedScopeOptions): () => void {
     },
   };
 
-  // Bootstrap is fired once per cache (not per mount), so HMR / re-mounts
-  // don't refetch. Tracked by promise so concurrent callers de-dupe.
-  let bootstrapPromise: Promise<void> | null = null;
-  function ensureBootstrap(): Promise<void> {
-    if (!opts.bootstrap || bootstrapPromise) return bootstrapPromise ?? Promise.resolve();
-    bootstrapPromise = opts.bootstrap()
+  // Bootstrap runs to a single SUCCESS per cache (not per mount), so HMR /
+  // re-mounts don't refetch. But a FAILED first attempt must not be sticky:
+  // the scope is an app-level singleton that mounts once, so "retry on next
+  // mount" never happened — an empty-token init race or a transient `listAssets`
+  // hiccup (e.g. while the backend is busy) left Recents permanently empty until
+  // a full page reload. That's the "recents don't populate until I refresh
+  // again" bug. So failures return the state to `idle` and retry with backoff,
+  // and a WS resync (see the hook below) kicks a fresh attempt after reconnect.
+  const BOOTSTRAP_RETRY_DELAYS_MS = [400, 1000, 2500, 6000, 12000];
+  let bootstrapState: 'idle' | 'inflight' | 'done' = 'idle';
+  let bootstrapAttempt = 0;
+  // The currently-mounted scope's "re-render" signal. Bootstrap (and its
+  // retries / resync) mutate the shared cache off-band — outside the wrapped
+  // event mutators that bump the mount — so they ping this to flush the
+  // snapshot. Module-level + reassigned per mount so an attempt that's still in
+  // flight when the component remounts (React StrictMode double-mount / HMR)
+  // notifies the LIVE mount on settle. Passing the bump per call broke here: the
+  // remount's own `runBootstrap` hits the in-flight guard and no-ops, so its
+  // bump never attached and the strip stayed empty even though bootstrap
+  // succeeded (no error, hence no log).
+  let notifyMounted: (() => void) | null = null;
+
+  function runBootstrap(): void {
+    if (!opts.bootstrap || bootstrapState !== 'idle') return;
+    bootstrapState = 'inflight';
+    opts.bootstrap()
       .then((items) => {
         mutators.augment(items);
         cache.version++;
+        bootstrapState = 'done';
+        bootstrapAttempt = 0;
+        notifyMounted?.();
       })
       .catch((err) => {
-        // Don't kill the live stream on a fetch hiccup; log and move on.
-        console.warn(`[${opts.scopeId} scope] bootstrap failed:`, err);
-        // Allow a future retry on next hook mount.
-        bootstrapPromise = null;
+        // Don't kill the live stream on a fetch hiccup; retry with backoff so
+        // the scope self-heals instead of staying empty for the session.
+        bootstrapState = 'idle';
+        if (bootstrapAttempt >= BOOTSTRAP_RETRY_DELAYS_MS.length) {
+          console.warn(`[${opts.scopeId} scope] bootstrap failed; giving up until next resync:`, err);
+          return;
+        }
+        const delay = BOOTSTRAP_RETRY_DELAYS_MS[bootstrapAttempt];
+        bootstrapAttempt++;
+        console.warn(`[${opts.scopeId} scope] bootstrap failed (attempt ${bootstrapAttempt}); retrying in ${delay}ms:`, err);
+        setTimeout(runBootstrap, delay);
       });
-    return bootstrapPromise;
   }
 
   return function useCachedScope(): void {
@@ -167,14 +196,33 @@ export function createCachedScopeHook(opts: CachedScopeOptions): () => void {
       };
       const unsubscribe = opts.subscribe(wrapped);
 
-      // Kick the bootstrap (no-op if already resolved). Bump on completion
-      // so the snapshot picks up the augmented items.
-      ensureBootstrap().then(bump);
+      // Register this mount's flush so bootstrap (and its retries / resync) can
+      // re-render us when they augment the cache off-band.
+      notifyMounted = bump;
+
+      // Kick the bootstrap (no-op if already succeeded / in flight — a still
+      // in-flight attempt will notify us via `notifyMounted` on settle).
+      runBootstrap();
+
+      // A WS reconnect means asset events may have been missed while the socket
+      // was down — re-fetch the head page to backfill the gap (mirrors what live
+      // surfaces do on resync). This also recovers a scope whose very first
+      // bootstrap never succeeded: force a fresh attempt by clearing a settled
+      // 'done' so the retry guard doesn't short-circuit it.
+      const unsubResync = assetEvents.subscribeToResync(() => {
+        if (bootstrapState === 'done') {
+          bootstrapState = 'idle';
+          bootstrapAttempt = 0;
+        }
+        runBootstrap();
+      });
 
       return () => {
         cancelled = true;
         if (rafId != null) cancelAnimationFrame(rafId);
+        if (notifyMounted === bump) notifyMounted = null;
         unsubscribe();
+        unsubResync();
       };
     }, []);
 
@@ -189,8 +237,13 @@ export function createCachedScopeHook(opts: CachedScopeOptions): () => void {
  * removal→remove — into a cached scope's mutators. This is the body every
  * event-fed scope (Recent, Probes) shares; the only thing that varies is an
  * optional `accept` predicate that filters create/update to a subset (e.g.
- * `assetKind === 'probe'`). Removal events carry only an id and are applied
- * unconditionally — `remove` no-ops when the id isn't in the cache.
+ * `assetKind === 'probe'`, or "not broken"). Removal events carry only an id and
+ * are applied unconditionally — `remove` no-ops when the id isn't in the cache.
+ *
+ * When `accept` is given, an UPDATE that newly fails it removes the entry rather
+ * than just skipping the update — so an asset that transitions out of the subset
+ * (e.g. you manually flag a clip broken, or a probe is reclassified) drops out of
+ * the scope instead of lingering with its stale pre-transition snapshot.
  *
  * Returns an unsubscribe that tears down all three subscriptions.
  */
@@ -205,7 +258,10 @@ export function subscribeAssetEventStream(
   });
   const unsubUpdate = assetEvents.subscribeToUpdates((response) => {
     const model = fromAssetResponse(response);
-    if (accept && !accept(model)) return;
+    if (accept && !accept(model)) {
+      remove(model.id);
+      return;
+    }
     update(toViewerAsset(model));
   });
   const unsubRemove = assetEvents.subscribeToRemovals((assetId) => {
@@ -232,10 +288,14 @@ export async function bootstrapFromFilters(
   filters: AssetFilters & Record<string, unknown>,
   limit: number,
 ): Promise<ViewerAsset[]> {
-  // App-level scopes mount before route/auth guards settle. Skip bootstrap when
-  // no token is present instead of emitting expected 401 noise.
+  // App-level scopes mount before route/auth guards settle, so the token may not
+  // be readable on the very first attempt. THROW so the caller's bootstrap
+  // RETRIES — returning [] here resolves as a successful empty bootstrap and
+  // leaves the scope permanently empty until a full reload. A genuine 401 below
+  // still resolves to [] (logged-out, not not-ready-yet), so this never retries
+  // a real auth failure.
   if (!authService.getStoredToken()) {
-    return [];
+    throw new Error('[bootstrap] auth token not ready yet');
   }
 
   try {
