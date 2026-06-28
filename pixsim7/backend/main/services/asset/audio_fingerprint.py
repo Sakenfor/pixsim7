@@ -201,3 +201,34 @@ async def load_reference_fingerprints(db: AsyncSession) -> list[Any]:
     # Expand the 12 pitch-rotations once here (not per scored clip) — see
     # expand_reference_rotations / match_fingerprint.
     return expand_reference_rotations(out)
+
+
+# Process-local TTL cache of the (pre-rotated) reference set, for the hot
+# ingest/probe path where a query-per-clip during a generation burst would be
+# wasteful. References change only when signalref:* tags are curated, so a short
+# TTL is plenty fresh. The durable backfill paths pass their own per-run refs and
+# never touch this. The cached list keeps a stable identity across the TTL, so
+# match_fingerprint's per-list stack cache stays warm across clips too.
+_REF_FP_CACHE: dict[str, Any] = {"at": None, "refs": None}
+_REF_FP_TTL_S = 300.0
+
+
+async def get_reference_fingerprints_cached(
+    db: AsyncSession, *, ttl_s: float = _REF_FP_TTL_S
+) -> list[Any]:
+    """Cached :func:`load_reference_fingerprints` for per-clip callers.
+
+    Use on the ingest / single-asset probe path so a generation burst doesn't
+    re-query the references for every clip. Batch (re)score runs load their own
+    fresh set per run and should call ``load_reference_fingerprints`` directly.
+    """
+    import time as _time
+
+    now = _time.monotonic()
+    c = _REF_FP_CACHE
+    if c["refs"] is not None and c["at"] is not None and (now - c["at"]) < ttl_s:
+        return c["refs"]
+    refs = await load_reference_fingerprints(db)
+    c["at"] = now
+    c["refs"] = refs
+    return refs

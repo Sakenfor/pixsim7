@@ -793,6 +793,17 @@ class SignalAnalysisService:
             except Exception as e:  # noqa: BLE001 — render signal is best-effort
                 logger.warning("signal_analysis_render_ctx_failed", asset_id=asset.id, error=str(e))
 
+        # Auto-load the broken-audio references when the caller didn't supply
+        # them (ingest / one-off probes pass None) so the fingerprint matcher —
+        # a PRIMARY v5 signal — is never silently skipped on a fresh clip. A
+        # caller that loads its own set (the durable backfill) passes a list
+        # (possibly empty) and is left untouched; an empty list stays empty. Only
+        # bother when the probe actually produced a fingerprint to match.
+        if ref_fingerprints is None and raw.get("chroma_fp"):
+            from pixsim7.backend.main.services.asset.audio_fingerprint import (
+                get_reference_fingerprints_cached,
+            )
+            ref_fingerprints = await get_reference_fingerprints_cached(self.db)
         audio_ref_match = _match_audio_ref(raw.get("chroma_fp"), ref_fingerprints)
         payload = build_signal_metrics_payload(
             raw, render_context, audio_ref_match=audio_ref_match
