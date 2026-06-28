@@ -103,6 +103,20 @@ TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
             "env_map": "PIXSIM_EMBEDDING_MAX_RESIDENT",
         },
         {
+            "key": "hf_offline",
+            "type": "boolean",
+            "label": "HF Hub Offline",
+            "description": (
+                "Load models from the local HuggingFace cache only — never "
+                "contact the HF Hub. Removes the unauthenticated-request warning "
+                "and the hub as a startup failure surface. Requires the model to "
+                "already be cached; turn off for a first download on a fresh "
+                "machine. Honored natively by transformers via HF_HUB_OFFLINE."
+            ),
+            "default": False,
+            "env_map": "HF_HUB_OFFLINE",
+        },
+        {
             "key": "log_level",
             "type": "select",
             "label": "Log Level",
@@ -137,6 +151,19 @@ TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
             "description": "Maximum seconds per job before timeout",
             "default": 3600,
             "env_map": "ARQ_JOB_TIMEOUT",
+        },
+        {
+            "key": "derivatives_dedicated_queue",
+            "type": "boolean",
+            "label": "Offload derivatives to dedicated worker",
+            "description": (
+                "Route thumbnail/preview (ffmpeg) jobs to the Worker (Derivatives) "
+                "queue instead of running them here. Keeps a burst of generations "
+                "from spawning many concurrent ffmpeg processes on this worker and "
+                "starving generation/API. Requires Worker (Derivatives) to be running."
+            ),
+            "default": False,
+            "env_map": "DERIVATIVES_DEDICATED_QUEUE",
         },
     ],
 }
