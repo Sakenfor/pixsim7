@@ -688,29 +688,6 @@ _MEDIA_MAINTENANCE_FAMILY = BY_ROLE[WORKER_ROLE_MEDIA_MAINTENANCE]
 _DERIVATIVES_FAMILY = BY_ROLE[WORKER_ROLE_DERIVATIVES]
 
 
-class _BaseWorkerSettings:
-    """Shared scalars common to every ARQ worker family.
-
-    Only the values that are genuinely identical across all workers live here —
-    Redis connection and the logging/health knobs. Everything that varies per
-    worker (``queue_name``, ``functions``, ``cron_jobs``, ``on_startup`` /
-    ``on_shutdown``, and the ``max_jobs`` / ``job_timeout`` / ``max_tries`` /
-    ``retry_jobs`` pulled from the worker-family descriptor) MUST stay declared
-    as literal assignments in each subclass body: ARQ reads them, and the
-    launcher's worker panel extracts ``functions`` / ``cron_jobs`` by statically
-    parsing this file (see launcher worker_tasks `_arq_settings_metadata`), so a
-    factory or inherited list would render an empty function list there.
-
-    The pre-existing worker classes don't inherit this yet (kept untouched to
-    avoid churn); new workers should.
-    """
-
-    redis_settings = _redis_settings()
-    log_results = True
-    verbose = True
-    health_check_interval = 60
-
-
 class WorkerSettings:
     """
     ARQ worker settings
@@ -992,7 +969,7 @@ class MediaMaintenanceWorkerSettings:
     health_check_interval = 60
 
 
-class DerivativesWorkerSettings(_BaseWorkerSettings):
+class DerivativesWorkerSettings:
     """ARQ worker dedicated to asset derivative generation (thumbnail/preview).
 
     The derivative step shells out to ffmpeg per asset and is CPU-bound. On the
@@ -1004,8 +981,15 @@ class DerivativesWorkerSettings(_BaseWorkerSettings):
     ``settings.derivatives_dedicated_queue`` — when off, derivatives stay on the
     MAIN queue (which also still registers ``process_derivatives``), so enabling
     the worker is a deliberate, reversible switch.
+
+    NB: every attribute ARQ consumes must be declared HERE, not inherited — ARQ
+    reads ``settings_cls.__dict__`` (own attributes only), so an inherited
+    ``redis_settings`` silently falls back to ARQ's localhost:6379 default. This
+    is why the worker classes don't share a base.
     """
 
+    # Redis connection (shared with API via settings.redis_url) — see note above.
+    redis_settings = _redis_settings()
     queue_name = _DERIVATIVES_FAMILY.queue_name
 
     functions = [
@@ -1025,6 +1009,10 @@ class DerivativesWorkerSettings(_BaseWorkerSettings):
     job_timeout = _DERIVATIVES_FAMILY.resolve_job_timeout()
     max_tries = _DERIVATIVES_FAMILY.resolve_max_tries()
     retry_jobs = _DERIVATIVES_FAMILY.retry_jobs
+
+    log_results = True
+    verbose = True
+    health_check_interval = 60
 
 
 # For testing/debugging
