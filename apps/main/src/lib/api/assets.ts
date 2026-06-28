@@ -44,6 +44,19 @@ const assetsApi = createAssetsApi(pixsimClient);
 export const listAssets = assetsApi.listAssets;
 export const listAssetGroups = assetsApi.listAssetGroups;
 export const getAsset = assetsApi.getAsset;
+
+/**
+ * Fetch many assets by id in one round-trip (POST /assets/bulk/get).
+ *
+ * Same semantics as getAsset (ownership-scoped, unfiltered) — used to collapse
+ * the per-asset refresh GET storm during a generation burst into a single
+ * request. Missing/forbidden ids are simply absent from the result, so callers
+ * must reconcile by id (and can fall back to getAsset for any they expected).
+ */
+export async function getAssetsByIds(ids: number[]): Promise<AssetResponse[]> {
+  if (ids.length === 0) return [];
+  return pixsimClient.post<AssetResponse[]>('/assets/bulk/get', { asset_ids: ids });
+}
 export const deleteAsset = assetsApi.deleteAsset;
 export const deleteAssetFromProvider = assetsApi.deleteAssetFromProvider;
 

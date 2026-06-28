@@ -12,7 +12,7 @@
  * this file is eagerly imported from `main.tsx`.
  */
 import { pixsimClient, type GenerationResponse } from '@lib/api';
-import type { AssetResponse } from '@lib/api/assets';
+import { getAssetsByIds, type AssetResponse } from '@lib/api/assets';
 import { useWebSocketConnection, wsManager, type WebSocketRecord } from '@lib/api/wsManager';
 import { isVideoOrAudioUrl } from '@lib/media/mediaUrl';
 import { debugFlags, hmrSingleton } from '@lib/utils';
@@ -103,6 +103,71 @@ function queueAssetUpdated(asset: AssetResponse): void {
   pendingAssetUpdates.set(asset.id, asset);
   if (assetUpdateFlushRaf == null) {
     assetUpdateFlushRaf = requestAnimationFrame(flushAssetUpdates);
+  }
+}
+
+// ── WS asset-refresh batching (created/updated) ────────────────────────────
+// Each asset:created / asset:updated event used to fetch its asset with its own
+// GET /assets/{id}. A 30-clip burst is 60+ such GETs that compete with the
+// <video> stream for backend / browser-connection capacity, lagging
+// click-to-play. Buffer the ids over a short window and fetch them in ONE
+// POST /assets/bulk/get. Per-id fallback (single GET) covers anything the bulk
+// call doesn't return, so the gallery can never silently miss an asset.
+const REFRESH_BATCH_MS = 60;
+type RefreshKind = 'created' | 'updated';
+const pendingRefresh = new Map<number, RefreshKind>();
+let refreshBatchTimer: ReturnType<typeof setTimeout> | null = null;
+
+function dispatchRefreshed(asset: AssetResponse, kind: RefreshKind): void {
+  if (kind === 'created') {
+    assetEvents.emitAssetCreated(asset);
+    if (shouldContinueThumbnailPolling(asset)) scheduleThumbnailRefresh(asset.id);
+  } else {
+    queueAssetUpdated(asset);
+  }
+}
+
+async function flushAssetRefresh(): Promise<void> {
+  refreshBatchTimer = null;
+  const batch = [...pendingRefresh.entries()];
+  pendingRefresh.clear();
+  if (batch.length === 0) return;
+  const kindById = new Map(batch);
+  const ids = batch.map(([id]) => id);
+  try {
+    const assets = await getAssetsByIds(ids);
+    const got = new Set<number>();
+    for (const asset of assets) {
+      got.add(asset.id);
+      dispatchRefreshed(asset, kindById.get(asset.id) ?? 'updated');
+    }
+    // Anything the bulk call skipped (forbidden / mid-write race) — fetch it
+    // individually so no created/updated event is silently dropped.
+    for (const id of ids) {
+      if (got.has(id)) continue;
+      void refreshAsset(id)
+        .then((a) => dispatchRefreshed(a, kindById.get(id) ?? 'updated'))
+        .catch(() => {});
+    }
+  } catch {
+    // Whole bulk request failed — fall back to per-id refreshes so a transient
+    // error can't drop the burst.
+    for (const [id, kind] of batch) {
+      void refreshAsset(id)
+        .then((a) => dispatchRefreshed(a, kind))
+        .catch(() => {});
+    }
+  }
+}
+
+function queueAssetRefresh(assetId: number, kind: RefreshKind): void {
+  // 'created' wins for the same id within a window: the gallery must prepend
+  // before an update can apply, and the bulk fetch returns current data either
+  // way, so a created+updated pair collapses to one create (one fewer event).
+  const prev = pendingRefresh.get(assetId);
+  pendingRefresh.set(assetId, prev === 'created' ? 'created' : kind);
+  if (refreshBatchTimer == null) {
+    refreshBatchTimer = setTimeout(flushAssetRefresh, REFRESH_BATCH_MS);
   }
 }
 
@@ -343,7 +408,7 @@ function handleJobEvent(message: WebSocketRecord): void {
   }
 }
 
-async function handleAssetCreated(message: WebSocketRecord): Promise<void> {
+function handleAssetCreated(message: WebSocketRecord): void {
   // Optimistic emit: fetch the asset once and surface it to the gallery
   // immediately. The card renders with whatever thumbnail/preview state
   // exists; subsequent asset:updated events (and the thumbnail poll
@@ -354,27 +419,17 @@ async function handleAssetCreated(message: WebSocketRecord): Promise<void> {
     console.warn('[WebSocket] No asset ID found in asset:created message');
     return;
   }
-  try {
-    const assetData = await refreshAsset(assetId);
-    assetEvents.emitAssetCreated(assetData);
-    if (shouldContinueThumbnailPolling(assetData)) {
-      scheduleThumbnailRefresh(assetId);
-    }
-  } catch (err) {
-    console.warn('[WebSocket] Failed to fetch created asset:', assetId, err);
-  }
+  // Batched: the fetch + emitAssetCreated + thumbnail-poll kickoff happen in
+  // flushAssetRefresh via a single bulk GET (see queueAssetRefresh).
+  queueAssetRefresh(assetId, 'created');
 }
 
-async function handleAssetUpdated(message: WebSocketRecord): Promise<void> {
+function handleAssetUpdated(message: WebSocketRecord): void {
   const assetId = extractAssetId(message);
   if (assetId === null) return;
-  try {
-    const refreshed = await refreshAsset(assetId);
-    debugFlags.log('websocket', 'Asset updated, refreshing in gallery:', assetId);
-    queueAssetUpdated(refreshed);
-  } catch (err) {
-    debugFlags.log('websocket', 'Failed to fetch updated asset:', assetId, err);
-  }
+  // Batched: fetched via a single bulk GET and emitted in flushAssetRefresh.
+  debugFlags.log('websocket', 'Asset updated, refreshing in gallery:', assetId);
+  queueAssetRefresh(assetId, 'updated');
 }
 
 function handleAssetDeleted(message: WebSocketRecord): void {
@@ -454,8 +509,8 @@ const handlersRef = hmrSingleton(
 
 handlersRef.current = {
   job: handleJobEvent,
-  assetCreated: (m) => { void handleAssetCreated(m); },
-  assetUpdated: (m) => { void handleAssetUpdated(m); },
+  assetCreated: (m) => { handleAssetCreated(m); },
+  assetUpdated: (m) => { handleAssetUpdated(m); },
   assetDeleted: handleAssetDeleted,
   legacyGen: handleLegacyGenerationUpdate,
   connected: handleConnected,
@@ -470,6 +525,15 @@ hmrSingleton('generationWsRoutingRegistered', () => {
   wsManager.on('connected', (m) => handlersRef.current.connected(m));
   return true;
 });
+
+// Dev-only console handle to fire a resync by hand — the same backfill the WS
+// reconnect triggers (re-fetch gallery head page + re-bootstrap Recent). Use it
+// when the gallery looks stale but the socket shows "Live" (run `__wsDebug()`
+// first): if `__wsResync()` repopulates it, the bug is a missed/raced resync on
+// reconnect, not the data or the socket. Pairs with `__wsForceReconnect()`.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as Window & { __wsResync?: () => void }).__wsResync = () => assetEvents.emitResync();
+}
 
 export function useGenerationWebSocket() {
   return useWebSocketConnection();
