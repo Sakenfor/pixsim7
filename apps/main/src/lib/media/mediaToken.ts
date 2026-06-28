@@ -32,7 +32,10 @@ function isFresh(): boolean {
 }
 
 async function fetchMediaToken(): Promise<string> {
-  const res = await pixsimClient.get<MediaTokenResponse>('/media/auth-token');
+  // priority: this gates click-to-play on its cold path (first load / post-expiry)
+  // — a read a human is waiting on — so it must skip the background GET queue
+  // that a generation burst saturates, not starve behind it.
+  const res = await pixsimClient.get<MediaTokenResponse>('/media/auth-token', { priority: true });
   const ttlMs = Math.max(0, (res.expires_in ?? 0) * 1000);
   cached = { token: res.token, expiresAt: Date.now() + ttlMs };
   return res.token;
