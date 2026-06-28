@@ -106,17 +106,59 @@ function queueAssetUpdated(asset: AssetResponse): void {
   }
 }
 
-// ── WS asset-refresh batching (created/updated) ────────────────────────────
-// Each asset:created / asset:updated event used to fetch its asset with its own
-// GET /assets/{id}. A 30-clip burst is 60+ such GETs that compete with the
-// <video> stream for backend / browser-connection capacity, lagging
-// click-to-play. Buffer the ids over a short window and fetch them in ONE
-// POST /assets/bulk/get. Per-id fallback (single GET) covers anything the bulk
-// call doesn't return, so the gallery can never silently miss an asset.
+// ── Shared bulk-fetch coordinator ──────────────────────────────────────────
+// Each asset:created / asset:updated event AND each staggered thumbnail-poll
+// attempt used to fetch its asset with its own GET /assets/{id}. A 30-clip
+// burst is dozens of such GETs that compete with the <video> stream for
+// backend / browser-connection capacity, lagging click-to-play. Collect the ids
+// requested within a short window and fetch them in ONE POST /assets/bulk/get.
+// Both paths feed this, so a created event and a poll for the same asset in one
+// window share a single fetch. Always resolves (asset or null); anything the
+// bulk call skips (forbidden / mid-write race) is retried as a single GET, so a
+// caller never gets a spurious null for a live asset.
 const REFRESH_BATCH_MS = 60;
+let bulkWaiters = new Map<number, Array<(a: AssetResponse | null) => void>>();
+let bulkBatchTimer: ReturnType<typeof setTimeout> | null = null;
+
+function bulkFetchAsset(assetId: number): Promise<AssetResponse | null> {
+  return new Promise((resolve) => {
+    const arr = bulkWaiters.get(assetId);
+    if (arr) arr.push(resolve);
+    else bulkWaiters.set(assetId, [resolve]);
+    if (bulkBatchTimer == null) {
+      bulkBatchTimer = setTimeout(flushBulkFetch, REFRESH_BATCH_MS);
+    }
+  });
+}
+
+async function flushBulkFetch(): Promise<void> {
+  bulkBatchTimer = null;
+  const waiters = bulkWaiters;
+  bulkWaiters = new Map();
+  if (waiters.size === 0) return;
+  const ids = [...waiters.keys()];
+  const settle = (id: number, asset: AssetResponse | null) => {
+    waiters.get(id)?.forEach((r) => r(asset));
+  };
+  const fallbackSingle = (id: number) =>
+    refreshAsset(id).then((a) => settle(id, a)).catch(() => settle(id, null));
+  try {
+    const assets = await getAssetsByIds(ids);
+    const byId = new Map(assets.map((a) => [a.id, a]));
+    for (const id of ids) {
+      if (byId.has(id)) settle(id, byId.get(id)!);
+      else void fallbackSingle(id);
+    }
+  } catch {
+    // Whole bulk request failed — fall back to per-id GETs so a transient
+    // error can't drop the burst.
+    for (const id of ids) void fallbackSingle(id);
+  }
+}
+
+// ── WS created/updated refresh (built on the coordinator) ──────────────────
 type RefreshKind = 'created' | 'updated';
-const pendingRefresh = new Map<number, RefreshKind>();
-let refreshBatchTimer: ReturnType<typeof setTimeout> | null = null;
+const pendingRefreshKind = new Map<number, RefreshKind>();
 
 function dispatchRefreshed(asset: AssetResponse, kind: RefreshKind): void {
   if (kind === 'created') {
@@ -127,48 +169,21 @@ function dispatchRefreshed(asset: AssetResponse, kind: RefreshKind): void {
   }
 }
 
-async function flushAssetRefresh(): Promise<void> {
-  refreshBatchTimer = null;
-  const batch = [...pendingRefresh.entries()];
-  pendingRefresh.clear();
-  if (batch.length === 0) return;
-  const kindById = new Map(batch);
-  const ids = batch.map(([id]) => id);
-  try {
-    const assets = await getAssetsByIds(ids);
-    const got = new Set<number>();
-    for (const asset of assets) {
-      got.add(asset.id);
-      dispatchRefreshed(asset, kindById.get(asset.id) ?? 'updated');
-    }
-    // Anything the bulk call skipped (forbidden / mid-write race) — fetch it
-    // individually so no created/updated event is silently dropped.
-    for (const id of ids) {
-      if (got.has(id)) continue;
-      void refreshAsset(id)
-        .then((a) => dispatchRefreshed(a, kindById.get(id) ?? 'updated'))
-        .catch(() => {});
-    }
-  } catch {
-    // Whole bulk request failed — fall back to per-id refreshes so a transient
-    // error can't drop the burst.
-    for (const [id, kind] of batch) {
-      void refreshAsset(id)
-        .then((a) => dispatchRefreshed(a, kind))
-        .catch(() => {});
-    }
-  }
-}
-
 function queueAssetRefresh(assetId: number, kind: RefreshKind): void {
-  // 'created' wins for the same id within a window: the gallery must prepend
-  // before an update can apply, and the bulk fetch returns current data either
-  // way, so a created+updated pair collapses to one create (one fewer event).
-  const prev = pendingRefresh.get(assetId);
-  pendingRefresh.set(assetId, prev === 'created' ? 'created' : kind);
-  if (refreshBatchTimer == null) {
-    refreshBatchTimer = setTimeout(flushAssetRefresh, REFRESH_BATCH_MS);
+  const prev = pendingRefreshKind.get(assetId);
+  if (prev !== undefined) {
+    // Already queued this window — only one bulkFetch/dispatch per id. 'created'
+    // wins (the gallery must prepend before an update can apply; the fetch
+    // returns current data either way), so upgrade but don't fetch twice.
+    if (kind === 'created') pendingRefreshKind.set(assetId, 'created');
+    return;
   }
+  pendingRefreshKind.set(assetId, kind);
+  void bulkFetchAsset(assetId).then((asset) => {
+    const finalKind = pendingRefreshKind.get(assetId) ?? kind;
+    pendingRefreshKind.delete(assetId);
+    if (asset) dispatchRefreshed(asset, finalKind);
+  });
 }
 
 function hasUsableThumbnail(asset: AssetResponse): boolean {
@@ -215,8 +230,12 @@ async function scheduleThumbnailRefresh(assetId: number, attempt = 0): Promise<v
 
   const delay = THUMBNAIL_POLL_DELAYS_MS[attempt];
   const timeout = setTimeout(async () => {
-    try {
-      const refreshed = await refreshAsset(assetId);
+    // Fetch via the shared coordinator so polls landing in the same window
+    // (e.g. a whole burst hitting the 600ms tier at once) share one bulk GET.
+    // Resolves null (never throws) when the asset couldn't be fetched this
+    // attempt — fall through to reschedule, same as the old catch.
+    const refreshed = await bulkFetchAsset(assetId);
+    if (refreshed) {
       const nextSignature = [
         refreshed.thumbnail_key ?? '',
         refreshed.preview_key ?? '',
@@ -234,8 +253,6 @@ async function scheduleThumbnailRefresh(assetId: number, attempt = 0): Promise<v
         deficientThumbnails.delete(assetId);
         return;
       }
-    } catch (err) {
-      debugFlags.log('websocket', 'Thumbnail refresh failed:', err);
     }
 
     pendingThumbnailPolls.delete(assetId);
