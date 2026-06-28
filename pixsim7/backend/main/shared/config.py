@@ -245,6 +245,15 @@ class Settings(BaseSettings):
         default=30,
         description="Max concurrent jobs per worker"
     )
+    derivatives_dedicated_queue: bool = Field(
+        default=False,
+        description=(
+            "Route asset derivative (thumbnail/preview ffmpeg) jobs to the "
+            "dedicated, low-concurrency derivatives worker queue instead of the "
+            "MAIN queue. Keep False unless the derivatives worker is running, "
+            "or derivatives will queue with nothing to process them."
+        ),
+    )
     arq_job_timeout: int = Field(
         default=3600,
         description="Job timeout in seconds (1 hour)"

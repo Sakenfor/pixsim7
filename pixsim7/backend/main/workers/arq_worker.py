@@ -55,6 +55,7 @@ from pixsim7.backend.main.workers.health import (
     update_simulation_heartbeat,
     update_automation_heartbeat,
     update_media_maintenance_heartbeat,
+    update_derivatives_heartbeat,
     get_health_tracker,
 )
 from pixsim7.backend.main.workers.log_cleanup import cleanup_old_logs
@@ -65,6 +66,7 @@ from pixsim7.backend.main.workers.worker_families import (
     WORKER_ROLE_AUTOMATION,
     WORKER_ROLE_MAIN,
     WORKER_ROLE_MEDIA_MAINTENANCE,
+    WORKER_ROLE_DERIVATIVES,
     WORKER_ROLE_RETRY,
     WORKER_ROLE_SIMULATION,
 )
@@ -74,6 +76,7 @@ from pixsim7.backend.main.infrastructure.queue import (
     SIMULATION_SCHEDULER_QUEUE_NAME,
     AUTOMATION_QUEUE_NAME,
     MEDIA_MAINTENANCE_QUEUE_NAME,
+    DERIVATIVES_QUEUE_NAME,
 )
 from pixsim7.backend.main.shared.debug import load_global_debug_from_env
 from pixsim_logging import configure_logging, configure_stdlib_root_logger, bind_domain_context
@@ -639,6 +642,38 @@ async def media_maintenance_shutdown(ctx: dict) -> None:
     allow_sleep()
 
 
+async def derivatives_startup(ctx: dict) -> None:
+    """Startup for the dedicated derivatives (thumbnail/preview) worker.
+
+    Runs the CPU-bound ffmpeg derivative jobs off the MAIN worker so a burst of
+    generations can't pin every core and starve generation/API. Loads persisted
+    system config so the storage-roots applier is bound before a job writes its
+    thumbnail/preview derivatives. Jobs are short, so (unlike media-maintenance)
+    it doesn't inhibit sleep or reconcile orphaned long-running batches.
+    """
+    _normalize_arq_logger_handlers()
+    get_health_tracker()
+    logger.info("worker_start", msg="PixSim7 Derivatives Worker Starting")
+    await _load_persisted_system_config_for_worker()
+    logger.info(
+        "worker_component_registered",
+        component="process_derivatives",
+        queue=DERIVATIVES_QUEUE_NAME,
+    )
+    logger.info("worker_component_registered", component="update_derivatives_heartbeat", schedule="*/30s")
+    await update_derivatives_heartbeat(ctx)
+
+
+async def derivatives_shutdown(ctx: dict) -> None:
+    """Shutdown for the dedicated derivatives worker."""
+    logger.info("worker_shutdown", msg="PixSim7 Derivatives Worker Shutting Down")
+    await _drain_arq_pool(ctx)
+    try:
+        await close_database()
+    except Exception as e:
+        logger.warning("worker_shutdown_database_close_error", error=str(e))
+
+
 _sync_preload_system_config()
 
 
@@ -650,6 +685,30 @@ _RETRY_FAMILY = BY_ROLE[WORKER_ROLE_RETRY]
 _SIMULATION_FAMILY = BY_ROLE[WORKER_ROLE_SIMULATION]
 _AUTOMATION_FAMILY = BY_ROLE[WORKER_ROLE_AUTOMATION]
 _MEDIA_MAINTENANCE_FAMILY = BY_ROLE[WORKER_ROLE_MEDIA_MAINTENANCE]
+_DERIVATIVES_FAMILY = BY_ROLE[WORKER_ROLE_DERIVATIVES]
+
+
+class _BaseWorkerSettings:
+    """Shared scalars common to every ARQ worker family.
+
+    Only the values that are genuinely identical across all workers live here —
+    Redis connection and the logging/health knobs. Everything that varies per
+    worker (``queue_name``, ``functions``, ``cron_jobs``, ``on_startup`` /
+    ``on_shutdown``, and the ``max_jobs`` / ``job_timeout`` / ``max_tries`` /
+    ``retry_jobs`` pulled from the worker-family descriptor) MUST stay declared
+    as literal assignments in each subclass body: ARQ reads them, and the
+    launcher's worker panel extracts ``functions`` / ``cron_jobs`` by statically
+    parsing this file (see launcher worker_tasks `_arq_settings_metadata`), so a
+    factory or inherited list would render an empty function list there.
+
+    The pre-existing worker classes don't inherit this yet (kept untouched to
+    avoid churn); new workers should.
+    """
+
+    redis_settings = _redis_settings()
+    log_results = True
+    verbose = True
+    health_check_interval = 60
 
 
 class WorkerSettings:
@@ -931,6 +990,41 @@ class MediaMaintenanceWorkerSettings:
     log_results = True
     verbose = True
     health_check_interval = 60
+
+
+class DerivativesWorkerSettings(_BaseWorkerSettings):
+    """ARQ worker dedicated to asset derivative generation (thumbnail/preview).
+
+    The derivative step shells out to ffmpeg per asset and is CPU-bound. On the
+    MAIN worker it inherits ``arq_max_jobs`` (=30), so a burst of generations
+    (e.g. 30 at once) can spawn ~30 concurrent ffmpeg processes, pinning every
+    core and starving the generation/API hot path. Isolating it here with a
+    small fixed cap (ARQ_DERIVATIVES_MAX_JOBS, default 4) drains the burst in
+    waves instead. Routing to this queue is opt-in via
+    ``settings.derivatives_dedicated_queue`` — when off, derivatives stay on the
+    MAIN queue (which also still registers ``process_derivatives``), so enabling
+    the worker is a deliberate, reversible switch.
+    """
+
+    queue_name = _DERIVATIVES_FAMILY.queue_name
+
+    functions = [
+        process_derivatives,
+        reload_logging_config,
+    ]
+
+    cron_jobs = [
+        cron(update_derivatives_heartbeat, second={0, 30}, run_at_startup=False),
+        cron(reload_logging_config, second={10}, run_at_startup=False),
+    ]
+
+    on_startup = derivatives_startup
+    on_shutdown = derivatives_shutdown
+
+    max_jobs = _DERIVATIVES_FAMILY.resolve_max_jobs()
+    job_timeout = _DERIVATIVES_FAMILY.resolve_job_timeout()
+    max_tries = _DERIVATIVES_FAMILY.resolve_max_tries()
+    retry_jobs = _DERIVATIVES_FAMILY.retry_jobs
 
 
 # For testing/debugging

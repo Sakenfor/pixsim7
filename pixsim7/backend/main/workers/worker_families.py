@@ -23,6 +23,7 @@ from typing import Dict, Optional, Tuple
 
 from pixsim7.backend.main.infrastructure.queue import (
     AUTOMATION_QUEUE_NAME,
+    DERIVATIVES_QUEUE_NAME,
     GENERATION_FRESH_QUEUE_NAME,
     GENERATION_RETRY_QUEUE_NAME,
     MEDIA_MAINTENANCE_QUEUE_NAME,
@@ -34,6 +35,7 @@ WORKER_ROLE_RETRY = "retry"
 WORKER_ROLE_SIMULATION = "simulation"
 WORKER_ROLE_AUTOMATION = "automation"
 WORKER_ROLE_MEDIA_MAINTENANCE = "media_maintenance"
+WORKER_ROLE_DERIVATIVES = "derivatives"
 
 
 @dataclass(frozen=True)
@@ -131,6 +133,22 @@ WORKER_FAMILIES: Tuple[WorkerFamily, ...] = (
         # Don't auto-retry a half-done batch — it's cursor-resumable; re-kick by hand.
         max_tries_env=None, max_tries_default=1,
         retry_jobs=False,
+    ),
+    WorkerFamily(
+        role=WORKER_ROLE_DERIVATIVES,
+        queue_name=DERIVATIVES_QUEUE_NAME,
+        settings_class="DerivativesWorkerSettings",
+        # Low fixed cap (CPU-bound ffmpeg). A burst of generations would let the
+        # MAIN worker run up to arq_max_jobs (=30) concurrent ffmpeg jobs and
+        # starve the API; a handful at a time drains the burst without pinning
+        # every core. Tune via ARQ_DERIVATIVES_MAX_JOBS.
+        max_jobs_env="ARQ_DERIVATIVES_MAX_JOBS", max_jobs_default=4,
+        # Derivatives are short; cap well under the generation hour.
+        job_timeout_env="ARQ_DERIVATIVES_JOB_TIMEOUT", job_timeout_default=600,
+        # Idempotent (regenerates from the source), so a couple of retries on a
+        # transient ffmpeg/IO blip is safe.
+        max_tries_env=None, max_tries_default=2,
+        retry_jobs=True,
     ),
 )
 

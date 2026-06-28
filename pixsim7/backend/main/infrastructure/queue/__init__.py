@@ -9,6 +9,7 @@ from .queue_names import (
     SIMULATION_SCHEDULER_QUEUE_NAME,
     AUTOMATION_QUEUE_NAME,
     MEDIA_MAINTENANCE_QUEUE_NAME,
+    DERIVATIVES_QUEUE_NAME,
 )
 from .generation_jobs import (
     clear_generation_wait_metadata,
@@ -28,6 +29,7 @@ __all__ = [
     "SIMULATION_SCHEDULER_QUEUE_NAME",
     "AUTOMATION_QUEUE_NAME",
     "MEDIA_MAINTENANCE_QUEUE_NAME",
+    "DERIVATIVES_QUEUE_NAME",
     "set_generation_wait_metadata",
     "get_generation_wait_metadata",
     "clear_generation_wait_metadata",

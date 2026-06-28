@@ -31,6 +31,10 @@ from pixsim7.backend.main.services.storage import get_storage_service
 from pixsim7.backend.main.services.storage.roots import LOCAL_ROOT_ID
 from pixsim7.backend.main.shared.storage_utils import compute_sha256 as shared_compute_sha256
 from pixsim7.backend.main.services.asset.content import ensure_content_blob
+from pixsim7.backend.main.services.asset._deletion import (
+    delete_from_provider_by_snapshot,
+    mark_provider_copy_removed,
+)
 from pixsim7.backend.main.services.media.settings import MediaSettings, get_media_settings
 from pixsim7.backend.main.services.media.download import download_file
 from pixsim7.backend.main.services.media.metadata import extract_metadata
@@ -259,6 +263,8 @@ class AssetIngestionService:
             await self.db.commit()
             await self.db.refresh(asset)
 
+            provider_removed = await self._maybe_delete_unflagged_provider_copy_after_ingest(asset)
+
             # Kick off async derivatives if the caller opted in (or "auto"
             # resolved to async).  Do this after commit so the worker sees a
             # fully persisted row.  Redis failures are logged and tolerated —
@@ -277,11 +283,25 @@ class AssetIngestionService:
                 if needs_thumb or needs_preview:
                     try:
                         from pixsim7.backend.main.infrastructure.queue.tasks import queue_task
-                        await queue_task("process_derivatives", asset.id, force=force)
+                        from pixsim7.backend.main.infrastructure.queue import DERIVATIVES_QUEUE_NAME
+                        from pixsim7.backend.main.shared.config import settings as _app_settings
+                        # Opt-in: route ffmpeg-heavy derivative jobs to the dedicated
+                        # low-concurrency worker so a generation burst can't pin every
+                        # core on MAIN. Default (flag off) keeps them on the MAIN queue.
+                        derivatives_queue = (
+                            DERIVATIVES_QUEUE_NAME
+                            if getattr(_app_settings, "derivatives_dedicated_queue", False)
+                            else None
+                        )
+                        await queue_task(
+                            "process_derivatives", asset.id, force=force,
+                            queue_name=derivatives_queue,
+                        )
                         logger.debug(
                             "derivatives_enqueued",
                             asset_id=asset.id,
                             force=force,
+                            queue=derivatives_queue or "main",
                         )
                     except Exception as enqueue_err:
                         logger.warning(
@@ -298,6 +318,7 @@ class AssetIngestionService:
                 metadata_extracted=asset.metadata_extracted_at is not None,
                 thumbnail_generated=asset.thumbnail_generated_at is not None,
                 derivatives_mode="async" if effective_async else "inline",
+                provider_removed=provider_removed,
             )
 
             # Push a real-time asset update so generation/gallery clients can
@@ -311,6 +332,7 @@ class AssetIngestionService:
                     "reason": "ingestion_completed",
                     "thumbnail_generated": asset.thumbnail_generated_at is not None,
                     "preview_generated": asset.preview_generated_at is not None,
+                    "provider_removed": provider_removed,
                 },
             )
 
@@ -334,6 +356,76 @@ class AssetIngestionService:
             self._cleanup_temp_files()
 
     # ── Derivatives (async-friendly) ──────────────────────────────────────
+
+    async def _maybe_delete_unflagged_provider_copy_after_ingest(self, asset: Asset) -> bool:
+        """
+        Best-effort provider cleanup for generated assets after durable ingest.
+
+        The asset keeps its provider IDs for provenance, but media_metadata gets
+        a provider_removed marker before the remote delete is attempted.
+        """
+        try:
+            if not self.settings.ingest_on_asset_add:
+                return False
+            if not asset.source_generation_id:
+                return False
+            if not asset.provider_id or not asset.provider_asset_id or not asset.provider_account_id:
+                return False
+            if str(asset.provider_asset_id).startswith("local_"):
+                return False
+            if not asset.stored_key:
+                return False
+
+            meta = asset.media_metadata if isinstance(asset.media_metadata, dict) else {}
+            provider_flagged = str(meta.get("provider_flagged", "")).lower() == "true"
+            provider_removed = str(meta.get("provider_removed", "")).lower() == "true"
+            if provider_flagged or provider_removed:
+                return False
+
+            from pixsim7.backend.main.api.v1.providers import _load_provider_settings
+
+            provider_settings = _load_provider_settings().get(str(asset.provider_id))
+            if not provider_settings or not provider_settings.auto_delete_unflagged_generated_after_ingest:
+                return False
+
+            provider_id = str(asset.provider_id)
+            provider_asset_id = str(asset.provider_asset_id)
+            provider_account_id = asset.provider_account_id
+            media_type = asset.media_type
+            media_metadata = dict(meta)
+
+            mark_provider_copy_removed(asset, reason="auto_unflagged_generated_after_ingest")
+            attributes.flag_modified(asset, "media_metadata")
+            self.db.add(asset)
+            await self.db.commit()
+            await self.db.refresh(asset)
+
+            await delete_from_provider_by_snapshot(
+                asset_id=asset.id,
+                provider_id=provider_id,
+                provider_asset_id=provider_asset_id,
+                provider_account_id=provider_account_id,
+                media_type=media_type,
+                media_metadata=media_metadata,
+            )
+
+            logger.info(
+                "provider_auto_delete_after_ingest",
+                asset_id=asset.id,
+                provider_id=provider_id,
+                provider_asset_id=provider_asset_id,
+            )
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            logger.warning(
+                "provider_auto_delete_after_ingest_failed",
+                asset_id=asset.id,
+                provider_id=asset.provider_id,
+                error=str(e),
+                exc_info=True,
+            )
+            return False
 
     async def generate_derivatives(
         self,

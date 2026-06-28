@@ -28,6 +28,7 @@ from pixsim7.backend.main.workers.worker_families import (  # noqa: E402
     WORKER_ROLE_SIMULATION,
     WORKER_ROLE_AUTOMATION,
     WORKER_ROLE_MEDIA_MAINTENANCE,
+    WORKER_ROLE_DERIVATIVES,
     WORKER_ROLES,
 )
 
@@ -217,6 +218,10 @@ async def update_automation_heartbeat(ctx: dict) -> None:
 
 async def update_media_maintenance_heartbeat(ctx: dict) -> None:
     await _update_worker_heartbeat(ctx, WORKER_ROLE_MEDIA_MAINTENANCE)
+
+
+async def update_derivatives_heartbeat(ctx: dict) -> None:
+    await _update_worker_heartbeat(ctx, WORKER_ROLE_DERIVATIVES)
 
 
 async def get_worker_health(

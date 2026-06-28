@@ -1,0 +1,24 @@
+{
+  "id": "derivatives-worker",
+  "category": "services",
+  "type": "worker",
+  "name": "Worker (Derivatives)",
+  "description": "Dedicated worker for asset derivative generation (thumbnail/preview ffmpeg), isolated from the MAIN worker with a low concurrency cap so a burst of generations can't pin every core and starve generation/API. Opt-in via settings.derivatives_dedicated_queue.",
+  "module": "arq",
+  "args": ["pixsim7.backend.main.workers.arq_worker.DerivativesWorkerSettings"],
+  "depends_on": ["db"],
+  "auto_start": false,
+  "enabled": true,
+  "settings": [
+    {
+      "key": "max_jobs",
+      "default": 4,
+      "description": "Max concurrent ffmpeg derivative jobs (low: CPU-bound, keeps cores free for generation/API)"
+    },
+    {
+      "key": "job_timeout",
+      "default": 600,
+      "description": "Job timeout in seconds (derivatives are short)"
+    }
+  ]
+}

@@ -20,3 +20,10 @@ AUTOMATION_QUEUE_NAME = "arq:queue:automation"
 # See plan media-storage-tiering cp-k and signal-reprobe-backfill-run.
 MEDIA_MAINTENANCE_QUEUE_NAME = "arq:queue:media-maintenance"
 
+# Dedicated queue for asset derivative generation (thumbnail/preview ffmpeg).
+# Isolated + low-concurrency so a burst of generations (e.g. 30 at once) can't
+# spin up ~arq_max_jobs concurrent ffmpeg processes on the MAIN worker and
+# starve the generation/API hot path. Routing here is opt-in via
+# settings.derivatives_dedicated_queue; default stays on the MAIN queue.
+DERIVATIVES_QUEUE_NAME = "arq:queue:derivatives"
+

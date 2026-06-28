@@ -31,6 +31,7 @@ WORKER_CMDLINE_SELECTORS: dict[str, List[str]] = {
     "simulation-worker": ["SimulationWorkerSettings"],
     "automation-worker": ["AutomationWorkerSettings"],
     "media-maintenance-worker": ["MediaMaintenanceWorkerSettings"],
+    "derivatives-worker": ["DerivativesWorkerSettings"],
     "ai-client": ["pixsim7.client", "-m pixsim7.client"],
 }
 

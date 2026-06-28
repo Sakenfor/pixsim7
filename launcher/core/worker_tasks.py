@@ -19,12 +19,17 @@ requests, so each poll is one round trip rather than ~20.
 """
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import os
 import time
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Optional
+
+from launcher.core.environment import ROOT
 
 logger = logging.getLogger("launcher.core.worker_tasks")
 
@@ -36,7 +41,61 @@ WORKER_FAMILIES: tuple[tuple[str, str, str, str], ...] = (
     ("simulation", "simulation-worker", "arq:queue:simulation-scheduler", "Simulation"),
     ("automation", "automation-worker", "arq:queue:automation", "Automation"),
     ("media_maintenance", "media-maintenance-worker", "arq:queue:media-maintenance", "Media Maintenance"),
+    ("derivatives", "derivatives-worker", "arq:queue:derivatives", "Derivatives"),
 )
+
+_ARQ_SETTINGS_BY_ROLE = {
+    "main": "WorkerSettings",
+    "retry": "GenerationRetryWorkerSettings",
+    "simulation": "SimulationWorkerSettings",
+    "automation": "AutomationWorkerSettings",
+    "media_maintenance": "MediaMaintenanceWorkerSettings",
+    "derivatives": "DerivativesWorkerSettings",
+}
+
+_TASK_LABELS = {
+    "process_generation": "Generation processing",
+    "process_analysis": "Asset analysis",
+    "process_derivatives": "Media derivatives",
+    "process_ingestion": "Media ingestion",
+    "process_prompt_tagging": "Prompt tagging",
+    "process_prompt_embedding": "Prompt embeddings",
+    "process_chain_execution": "Generation chains",
+    "process_ephemeral_chain_execution": "Ephemeral chains",
+    "process_ephemeral_fanout_execution": "Ephemeral fanout",
+    "run_analysis_backfill_batch": "Analysis backfill",
+    "poll_job_statuses": "Provider status polling",
+    "poll_generation_once": "One-off generation poll",
+    "requeue_pending_generations": "Pending generation recovery",
+    "requeue_pending_analyses": "Pending analysis recovery",
+    "refresh_stale_account_credits": "Account credit refresh",
+    "cleanup_old_logs": "Log cleanup",
+    "reconcile_account_counters": "Account counter reconcile",
+    "tick_active_worlds": "World simulation ticks",
+    "process_automation": "Automation executions",
+    "run_automation_loops": "Automation loops",
+    "queue_pending_executions": "Queue pending automation",
+    "poll_device_ads": "Device ad polling",
+    "poll_device_reconnects": "Device reconnects",
+    "process_relocation": "Archive relocate",
+    "process_restore": "Archive restore",
+    "run_signal_backfill_batch": "Signal-scan backfill",
+    "reload_logging_config": "Logging config reload",
+    "update_main_heartbeat": "Heartbeat",
+    "update_retry_heartbeat": "Heartbeat",
+    "update_simulation_heartbeat": "Heartbeat",
+    "update_automation_heartbeat": "Heartbeat",
+    "update_media_maintenance_heartbeat": "Heartbeat",
+}
+
+_RUNTIME_TASK_NAMES = {
+    "reload_logging_config",
+    "update_main_heartbeat",
+    "update_retry_heartbeat",
+    "update_simulation_heartbeat",
+    "update_automation_heartbeat",
+    "update_media_maintenance_heartbeat",
+}
 
 _HEARTBEAT_KEY = "arq:worker:{role}:heartbeat"
 _STATS_KEY = "arq:worker:{role}:stats"
@@ -87,12 +146,145 @@ def _as_int(v: Any) -> Optional[int]:
     return v if isinstance(v, int) else None
 
 
+def _node_name(node: ast.AST) -> Optional[str]:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def _extract_function_names(value: ast.AST) -> list[str]:
+    if not isinstance(value, (ast.List, ast.Tuple)):
+        return []
+    names: list[str] = []
+    for item in value.elts:
+        name = _node_name(item)
+        if name:
+            names.append(name)
+    return names
+
+
+def _extract_cron_names(value: ast.AST) -> list[str]:
+    if not isinstance(value, (ast.List, ast.Tuple)):
+        return []
+    names: list[str] = []
+    for item in value.elts:
+        if isinstance(item, ast.Call) and item.args:
+            name = _node_name(item.args[0])
+        else:
+            name = _node_name(item)
+        if name:
+            names.append(name)
+    return names
+
+
+def _task_label(name: str) -> str:
+    if name in _TASK_LABELS:
+        return _TASK_LABELS[name]
+    cleaned = name
+    for prefix in ("process_", "run_"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix):]
+            break
+    for suffix in ("_batch", "_job"):
+        if cleaned.endswith(suffix):
+            cleaned = cleaned[:-len(suffix)]
+            break
+    return cleaned.replace("_", " ").title()
+
+
+def _task_records(names: list[str]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    records: list[dict[str, Any]] = []
+    for name in names:
+        if name in seen:
+            continue
+        seen.add(name)
+        records.append({
+            "name": name,
+            "label": _task_label(name),
+            "runtime": name in _RUNTIME_TASK_NAMES,
+        })
+    return records
+
+
+@lru_cache(maxsize=1)
+def _service_descriptions() -> dict[str, str]:
+    descriptions: dict[str, str] = {}
+    services_dir = Path(ROOT) / "services"
+    try:
+        for path in services_dir.glob("*/pixsim.service.json"):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(data, dict):
+                continue
+            service_id = data.get("id")
+            description = data.get("description")
+            if isinstance(service_id, str) and isinstance(description, str) and description.strip():
+                descriptions[service_id] = description.strip()
+    except Exception as exc:
+        logger.debug("worker_manifest_descriptions_unavailable error=%s", exc)
+    return descriptions
+
+
+@lru_cache(maxsize=1)
+def _arq_settings_metadata() -> dict[str, dict[str, list[str]]]:
+    path = Path(ROOT) / "pixsim7" / "backend" / "main" / "workers" / "arq_worker.py"
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.debug("worker_arq_metadata_parse_failed path=%s error=%s", path, exc)
+        return {}
+
+    wanted = set(_ARQ_SETTINGS_BY_ROLE.values())
+    metadata: dict[str, dict[str, list[str]]] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name not in wanted:
+            continue
+        entry = {"functions": [], "cron_functions": []}
+        for stmt in node.body:
+            if not isinstance(stmt, ast.Assign):
+                continue
+            target_names = {_node_name(target) for target in stmt.targets}
+            if "functions" in target_names:
+                entry["functions"] = _extract_function_names(stmt.value)
+            elif "cron_jobs" in target_names:
+                entry["cron_functions"] = _extract_cron_names(stmt.value)
+        metadata[node.name] = entry
+    return metadata
+
+
+@lru_cache(maxsize=1)
+def _worker_metadata_by_role() -> dict[str, dict[str, Any]]:
+    descriptions = _service_descriptions()
+    arq_metadata = _arq_settings_metadata()
+    metadata: dict[str, dict[str, Any]] = {}
+    for role, service_key, _queue, _label in WORKER_FAMILIES:
+        settings_class = _ARQ_SETTINGS_BY_ROLE.get(role)
+        arq = arq_metadata.get(settings_class or "", {})
+        metadata[role] = {
+            "description": descriptions.get(service_key),
+            "settings_class": settings_class,
+            "functions": _task_records(arq.get("functions", [])),
+            "cron_functions": _task_records(arq.get("cron_functions", [])),
+        }
+    return metadata
+
+
 def _empty_family(role: str, service_key: str, queue: str, label: str) -> dict[str, Any]:
+    metadata = _worker_metadata_by_role().get(role, {})
     return {
         "role": role,
         "label": label,
         "service_key": service_key,
         "queue": queue,
+        "description": metadata.get("description"),
+        "settings_class": metadata.get("settings_class"),
+        "functions": metadata.get("functions", []),
+        "cron_functions": metadata.get("cron_functions", []),
         "alive": False,
         "heartbeat_age_s": None,
         "uptime_s": None,
