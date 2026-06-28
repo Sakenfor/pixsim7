@@ -105,7 +105,7 @@ class AssetSearchRequest(BaseModel):
     content_category: str | None = Field(None, description="Filter by content category")
     content_rating: str | None = Field(None, description="Filter by content rating")
 
-    provider_status: str | None = Field(None, description="Filter by provider status (ok, local_only, flagged, unknown)")
+    provider_status: str | None = Field(None, description="Filter by provider status (ok, local_only, flagged, unknown, not_flagged)")
     sync_status: SyncStatus | None = Field(None, description="Filter by sync status")
 
     source_generation_id: int | None = Field(None, description="Filter by source generation ID")
@@ -170,14 +170,6 @@ class AssetSearchRequest(BaseModel):
         True,
         description="When true, computes exact total count. Set false to skip expensive count query.",
     )
-    include_cohort_counts: bool = Field(
-        True,
-        description="When true, computes the media-card sibling/cohort counts (same prompt / seed / "
-        "inputs). The prompt facet scans on COALESCE(prompt_family_id, prompt_version_id) and is "
-        "expensive on large libraries. Set false for surfaces that don't render the badge (e.g. "
-        "neighbor/sequence walking) to skip it entirely.",
-    )
-
     limit: int = Field(50, ge=1, le=100, description="Results per page")
     offset: int = Field(0, ge=0, description="Pagination offset (legacy)")
     cursor: str | None = Field(None, description="Opaque cursor for pagination")
@@ -302,14 +294,13 @@ class AssetResponse(BaseModel):
     # Lineage: whether any other asset lists this one as its source/parent (computed at response build time)
     has_children: bool = False
 
-    # Cohort counts for the similarity badge (computed at response build time,
-    # user-scoped, include-self). Map keyed by lit-facet letters in canonical
-    # i<p<s order — i, p, s, ip, is, ps, ips — where i=inputs, p=prompt,
-    # s=seed. Each value counts the user's assets matching ALL facets in that
-    # combo; 0 when the asset lacks a facet (e.g. no inputs). The frontend picks
-    # which combo to show from a user-chosen facet lens and hides below 2.
-    # See plan media-card-sibling-badges and services/asset/sibling_counts.py.
-    cohort_counts: dict[str, int] = Field(default_factory=dict)
+    # NOTE: sibling/cohort counts are NO LONGER carried on the asset response.
+    # Computing them inline ran ~7 GROUP BY queries per asset on the hot path
+    # (every asset:created/updated event + thumbnail poll), and the badge that
+    # consumes them is hover-gated. They now load lazily from the dedicated
+    # GET /assets/{id}/cohort-counts (single) and POST /assets/cohort-counts
+    # (batch) endpoints. See plan media-card-sibling-badges and
+    # services/asset/sibling_counts.py.
 
     # Artificial-extend lineage (computed from media_metadata.generation_context.artificial_extend)
     # When present, asset was produced via the "extend via last-frame i2v" flow.

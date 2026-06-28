@@ -18,7 +18,7 @@ from typing import List
 from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, DatabaseSession
 from pixsim7.backend.main.api.v1.assets_helpers import (
     get_effective_owner_user_id,
-    build_asset_response_with_tags,
+    build_asset_responses_with_tags,
 )
 from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
@@ -79,14 +79,18 @@ async def bulk_get_assets(
     Missing or forbidden ids are skipped (not an error); the client falls back to
     a single GET for any id it doesn't get back, so a partial result is safe.
     """
-    out: List[AssetResponse] = []
+    # Ownership-scoped fetch is inherently per-id, but the response builder is
+    # NOT: collect the assets, then build them in one shot so tags + has_children
+    # batch into a single query each (instead of 2 queries PER asset). This is
+    # the path the burst-time WS/thumbnail refresh coordinator funnels into, so
+    # the N→1 query collapse matters under load.
+    assets: List = []
     for asset_id in request.asset_ids[:_BULK_GET_CAP]:
         try:
-            asset = await asset_service.get_asset_for_user(asset_id, user)
+            assets.append(await asset_service.get_asset_for_user(asset_id, user))
         except (ResourceNotFoundError, PermissionError):
             continue
-        out.append(await build_asset_response_with_tags(asset, db))
-    return out
+    return await build_asset_responses_with_tags(assets, db)
 
 
 # ===== BULK TAGS =====

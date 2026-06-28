@@ -54,13 +54,6 @@ export type AssetSearchRequest = Partial<AssetSearchRequestSchema> & {
   /** Include exact total count (can be expensive on large libraries) */
   include_total?: boolean;
   /**
-   * Include media-card sibling/cohort counts (same prompt/seed/inputs). The
-   * prompt facet is an unindexable scan — set false on surfaces that don't show
-   * the badge (e.g. neighbor walking) to skip ~2.5s/page on large libraries.
-   * (Hand-declared pending OpenAPI codegen.)
-   */
-  include_cohort_counts?: boolean;
-  /**
    * Filter by the denormalized Asset.operation_type COLUMN (fast, indexed) —
    * distinct from `operation_type`, which is a lineage EXISTS subquery. Used by
    * time-cohort neighbor walking. (Hand-declared pending OpenAPI codegen.)

@@ -61,6 +61,35 @@ export const deleteAsset = assetsApi.deleteAsset;
 export const deleteAssetFromProvider = assetsApi.deleteAssetFromProvider;
 
 /**
+ * Fetch the cohort/sibling counts for a single asset's similarity badge.
+ *
+ * These used to ride on every asset response, but computing them ran ~7 GROUP
+ * BY queries per asset on the hot path. They're now loaded lazily (on hover)
+ * from this dedicated endpoint. Returns a map keyed by lit-facet letters in
+ * canonical i<p<s order (i, p, s, ip, is, ps, ips); `{}` when no facet applies.
+ */
+export function getAssetCohortCounts(
+  assetId: number,
+): Promise<Record<string, number>> {
+  return pixsimClient.get<Record<string, number>>(`/assets/${assetId}/cohort-counts`);
+}
+
+/**
+ * Batch variant: fetch cohort counts for many assets in one round-trip
+ * (POST /assets/cohort-counts). Returns `{asset_id: {combo: count}}`; missing/
+ * forbidden ids are simply absent. For optional gallery-page prefetch.
+ */
+export async function getCohortCountsByIds(
+  ids: number[],
+): Promise<Record<number, Record<string, number>>> {
+  if (ids.length === 0) return {};
+  return pixsimClient.post<Record<number, Record<string, number>>>(
+    '/assets/cohort-counts',
+    { asset_ids: ids },
+  );
+}
+
+/**
  * Archive or unarchive an asset.
  * Archived assets are soft-hidden from the default gallery view.
  */

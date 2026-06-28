@@ -11,7 +11,6 @@ from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
 from pixsim7.backend.main.services.asset.lineage import AssetLineageService
-from pixsim7.backend.main.services.asset.sibling_counts import AssetSiblingCountService
 from pixsim7.backend.main.services.tag import TagAssignment
 from pixsim7.backend.main.domain.assets.tag import AssetTag
 
@@ -31,20 +30,29 @@ def get_effective_owner_user_id(user) -> int:
     return owner_user_id
 
 
+def _metadata_truthy(value) -> bool:
+    return value is True or (isinstance(value, str) and value.lower() == "true")
+
+
 def _compute_provider_status(asset) -> str:
     provider_asset_id = getattr(asset, "provider_asset_id", None)
     provider_flagged = getattr(asset, "provider_flagged", False)
     remote_url = getattr(asset, "remote_url", None)
     provider_uploads = getattr(asset, "provider_uploads", None) or {}
+    provider_removed = False
 
     # Also check media_metadata for flagged status (set on upload rejection)
+    meta = getattr(asset, "media_metadata", None) or {}
+    if isinstance(meta, dict):
+        provider_removed = _metadata_truthy(meta.get("provider_removed"))
     if not provider_flagged:
-        meta = getattr(asset, "media_metadata", None) or {}
-        if isinstance(meta, dict) and meta.get("provider_flagged"):
+        if isinstance(meta, dict) and _metadata_truthy(meta.get("provider_flagged")):
             provider_flagged = True
 
     if provider_flagged:
         return "flagged"
+    elif provider_removed:
+        return "local_only"
     elif remote_url and (remote_url.startswith("http://") or remote_url.startswith("https://")):
         return "ok"
     elif provider_asset_id and not provider_asset_id.startswith("local_"):
@@ -93,8 +101,9 @@ async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetRes
     ar.tags = [_tag_summary_with_source(tag, source) for tag, source in tags]
     has_children_map = await AssetLineageService(db).has_children_map([asset.id])
     ar.has_children = has_children_map.get(asset.id, False)
-    counts = await AssetSiblingCountService(db).counts_map([asset], asset.user_id)
-    ar.cohort_counts = counts.get(asset.id, {})
+    # Cohort/sibling counts are intentionally NOT computed here — they ran ~7
+    # GROUP BY queries per asset on the hot path. The hover-gated similarity
+    # badge fetches them lazily from GET /assets/{id}/cohort-counts instead.
     ar.gen_seed = asset.gen_seed
     ar.signal_suspicious = _compute_signal_suspicious(asset)
 
@@ -102,16 +111,16 @@ async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetRes
 
 
 async def build_asset_responses_with_tags(
-    assets, db: DatabaseSession, *, include_cohort_counts: bool = True
+    assets, db: DatabaseSession
 ) -> List[AssetResponse]:
     """
     Build AssetResponses with tags batch-loaded in a single query.
 
-    ``include_cohort_counts`` gates the sibling/cohort count computation, whose
-    prompt facet (COALESCE(prompt_family_id, prompt_version_id)) is an
-    unindexable seq scan on large libraries. Surfaces that don't render the
-    sibling badge — e.g. neighbor/sequence walking — should pass False to skip
-    ~2.5s of work per page on big libraries.
+    Cohort/sibling counts are intentionally NOT computed here — they ran ~7
+    GROUP BY queries per owner-group on the hot path (gallery page loads, bulk
+    refreshes). The hover-gated similarity badge now fetches them lazily from
+    GET /assets/{id}/cohort-counts (single) / POST /assets/cohort-counts
+    (batch). See plan media-card-sibling-badges.
     """
     if not assets:
         return []
@@ -120,17 +129,6 @@ async def build_asset_responses_with_tags(
     ids = [a.id for a in assets]
     tags_map = await asset_tags.get_tags_batch_with_source(ids)
     has_children_map = await AssetLineageService(db).has_children_map(ids)
-
-    # Sibling counts are user-scoped; group by owner so a mixed-owner list
-    # (e.g. admin views) still counts each asset within its own library.
-    sibling_counts: dict = {}
-    if include_cohort_counts:
-        sibling_svc = AssetSiblingCountService(db)
-        by_owner: dict[int, List] = {}
-        for asset in assets:
-            by_owner.setdefault(asset.user_id, []).append(asset)
-        for owner_user_id, owned in by_owner.items():
-            sibling_counts.update(await sibling_svc.counts_map(owned, owner_user_id))
 
     responses: List[AssetResponse] = []
     for asset in assets:
@@ -142,7 +140,6 @@ async def build_asset_responses_with_tags(
             for tag, source in tags_map.get(asset.id, [])
         ]
         ar.has_children = has_children_map.get(asset.id, False)
-        ar.cohort_counts = sibling_counts.get(asset.id, {})
         ar.gen_seed = asset.gen_seed
         ar.signal_suspicious = _compute_signal_suspicious(asset)
         responses.append(ar)

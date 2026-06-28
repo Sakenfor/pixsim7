@@ -199,9 +199,6 @@ async function fetchDirection(
     sort_by: 'created_at' as const,
     sort_dir: direction === 'next' ? ('asc' as const) : ('desc' as const),
     limit,
-    // Neighbor walking never renders the sibling-count badge; skip the
-    // expensive prompt-coalesce cohort scan (~2.5s/page on large libraries).
-    include_cohort_counts: false,
     // operationType is loose `string` upstream (mirrors AssetModel.operationType);
     // tighten to the generated `OperationType` literal-union at the wire.
     // Use `asset_operation_type` (denormalized Asset.operation_type COLUMN) — not

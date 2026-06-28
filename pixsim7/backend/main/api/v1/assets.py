@@ -34,6 +34,7 @@ from pixsim7.backend.main.api.v1.assets_helpers import (
     build_asset_response_with_tags,
     get_effective_owner_user_id,
 )
+from pixsim7.backend.main.services.asset.sibling_counts import AssetSiblingCountService
 
 # Sub-routers for modular organization
 from pixsim7.backend.main.api.v1 import assets_maintenance
@@ -111,6 +112,82 @@ async def get_asset(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get asset: {str(e)}")
+
+
+# ===== COHORT / SIBLING COUNTS (hover-fed similarity badge) =====
+#
+# Split out of the asset response on purpose: computing these ran ~7 GROUP BY
+# queries PER ASSET on every asset:created/updated event and thumbnail poll —
+# exactly when the DB is busiest during a generation burst. The badge that
+# consumes them is hover-gated, so it fetches them lazily here instead.
+
+
+class BulkCohortCountsRequest(BaseModel):
+    """Request body for batch cohort-count prefetch (e.g. a gallery page)."""
+    asset_ids: List[int] = Field(description="List of asset IDs to count cohorts for")
+
+
+# Cap so a malformed/huge id list can't fan one request into a flood of GROUP BYs.
+_COHORT_COUNTS_CAP = 200
+
+
+@router.get("/{asset_id}/cohort-counts")
+async def get_asset_cohort_counts(
+    asset_id: int,
+    user: CurrentUser,
+    asset_service: AssetSvc,
+    db: DatabaseSession,
+) -> dict[str, int]:
+    """Cohort/sibling counts for a single asset's similarity badge.
+
+    Returns ``{"i": n, "p": n, ...}`` keyed by lit-facet letters in canonical
+    i<p<s order (i=inputs, p=prompt, s=seed); ``{}`` when the asset lacks every
+    facet. User-scoped to the asset's owner, broken siblings excluded — same
+    numbers ``AssetSiblingCountService.counts_map`` produced inline before.
+    """
+    try:
+        asset = await asset_service.get_asset_for_user(asset_id, user)
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+    counts = await AssetSiblingCountService(db).counts_map([asset], asset.user_id)
+    return counts.get(asset.id, {})
+
+
+@router.post("/cohort-counts")
+async def bulk_get_cohort_counts(
+    request: BulkCohortCountsRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc,
+    db: DatabaseSession,
+) -> dict[int, dict[str, int]]:
+    """Batch cohort/sibling counts for many assets in ONE round-trip.
+
+    Returns ``{asset_id: {combo: count}}``. Missing/forbidden ids are skipped
+    (not an error). User-scoped per owner like the single endpoint; lets a
+    gallery page prefetch badge counts for its visible cards without a hover.
+    """
+    assets: List = []
+    for asset_id in request.asset_ids[:_COHORT_COUNTS_CAP]:
+        try:
+            assets.append(await asset_service.get_asset_for_user(asset_id, user))
+        except (ResourceNotFoundError, PermissionError):
+            continue
+    if not assets:
+        return {}
+
+    # Counts are user-scoped; group by owner so a mixed-owner list (admin views)
+    # still counts each asset within its own library.
+    svc = AssetSiblingCountService(db)
+    by_owner: dict[int, List] = {}
+    for asset in assets:
+        by_owner.setdefault(asset.user_id, []).append(asset)
+    result: dict[int, dict[str, int]] = {}
+    for owner_user_id, owned in by_owner.items():
+        result.update(await svc.counts_map(owned, owner_user_id))
+    return result
 
 
 # ===== ASSET GENERATION CONTEXT =====

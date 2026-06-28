@@ -81,7 +81,6 @@ export function buildMediaCardOverlayData(
     providerUploads: asset?.providerUploads,
     lastUploadStatusByProvider: asset?.lastUploadStatusByProvider,
     versionNumber: asset?.versionNumber,
-    cohortCounts: asset?.cohortCounts,
     onFilterByTagShortcut: overrides.onFilterByTagShortcut,
     lockedTimestamp: overrides.lockedTimestamp,
     onLockTimestamp: overrides.onLockTimestamp,

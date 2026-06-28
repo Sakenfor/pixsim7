@@ -5,10 +5,11 @@
  * assets sharing that combo. Replaces the three fixed sibling-count badges.
  *
  * The lens list lives in the global {@link useSiblingFacetStore} (cap
- * {@link MAX_LENSES}); the whole 7-way `cohort_counts` map is shipped on every
- * asset, so rendering N lenses is free. Fully configurable inline: hover a chip
- * to toggle its facets, remove it, or add another badge — all from the same
- * popup. (A standalone "+" appears only as a bootstrap when every badge has
+ * {@link MAX_LENSES}); the whole 7-way cohort-counts map for an asset loads
+ * lazily into {@link useSiblingCountsStore} (on hover / viewer focus / touch
+ * mount), so once present rendering N lenses is free. Fully configurable
+ * inline: hover a chip to toggle its facets, remove it, or add another badge —
+ * all from the same popup. (A standalone "+" appears only as a bootstrap when every badge has
  * been removed.) Edits are global, so every card updates at once. Clicking a
  * chip opens the mini-gallery for that combination.
  *
@@ -21,6 +22,7 @@
 import { useHoverExpand, PortalFloat } from '@pixsim7/shared.ui';
 import React, { useEffect, useRef, useState } from 'react';
 
+import { getAssetCohortCounts } from '@lib/api/assets';
 import { openSimilarityGallery } from '@lib/dockview/contextMenu/actions/assetActions';
 import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
@@ -28,10 +30,12 @@ import { BADGE_SLOT, BADGE_PRIORITY } from '@lib/ui/overlay';
 
 import { useAppearanceStore } from '@features/appearance';
 import { type AssetModel } from '@features/assets';
+import { isBackendAssetId } from '@features/assets/lib/backendAssetId';
 
 import { FacetCube } from './FacetCube';
 import type { MediaCardResolvedProps } from './MediaCard';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
+import { useSiblingCountsStore, type CohortCounts } from './siblingCountsStore';
 import {
   facetComboKey,
   MAX_LENSES,
@@ -125,11 +129,11 @@ function FacetGlyph({ facets, size = 15 }: { facets: SiblingFacets; size?: numbe
 
 function SimilarityChip({
   lens,
-  data,
+  counts,
   asset,
 }: {
   lens: SiblingLens;
-  data: MediaCardOverlayData;
+  counts: CohortCounts;
   asset: AssetModel;
 }) {
   const toggleLensFacet = useSiblingFacetStore((s) => s.toggleLensFacet);
@@ -158,7 +162,6 @@ function SimilarityChip({
     return () => document.removeEventListener('mousedown', handler);
   }, [touchOpen]);
 
-  const counts = data.cohortCounts ?? {};
   const present = presentFacets(asset);
   // Effective lens = lit facets the asset actually has — drives both the count
   // and what the click opens (they must agree).
@@ -334,12 +337,40 @@ function AddLensChip() {
   );
 }
 
-function SimilarityBadgeStack({ data, asset }: { data: MediaCardOverlayData; asset: AssetModel }) {
+const EMPTY_COUNTS: CohortCounts = {};
+
+function SimilarityBadgeStack({ asset }: { asset: AssetModel }) {
   const lenses = useSiblingFacetStore((s) => s.lenses);
+  // Counts load lazily into the transient store — on hover (useSiblingCountRefresh),
+  // on viewer focus, or via the touch-mount fetch below. Subscribe by asset id
+  // so the chips repaint the moment this asset's entry lands.
+  const counts = useSiblingCountsStore((s) => s.counts.get(asset.id)) ?? EMPTY_COUNTS;
+
+  // Touch devices show the badge without hover (touchFallback: 'always'), but
+  // there's no hover to trigger the lazy fetch — so pull the counts once on
+  // mount when they're absent. Desktop stays lazy-on-hover (no mount fetch) so
+  // a gallery page doesn't fire a request per card.
+  useEffect(() => {
+    if (!IS_TOUCH_ONLY) return;
+    if (!isBackendAssetId(asset.id)) return;
+    if (useSiblingCountsStore.getState().counts.has(asset.id)) return;
+    let cancelled = false;
+    getAssetCohortCounts(asset.id)
+      .then((c) => {
+        if (!cancelled) useSiblingCountsStore.getState().set(asset.id, c);
+      })
+      .catch(() => {
+        // Best-effort — a failed fetch just leaves the badge count-less.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [asset.id]);
+
   return (
     <div className="flex flex-col items-start gap-1">
       {lenses.map((lens) => (
-        <SimilarityChip key={lens.id} lens={lens} data={data} asset={asset} />
+        <SimilarityChip key={lens.id} lens={lens} counts={counts} asset={asset} />
       ))}
       {/* "Add badge" normally lives in each chip's popup; the standalone "+"
           is only a bootstrap for when every badge has been removed. */}
@@ -371,6 +402,6 @@ export function createSimilarityBadge(
     priority: BADGE_PRIORITY.background,
     interactive: true,
     handlesOwnInteraction: true,
-    render: (data) => <SimilarityBadgeStack data={data} asset={asset} />,
+    render: () => <SimilarityBadgeStack asset={asset} />,
   };
 }
