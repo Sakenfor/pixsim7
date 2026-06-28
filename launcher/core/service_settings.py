@@ -152,19 +152,10 @@ TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
             "default": 3600,
             "env_map": "ARQ_JOB_TIMEOUT",
         },
-        {
-            "key": "derivatives_dedicated_queue",
-            "type": "boolean",
-            "label": "Offload derivatives to dedicated worker",
-            "description": (
-                "Route thumbnail/preview (ffmpeg) jobs to the Worker (Derivatives) "
-                "queue instead of running them here. Keeps a burst of generations "
-                "from spawning many concurrent ffmpeg processes on this worker and "
-                "starving generation/API. Requires Worker (Derivatives) to be running."
-            ),
-            "default": False,
-            "env_map": "DERIVATIVES_DEDICATED_QUEUE",
-        },
+        # NOTE: settings shared by ALL worker-type services go here. A setting
+        # that's specific to ONE worker (e.g. derivatives offload, which only
+        # the Main worker enqueues) belongs in that service's manifest
+        # `settings` array instead — see services/worker/pixsim.service.json.
     ],
 }
 

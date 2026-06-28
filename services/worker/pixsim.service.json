@@ -8,5 +8,15 @@
   "args": ["pixsim7.backend.main.workers.arq_worker.WorkerSettings"],
   "depends_on": ["db"],
   "auto_start": false,
-  "enabled": true
+  "enabled": true,
+  "settings": [
+    {
+      "key": "derivatives_dedicated_queue",
+      "type": "boolean",
+      "label": "Offload derivatives to dedicated worker",
+      "description": "Route thumbnail/preview (ffmpeg) jobs to the Worker (Derivatives) queue instead of running them here. Keeps a burst of generations from spawning many concurrent ffmpeg processes on this worker and starving generation/API. Requires Worker (Derivatives) to be running.",
+      "default": false,
+      "env_map": "DERIVATIVES_DEDICATED_QUEUE"
+    }
+  ]
 }
