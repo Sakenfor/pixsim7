@@ -149,6 +149,21 @@ def not_effectively_broken_clause():
 # the stored chroma_fp. See plan signal-scan-recalibration.
 AUDIO_REF_MATCH_STRONG = 0.60
 AUDIO_REF_MATCH_WEAK = 0.50
+# Loudness-aware ladder (v5.1). Loudness range (LRA) discriminates synthetic
+# broken audio (narrowband refusal voice / pitched hum, low LRA) from a genuine
+# dynamic soundtrack (breaths, music, ambience, high LRA) that merely cross-
+# correlates with a reference melody (the "good-melody false positive"). So the
+# audio match is graded by BOTH similarity and LRA:
+#   >= HI (0.70)        → +4 (unambiguous match, flags alone, LRA-independent)
+#   STRONG..HI (.60–.70)→ +4 if narrowband else +2 (loud = needs corroboration)
+#   WEAK..STRONG (.50–.60) → +2 if narrowband else +1 (loud weak = corrob-only)
+# Validated on 436 labels: precision 70%→81% (clean false-positives 92→49) for
+# only ~6 lost broken clips (recall 77.5%→75.4%) — strictly better than a flat
+# weak->+1 demotion (same precision, higher recall) because it spares narrowband
+# weak matches. Missing LRA → treated as narrowband (keeps recall on old probes).
+# All tunable WITHOUT a reprobe (re-scoring reads the stored LRA + chroma_fp).
+AUDIO_REF_MATCH_STRONG_HI = 0.70
+AUDIO_REF_LRA_GATE = 12.0
 
 # Tonal-audio axis (v3 — PRIMARY, alongside render). Genuine i2v outputs carry a
 # broadband music+ambience soundtrack; degenerate/guardrail outputs (a canned
@@ -464,20 +479,31 @@ def _tonal_points(flatness: Optional[float]) -> int:
     return 1 if flatness < FLATNESS_WEAK else 0
 
 
-def _audio_ref_points(audio_ref_match: Optional[float]) -> int:
+def _audio_ref_points(
+    audio_ref_match: Optional[float], loudness_range_db: Optional[float] = None
+) -> int:
     """Graded points for the broken-audio fingerprint match (PRIMARY, v5).
 
     Match against the curated `signalref:*` references (best time-lag × pitch-
-    rotation chroma xcorr). Strong match flags broken on its own; a weaker match
-    needs a corroborating axis to reach 'broken'. None = no fingerprint / no
-    references loaded → 0 (falls back to render + corroboration).
+    rotation chroma xcorr). A strong match flags broken on its own; a weaker
+    match needs a corroborating axis to reach 'broken'. None = no fingerprint /
+    no references loaded → 0 (falls back to render + corroboration).
+
+    Graded by similarity AND loudness range (see AUDIO_REF_LRA_GATE): a genuine
+    dynamic soundtrack (wide LRA — breaths/music) that merely echoes a reference
+    melody is down-weighted, so a borderline match on a loud clip needs
+    corroboration instead of flagging alone. Missing LRA is treated as narrowband
+    so older probes keep their recall.
     """
     if audio_ref_match is None:
         return 0
-    if audio_ref_match >= AUDIO_REF_MATCH_STRONG:
-        return 4
-    if audio_ref_match >= AUDIO_REF_MATCH_WEAK:
-        return 2
+    narrowband = loudness_range_db is None or loudness_range_db < AUDIO_REF_LRA_GATE
+    if audio_ref_match >= AUDIO_REF_MATCH_STRONG_HI:
+        return 4                                    # unambiguous — flags alone
+    if audio_ref_match >= AUDIO_REF_MATCH_STRONG:   # 0.60–0.70
+        return 4 if narrowband else 2               # loud → genuine, demote to weak
+    if audio_ref_match >= AUDIO_REF_MATCH_WEAK:     # 0.50–0.60
+        return 2 if narrowband else 1               # loud weak → corroboration-only
     return 0
 
 
@@ -503,6 +529,7 @@ def score_metrics(
     f2l  = metrics.get("phash_first_to_last")
     mdf  = metrics.get("phash_mean_div_from_first")
     flatness = metrics.get("spectral_flatness")
+    lra  = metrics.get("loudness_range_db")
 
     audio_quiet = (
         (rms  is not None and rms  < RMS_DB_THRESHOLD) or
@@ -515,7 +542,7 @@ def score_metrics(
 
     # Primaries (each can flag broken alone): audio-fingerprint match + render.
     # Corroborating (≤ +1 each): tonal flatness, audio-quiet, visual-static.
-    score = _audio_ref_points(audio_ref_match) + _render_points(render_ratio)
+    score = _audio_ref_points(audio_ref_match, lra) + _render_points(render_ratio)
     score += _tonal_points(flatness)
     if audio_quiet:
         score += 1
