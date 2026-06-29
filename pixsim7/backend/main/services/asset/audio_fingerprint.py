@@ -176,29 +176,31 @@ def match_fingerprint(candidate_fp: Any, references: list[Any]) -> Optional[floa
 
 def match_fingerprint_labeled(
     candidate_fp: Any, references_by_label: dict[str, list[Any]]
-) -> tuple[Optional[float], Optional[str]]:
-    """Best similarity (0..1) AND the winning category label.
+) -> tuple[Optional[float], Optional[str], dict[str, float]]:
+    """Per-category match: ``(best_score, best_label, {category: score})``.
 
     ``references_by_label`` maps a signalref category (the tag name, e.g.
     ``'squeal'`` / ``'melody'`` / ``'highpitch'``) to that category's PRE-ROTATED
-    arrays (from {@link load_reference_fingerprints}). The score is the same
-    ``max over ref × rotation × lag`` as {@link match_fingerprint} — categories
-    are only used to report WHICH pattern the best match came from (for the Triage
-    detection popup). Returns ``(score, label)``; ``label`` is None when there's
-    no usable match / no fingerprint.
+    arrays (from {@link load_reference_fingerprints}). Each category's score is the
+    same ``max over ref × rotation × lag`` as {@link match_fingerprint}. Returns
+    the best score + its category (for display) AND the full per-category map (so
+    scoring can apply per-category thresholds and OR them — see
+    ``signal_analysis._audio_ref_points``). ``best_label`` is None / map empty when
+    there's no usable match / no fingerprint.
     """
     cand = _to_chroma(candidate_fp)
     if cand is None or not references_by_label:
-        return None, None
-    best, label = -1.0, None
+        return None, None, {}
+    scores: dict[str, float] = {}
     for lab, refs in references_by_label.items():
         if not refs:
             continue
-        s = _best_xcorr_over_refs(cand, refs)
-        if s > best:
-            best, label = s, lab
-    score = round(max(0.0, best), 4)
-    return score, (label if best > 0 else None)
+        scores[lab] = round(max(0.0, _best_xcorr_over_refs(cand, refs)), 4)
+    if not scores:
+        return None, None, {}
+    best_label = max(scores, key=scores.get)
+    best = scores[best_label]
+    return best, (best_label if best > 0 else None), scores
 
 
 async def load_reference_fingerprints(db: AsyncSession) -> dict[str, list[Any]]:

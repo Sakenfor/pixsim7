@@ -160,6 +160,35 @@ AUDIO_REF_MATCH_WEAK = 0.50
 AUDIO_REF_MATCH_STRONG_HI = 0.70
 AUDIO_REF_LRA_GATE = 12.0
 
+# Per-category ladder overrides for the audio match. The matcher scores a clip
+# against EACH signalref category separately (melody / highpitch / squeal / …);
+# scoring runs each category's score through its OWN ladder and takes the best
+# points. This table overrides individual ladder knobs per category — anything
+# omitted falls back to the module defaults above. EMPTY = every category uses
+# the same default ladder, which is provably identical to the old single-score
+# path (the ladder is monotonic in score, so max-of-ladders == ladder-of-max).
+#
+# It exists so a noisy category can be tightened WITHOUT touching the others once
+# enough per-category labels exist — e.g. a broad voice pattern like 'squeal'
+# could go strong-only with ``{"squeal": {"weak": None}}`` (drop its weak band),
+# or stricter with ``{"squeal": {"strong": 0.65}}``. Left empty (behavior-neutral)
+# until there's per-category data to justify a value. Keys: hi, strong, weak
+# (None = no weak band), lra_gate.
+AUDIO_REF_CATEGORY_OVERRIDES: dict[str, dict[str, Any]] = {}
+
+
+def _audio_ref_cat_config(category: Optional[str]) -> dict[str, Any]:
+    """Ladder knobs for a category: module defaults + any per-category override."""
+    cfg = {
+        "hi": AUDIO_REF_MATCH_STRONG_HI,
+        "strong": AUDIO_REF_MATCH_STRONG,
+        "weak": AUDIO_REF_MATCH_WEAK,
+        "lra_gate": AUDIO_REF_LRA_GATE,
+    }
+    if category and category in AUDIO_REF_CATEGORY_OVERRIDES:
+        cfg.update(AUDIO_REF_CATEGORY_OVERRIDES[category])
+    return cfg
+
 # Tonal-audio axis (v3 — PRIMARY, alongside render). Genuine i2v outputs carry a
 # broadband music+ambience soundtrack; degenerate/guardrail outputs (a canned
 # refusal voice "which option would you prefer", a pitched-up "hum" melody, or
@@ -481,38 +510,57 @@ def _tonal_points(flatness: Optional[float]) -> int:
     return 1 if flatness < FLATNESS_WEAK else 0
 
 
-def _audio_ref_points(
-    audio_ref_match: Optional[float], loudness_range_db: Optional[float] = None
-) -> int:
-    """Graded points for the broken-audio fingerprint match (PRIMARY, v5).
-
-    Match against the curated `signalref:*` references (best time-lag × pitch-
-    rotation chroma xcorr). A strong match flags broken on its own; a weaker
-    match needs a corroborating axis to reach 'broken'. None = no fingerprint /
-    no references loaded → 0 (falls back to render + corroboration).
+def _audio_ref_ladder(arm: float, loudness_range_db: Optional[float], cfg: dict[str, Any]) -> int:
+    """One category's loudness-aware ladder, parameterised by its ``cfg`` knobs.
 
     Graded by similarity AND loudness range (see AUDIO_REF_LRA_GATE): a genuine
     dynamic soundtrack (wide LRA — breaths/music) that merely echoes a reference
     melody is down-weighted, so a borderline match on a loud clip needs
-    corroboration instead of flagging alone. Missing LRA is treated as narrowband
-    so older probes keep their recall.
+    corroboration instead of flagging alone. Missing LRA → narrowband (keeps
+    recall on old probes). ``cfg['weak'] is None`` → no weak band (strong-only).
     """
-    if audio_ref_match is None:
-        return 0
-    narrowband = loudness_range_db is None or loudness_range_db < AUDIO_REF_LRA_GATE
-    if audio_ref_match >= AUDIO_REF_MATCH_STRONG_HI:
+    narrowband = loudness_range_db is None or loudness_range_db < cfg["lra_gate"]
+    if arm >= cfg["hi"]:
         return 4                                    # unambiguous — flags alone
-    if audio_ref_match >= AUDIO_REF_MATCH_STRONG:   # 0.60–0.70
+    if arm >= cfg["strong"]:                        # strong band
         return 4 if narrowband else 2               # loud → genuine, demote to weak
-    if audio_ref_match >= AUDIO_REF_MATCH_WEAK:     # 0.50–0.60
+    if cfg["weak"] is not None and arm >= cfg["weak"]:  # weak band
         return 2 if narrowband else 1               # loud weak → corroboration-only
     return 0
+
+
+def _audio_ref_points(
+    audio_ref_match: Optional[float],
+    loudness_range_db: Optional[float] = None,
+    scores_by_category: Optional[dict[str, float]] = None,
+) -> int:
+    """Graded points for the broken-audio fingerprint match (PRIMARY, v5).
+
+    A strong match flags broken on its own; a weaker match needs a corroborating
+    axis to reach 'broken'. When ``scores_by_category`` is supplied, each category
+    is run through its OWN ladder (per-category overrides — see
+    AUDIO_REF_CATEGORY_OVERRIDES) and the BEST points win, so a noisy category can
+    be tightened without suppressing a cleaner one. With no overrides this equals
+    the single-score path (the ladder is monotonic, so max-of-ladders ==
+    ladder-of-max). Falls back to the single ``audio_ref_match`` + default ladder
+    when per-category scores aren't available. None / empty → 0.
+    """
+    if scores_by_category:
+        return max(
+            (_audio_ref_ladder(s, loudness_range_db, _audio_ref_cat_config(cat))
+             for cat, s in scores_by_category.items()),
+            default=0,
+        )
+    if audio_ref_match is None:
+        return 0
+    return _audio_ref_ladder(audio_ref_match, loudness_range_db, _audio_ref_cat_config(None))
 
 
 def score_metrics(
     metrics: dict[str, Any],
     render_ratio: Optional[float] = None,
     audio_ref_match: Optional[float] = None,
+    audio_ref_scores: Optional[dict[str, float]] = None,
 ) -> tuple[int, bool]:
     """Compute (score, suspicious) from probed metrics + optional render ratio.
 
@@ -551,7 +599,7 @@ def score_metrics(
     # Primaries (each can flag broken alone): audio-fingerprint match, render,
     # and near-silence. Corroborating (≤ +1 each): tonal flatness, audio-quiet,
     # visual-static.
-    score = _audio_ref_points(audio_ref_match, lra) + _render_points(render_ratio)
+    score = _audio_ref_points(audio_ref_match, lra, audio_ref_scores) + _render_points(render_ratio)
     score += _tonal_points(flatness)
     # Near-silence is the primary audio-level signal; it supersedes the +1 quiet
     # nudge (don't double-count — near_silent implies audio_quiet).
@@ -603,22 +651,24 @@ def build_signal_metrics_payload(
     render_context: Optional[dict[str, Any]] = None,
     audio_ref_match: Optional[float] = None,
     audio_ref_label: Optional[str] = None,
+    audio_ref_scores: Optional[dict[str, float]] = None,
 ) -> dict[str, Any]:
     """Wrap a probed metrics dict into the canonical `signal_metrics` shape.
 
     ``render_context`` (from ``cohort_baselines.render_context_for_asset``)
     supplies the render-time signal. ``audio_ref_match`` (from
     ``audio_fingerprint.match_fingerprint_labeled`` against the `signalref:*`
-    references) is the primary audio signal, and ``audio_ref_label`` is the
-    category of the best-matching reference (e.g. ``'squeal'``) — purely
-    informational, surfaced in the Triage detection popup. All default to None →
-    corroboration-only scoring. Excludes `user_override` (only the override
-    endpoint writes that).
+    references) is the best primary audio score, ``audio_ref_label`` the category
+    of the best match (e.g. ``'squeal'``, surfaced in the Triage popup), and
+    ``audio_ref_scores`` the per-category map fed to scoring for per-category
+    thresholds. All default to None → corroboration-only scoring. Excludes
+    `user_override` (only the override endpoint writes that).
     """
     rc = render_context or {}
     render_ratio = rc.get("render_ratio")
     score, suspicious = score_metrics(
-        metrics, render_ratio=render_ratio, audio_ref_match=audio_ref_match
+        metrics, render_ratio=render_ratio,
+        audio_ref_match=audio_ref_match, audio_ref_scores=audio_ref_scores,
     )
     return {
         "score":                     score,
@@ -655,30 +705,31 @@ _UNSET: Any = object()
 
 def _match_audio_ref(
     chroma_fp: Any, ref_fingerprints: Optional[dict[str, Any]]
-) -> tuple[Optional[float], Optional[str]]:
-    """Best fingerprint ``(score, category-label)`` of a chroma_fp to the
+) -> tuple[Optional[float], Optional[str], dict[str, float]]:
+    """``(best_score, category-label, {category: score})`` of a chroma_fp vs the
     references (``{category: [...]}`` from ``load_reference_fingerprints``).
 
-    Best-effort: returns ``(None, None)`` when there's no fingerprint, no
+    Best-effort: returns ``(None, None, {})`` when there's no fingerprint, no
     references, or the matcher errors — so scoring cleanly falls back to render +
-    corroboration. Imported lazily to keep this module's import cheap.
+    corroboration. The per-category scores feed per-category scoring; the label is
+    surfaced in Triage. Imported lazily to keep this module's import cheap.
     """
     if not chroma_fp or not ref_fingerprints:
-        return None, None
+        return None, None, {}
     try:
         from pixsim7.backend.main.services.asset.audio_fingerprint import (
             match_fingerprint_labeled,
         )
-        score, label = match_fingerprint_labeled(chroma_fp, ref_fingerprints)
+        score, label, scores = match_fingerprint_labeled(chroma_fp, ref_fingerprints)
         # Only surface the category when the match is at least WEAK — i.e. it
         # actually contributes to scoring. Below that the "winning" category is
         # just the nearest noise and would mislabel the clip in Triage.
         if score is None or score < AUDIO_REF_MATCH_WEAK:
             label = None
-        return score, label
+        return score, label, scores
     except Exception as e:  # noqa: BLE001 — fingerprint match is best-effort
         logger.warning("signal_audio_ref_match_failed", error=str(e))
-        return None, None
+        return None, None, {}
 
 
 # ---------- stale-video selection (shared by sync endpoint + durable run) ----------
@@ -857,12 +908,13 @@ class SignalAnalysisService:
                 get_reference_fingerprints_cached,
             )
             ref_fingerprints = await get_reference_fingerprints_cached(self.db)
-        audio_ref_match, audio_ref_label = _match_audio_ref(
+        audio_ref_match, audio_ref_label, audio_ref_scores = _match_audio_ref(
             raw.get("chroma_fp"), ref_fingerprints
         )
         payload = build_signal_metrics_payload(
             raw, render_context,
             audio_ref_match=audio_ref_match, audio_ref_label=audio_ref_label,
+            audio_ref_scores=audio_ref_scores,
         )
 
         # Merge into media_metadata, preserving an existing user_override.
@@ -934,14 +986,15 @@ class SignalAnalysisService:
         # The batch backfill can run the (CPU-heavy) matcher in a thread pool and
         # hand the result in via precomputed_match; otherwise compute it inline.
         if precomputed_match is _UNSET:
-            audio_ref_match, audio_ref_label = _match_audio_ref(
+            audio_ref_match, audio_ref_label, audio_ref_scores = _match_audio_ref(
                 existing.get("chroma_fp"), ref_fingerprints
             )
         else:
-            audio_ref_match, audio_ref_label = precomputed_match
+            audio_ref_match, audio_ref_label, audio_ref_scores = precomputed_match
         payload = build_signal_metrics_payload(
             existing, render_context,
             audio_ref_match=audio_ref_match, audio_ref_label=audio_ref_label,
+            audio_ref_scores=audio_ref_scores,
         )
         if existing.get("user_override") is not None:
             payload["user_override"] = existing["user_override"]
