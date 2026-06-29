@@ -18,7 +18,7 @@ import { isViewerZoomedIn } from '@/components/media/viewer/panels/viewerViewpor
 import { isAnyVideoPlaying, isVideoPlayingAsset } from '../lib/activeVideoRegistry';
 import { assetEvents } from '../lib/assetEvents';
 import { viewerOpenEvents } from '../lib/viewerOpenEvents';
-import { fromAssetResponse } from '../models/asset';
+import { fromAssetResponse, isLikelyBroken } from '../models/asset';
 
 export type ViewerMode = 'side' | 'fullscreen' | 'closed';
 
@@ -185,7 +185,15 @@ function areScopeAssetsEquivalent(prev: ViewerAsset[], next: ViewerAsset[]): boo
       a.name !== b.name ||
       a.type !== b.type ||
       a.source !== b.source ||
-      a.sourceGenerationId !== b.sourceGenerationId
+      a.sourceGenerationId !== b.sourceGenerationId ||
+      // Signal-quality fields drive the recent strip's red "likely broken"
+      // outline AND gate auto-follow (below). They land in a LATER update event
+      // than the asset itself (analysis runs after derivatives), so they must
+      // count as a change here — otherwise the scope keeps the stale model and
+      // neither the outline nor the follow-latest broken-gate ever sees them.
+      a._assetModel?.signalScore !== b._assetModel?.signalScore ||
+      a._assetModel?.signalSuspicious !== b._assetModel?.signalSuspicious ||
+      a._assetModel?.signalOverride !== b._assetModel?.signalOverride
     ) {
       return false;
     }
@@ -225,10 +233,24 @@ function shouldSuppressFollowLatest(): boolean {
  * (mirrors the store's own subscription guard below).
  */
 const FOLLOW_SETTLE_MS = 300;
+// Broken-gate (option A): a freshly-landed video's "likely broken" verdict
+// arrives in a later update event than the clip (signal analysis runs after
+// derivatives). Rather than autoplay-then-flag, hold the auto-follow swap until
+// the verdict resolves — polling the head's model — so a flagged clip never
+// steals the viewer. Capped so an analysis that never lands still follows.
+const FOLLOW_SIGNAL_MAX_WAIT_MS = 2000;
+const FOLLOW_SIGNAL_POLL_MS = 200;
 const followDebounce = hmrSingleton<{
   timer: ReturnType<typeof setTimeout> | null;
   anchorId: string | number | null;
-}>('assetViewerStore:followDebounce', () => ({ timer: null, anchorId: null }));
+  // Absolute deadline (ms epoch) for the broken-verdict wait on the current
+  // head; null when not waiting. Reset whenever a new head arrives.
+  signalWaitUntil: number | null;
+}>('assetViewerStore:followDebounce', () => ({
+  timer: null,
+  anchorId: null,
+  signalWaitUntil: null,
+}));
 
 function cancelFollowDebounce(): void {
   if (followDebounce.timer != null) {
@@ -236,6 +258,23 @@ function cancelFollowDebounce(): void {
     followDebounce.timer = null;
   }
   followDebounce.anchorId = null;
+  followDebounce.signalWaitUntil = null;
+}
+
+/**
+ * Auto-follow broken-gate verdict for a candidate head:
+ *  - 'broken'  → manually flagged or heuristic-suspicious; never auto-follow it.
+ *  - 'pending' → a video whose signal analysis hasn't resolved yet; wait.
+ *  - 'clean'   → analyzed-clean, a non-video, or no model to judge; follow.
+ */
+function classifyHead(asset: ViewerAsset): 'clean' | 'broken' | 'pending' {
+  const model = asset._assetModel;
+  if (!model) return 'clean';
+  if (isLikelyBroken(model)) return 'broken';
+  if (asset.type === 'video' && model.signalScore == null && model.signalOverride == null) {
+    return 'pending';
+  }
+  return 'clean';
 }
 
 export const useAssetViewerStore = create<AssetViewerState>()(
@@ -477,15 +516,20 @@ export const useAssetViewerStore = create<AssetViewerState>()(
               }
 
               // Coalesce: anchor on what the user is parked on, reset the settle
-              // timer on every fresh head, and swap once arrivals quiet.
+              // timer on every fresh head, and swap once arrivals quiet. A new
+              // head means a new broken-verdict to wait on, so reset the wait
+              // deadline too.
               if (followDebounce.anchorId == null) {
                 followDebounce.anchorId = currentAsset.id;
               }
               if (followDebounce.timer != null) clearTimeout(followDebounce.timer);
-              followDebounce.timer = setTimeout(() => {
-                const anchorId = followDebounce.anchorId;
+              followDebounce.signalWaitUntil = null;
+
+              // Re-entrant: the broken-gate may re-schedule this to poll for the
+              // head's signal verdict (see classifyHead) up to the max-wait.
+              const attemptFollowSwap = (): void => {
                 followDebounce.timer = null;
-                followDebounce.anchorId = null;
+                const anchorId = followDebounce.anchorId;
 
                 const st = get();
                 const scope = st.activeScopeId ? st.scopes[st.activeScopeId] : undefined;
@@ -499,6 +543,29 @@ export const useAssetViewerStore = create<AssetViewerState>()(
                   st.currentAsset?.id !== anchorId ||
                   shouldSuppressFollowLatest()
                 ) {
+                  cancelFollowDebounce();
+                  return;
+                }
+
+                const verdict = classifyHead(head);
+                if (verdict === 'pending') {
+                  // Broken-check hasn't resolved — hold the swap and poll the
+                  // head's model until it lands or we exhaust the max-wait.
+                  if (followDebounce.signalWaitUntil == null) {
+                    followDebounce.signalWaitUntil = Date.now() + FOLLOW_SIGNAL_MAX_WAIT_MS;
+                  }
+                  if (Date.now() < followDebounce.signalWaitUntil) {
+                    followDebounce.timer = setTimeout(attemptFollowSwap, FOLLOW_SIGNAL_POLL_MS);
+                    return;
+                  }
+                  // Timed out waiting — follow on whatever we have (treat clean).
+                }
+
+                cancelFollowDebounce();
+                if (verdict === 'broken') {
+                  // Option A: a flagged clip never steals the viewer. Leave it as
+                  // the pending head so the strip keeps its red outline + pulse;
+                  // the user opts in by clicking the thumb.
                   return;
                 }
                 set({
@@ -507,7 +574,8 @@ export const useAssetViewerStore = create<AssetViewerState>()(
                   currentAsset: head,
                   pendingHeadId: null,
                 });
-              }, FOLLOW_SETTLE_MS);
+              };
+              followDebounce.timer = setTimeout(attemptFollowSwap, FOLLOW_SETTLE_MS);
               return;
             }
 

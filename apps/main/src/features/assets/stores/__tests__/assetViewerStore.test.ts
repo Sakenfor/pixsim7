@@ -45,6 +45,9 @@ vi.mock('../../lib/viewerOpenEvents', () => ({
 
 vi.mock('../../models/asset', () => ({
   fromAssetResponse: (asset: unknown) => asset,
+  isLikelyBroken: (asset: { signalOverride?: unknown; signalSuspicious?: unknown }) =>
+    asset?.signalOverride === 'broken' ||
+    (!!asset?.signalSuspicious && asset?.signalOverride !== 'clean'),
 }));
 
 import { useAssetViewerStore, type ViewerAsset } from '../assetViewerStore';
@@ -71,7 +74,10 @@ function makeViewerVideo(
     url: `https://cdn.example.com/${id}.mp4`,
     fullUrl: `https://cdn.example.com/${id}.mp4`,
     source: 'gallery',
-    _assetModel: { id: `model-${id}-v1` } as ViewerAsset['_assetModel'],
+    // Default fixture = an analyzed-clean video (signalScore present, not
+    // suspicious) so auto-follow's broken-gate treats it as immediately
+    // followable. Tests that exercise the gate override `_assetModel`.
+    _assetModel: { id: `model-${id}-v1`, signalScore: 0 } as ViewerAsset['_assetModel'],
     ...overrides,
   };
 }
@@ -360,5 +366,95 @@ describe('assetViewerStore follow-latest respects explicit navigation', () => {
 
     // The pending settle must not rip the viewer back onto the head.
     expect(useAssetViewerStore.getState().currentAsset?.id).toBe(b.id);
+  });
+
+  it('never steals the viewer for a head already flagged broken', () => {
+    const a = makeViewerVideo({ id: 1 });
+    useAssetViewerStore.getState().openViewer(a, [a], 'recent');
+
+    const broken = makeViewerVideo({
+      id: 2,
+      _assetModel: { id: 'model-2', signalSuspicious: true } as ViewerAsset['_assetModel'],
+    });
+    useAssetViewerStore.getState().registerScope('recent', 'recent', [broken, a]);
+    expect(useAssetViewerStore.getState().pendingHeadId).toBe(broken.id);
+
+    vi.runOnlyPendingTimers();
+
+    // Flagged clip stays pending (red strip outline); viewer never follows it.
+    const state = useAssetViewerStore.getState();
+    expect(state.currentAsset?.id).toBe(a.id);
+    expect(state.pendingHeadId).toBe(broken.id);
+  });
+
+  it('waits for the broken-verdict, then follows a clip that resolves clean', () => {
+    const a = makeViewerVideo({ id: 1 });
+    useAssetViewerStore.getState().openViewer(a, [a], 'recent');
+
+    // Lands before signal analysis has run (signalScore null → verdict pending).
+    const landed = makeViewerVideo({
+      id: 2,
+      _assetModel: { id: 'model-2-v1', signalScore: null } as ViewerAsset['_assetModel'],
+    });
+    useAssetViewerStore.getState().registerScope('recent', 'recent', [landed, a]);
+
+    // Settle elapses but the verdict is still pending — no swap yet.
+    vi.advanceTimersByTime(300);
+    expect(useAssetViewerStore.getState().currentAsset?.id).toBe(a.id);
+    expect(useAssetViewerStore.getState().pendingHeadId).toBe(landed.id);
+
+    // Analysis lands as a later update: same id, now scored clean.
+    const resolved = makeViewerVideo({
+      id: 2,
+      _assetModel: { id: 'model-2-v2', signalScore: 0 } as ViewerAsset['_assetModel'],
+    });
+    useAssetViewerStore.getState().registerScope('recent', 'recent', [resolved, a]);
+
+    // Next poll picks up the clean verdict and follows.
+    vi.advanceTimersByTime(200);
+    const state = useAssetViewerStore.getState();
+    expect(state.currentAsset?.id).toBe(landed.id);
+    expect(state.pendingHeadId).toBeNull();
+  });
+
+  it('waits for the broken-verdict, then does NOT follow a clip that resolves broken', () => {
+    const a = makeViewerVideo({ id: 1 });
+    useAssetViewerStore.getState().openViewer(a, [a], 'recent');
+
+    const landed = makeViewerVideo({
+      id: 2,
+      _assetModel: { id: 'model-2-v1', signalScore: null } as ViewerAsset['_assetModel'],
+    });
+    useAssetViewerStore.getState().registerScope('recent', 'recent', [landed, a]);
+    vi.advanceTimersByTime(300);
+
+    // Analysis lands and flags it suspicious.
+    const flagged = makeViewerVideo({
+      id: 2,
+      _assetModel: { id: 'model-2-v2', signalScore: 5, signalSuspicious: true } as ViewerAsset['_assetModel'],
+    });
+    useAssetViewerStore.getState().registerScope('recent', 'recent', [flagged, a]);
+    vi.advanceTimersByTime(200);
+
+    const state = useAssetViewerStore.getState();
+    expect(state.currentAsset?.id).toBe(a.id);
+    expect(state.pendingHeadId).toBe(landed.id);
+  });
+
+  it('follows after the max-wait when the broken-verdict never resolves', () => {
+    const a = makeViewerVideo({ id: 1 });
+    useAssetViewerStore.getState().openViewer(a, [a], 'recent');
+
+    const landed = makeViewerVideo({
+      id: 2,
+      _assetModel: { id: 'model-2', signalScore: null } as ViewerAsset['_assetModel'],
+    });
+    useAssetViewerStore.getState().registerScope('recent', 'recent', [landed, a]);
+
+    // Verdict never arrives; the gate gives up after the 2s cap and follows.
+    vi.advanceTimersByTime(300 + 2000 + 200);
+    const state = useAssetViewerStore.getState();
+    expect(state.currentAsset?.id).toBe(landed.id);
+    expect(state.pendingHeadId).toBeNull();
   });
 });
