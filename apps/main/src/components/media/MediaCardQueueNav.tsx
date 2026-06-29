@@ -9,12 +9,10 @@
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { Icon } from '@lib/icons';
-
-import { useIsCoarsePointer } from '@/lib/ui/coarsePointer';
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 import type { MediaCardQueueConfig } from './MediaCard';
+import { WalkChevron } from './walkNavControls';
 
 interface PopupPosition {
   x: number;
@@ -61,7 +59,6 @@ export function MediaCardQueueNav({
   };
 }) {
   const { currentIndex, totalCount, items, onPrev, onNext, onSelect } = queue;
-  const isCoarse = useIsCoarsePointer();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [showGrid, setShowGrid] = useState(false);
   const [popupPos, setPopupPos] = useState<PopupPosition | null>(null);
@@ -141,33 +138,27 @@ export function MediaCardQueueNav({
             };
             return (
               <span className="flex flex-col items-center leading-none">
-                <button
-                  key={scrubHint.dir === 'prev' ? `up-${scrubHint.tick}` : 'up'}
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
+                <WalkChevron
+                  dir="prev"
                   onClick={handleSlotPrev}
                   disabled={!scrubHint.onPrev}
-                  // Touch: widen the tap area (px-2) while staying tight
-                  // vertically — matches CohortPill's vertical chevron spacing.
-                  className={`${isCoarse ? 'px-2 -my-0.5' : '-my-0.5'} flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-30 disabled:cursor-default transition-colors ${scrubHint.dir === 'prev' ? 'animate-bounce-once' : ''}`}
+                  lastDir={scrubHint.dir}
+                  tick={scrubHint.tick}
                   title="Previous asset (pool)"
-                  aria-label="Previous asset"
-                >
-                  <Icon name="chevronUp" size={isCoarse ? 16 : 10} />
-                </button>
+                  ariaLabel="Previous asset"
+                  disabledOpacityClass="disabled:opacity-30"
+                />
                 {countEl}
-                <button
-                  key={scrubHint.dir === 'next' ? `down-${scrubHint.tick}` : 'down'}
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
+                <WalkChevron
+                  dir="next"
                   onClick={handleSlotNext}
                   disabled={!scrubHint.onNext}
-                  className={`${isCoarse ? 'px-2 -my-0.5' : '-my-0.5'} flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-30 disabled:cursor-default transition-colors ${scrubHint.dir === 'next' ? 'animate-bounce-once' : ''}`}
+                  lastDir={scrubHint.dir}
+                  tick={scrubHint.tick}
                   title="Next asset (pool)"
-                  aria-label="Next asset"
-                >
-                  <Icon name="chevronDown" size={isCoarse ? 16 : 10} />
-                </button>
+                  ariaLabel="Next asset"
+                  disabledOpacityClass="disabled:opacity-30"
+                />
               </span>
             );
           })()

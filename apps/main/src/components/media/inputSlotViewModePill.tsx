@@ -18,6 +18,8 @@ import { Icon } from '@lib/icons';
 
 import { useSetSlotViewStore } from '@features/generation/stores/setSlotViewStore';
 
+import { WalkTogglePill } from './walkNavControls';
+
 export interface ViewModePillProps {
   inputId: string;
   /** Drop the pill background/padding so it can sit inside a parent bar. */
@@ -70,64 +72,24 @@ export function ViewModePill({ inputId, bare = false, scrollHint }: ViewModePill
     ? 'Showing set as grid · click to switch to single card'
     : 'Showing single card · click to show set as grid';
 
+  // scrollHint mode delegates to the shared WalkTogglePill (sister to
+  // CohortPill): prev/next chevrons flanking a non-interactive view icon + the
+  // label toggle. Touch gets the vertical layout + hold-to-toggle; desktop the
+  // compact horizontal pill.
   if (scrollHint) {
-    const handlePrev = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      scrollHint.onPrev?.();
-    };
-    const handleNext = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      scrollHint.onNext?.();
-    };
     return (
-      <div className={className} role="group" aria-label={`Set view: ${label}`}>
-        <span className="flex flex-col items-center leading-none">
-          <button
-            key={scrollHint.dir === 'prev' ? `up-${scrollHint.tick}` : 'up'}
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handlePrev}
-            disabled={!scrollHint.onPrev}
-            className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'prev' ? 'animate-bounce-once' : ''}`}
-            title="Previous member"
-            aria-label="Previous member"
-          >
-            <Icon name="chevronUp" size={10} />
-          </button>
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={toggle}
-            className="flex items-center justify-center cursor-pointer hover:text-white transition-colors"
-            title={toggleTitle}
-            aria-label={`Toggle view: ${label}`}
-          >
-            <Icon name={isGrid ? 'layoutGrid' : 'image'} size={12} />
-          </button>
-          <button
-            key={scrollHint.dir === 'next' ? `down-${scrollHint.tick}` : 'down'}
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handleNext}
-            disabled={!scrollHint.onNext}
-            className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'next' ? 'animate-bounce-once' : ''}`}
-            title="Next member"
-            aria-label="Next member"
-          >
-            <Icon name="chevronDown" size={10} />
-          </button>
-        </span>
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={toggle}
-          className="gen-scrub-label cursor-pointer"
-          title={toggleTitle}
-          aria-label={`Toggle view: ${label}`}
-        >
-          {label}
-        </button>
-      </div>
+      <WalkTogglePill
+        bare={bare}
+        icon={isGrid ? 'layoutGrid' : 'image'}
+        label={label}
+        toggleTitle={toggleTitle}
+        onToggle={() => setView(inputId, isGrid ? 'single' : 'grid')}
+        groupAriaLabel={`Set view: ${label}`}
+        toggleAriaLabel={`Toggle view: ${label}`}
+        scrollHint={scrollHint}
+        prevLabel="Previous member"
+        nextLabel="Next member"
+      />
     );
   }
 
