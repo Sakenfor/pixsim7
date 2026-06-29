@@ -17,7 +17,7 @@ import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
 import { syncGenerationsFromApi } from '../hooks/useRecentGenerations';
 import type { GenerationGroupBy } from '../lib/generationGrouping';
-import { isActiveStatus, resolveGranularStatus } from '../models';
+import { isActiveStatus, isTerminalStatus, resolveGranularStatus, type GenerationStatus } from '../models';
 import { useGenerationActivityFlyoutStore } from '../stores/generationActivityFlyoutStore';
 import { useGenerationsStore } from '../stores/generationsStore';
 
@@ -85,6 +85,37 @@ export function GenerationActivityBarWidget() {
     const id = setInterval(() => setNowMs(Date.now()), 1500);
     return () => clearInterval(id);
   }, [activeCount]);
+
+  // Flash a coloured burst over the gem whenever a generation *lands* — i.e.
+  // transitions active -> terminal: green on success, red on failure. Diff each
+  // render against the previous status snapshot so it fires once per landing.
+  const prevStatusRef = useRef<Map<string, GenerationStatus>>(new Map());
+  const burstSeq = useRef(0);
+  const [burst, setBurst] = useState<{ key: number; color: string } | null>(null);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    const next = new Map<string, GenerationStatus>();
+    let completed = 0;
+    let failed = 0;
+    generations.forEach((g) => {
+      const id = String(g.id);
+      next.set(id, g.status);
+      const before = prev.get(id);
+      if (before && isActiveStatus(before) && isTerminalStatus(g.status)) {
+        if (g.status === 'completed') completed += 1;
+        else if (g.status === 'failed') failed += 1;
+      }
+    });
+    prevStatusRef.current = next;
+    if (completed > 0 || failed > 0) {
+      burstSeq.current += 1;
+      setBurst({
+        key: burstSeq.current,
+        // Failures are the more important signal — they win a mixed tick.
+        color: failed > 0 ? 'rgb(var(--error))' : 'rgb(var(--success))',
+      });
+    }
+  }, [generations]);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const triggerRef = useRef<HTMLDivElement>(null);
 
@@ -196,6 +227,20 @@ export function GenerationActivityBarWidget() {
           <div
             aria-hidden
             className="absolute top-1.5 left-1.5 w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"
+          />
+        )}
+
+        {/* Completion burst — keyed so each landing remounts and replays the
+            one-shot ping. Radial glow in the outcome colour, centred on the gem. */}
+        {burst && (
+          <span
+            key={burst.key}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 m-auto h-6 w-6 rounded-full"
+            style={{
+              background: `radial-gradient(circle, ${burst.color} 0%, transparent 68%)`,
+              animation: 'gen-burst 0.6s ease-out forwards',
+            }}
           />
         )}
       </button>

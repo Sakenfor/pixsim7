@@ -78,6 +78,13 @@
 .animate-medallion-sway { animation: medallion-sway 1.8s ease-in-out infinite; }
 .animate-medallion-toss { animation: medallion-toss 2.4s cubic-bezier(0.34, 1.56, 0.64, 1) infinite; }
 
+/* One-shot burst — a colour ping that expands and fades, fired over the
+ * generations gem each time a generation lands (green success / red fail). */
+@keyframes gen-burst {
+  0%   { transform: scale(0.4); opacity: 0.9; }
+  100% { transform: scale(1.85); opacity: 0; }
+}
+
 /*
  * JetBrains Mono - self-hosted, used by the terminal panel skin via
  * `--font-skin` (plan `panel-skin-theming`). Files are vendored in
