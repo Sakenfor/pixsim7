@@ -818,6 +818,26 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     void chatBridge.send(tab.id, body);
   }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.planMode, tab.modelOverride, tab.reasoningEffortOverride, tab.customInstructions, tab.focusAreas, profiles, onUpdateTab]);
 
+  // Live steering: inject a message into the turn already in flight (type while
+  // the agent works, like a terminal). Rides the current request — no new turn.
+  // The CLI decides *when* the agent reads it; we just deliver it. If the WS
+  // isn't live (SSE path / no turn), keep the text so it isn't silently lost.
+  const steerMessage = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    if (!chatBridge.steer(tab.id, trimmed)) return;
+    useAssistantChatStore.getState().appendMessage(tab.id, { role: 'user', text: trimmed, timestamp: new Date(), steered: true });
+    setInput('');
+    useAssistantChatStore.getState().setDraft(tab.id, '');
+    useAssistantChatStore.getState().flushDraftSync(tab.id);
+  }, [tab.id]);
+
+  // One submit entry point: steer if a turn is running, otherwise start one.
+  const submitInput = useCallback((text: string) => {
+    if (sending) steerMessage(text);
+    else void sendMessage(text);
+  }, [sending, steerMessage, sendMessage]);
+
   const retryLast = useCallback(() => {
     const msgs = useAssistantChatStore.getState().getMessages(tab.id);
     for (let i = msgs.length - 1; i >= 0; i--) {
@@ -845,9 +865,9 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     if (refInput.handleKeyDown(e)) return; // consumed by reference picker
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      void sendMessage(input);
+      submitInput(input);
     }
-  }, [input, sendMessage, refInput]);
+  }, [input, submitInput, refInput]);
 
   // Resolve current profile
   const activeProfile = profiles.find((p) => p.id === tab.profileId);
@@ -1100,8 +1120,10 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           <div className="relative">
             <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
               onBlur={flushDraft}
-              placeholder={connected > 0 ? 'Ask something... (@ to reference)' : 'No agent connected'}
-              disabled={connected === 0 || sending} rows={3}
+              placeholder={connected === 0
+                ? 'No agent connected'
+                : (sending ? 'Send a message to steer the agent…' : 'Ask something... (@ to reference)')}
+              disabled={connected === 0} rows={3}
               className="w-full px-3 py-2 text-sm rounded-lg border border-th bg-surface-elevated text-th resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
               style={{ minHeight: '68px', maxHeight: '160px' }}
               onInput={handleTextareaInput}
@@ -1327,7 +1349,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           )}
 
           {/* Send — inline right after the model selector */}
-          <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">
+          <Button size="sm" onClick={() => submitInput(input)} disabled={connected === 0 || !input.trim()} className="shrink-0"
+            title={sending ? 'Send to steer the running turn' : 'Send'}>
             <Icon name="send" size={14} />
           </Button>
 

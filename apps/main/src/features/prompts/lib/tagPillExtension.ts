@@ -159,7 +159,16 @@ const tagPillPlugin = ViewPlugin.define(
       },
       update(update: ViewUpdate) {
         if (!update.docChanged && !update.selectionSet) return;
-        decorations = buildPillDecorations(update.state.doc.toString(), {
+        const docText = update.state.doc.toString();
+        // Fast path: regex can't match without `[`. For long prompts that
+        // contain no bracketed tags, this skips an O(N) regex per keystroke
+        // — the dominant CM-side cost when typing. `String#includes` is a
+        // tight scan and exits on the first match.
+        if (!docText.includes('[')) {
+          if (decorations !== Decoration.none) decorations = Decoration.none;
+          return;
+        }
+        decorations = buildPillDecorations(docText, {
           from: update.state.selection.main.from,
           to: update.state.selection.main.to,
         });

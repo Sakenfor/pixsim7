@@ -8,16 +8,45 @@
 
 const API_BASE = ''  // relative — works with both Vite proxy and prod
 
-async function request<T = unknown>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(body.detail ?? body.error ?? 'API request failed')
+type RequestOptions = RequestInit & { timeoutMs?: number }
+
+async function request<T = unknown>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  const { timeoutMs, ...fetchOptions } = options
+  const timeoutController = timeoutMs ? new AbortController() : null
+  const callerSignal = fetchOptions.signal
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  let abortHandler: (() => void) | undefined
+
+  if (timeoutController) {
+    if (callerSignal?.aborted) {
+      timeoutController.abort()
+    } else if (callerSignal) {
+      abortHandler = () => timeoutController.abort()
+      callerSignal.addEventListener('abort', abortHandler, { once: true })
+    }
+    timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs)
   }
-  return res.json()
+
+  try {
+    const res = await fetch(`${API_BASE}${endpoint}`, {
+      ...fetchOptions,
+      signal: timeoutController?.signal ?? callerSignal,
+      headers: { 'Content-Type': 'application/json', ...fetchOptions.headers },
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(body.detail ?? body.error ?? 'API request failed')
+    }
+    return res.json()
+  } catch (error) {
+    if (timeoutController && error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`Launcher API request timed out: ${endpoint}`)
+    }
+    throw error
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+    if (callerSignal && abortHandler) callerSignal.removeEventListener('abort', abortHandler)
+  }
 }
 
 // ── Services ────────────────────────────────────────────────────────
@@ -25,6 +54,7 @@ async function request<T = unknown>(endpoint: string, options: RequestInit = {})
 export interface ServiceState {
   key: string
   title: string
+  description?: string | null
   status: 'stopped' | 'starting' | 'running' | 'stopping'
   health: 'stopped' | 'starting' | 'healthy' | 'unhealthy' | 'unknown'
   pid: number | null
@@ -219,7 +249,7 @@ export interface SystemInfo {
   identity: IdentityStatus
 }
 
-export const getIdentity = () => request<IdentityStatus>('/identity')
+export const getIdentity = () => request<IdentityStatus>('/identity', { timeoutMs: 5000 })
 export const getSystemInfo = () => request<SystemInfo>('/system-info')
 export const refreshToken = () =>
   request<RefreshTokenResponse>('/identity/refresh-token', { method: 'POST' })

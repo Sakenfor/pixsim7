@@ -394,13 +394,7 @@ class AssetIngestionService:
             media_type = asset.media_type
             media_metadata = dict(meta)
 
-            mark_provider_copy_removed(asset, reason="auto_unflagged_generated_after_ingest")
-            attributes.flag_modified(asset, "media_metadata")
-            self.db.add(asset)
-            await self.db.commit()
-            await self.db.refresh(asset)
-
-            await delete_from_provider_by_snapshot(
+            deleted_from_provider = await delete_from_provider_by_snapshot(
                 asset_id=asset.id,
                 provider_id=provider_id,
                 provider_asset_id=provider_asset_id,
@@ -408,6 +402,14 @@ class AssetIngestionService:
                 media_type=media_type,
                 media_metadata=media_metadata,
             )
+            if not deleted_from_provider:
+                return False
+
+            mark_provider_copy_removed(asset, reason="auto_unflagged_generated_after_ingest")
+            attributes.flag_modified(asset, "media_metadata")
+            self.db.add(asset)
+            await self.db.commit()
+            await self.db.refresh(asset)
 
             logger.info(
                 "provider_auto_delete_after_ingest",

@@ -477,6 +477,93 @@ class RemoteCommandBridge:
                 count += 1
         return count
 
+    async def abort_tab(self, tab_id: str, user_id: Optional[int] = None) -> bool:
+        """Tell the owning bridge to interrupt the in-flight turn for *tab_id*.
+
+        This is the real-stop path: cancelling the server-side dispatch task
+        only abandons our ``await`` — the CLI keeps running. Here we resolve
+        the active task for the tab, find its bridge agent, and send an
+        ``abort`` frame so the client can interrupt the live CLI turn. Returns
+        True if an abort was dispatched (False if no matching active task /
+        agent, or the send failed).
+        """
+        target = (tab_id or "").strip()
+        if not target:
+            return False
+        for task_id, info in list(self._active_tasks.items()):
+            if str(info.get("tab_id") or "") != target:
+                continue
+            if user_id is not None and info.get("user_id") not in (None, user_id):
+                continue
+            bridge_client_id = str(info.get("bridge_client_id") or "")
+            agent = self._agents.get(bridge_client_id)
+            if not agent:
+                continue
+            try:
+                await agent.websocket.send_json({"type": "abort", "task_id": task_id})
+                logger.info(
+                    "remote_task_abort_sent",
+                    task_id=task_id,
+                    tab_id=target,
+                    bridge_client_id=bridge_client_id,
+                )
+                return True
+            except Exception as exc:
+                logger.warning(
+                    "remote_task_abort_failed",
+                    task_id=task_id,
+                    tab_id=target,
+                    error=str(exc),
+                )
+        return False
+
+    async def steer_tab(
+        self,
+        tab_id: str,
+        message: str,
+        user_id: Optional[int] = None,
+    ) -> bool:
+        """Inject a user message into the in-flight turn for *tab_id* (live
+        steering — type while the agent works).
+
+        Resolves the tab's active task, finds its bridge agent, and forwards a
+        ``steer`` frame so the client can write the message into the running
+        CLI's input stream. Returns True if delivered (False if no matching
+        active task / agent, blank message, or the send failed).
+        """
+        target = (tab_id or "").strip()
+        if not target or not (message or "").strip():
+            return False
+        for task_id, info in list(self._active_tasks.items()):
+            if str(info.get("tab_id") or "") != target:
+                continue
+            if user_id is not None and info.get("user_id") not in (None, user_id):
+                continue
+            bridge_client_id = str(info.get("bridge_client_id") or "")
+            agent = self._agents.get(bridge_client_id)
+            if not agent:
+                continue
+            try:
+                await agent.websocket.send_json(
+                    {"type": "steer", "task_id": task_id, "message": message}
+                )
+                logger.info(
+                    "remote_task_steer_sent",
+                    task_id=task_id,
+                    tab_id=target,
+                    bridge_client_id=bridge_client_id,
+                    chars=len(message),
+                )
+                return True
+            except Exception as exc:
+                logger.warning(
+                    "remote_task_steer_failed",
+                    task_id=task_id,
+                    tab_id=target,
+                    error=str(exc),
+                )
+        return False
+
     def get_available_agent(
         self,
         user_id: Optional[int] = None,
@@ -817,6 +904,9 @@ class RemoteCommandBridge:
             # assistant pair to ChatSession the moment the agent replies, even
             # if no WS handler is alive to await the future.
             "prompt": str(task_payload.get("prompt") or ""),
+            # Carry the tab so a user-initiated cancel can resolve THIS task and
+            # send the bridge an `abort` to interrupt the live CLI turn.
+            "tab_id": str(task_payload.get("tab_id") or ""),
         }
 
         # Create future for the result
@@ -994,6 +1084,9 @@ class RemoteCommandBridge:
             # assistant pair to ChatSession the moment the agent replies, even
             # if this WS handler dies before consuming the future.
             "prompt": str(task_payload.get("prompt") or ""),
+            # Carry the tab so a user-initiated cancel can resolve THIS task and
+            # send the bridge an `abort` to interrupt the live CLI turn.
+            "tab_id": str(task_payload.get("tab_id") or ""),
         }
 
         loop = asyncio.get_event_loop()

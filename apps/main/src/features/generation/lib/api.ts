@@ -20,6 +20,12 @@ export interface GenerateAssetRequest {
    *  that don't track provenance (legacy tools, internal probes) just
    *  omit it. */
   spanProvenance?: Array<Record<string, unknown>>;
+  /** Invoked when the pre-flight provider-accept gate begins uploading
+   *  local image inputs to the provider (i2v only; skipped when nothing
+   *  needs uploading). Optionally returns a cleanup run when the upload
+   *  phase ends (success *or* throw) — e.g. to dismiss an interim
+   *  "Uploading…" toast. Opt-in; most callers omit it. */
+  onInputUploadStart?: (info: { providerId: string; assetCount: number }) => (() => void) | void;
 }
 
 export interface GenerateAssetResponse {
@@ -38,6 +44,9 @@ export interface PreparedGenerateAssetSubmission {
   name: string;
   priority: number;
 }
+
+const acceptedInputUploadCache = new Set<string>();
+const pendingInputUploadPreflights = new Map<string, Promise<void>>();
 
 /**
  * Map Control Center operation type to unified generation_type.
@@ -191,6 +200,126 @@ function buildGenerationConfig(
 }
 
 /**
+ * Pre-flight upload gate: for image→video, push every local image input to
+ * the target provider and let the provider accept/reject it *before* a
+ * generation job (and its "started" notification) exists.
+ *
+ * Rationale: the worker uploads i2v input frames to the provider only once
+ * it reaches `processing`, so a Pixverse moderation/upload rejection used to
+ * surface *after* the user already saw "Extending video…". Gating here makes
+ * provider acceptance the first check. `uploadAssetToProvider` →
+ * `/reupload` → `get_asset_for_provider` is idempotent and caches into
+ * `provider_uploads`, so the subsequent job reuses it (no double upload);
+ * cached assets short-circuit cheaply.
+ *
+ * Throws the provider rejection unchanged so callers' existing catch blocks
+ * (e.g. the artificial-extend "Pixverse filtered → use native extend"
+ * message, which inspects the error text) keep working.
+ */
+function getCompositionAssetUploadHint(entry: Record<string, unknown>, providerId: string): unknown {
+  const nativeProviderId = entry.provider_id ?? entry.providerId;
+  if (nativeProviderId === providerId) {
+    return true;
+  }
+
+  const providerUploads = entry.provider_uploads ?? entry.providerUploads;
+  if (!providerUploads || typeof providerUploads !== 'object') {
+    return undefined;
+  }
+
+  return (providerUploads as Record<string, unknown>)[providerId];
+}
+
+function hasMeaningfulProviderUploadValue(value: unknown): boolean {
+  if (typeof value === 'string') {
+    return value.trim().length > 0;
+  }
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).some(Boolean);
+  }
+  return Boolean(value);
+}
+
+function hasAcceptedProviderUploadHint(entry: Record<string, unknown>, providerId: string): boolean {
+  return hasMeaningfulProviderUploadValue(getCompositionAssetUploadHint(entry, providerId));
+}
+
+async function ensureInputUploadPreflight(assetId: number, providerId: string): Promise<void> {
+  const cacheKey = `${providerId}:${assetId}`;
+  if (acceptedInputUploadCache.has(cacheKey)) {
+    return;
+  }
+
+  const pending = pendingInputUploadPreflights.get(cacheKey);
+  if (pending) {
+    return pending;
+  }
+
+  const promise = import('@lib/api/assets')
+    .then(({ uploadAssetToProvider }) => uploadAssetToProvider(assetId, providerId))
+    .then(() => {
+      acceptedInputUploadCache.add(cacheKey);
+    })
+    .finally(() => {
+      pendingInputUploadPreflights.delete(cacheKey);
+    });
+
+  pendingInputUploadPreflights.set(cacheKey, promise);
+  return promise;
+}
+
+async function ensureImageInputsAcceptedByProvider(
+  operationType: OperationType,
+  providerId: string,
+  config: GenerationNodeConfigSchema,
+  onUploadStart?: GenerateAssetRequest['onInputUploadStart'],
+): Promise<void> {
+  if (operationType !== 'image_to_video') return;
+  if (!providerId || providerId === 'local') return;
+
+  const compositionAssets = (config as Record<string, unknown>).composition_assets;
+  if (!Array.isArray(compositionAssets)) return;
+
+  const assetIds: number[] = [];
+  for (const entry of compositionAssets) {
+    if (!entry || typeof entry !== 'object') continue;
+    const compositionEntry = entry as Record<string, unknown>;
+    const { asset, media_type: mediaType } = compositionEntry as { asset?: unknown; media_type?: unknown };
+    if (mediaType !== 'image' || typeof asset !== 'string') continue;
+    const match = /^asset:(\d+)$/.exec(asset);
+    if (!match) continue;
+    if (hasAcceptedProviderUploadHint(compositionEntry, providerId)) continue;
+    const id = Number(match[1]);
+    if (Number.isFinite(id) && id > 0 && !assetIds.includes(id)) {
+      assetIds.push(id);
+    }
+  }
+
+  if (assetIds.length === 0) return;
+
+  // Defer the "uploading…" toast behind a short delay. When the input was
+  // already pushed to this provider by an earlier generation — the common case
+  // on *regenerate*, where we reuse the cached provider upload rather than
+  // re-uploading anything — `uploadAssetToProvider` short-circuits on the
+  // cached `provider_uploads` entry in a few ms, the timer never fires, and the
+  // user correctly sees nothing. Only a genuine first-time upload is slow
+  // enough to trip the timer and warrant interim feedback.
+  const UPLOAD_TOAST_DELAY_MS = 500;
+  let cleanup: (() => void) | void;
+  const timer = setTimeout(() => {
+    cleanup = onUploadStart?.({ providerId, assetCount: assetIds.length });
+  }, UPLOAD_TOAST_DELAY_MS);
+  try {
+    for (const assetId of assetIds) {
+      await ensureInputUploadPreflight(assetId, providerId);
+    }
+  } finally {
+    clearTimeout(timer);
+    cleanup?.();
+  }
+}
+
+/**
  * Trigger quick generation of an asset via the control center.
  *
  * This function builds a proper GenerationNodeConfig from Control Center
@@ -200,6 +329,15 @@ function buildGenerationConfig(
  */
 export async function generateAsset(req: GenerateAssetRequest): Promise<GenerateAssetResponse> {
   const prepared = prepareGenerateAssetSubmission(req);
+
+  // Provider-accept gate (i2v): fail before a job/notification exists if the
+  // provider rejects the uploaded input image.
+  await ensureImageInputsAcceptedByProvider(
+    prepared.generationType,
+    prepared.providerId,
+    prepared.generationConfig,
+    req.onInputUploadStart,
+  );
 
   // Create generation request
   // Use force_new to bypass deduplication (avoids getting stuck on pending generations)

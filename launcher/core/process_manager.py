@@ -35,6 +35,31 @@ except ImportError:
 logger = logging.getLogger("launcher.core.process")
 
 
+_RELOAD_FLAGS_WITH_VALUES = {
+    "--reload-dir",
+    "--reload-include",
+    "--reload-exclude",
+    "--reload-delay",
+}
+
+
+def _remove_reload_args(args: List[str]) -> List[str]:
+    """Remove uvicorn reload flags as a group when the service disables reload."""
+    cleaned: List[str] = []
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--reload":
+            continue
+        if arg in _RELOAD_FLAGS_WITH_VALUES:
+            skip_next = True
+            continue
+        cleaned.append(arg)
+    return cleaned
+
+
 class ProcessManager:
     """
     Manages the lifecycle of service processes.
@@ -352,9 +377,9 @@ class ProcessManager:
                                         netloc=f"{parsed.hostname}:{new_port}"
                                     )
                                     setattr(definition, attr, urlunparse(patched))
-                        # Reload toggle: remove --reload if disabled
-                        if key == "reload" and not effective.get("reload") and "--reload" in base_args:
-                            base_args.remove("--reload")
+                        # Reload toggle: remove uvicorn reload flags as a group.
+                        if key == "reload" and not effective.get("reload"):
+                            base_args = _remove_reload_args(base_args)
             cmd = [definition.program] + base_args + extra_args
 
             # Open log file for output (rotate if oversized)

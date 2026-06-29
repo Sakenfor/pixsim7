@@ -21,7 +21,6 @@ import {
 import { useMediaSuspended } from '@lib/media/mediaSuspendStore';
 import { useVideoActivationSlot, VIDEO_SLOT_PRIORITY_HOVER } from '@lib/media/videoActivationPool';
 import { acquirePooledVideo, releasePooledVideo } from '@lib/media/videoElementPool';
-import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 
 import {
   claimAudio,
@@ -29,6 +28,7 @@ import {
   registerActiveVideo,
   subscribeActiveVideoRegistry,
 } from '@features/assets/lib/activeVideoRegistry';
+import { acquireGalleryHoverLock } from '@features/assets/lib/galleryPrependLock';
 
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 import { BACKEND_BASE } from '@/lib/api/client';
@@ -207,6 +207,11 @@ const DRAG_THRESHOLD = 5; // pixels before considered a drag
 // so sweeping was the prime hover-churn source. Touch scroll-focus (forcePlay)
 // bypasses this — it's already an intentful selection.
 const VIDEO_HOVER_INTENT_MS = 180;
+// How long the cursor must be still (no mousemove) after a scrub before looping
+// playback resumes. Distinguishes "settled, wants to watch" from "actively
+// scrubbing". The very first play is the browser's native autoplay; this only
+// gates resume-after-scrub.
+const STILL_PLAY_DELAY_MS = 400;
 /**
  * On hover-out the pooled <video> is released IMMEDIATELY (decoder freed) — but
  * the last frame was captured to capturedFrameStore and MediaCard keeps showing
@@ -314,10 +319,6 @@ export function VideoScrubWidgetRenderer({
   const [duration, setDuration] = useState<number | null>(null);
   const [hoverPercent, setHoverPercent] = useState(0);
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
-  // `loadedmetadata` (→ isVideoLoaded) means dimensions/duration are known, NOT
-  // that frames are buffered. Playback waits on `canplay` (readyState ≥ 3) so it
-  // doesn't start then immediately stall to buffer. Drives the autoplay kick.
-  const [canPlay, setCanPlay] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -328,7 +329,11 @@ export function VideoScrubWidgetRenderer({
   // load, audio registration, imperative prop sync) re-run when it changes.
   const [borrowedEl, setBorrowedEl] = useState<HTMLVideoElement | null>(null);
   const lastUpdateRef = useRef(0);
-  const stillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // After the user scrubs (which pauses + seeks to an exact frame), resume
+  // looping playback once the cursor settles. Re-armed on every move; fires a
+  // fire-and-forget play(). The browser's `autoplay` attribute covers the very
+  // first play; this only handles resume-after-scrub.
+  const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Stable per-instance key for audio claim + active-video registry. The
   // asset id from `data` is preferred; fall back to a random suffix so two
   // scrubbers without data still get distinct keys.
@@ -358,23 +363,17 @@ export function VideoScrubWidgetRenderer({
     const assetId = (data as { id?: string | number } | undefined)?.id ?? claimKeyRef.current;
     return registerActiveVideo(activeVideoKey, borrowedEl, assetId);
   }, [activeVideoKey, data, borrowedEl]);
+  // `isPlaying` is a MIRROR of the element's real play/pause events (wired in
+  // the activate effect), never set optimistically — so it can't desync from the
+  // actual <video> the way the old hand-driven play state did.
   const [isPlaying, setIsPlaying] = useState(false);
-  // Live mirrors of readiness/playback state, updated every render so stable
-  // callbacks (startPlaying/pauseVideo) and an already-scheduled still-timer
-  // read CURRENT values instead of a stale closure snapshot.
   const isPlayingRef = useRef(isPlaying);
   isPlayingRef.current = isPlaying;
   const isVideoLoadedRef = useRef(isVideoLoaded);
   isVideoLoadedRef.current = isVideoLoaded;
-  const canPlayRef = useRef(canPlay);
-  canPlayRef.current = canPlay;
   const hasDecoderSlotRef = useRef(false);
   const isOtherPlayingRef = useRef(isOtherVideoPlaying);
   isOtherPlayingRef.current = isOtherVideoPlaying;
-  // Set when the user settles (mouse still) and a play is intended. A slow clip
-  // that only becomes playable AFTER the still-timer fired is kicked by the
-  // recovery effect below — fixes "stuck on loading until re-hover".
-  const pendingPlayRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
   const [loopRange, setLoopRange] = useState<{ start: number; end: number } | null>(null);
   const [localMarks, setLocalMarks] = useState<number[]>([]);
@@ -422,29 +421,32 @@ export function VideoScrubWidgetRenderer({
     try {
       const want = new URL(effectiveUrl, window.location.origin).href;
       if (el.currentSrc === want && el.readyState >= 2) {
-        // Element is already loaded for this URL — skip load() (it would wipe
-        // the decoded frame buffer). But a preceding (re)borrow reset our
-        // readiness flags to false, and since we're NOT calling load(), the
-        // loadedmetadata/canplay events won't re-fire to set them back. Seed
-        // them from the element's live readyState so the "Loading video…"
-        // overlay clears and the play gate opens. Without this the preview
-        // sticks on "Loading…" and never plays until the next re-hover.
+        // Already loaded for this URL — skip load() (it would wipe the decoded
+        // frame buffer). A preceding (re)borrow reset isVideoLoaded to false and
+        // loadedmetadata won't re-fire, so seed it from live readyState; the
+        // element is already playable so re-assert autoplay to resume looping.
         setIsVideoLoaded(true);
-        if (el.readyState >= 3) setCanPlay(true);
+        el.autoplay = true;
+        if (el.paused) el.play().catch(() => { /* autoplay policy / race */ });
         return;
       }
     } catch { /* fall through to reload */ }
     setVideoError(false);
     setIsVideoLoaded(false);
-    setCanPlay(false);
     retryCountRef.current = 0;
     el.crossOrigin = effectiveUrl.startsWith('http') ? 'anonymous' : null;
-    // We're about to play (or scrub) this clip, so prefetch the media data, not
-    // just metadata. The pool's baseline is `preload='metadata'` to keep idle
-    // elements cheap; bumping to 'auto' on the borrowed element lets `canplay`
-    // fire with real buffered frames so playback doesn't stall right after the
-    // first frame. Bounded by the activation pool's 3-decoder cap.
+    // Prefetch media data (not just metadata) and let the BROWSER drive the
+    // first play via the autoplay attribute — far more reliable than a JS
+    // play-trigger. Muted + playsInline keep autoplay allowed by browser policy.
     el.preload = 'auto';
+    el.loop = true;
+    el.autoplay = true;
+    el.playsInline = true;
+    // Muted at load is what makes autoplay allowed by browser policy. The
+    // muted-sync effect below adjusts it afterward for the (rare) hoverSound
+    // path; a pooled element reused from a prior hoverSound borrow could
+    // otherwise arrive unmuted and have its autoplay silently blocked.
+    el.muted = true;
     el.src = effectiveUrl;
     el.load();
   }, [playWanted, effectiveUrl, borrowedEl]);
@@ -509,6 +511,12 @@ export function VideoScrubWidgetRenderer({
   const handlersRef = useRef({ handleLoadedMetadata, handleTimeUpdate, handleError });
   handlersRef.current = { handleLoadedMetadata, handleTimeUpdate, handleError };
 
+  // Latest videoProps, read by the borrow effect without making it a dep (the
+  // gallery hands a fresh {} on every re-render, which would otherwise re-borrow
+  // the pooled <video> and pause playback whenever an unrelated asset lands).
+  const videoPropsRef = useRef(videoProps);
+  videoPropsRef.current = videoProps;
+
   useEffect(() => {
     return () => {
       if (retryTimeoutRef.current) {
@@ -532,15 +540,24 @@ export function VideoScrubWidgetRenderer({
     const onMeta = () => handlersRef.current.handleLoadedMetadata();
     const onTime = () => handlersRef.current.handleTimeUpdate();
     const onErr = () => handlersRef.current.handleError();
-    // `canplay` = enough buffered to start without an immediate stall.
-    const onCanPlay = () => setCanPlay(true);
+    // isPlaying mirrors the element's REAL play/pause — never set optimistically,
+    // so it can't desync from the actual <video>. `playing`/`pause` cover native
+    // autoplay, our resume-after-scrub, stalls, and end-of-loop alike.
+    const onPlaying = () => { setIsPlaying(true); setIsVideoLoaded(true); };
+    const onPause = () => setIsPlaying(false);
+    // `loadeddata` = first frame is available to paint; fade the video in then
+    // (covers the case where loadedmetadata fired before we attached listeners).
+    const onLoadedData = () => setIsVideoLoaded(true);
     el.addEventListener('loadedmetadata', onMeta);
+    el.addEventListener('loadeddata', onLoadedData);
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('error', onErr);
-    el.addEventListener('canplay', onCanPlay);
+    el.addEventListener('playing', onPlaying);
+    el.addEventListener('pause', onPause);
     // Apply any custom videoProps (rarely used) imperatively, skipping
-    // React-only / reserved keys we control ourselves.
-    for (const [k, v] of Object.entries(videoProps)) {
+    // React-only / reserved keys we control ourselves. Read via ref so this
+    // effect does NOT depend on videoProps identity (see deps note below).
+    for (const [k, v] of Object.entries(videoPropsRef.current)) {
       if (k === 'className' || k === 'style' || k === 'ref' || k === 'children' || k.startsWith('on')) {
         continue;
       }
@@ -556,26 +573,40 @@ export function VideoScrubWidgetRenderer({
 
     return () => {
       el.removeEventListener('loadedmetadata', onMeta);
+      el.removeEventListener('loadeddata', onLoadedData);
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('error', onErr);
-      el.removeEventListener('canplay', onCanPlay);
+      el.removeEventListener('playing', onPlaying);
+      el.removeEventListener('pause', onPause);
+      // Stop autoplay from re-firing if this element is reused elsewhere.
+      el.autoplay = false;
       releasePooledVideo(el);
       if (videoRef.current === el) videoRef.current = null;
       setBorrowedEl((prev) => (prev === el ? null : prev));
       // Reset readiness + any per-borrow cache-bust so the next borrow loads
       // clean instead of fading in a stale "loaded" state.
       setIsVideoLoaded(false);
-      setCanPlay(false);
+      setIsPlaying(false);
       setCacheBustToken(null);
     };
-  }, [shouldAttachVideoSrc, videoProps]);
+    // Deps INTENTIONALLY exclude videoProps: the decoder borrow/release
+    // lifecycle must hinge ONLY on whether we hold a slot. videoProps is a
+    // cosmetic, usually-empty config object that the gallery rebuilds with a
+    // fresh identity whenever an unrelated asset lands (it recomputes the
+    // overlay widgets) — listing it here tore down and re-borrowed the pooled
+    // <video> on every such re-render, which paused/reloaded the playing
+    // preview. Applied via videoPropsRef so the latest value is still used.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAttachVideoSrc]);
 
   // Imperative prop sync for the pooled element (not a JSX node, so these can't
   // be declarative attributes). Opacity here; muted is synced near the audio
   // coordination block below where `scrubVideoMuted` is computed.
   useEffect(() => {
-    if (borrowedEl) borrowedEl.style.opacity = isVideoLoaded ? '1' : '0';
-  }, [borrowedEl, isVideoLoaded]);
+    // Fade the video in once it has a frame; a failed clip stays hidden so the
+    // thumbnail underneath shows through (no error chrome of our own here).
+    if (borrowedEl) borrowedEl.style.opacity = isVideoLoaded && !videoError ? '1' : '0';
+  }, [borrowedEl, isVideoLoaded, videoError]);
 
   useEffect(() => {
     const el = borrowedEl;
@@ -586,90 +617,31 @@ export function VideoScrubWidgetRenderer({
     el.dataset.showTimeline = showTimeline ? 'true' : 'false';
   }, [borrowedEl, isHovering, isVideoLoaded, videoDuration, showTimeline]);
 
-  // Start playing video (loop from current position). Reads readiness/playing
-  // state from refs (not closure state) so the still-timer's already-scheduled
-  // callback still acts on CURRENT state — otherwise a clip that finished
-  // loading after the timer was scheduled never got its play kick and sat stuck
-  // on the loading frame until the next hover. Stable identity (deps []).
-  const startPlaying = useCallback(() => {
-    const el = videoRef.current;
-    const dbg = (reason: string, extra?: Record<string, unknown>) => {
-      if (import.meta.env?.DEV) {
-         
-        console.debug('[scrub-play]', reason, {
-          hasSlot: hasDecoderSlotRef.current,
-          canPlay: canPlayRef.current,
-          loaded: isVideoLoadedRef.current,
-          otherPlaying: isOtherPlayingRef.current,
-          readyState: el?.readyState,
-          ...extra,
-        });
-      }
-    };
-    if (!el) return dbg('no-element');
-    if (isPlayingRef.current) return;
-    if (!canPlayRef.current && !isVideoLoadedRef.current) return dbg('not-ready');
-    pendingPlayRef.current = false;
-    el.loop = true;
-    // Silent on success; only surfaces abnormal cases (kept as a guardrail in
-    // case the viewer↔gallery playback coupling regresses).
-    el.play().catch((err) => dbg('play-rejected', { err: (err as Error)?.name }));
-    setIsPlaying(true);
+  // Pause playback (used while scrubbing + on hover-out). isPlaying updates via
+  // the element's own 'pause' event, so we don't touch it here.
+  const pauseVideo = useCallback(() => {
+    videoRef.current?.pause();
   }, []);
 
-  // Pause video
-  const pauseVideo = useCallback(() => {
-    if (videoRef.current && isPlayingRef.current) {
-      videoRef.current.pause();
-      setIsPlaying(false);
+  // Resume looping playback after a scrub settles. Fire-and-forget: if play()
+  // rejects (mid-seek, autoplay policy, transient stall) the element simply
+  // stays on its current frame — there is no "loading" state left to get stuck
+  // in — and the next settle retries. The browser's `autoplay` attribute covers
+  // the very first play; this only handles resume-after-scrub.
+  const resumePlayback = useCallback(() => {
+    const el = videoRef.current;
+    if (!el || !el.paused) return;
+    el.loop = true;
+    el.play().catch(() => { /* stays on current frame; harmless */ });
+  }, []);
+
+  // Clear a pending resume timer (movement re-arms it; hover-out clears it).
+  const clearResumeTimer = useCallback(() => {
+    if (resumeTimerRef.current) {
+      clearTimeout(resumeTimerRef.current);
+      resumeTimerRef.current = null;
     }
   }, []);
-
-  // Touch/coarse-pointer auto-play. On a finger there is no `mousemove`, so the
-  // still-timer in handleMouseMove that normally kicks off playback never
-  // fires, and scrubbing is unavailable anyway. So on coarse pointers treat
-  // "revealed/hovered" as "play": loop the video as soon as it's loaded,
-  // matching the desktop hover preview. Without this the timeline appears but
-  // the video sits paused on its first frame.
-  const isCoarsePointer = useIsCoarsePointer();
-  useEffect(() => {
-    // Auto-loop when there's no mousemove to kick playback off: a touch
-    // "hover" (tap-reveal) OR scroll-focus autoplay (`forcePlay`, which is only
-    // ever set on coarse pointers by the viewport-focus coordinator). Gated on
-    // `canPlay` (not just metadata) so play() isn't called before frames are
-    // buffered — that's what made the clip stall right after the first frame.
-    if ((!isCoarsePointer && !forcePlay) || !playWanted || !canPlay) return;
-    startPlaying();
-  }, [isCoarsePointer, forcePlay, playWanted, canPlay, startPlaying]);
-
-  // Recovery: if a play was intended (mouse settled in the play zone) but the
-  // clip wasn't buffered yet, kick playback once it becomes playable. Covers
-  // slow loads that finish AFTER the 500ms still-timer already fired — the case
-  // where a hovered preview stayed stuck on its loading frame until re-hover.
-  useEffect(() => {
-    if (!pendingPlayRef.current) return;
-    if (!playWanted || isDragging || !canPlay) return;
-    startPlaying();
-  }, [canPlay, playWanted, isDragging, startPlaying]);
-
-  // Desktop: arm the play-on-still timer when the clip becomes playable while
-  // hovering. The mousemove handler only arms this timer *while moving* (and it
-  // early-returns entirely until the video has a duration), so a user who hovers
-  // and holds the mouse still through loading would never get playback — the
-  // "hold still to play is buggy" case. Active scrubbing cancels/re-arms this
-  // via handleMouseMove; hover-out clears it. Touch/forcePlay use the effect
-  // above instead.
-  useEffect(() => {
-    if (isCoarsePointer || forcePlay) return;
-    if (!playWanted || !canPlay || isDragging) return;
-    if (isPlayingRef.current) return;
-    if (stillTimerRef.current || pendingPlayRef.current) return; // already armed
-    pendingPlayRef.current = true;
-    stillTimerRef.current = setTimeout(() => {
-      stillTimerRef.current = null;
-      startPlaying();
-    }, 500);
-  }, [isCoarsePointer, forcePlay, playWanted, canPlay, isDragging, startPlaying]);
 
   // Find mark near a given time (within threshold)
   const findNearbyMark = useCallback(
@@ -987,16 +959,21 @@ export function VideoScrubWidgetRenderer({
         return; // Don't do normal scrubbing behavior while dragging
       }
 
-      // Clear any existing still timer — movement cancels a pending play intent.
-      if (stillTimerRef.current) {
-        clearTimeout(stillTimerRef.current);
-        stillTimerRef.current = null;
-      }
-      pendingPlayRef.current = false;
-
-      // Pause if currently playing (user started moving again)
-      if (isPlaying) {
-        pauseVideo();
+      // Scrubbing: pause so the user sees the exact frame at the cursor, then
+      // arm the resume timer so playback loops again once they settle. Native
+      // autoplay handled the FIRST play; this is purely resume-after-scrub.
+      // If we're transitioning OUT of autoplay (was playing), force the next
+      // seek to run THIS tick (reset the throttle clock) so the frame snaps to
+      // the cursor immediately instead of lagging a throttle window — that lag
+      // is what read as "scrubbing doesn't pick up" right after idle autoplay.
+      const wasPlaying = !videoRef.current.paused;
+      pauseVideo();
+      if (wasPlaying) lastUpdateRef.current = 0;
+      clearResumeTimer();
+      // Don't auto-resume while the cursor sits over the timeline/controls strip
+      // (the user is adjusting marks) — matches the prior control-zone guard.
+      if (!isInControlZone) {
+        resumeTimerRef.current = setTimeout(resumePlayback, STILL_PLAY_DELAY_MS);
       }
 
       // Skip scrub updates when in dot zone
@@ -1010,8 +987,10 @@ export function VideoScrubWidgetRenderer({
         lastUpdateRef.current = now;
         setCurrentTime(targetTime);
 
-        // Seek video
-        if (videoRef.current && isVideoLoaded) {
+        // Seek video — gate on the element's LIVE readiness (can it seek?) rather
+        // than the isVideoLoaded React state, which can lag a frame behind the
+        // element right after autoplay starts and briefly block the first seek.
+        if (videoRef.current && videoRef.current.readyState >= 1) {
           videoRef.current.currentTime = targetTime;
         }
 
@@ -1021,16 +1000,8 @@ export function VideoScrubWidgetRenderer({
         }
       }
 
-      // Set timer to start playing if mouse stays still
-      // BUT not if cursor is in the control zone (near timeline/controls)
-      if (!isInControlZone) {
-        pendingPlayRef.current = true;
-        stillTimerRef.current = setTimeout(() => {
-          startPlaying();
-        }, 500);
-      }
     },
-    [gestureActive, videoDuration, throttle, isVideoLoaded, isPlaying, isDragging, pauseVideo, startPlaying, onScrub, data]
+    [gestureActive, videoDuration, throttle, isVideoLoaded, isDragging, pauseVideo, clearResumeTimer, resumePlayback, onScrub, data]
   );
 
   // Handle loop range during playback
@@ -1161,6 +1132,18 @@ export function VideoScrubWidgetRenderer({
     return () => { onActiveChange?.(false); };
   }, [isHovering, onActiveChange]);
 
+  // Hold the gallery prepend lock while hovering this card, so a freshly landed
+  // asset can't prepend and shift the card out from under the cursor mid-preview
+  // (which transfers hover to a neighbour and restarts its load — the "freezes
+  // to Loading video while idle-hover playing" report). Released on hover-out /
+  // unmount, at which point useAssets flushes any prepends it deferred. Acquired
+  // on `isHovering` (not playback) so even a still-loading hover is protected —
+  // otherwise a shift could restart the load before it ever reaches play.
+  useEffect(() => {
+    if (!isHovering) return;
+    return acquireGalleryHoverLock();
+  }, [isHovering]);
+
   // Report live scrub time so capability actions can drive extract/upload
   // without needing direct access to the widget's internal state.
   useEffect(() => {
@@ -1192,12 +1175,8 @@ export function VideoScrubWidgetRenderer({
       }
       return;
     }
-    // Leaving: clear still timer + any pending play intent.
-    if (stillTimerRef.current) {
-      clearTimeout(stillTimerRef.current);
-      stillTimerRef.current = null;
-    }
-    pendingPlayRef.current = false;
+    // Leaving: cancel any pending resume-after-scrub.
+    clearResumeTimer();
     // Capture the current frame BEFORE the element is released — drawImage runs
     // synchronously here, on a frame the decoder still holds, even though the
     // pooled element is torn down on the next commit. MediaCard renders the
@@ -1230,7 +1209,7 @@ export function VideoScrubWidgetRenderer({
       frameClearTimerRef.current = null;
       if (url) clearCapturedFrame(url);
     }, CAPTURED_FRAME_LINGER_MS);
-  }, [playWanted, pauseOnLeave]);
+  }, [playWanted, pauseOnLeave, clearResumeTimer]);
 
   // Cleanup captured-frame timer on unmount. Also clear the captured frame.
   useEffect(() => {
@@ -1563,18 +1542,11 @@ export function VideoScrubWidgetRenderer({
         </div>
       )}
 
-      {/* Loading indicator — only once we've actually committed a decoder slot
-          to loading this clip (shouldAttachVideoSrc). Keying on bare `isHovering`
-          flashed "Loading…" during the hover-intent debounce and the slot wait,
-          when we're deliberately not loading yet — read as a spurious/sticky
-          loading state on quick hovers. Still hidden on failure / no URL. */}
-      {isHovering && shouldAttachVideoSrc && !isVideoLoaded && !videoError && !!resolvedUrl && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
-          <div className="px-3 py-1.5 bg-black/80 text-white text-xs rounded backdrop-blur-sm">
-            Loading video...
-          </div>
-        </div>
-      )}
+      {/* No loading overlay by design: the card's thumbnail stays visible
+          underneath until the <video> paints its first frame (opacity gated on
+          isVideoLoaded), then it fades in. There is no separate "loading" state
+          that can get stuck — the worst case the user ever sees is the
+          thumbnail. */}
     </div>
   );
 }

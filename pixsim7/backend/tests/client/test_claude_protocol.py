@@ -404,3 +404,107 @@ class TestApplyPermissionMode:
         ok, s = asyncio.run(_run())
         assert ok is False  # Codex can't switch live — no plan mode
         assert s._process.stdin.writes == []
+
+
+class TestInterrupt:
+    """Session.interrupt writes an ``interrupt`` control frame to the live
+    process (fire-and-forget) so the in-flight turn aborts — the real-stop path
+    behind the cancel button."""
+
+    def test_writes_interrupt_frame(self):
+        async def _run():
+            s = AgentCmdSession("s", command="claude")
+            s._process = _AliveProc()
+            return await s.interrupt(), s
+
+        ok, s = asyncio.run(_run())
+        assert ok is True
+        frames = [_json.loads(w.decode()) for w in s._process.stdin.writes]
+        assert any(
+            f.get("type") == "control_request"
+            and f["request"].get("subtype") == "interrupt"
+            for f in frames
+        )
+
+    def test_returns_false_when_process_dead(self):
+        async def _run():
+            s = AgentCmdSession("s", command="claude")
+            s._process = None  # not alive
+            return await s.interrupt(), s
+
+        ok, _ = asyncio.run(_run())
+        assert ok is False
+
+    def test_codex_interrupts_via_turn_interrupt_rpc(self):
+        async def _run():
+            s = AgentCmdSession("s", command="codex")
+            s._process = _AliveProc()
+            s.cli_session_id = "thr_1"
+            s._current_turn_id = "turn_9"
+            return await s.interrupt(), s
+
+        ok, s = asyncio.run(_run())
+        assert ok is True
+        frames = [_json.loads(w.decode()) for w in s._process.stdin.writes]
+        intr = next(f for f in frames if f.get("method") == "turn/interrupt")
+        assert intr["params"] == {"threadId": "thr_1", "turnId": "turn_9"}
+
+
+class TestSteer:
+    """Session.steer injects a user message into the in-flight turn (live
+    steering) by writing a user frame to the persistent stdin — no new turn."""
+
+    def test_writes_user_frame(self):
+        async def _run():
+            s = AgentCmdSession("s", command="claude")
+            s._process = _AliveProc()
+            return await s.steer("focus on the tests"), s
+
+        ok, s = asyncio.run(_run())
+        assert ok is True
+        frames = [_json.loads(w.decode()) for w in s._process.stdin.writes]
+        assert any(
+            f.get("type") == "user"
+            and f["message"]["content"][0]["text"] == "focus on the tests"
+            for f in frames
+        )
+
+    def test_blank_message_is_noop(self):
+        async def _run():
+            s = AgentCmdSession("s", command="claude")
+            s._process = _AliveProc()
+            return await s.steer("   "), s
+
+        ok, s = asyncio.run(_run())
+        assert ok is False
+        assert s._process.stdin.writes == []
+
+    def test_codex_steers_via_turn_steer_rpc(self):
+        async def _run():
+            s = AgentCmdSession("s", command="codex")
+            s._process = _AliveProc()
+            s.cli_session_id = "thr_1"
+            s._current_turn_id = "turn_9"
+            return await s.steer("focus on failing tests"), s
+
+        ok, s = asyncio.run(_run())
+        assert ok is True
+        frames = [_json.loads(w.decode()) for w in s._process.stdin.writes]
+        steer = next(f for f in frames if f.get("method") == "turn/steer")
+        assert steer["params"]["threadId"] == "thr_1"
+        assert steer["params"]["expectedTurnId"] == "turn_9"
+        assert steer["params"]["input"] == [{"type": "text", "text": "focus on failing tests"}]
+
+    def test_codex_steer_noop_before_turn_id_known(self):
+        """Steer fired in the brief window before the turn/start ack can't target
+        a turn yet — returns False and writes nothing (no silent mis-send)."""
+        async def _run():
+            s = AgentCmdSession("s", command="codex")
+            s._process = _AliveProc()
+            s.cli_session_id = "thr_1"
+            s._current_turn_id = None
+            return await s.steer("hi"), s
+
+        ok, s = asyncio.run(_run())
+        assert ok is False
+        assert s._process.stdin.writes == []

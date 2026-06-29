@@ -237,6 +237,18 @@ TWEAKABLE_ERROR_CODES: frozenset[GenerationErrorCode] = frozenset({
     GenerationErrorCode.CONTENT_RENDER_MODERATED,
 })
 
+# Error codes that count as a "filtered" outcome when computing a prompt's
+# success rate (passed = COMPLETED; filtered = these; rate = passed/(passed+
+# filtered), with all OTHER outcomes — quota, timeouts, param errors — excluded
+# from the denominator). Single source of truth shared by the prompt-box
+# moderation chip (/generations/prompt-stats) and the gallery "prompt success
+# rate" filter, so the two numbers can never drift. content_render_moderated is
+# the i2v/t2v fast-fail; content_filtered is the i2i filter.
+FILTERED_OUTCOME_ERROR_CODES: frozenset[GenerationErrorCode] = frozenset({
+    GenerationErrorCode.CONTENT_RENDER_MODERATED,
+    GenerationErrorCode.CONTENT_FILTERED,
+})
+
 # Coarse grouping for display in the error catalog.
 ERROR_CODE_CATEGORY: dict[GenerationErrorCode, str] = {
     GenerationErrorCode.CONTENT_PROMPT_REJECTED: "moderation",

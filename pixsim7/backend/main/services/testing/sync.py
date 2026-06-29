@@ -10,15 +10,16 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.docs.models import TestSuiteRecord
 from testing.catalog import build_catalog
 from pixsim7.backend.main.services.sync.ttl import TtlSync
-from pixsim7.backend.main.shared.datetime_utils import utcnow
+from pixsim7.backend.main.shared.datetime_utils import ensure_timezone_aware, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,34 @@ class SyncResult:
 async def ensure_synced(db: AsyncSession):
     """Re-sync if stale.  Delegates TTL gating to ``TtlSync``."""
     return await _ttl.ensure_fresh(db, sync_test_suites)
+
+
+async def ensure_startup_synced(db: AsyncSession):
+    """Startup-friendly sync that preserves TTL across hot-reload restarts.
+
+    ``TtlSync`` is process-local, so a uvicorn reload would otherwise reset the
+    in-memory timestamp and rescan every backend/frontend test file on every
+    code restart. The DB mirror already records ``last_synced_at`` for every
+    row, so startup can skip the expensive scan when the persisted catalog was
+    refreshed inside the same TTL window.
+    """
+    latest_sync = (
+        await db.execute(select(func.max(TestSuiteRecord.last_synced_at)))
+    ).scalar_one_or_none()
+
+    if latest_sync is not None:
+        latest_sync = ensure_timezone_aware(latest_sync)
+        age = utcnow() - latest_sync
+        if age < timedelta(seconds=_ttl.ttl_seconds):
+            _ttl.mark_fresh()
+            logger.info(
+                "test_suite_startup_sync_skipped",
+                age_seconds=round(age.total_seconds(), 3),
+                ttl_seconds=_ttl.ttl_seconds,
+            )
+            return None
+
+    return await ensure_synced(db)
 
 
 async def sync_test_suites(db: AsyncSession) -> SyncResult:

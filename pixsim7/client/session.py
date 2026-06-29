@@ -171,6 +171,11 @@ class AgentCmdSession:
         self._live_permission_mode: str | None = None
         # Monotonic id source for control_request frames.
         self._control_seq = 0
+        # JSON-RPC request id + live turn id (Codex app-server). Re-seeded in
+        # start(); initialised here so steer/interrupt are safe to call on a
+        # session that hasn't spawned yet (returns False rather than raising).
+        self._jsonrpc_id = 10
+        self._current_turn_id: str | None = None
         self._workdir = workdir
         self.token_file_path = token_file_path
         # Path to the private per-session MCP config clone this pool created
@@ -387,6 +392,10 @@ class AgentCmdSession:
         self.stats.started_at = datetime.now(timezone.utc)
         self._last_error = None
         self._jsonrpc_id = 10  # start IDs above the init sequence
+        # Live turn id for JSON-RPC engines (Codex app-server), captured from
+        # turn/start acks + turn/* notifications. Targets mid-turn steer /
+        # interrupt; None between turns (and for non-JSON-RPC engines).
+        self._current_turn_id = None
 
         self._log.info("session_started", pid=self._process.pid)
 
@@ -774,6 +783,148 @@ class AgentCmdSession:
             self._log.info("session_permission_mode_switched", mode=mode)
         return ok
 
+    async def interrupt(self) -> bool:
+        """Abort the in-flight turn (real stop), not just abandon the await.
+
+        Fire-and-forget: we only *write* an ``interrupt`` control_request to
+        stdin. The turn-ending ``result``/``error`` event flows through the
+        active ``send_message`` loop as usual; the matching ``control_response``
+        parses to ``kind="other"`` there and is inert, so there's no contention
+        with the loop draining ``_response_queue`` (which is why this does NOT
+        reuse ``_exchange_control_request`` — that helper assumes no turn is in
+        flight). Falls back to a hard ``stop()`` for protocols without a runtime
+        control channel (e.g. Codex), which ends the turn by killing the
+        process. Returns True if an interrupt/stop was issued.
+        """
+        # Claude: stdin control_request channel.
+        if self._protocol.supports_runtime_control():
+            if not self.is_alive or not self._process or not self._process.stdin:
+                return False
+            self._control_seq += 1
+            request_id = f"interrupt-{self._control_seq}"
+            frame = self._protocol.build_control_request(request_id, "interrupt")
+            if not frame:
+                return False
+            try:
+                self._process.stdin.write(frame.encode())
+                await self._process.stdin.drain()
+                self._log.info("session_interrupt_sent", request_id=request_id)
+                return True
+            except Exception as exc:
+                self._log.warning("session_interrupt_failed", error=str(exc))
+                return False
+        # Codex app-server: a turn/interrupt RPC aborts just the turn and keeps
+        # the session alive (no respawn). Falls back to a hard stop if the turn
+        # id isn't known yet (interrupt fired in the brief pre-ack window).
+        if hasattr(self._protocol, "needs_jsonrpc_init") and self._protocol.needs_jsonrpc_init():
+            return await self._interrupt_jsonrpc()
+        # No control channel at all (single-turn Codex exec) — hard stop.
+        await self.stop()
+        return True
+
+    async def _interrupt_jsonrpc(self) -> bool:
+        """Abort the live Codex turn via ``turn/interrupt`` (fire-and-forget —
+        the turn ends through the normal turn/completed path). Hard-stops if the
+        thread/turn id isn't known yet."""
+        if not self.cli_session_id or not self._current_turn_id:
+            await self.stop()
+            return True
+        if not self.is_alive or not self._process or not self._process.stdin:
+            return False
+        self._jsonrpc_id += 1
+        frame = json.dumps({
+            "jsonrpc": "2.0",
+            "method": "turn/interrupt",
+            "id": self._jsonrpc_id,
+            "params": {"threadId": self.cli_session_id, "turnId": self._current_turn_id},
+        }) + "\n"
+        try:
+            self._process.stdin.write(frame.encode())
+            await self._process.stdin.drain()
+            self._log.info("session_interrupt_sent_jsonrpc", turn_id=self._current_turn_id)
+            return True
+        except Exception as exc:
+            self._log.warning("session_interrupt_failed", error=str(exc))
+            return False
+
+    async def steer(self, message: str, images: list[dict] | None = None) -> bool:
+        """Inject an extra user message into the IN-FLIGHT turn (live steering),
+        like typing while the CLI works in a terminal.
+
+        Fire-and-forget: we only write the user frame to the persistent stdin —
+        the CLI decides *when* the agent picks it up, and the resulting events
+        flow through the active ``send_message`` loop as normal (no new turn /
+        no new dispatch task). Requires a long-running stream-json input channel
+        (Claude). Returns False for engines without one (single-turn Codex exec)
+        or JSON-RPC engines (Codex app-server) that need a turn-scoped injection
+        we don't model yet — the caller can fall back to queueing it as the next
+        turn.
+        """
+        if not message or not message.strip():
+            return False
+        if not self._protocol.is_long_running():
+            # Single-turn Codex exec: one process per turn, no mid-turn channel.
+            return False
+        if hasattr(self._protocol, "needs_jsonrpc_init") and self._protocol.needs_jsonrpc_init():
+            # Codex app-server: inject via the turn/steer RPC.
+            return await self._steer_jsonrpc(message, images)
+        if not self.is_alive or not self._process or not self._process.stdin:
+            return False
+        payload = self._protocol.build_message_payload(message, images)
+        if not payload:
+            return False
+        try:
+            self._process.stdin.write(payload.encode())
+            await self._process.stdin.drain()
+            # Real input is activity — keep the inactivity watchdog from cutting
+            # the turn while the agent digests the steer.
+            self.stats.last_activity = datetime.now(timezone.utc)
+            self._log.info("session_steer_sent", chars=len(message.strip()))
+            return True
+        except Exception as exc:
+            self._log.warning("session_steer_failed", error=str(exc))
+            return False
+
+    async def _steer_jsonrpc(self, message: str, images: list[dict] | None = None) -> bool:
+        """Inject guidance into the live Codex turn via ``turn/steer`` (no new
+        turn, no interrupt). Fire-and-forget — the steer's events flow through
+        the active send_message loop. Needs the thread + current turn id; returns
+        False if the turn id isn't known yet (steer fired before the turn ack)."""
+        if not self.cli_session_id or not self._current_turn_id:
+            return False
+        if not self.is_alive or not self._process or not self._process.stdin:
+            return False
+        try:
+            input_items = json.loads(self._protocol.build_message_payload(message, images) or "[]")
+        except (TypeError, ValueError):
+            return False
+        if not input_items:
+            return False
+        self._jsonrpc_id += 1
+        frame = json.dumps({
+            "jsonrpc": "2.0",
+            "method": "turn/steer",
+            "id": self._jsonrpc_id,
+            "params": {
+                "threadId": self.cli_session_id,
+                "input": input_items,
+                "expectedTurnId": self._current_turn_id,
+            },
+        }) + "\n"
+        try:
+            self._process.stdin.write(frame.encode())
+            await self._process.stdin.drain()
+            self.stats.last_activity = datetime.now(timezone.utc)
+            self._log.info(
+                "session_steer_sent_jsonrpc",
+                turn_id=self._current_turn_id,
+                chars=len(message.strip()),
+            )
+            return True
+        except Exception as exc:
+            self._log.warning("session_steer_failed", error=str(exc))
+            return False
+
     async def _exchange_control_request(
         self,
         request_id: str,
@@ -856,6 +1007,9 @@ class AgentCmdSession:
             raise RuntimeError(f"Session {self.session_id} is not running")
 
         self._mark_busy()
+        # Fresh turn — drop any previous turn id so a steer/interrupt can't
+        # target a completed turn (JSON-RPC engines re-capture it below).
+        self._current_turn_id = None
 
         # Clear stale responses
         while not self._response_queue.empty():
@@ -1007,6 +1161,12 @@ class AgentCmdSession:
                     )
                     self._mark_ready()
                     raise RuntimeError(self._build_process_exit_error())
+
+                # Capture the live turn id (JSON-RPC engines) so a concurrent
+                # steer/interrupt can target this exact turn. No-op for Claude.
+                _turn_id = self._protocol.extract_turn_id(event_raw)
+                if _turn_id:
+                    self._current_turn_id = _turn_id
 
                 parsed = self._protocol.parse_event(event_raw)
                 # Any fresh stdout line ends the silent window. A tool_use

@@ -11,6 +11,7 @@
  *   - Arrow key / Enter navigation (from textarea via ref, or from search input)
  */
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
 
@@ -54,6 +55,11 @@ export interface ReferencePickerProps {
    * caret-positioned popup rather than a fixed above-input panel.
    */
   style?: React.CSSProperties;
+  /**
+   * Render at document.body level to escape parent stacking contexts.
+   * Use with viewport-relative top/left style coordinates.
+   */
+  portal?: boolean;
 }
 
 export interface ReferencePickerHandle {
@@ -63,6 +69,8 @@ export interface ReferencePickerHandle {
 
 const DEFAULT_PICKER_CLASS =
   'absolute bottom-full left-0 right-0 mb-1 mx-2 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-float-overlay-popover';
+const DEFAULT_PORTAL_PICKER_CLASS =
+  'w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-float-overlay-popover';
 
 export const ReferencePicker = forwardRef<ReferencePickerHandle, ReferencePickerProps>(
   function ReferencePicker(
@@ -77,6 +85,7 @@ export const ReferencePicker = forwardRef<ReferencePickerHandle, ReferencePicker
       disallowedTypes,
       className,
       style,
+      portal = false,
     },
     fwdRef,
   ) {
@@ -205,10 +214,14 @@ export const ReferencePicker = forwardRef<ReferencePickerHandle, ReferencePicker
 
     if (!showCategories && !showItems && !typeFilter && !searchText) return null;
 
-    return (
+    const resolvedClassName = portal
+      ? `fixed ${className ?? DEFAULT_PORTAL_PICKER_CLASS}`
+      : (className ?? DEFAULT_PICKER_CLASS);
+
+    const content = (
       <div
         ref={containerRef}
-        className={className ?? DEFAULT_PICKER_CLASS}
+        className={resolvedClassName}
         style={style}
       >
         {/* Sticky header — search + category chips stay pinned while scrolling */}
@@ -335,5 +348,11 @@ export const ReferencePicker = forwardRef<ReferencePickerHandle, ReferencePicker
         )}
       </div>
     );
+
+    if (!portal || typeof document === 'undefined') {
+      return content;
+    }
+
+    return createPortal(content, document.body);
   },
 );

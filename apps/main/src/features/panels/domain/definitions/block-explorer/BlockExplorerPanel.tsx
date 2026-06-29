@@ -18,6 +18,7 @@ import {
   searchBlocks,
   listBlockRoles,
   listBlockPackages,
+  listContentPackManifests,
   listBlockTagFacets,
   getBlockSchema,
   type PromptBlockResponse,
@@ -26,9 +27,10 @@ import {
   type BlockOpSchema,
   type BlockOpParamSchema,
   type BlockOpRefSchema,
+  type ContentPackMatrixManifest,
 } from '@lib/api/blockTemplates';
 import { getBlockIcon, getCategoryIcon, getRoleIcon } from '@lib/blockVisuals';
-import { Icon } from '@lib/icons';
+import { Icon, Icons, type IconName } from '@lib/icons';
 
 import {
   CAP_BLOCK_SELECTION,
@@ -129,6 +131,32 @@ interface CategoryNode {
   totalCount: number;
 }
 
+interface BlockNamespaceGroup {
+  key: string;
+  label: string;
+  icon?: IconName;
+  blocks: PromptBlockResponse[];
+}
+
+const ROOT_NAMESPACE_GROUP = '__root__';
+const ROOT_MANIFEST_SOURCES = new Set(['manifest.yaml', 'manifest.yml']);
+// Semantic subgroup hints (used first); custom packs can override via
+// `manifest.yaml.icon`, which is used as the next fallback.
+const SUBGROUP_ICON_HINTS: Partial<Record<string, IconName>> = {
+  chest: 'heart',
+  breast: 'heart',
+  torso: 'user',
+  touch: 'hand',
+  connector: 'link',
+  voice: 'radio',
+  gaze: 'eye',
+  mouth: 'messageSquare',
+  lips: 'messageSquare',
+  rhythm: 'activity',
+  pose: 'user',
+  canine: 'users',
+};
+
 function buildCategoryTree(summaries: BlockRoleSummary[]): CategoryNode[] {
   const map = new Map<string, { roles: Set<string>; count: number }>();
   for (const s of summaries) {
@@ -145,6 +173,115 @@ function buildCategoryTree(summaries: BlockRoleSummary[]): CategoryNode[] {
       totalCount: count,
     }))
     .sort((a, b) => b.totalCount - a.totalCount);
+}
+
+function firstCategoryToken(category: string): string | null {
+  const token = category.split(/[._-]/)[0]?.trim();
+  return token ? token.toLowerCase() : null;
+}
+
+function deriveNamespaceGroupKey(blockId: string, category: string | null): string {
+  const parts = blockId
+    .split('.')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  if (parts.length < 2) return ROOT_NAMESPACE_GROUP;
+
+  const categoryRoot = category ? firstCategoryToken(category) : null;
+  if (categoryRoot && parts.length >= 3 && parts[1].toLowerCase() === categoryRoot) {
+    return parts[2];
+  }
+
+  return parts[1];
+}
+
+function toIconName(raw: string | null | undefined): IconName | null {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (!value) return null;
+  if (Object.prototype.hasOwnProperty.call(Icons, value)) return value as IconName;
+  return null;
+}
+
+function isRootManifestSource(source: string): boolean {
+  return ROOT_MANIFEST_SOURCES.has(source.trim().toLowerCase());
+}
+
+function buildPackIconMap(manifests: ContentPackMatrixManifest[]): Record<string, IconName> {
+  const map = new Map<string, IconName>();
+
+  // Prefer root-manifest icon when available.
+  for (const manifest of manifests) {
+    if (!isRootManifestSource(manifest.source)) continue;
+    const icon = toIconName(manifest.icon);
+    if (!icon) continue;
+    map.set(manifest.pack_name, icon);
+  }
+
+  // Fall back to any other manifest source for packs without a root icon.
+  for (const manifest of manifests) {
+    if (map.has(manifest.pack_name)) continue;
+    const icon = toIconName(manifest.icon);
+    if (!icon) continue;
+    map.set(manifest.pack_name, icon);
+  }
+
+  return Object.fromEntries(map);
+}
+
+function resolveGroupIcon(
+  groupKey: string,
+  grouped: PromptBlockResponse[],
+  packIcons: Record<string, IconName>,
+): IconName | undefined {
+  const normalized = groupKey.toLowerCase();
+  const hinted = SUBGROUP_ICON_HINTS[normalized];
+  if (hinted) return hinted;
+
+  const counts = new Map<IconName, number>();
+  for (const block of grouped) {
+    const pack = block.package_name;
+    if (!pack) continue;
+    const icon = packIcons[pack];
+    if (!icon) continue;
+    counts.set(icon, (counts.get(icon) ?? 0) + 1);
+  }
+  if (counts.size === 0) return undefined;
+
+  let winner: IconName | undefined;
+  let winnerCount = -1;
+  for (const [icon, count] of counts) {
+    if (count > winnerCount) {
+      winner = icon;
+      winnerCount = count;
+    }
+  }
+  return winner;
+}
+
+function buildNamespaceGroups(
+  blocks: PromptBlockResponse[],
+  category: string | null,
+  packIcons: Record<string, IconName>,
+): BlockNamespaceGroup[] {
+  const buckets = new Map<string, PromptBlockResponse[]>();
+  for (const block of blocks) {
+    const key = deriveNamespaceGroupKey(block.block_id, category);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(block);
+  }
+
+  return Array.from(buckets.entries())
+    .map(([key, grouped]) => ({
+      key,
+      label: key === ROOT_NAMESPACE_GROUP ? 'other' : key,
+      icon: resolveGroupIcon(key, grouped, packIcons),
+      blocks: [...grouped].sort((a, b) => a.block_id.localeCompare(b.block_id)),
+    }))
+    .sort((a, b) => {
+      if (a.key === ROOT_NAMESPACE_GROUP && b.key !== ROOT_NAMESPACE_GROUP) return 1;
+      if (b.key === ROOT_NAMESPACE_GROUP && a.key !== ROOT_NAMESPACE_GROUP) return -1;
+      return a.label.localeCompare(b.label);
+    });
 }
 
 // ============================================================================
@@ -643,6 +780,7 @@ export function BlockExplorerPanel() {
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [packages, setPackages] = useState<string[]>([]);
+  const [packIcons, setPackIcons] = useState<Record<string, IconName>>({});
   const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
   const [tagFacets, setTagFacets] = useState<Record<string, string[]>>({});
   const [activeTagFilters, setActiveTagFilters] = useState<TagFilter[]>([]);
@@ -715,6 +853,13 @@ export function BlockExplorerPanel() {
         setError(err instanceof Error ? err.message : 'Failed to load');
         setIsLoading(false);
       });
+  }, []);
+
+  // Best-effort pack icon metadata (manifest-declared).
+  useEffect(() => {
+    listContentPackManifests()
+      .then((manifests) => setPackIcons(buildPackIconMap(manifests)))
+      .catch(() => setPackIcons({}));
   }, []);
 
   // Fetch tag facets when category/package changes
@@ -827,6 +972,12 @@ export function BlockExplorerPanel() {
     setActiveTagFilters([]);
   }, []);
 
+  const namespaceGroups = useMemo(
+    () => buildNamespaceGroups(blocks, selectedCategory, packIcons),
+    [blocks, selectedCategory, packIcons],
+  );
+  const showNamespaceGroups = namespaceGroups.length > 1;
+
   const totalBlocks = useMemo(
     () => categoryTree.reduce((sum, n) => sum + n.totalCount, 0),
     [categoryTree],
@@ -902,16 +1053,50 @@ export function BlockExplorerPanel() {
               >
                 {isSelected &&
                   (blocks.length > 0 ? (
-                    blocks.map((block) => (
-                      <SidebarTreeLeafButton
-                        key={block.block_id}
-                        label={block.block_id}
-                        icon={getBlockIcon(block)}
-                        selected={selectedBlock?.block_id === block.block_id}
-                        onClick={() => setSelectedBlock(block)}
-                        compact
-                      />
-                    ))
+                    showNamespaceGroups ? (
+                      namespaceGroups.map((group) => {
+                        const groupHasSelectedBlock = group.blocks.some(
+                          (block) => block.block_id === selectedBlock?.block_id,
+                        );
+                        return (
+                          <SidebarTreeGroup
+                            key={`${node.category}:${group.key}`}
+                            label={group.label}
+                            labelClassName="normal-case tracking-normal font-normal"
+                            icon={group.icon ?? getBlockIcon(group.blocks[0])}
+                            selected={groupHasSelectedBlock}
+                            defaultExpanded={groupHasSelectedBlock || namespaceGroups.length <= 6}
+                            trailing={
+                              <span className="text-[9px] text-neutral-600 tabular-nums ml-auto">
+                                {group.blocks.length}
+                              </span>
+                            }
+                          >
+                            {group.blocks.map((block) => (
+                              <SidebarTreeLeafButton
+                                key={block.block_id}
+                                label={block.block_id}
+                                icon={getBlockIcon(block)}
+                                selected={selectedBlock?.block_id === block.block_id}
+                                onClick={() => setSelectedBlock(block)}
+                                compact
+                              />
+                            ))}
+                          </SidebarTreeGroup>
+                        );
+                      })
+                    ) : (
+                      blocks.map((block) => (
+                        <SidebarTreeLeafButton
+                          key={block.block_id}
+                          label={block.block_id}
+                          icon={getBlockIcon(block)}
+                          selected={selectedBlock?.block_id === block.block_id}
+                          onClick={() => setSelectedBlock(block)}
+                          compact
+                        />
+                      ))
+                    )
                   ) : (
                     <p className="px-2 py-1 text-[10px] text-neutral-600">
                       No blocks match

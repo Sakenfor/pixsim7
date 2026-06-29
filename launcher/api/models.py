@@ -48,6 +48,7 @@ class ServiceDefinitionResponse(BaseModel):
     """Service definition details."""
     key: str
     title: str
+    description: Optional[str] = None
     program: str
     args: List[str]
     cwd: str
@@ -60,6 +61,7 @@ class ServiceStateResponse(BaseModel):
     """Current state of a service."""
     key: str
     title: str
+    description: Optional[str] = None
     status: ServiceStatusEnum
     health: HealthStatusEnum
     pid: Optional[int] = None

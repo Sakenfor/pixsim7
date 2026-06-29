@@ -123,7 +123,12 @@ function forward(
   // on every forward() leaks listeners on reused sockets (hits
   // MaxListenersExceededWarning). out.on('error') handles in-flight errors;
   // uncaughtException at the bottom of this file catches idle-pool resets.
-  out.setTimeout(30_000, () => out.destroy(new Error('forward timeout')));
+  // 120s (not 30s): some main-api endpoints legitimately run long in dev — a
+  // cold local text-embed (cmd:embedding-default reloads the model per call,
+  // ~15-25s) for /prompts/search/similar, and full-library /prompts/family-
+  // candidates scans. A 30s cap surfaced as a 502 on those. Still bounded so a
+  // genuinely hung backend is eventually reaped.
+  out.setTimeout(120_000, () => out.destroy(new Error('forward timeout')));
   req.on('error', () => {});
   req.pipe(out);
 }

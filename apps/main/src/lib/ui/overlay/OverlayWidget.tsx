@@ -58,6 +58,14 @@ export interface OverlayWidgetProps {
 
   /** When true, widget is inside a stack group flex container — skip absolute positioning */
   inStack?: boolean;
+
+  /**
+   * Extra pixel translate appended after the anchor/transition transforms,
+   * applied by the box-separation pass to nudge this (ungrouped) widget clear
+   * of a higher-priority overlay unit. Composed last so it stacks on top of
+   * any anchor centering (e.g. bottom-center's translateX(-50%)).
+   */
+  nudge?: { dx: number; dy: number };
 }
 
 /**
@@ -71,6 +79,7 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = React.memo(({
   onWidgetClick,
   onRef,
   inStack = false,
+  nudge,
 }) => {
   const widgetRef = useRef<HTMLDivElement>(null);
   const [isWidgetHovered, setIsWidgetHovered] = useState(false);
@@ -132,12 +141,18 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = React.memo(({
   const composedTransform = useMemo(() => {
     const positionTransform = (positionStyles as React.CSSProperties).transform;
     const transitionTransform = (transitionStyles as React.CSSProperties).transform;
+    // Box-separation nudge rides last so it adds to (never replaces) anchor
+    // centering + transition transforms.
+    const nudgeTransform =
+      nudge && (nudge.dx !== 0 || nudge.dy !== 0)
+        ? `translate(${nudge.dx}px, ${nudge.dy}px)`
+        : undefined;
 
-    if (positionTransform && transitionTransform) {
-      return `${positionTransform} ${transitionTransform}`;
-    }
-    return positionTransform ?? transitionTransform;
-  }, [positionStyles, transitionStyles]);
+    const parts = [positionTransform, transitionTransform, nudgeTransform].filter(
+      Boolean,
+    );
+    return parts.length > 0 ? parts.join(' ') : undefined;
+  }, [positionStyles, transitionStyles, nudge]);
 
   // Calculate size
   const size = widget.style?.size;

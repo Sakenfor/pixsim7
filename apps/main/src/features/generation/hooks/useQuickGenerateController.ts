@@ -1,7 +1,8 @@
-import { createContext, createElement, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import { createElement, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 
 import { rollTemplate } from '@lib/api/blockTemplates';
 import { extractErrorMessage } from '@lib/api/errorHandling';
+import { createHmrSafeContext } from '@lib/utils';
 import { logEvent } from '@lib/utils/logging';
 
 import { extractFrame, fromAssetResponse, getAssetDisplayUrls, toSelectedAsset, type AssetModel } from '@features/assets';
@@ -2070,7 +2071,10 @@ function useQuickGenerateControllerImpl() {
 
 export type QuickGenerateController = ReturnType<typeof useQuickGenerateControllerImpl>;
 
-const GenerationControllerContext = createContext<QuickGenerateController | null>(null);
+const GenerationControllerContext = createHmrSafeContext<QuickGenerateController | null>(
+  'generationController',
+  null,
+);
 GenerationControllerContext.displayName = 'GenerationControllerContext';
 
 export interface GenerationControllerProviderProps {
@@ -2096,17 +2100,29 @@ export function GenerationControllerProvider({ children }: GenerationControllerP
  * a private one when a provider is mounted above them.
  *
  * The hook order changes depending on whether a provider is present, which
- * normally violates the Rules of Hooks. It's safe here because the answer
- * to "is there a provider above me?" is stable for a given consumer's
- * lifetime — a `<GenerationControllerProvider>` doesn't appear or disappear
- * at runtime — so a given component's hook order never changes across its
- * own renders. Cold-path consumers (MiniGallery, GenerationPresetsPanel,
+ * normally violates the Rules of Hooks. We pin that source decision on the
+ * consumer's first render, so Vite HMR or scope wrapper churn cannot flip a
+ * mounted component between "context" and "standalone" controller paths.
+ * Cold-path consumers (MiniGallery, GenerationPresetsPanel,
  * useHistoryGalleryItems) sit outside any provider and continue mounting
  * their own controller; hot-path QuickGen panels read from context.
  */
 export function useQuickGenerateController(): QuickGenerateController {
   const fromContext = useContext(GenerationControllerContext);
-  if (fromContext) return fromContext;
+  const sourceModeRef = useRef<'context' | 'standalone' | null>(null);
+  const lastContextRef = useRef<QuickGenerateController | null>(null);
+
+  if (fromContext) {
+    lastContextRef.current = fromContext;
+  }
+
+  sourceModeRef.current ??= fromContext ? 'context' : 'standalone';
+
+  if (sourceModeRef.current === 'context') {
+    if (fromContext) return fromContext;
+    if (lastContextRef.current) return lastContextRef.current;
+  }
+
   // eslint-disable-next-line react-hooks/rules-of-hooks
   return useQuickGenerateControllerImpl();
 }

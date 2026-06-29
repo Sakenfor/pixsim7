@@ -117,6 +117,19 @@ TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
             "env_map": "HF_HUB_OFFLINE",
         },
         {
+            "key": "hf_token",
+            "type": "string",
+            "label": "HF Token",
+            "description": (
+                "HuggingFace read token for authenticated Hub downloads (higher "
+                "rate limits, faster, no anonymous-request warning). Only used "
+                "when HF Hub Offline is off. Leave empty to fall back to .env / "
+                "OS env. No default so a blank value never clobbers an existing "
+                "HF_TOKEN."
+            ),
+            "env_map": "HF_TOKEN",
+        },
+        {
             "key": "log_level",
             "type": "select",
             "label": "Log Level",

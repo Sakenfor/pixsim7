@@ -14,7 +14,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { listAssets } from '@lib/api/assets';
 
-import { fromAssetResponses, getAssetDisplayUrls, type AssetModel } from '@features/assets';
+import {
+  fromAssetResponse,
+  fromAssetResponses,
+  getAssetDisplayUrls,
+  type AssetModel,
+} from '@features/assets';
+import { assetEvents } from '@features/assets/lib/assetEvents';
 
 import { MediaCard } from '@/components/media/MediaCard';
 
@@ -106,6 +112,21 @@ export function InlineAssetSearchPicker({
 
     return () => clearTimeout(searchTimerRef.current);
   }, [query, isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Patch results in place when an asset is updated elsewhere (e.g. favorite
+  // toggle, tag edit). Without this the local `results` state holds stale
+  // models and the heart never visually flips on the dropdown's MediaCards.
+  useEffect(() => {
+    return assetEvents.subscribeToUpdates((response) => {
+      setResults((prev) => {
+        const idx = prev.findIndex((a) => a.id === response.id);
+        if (idx < 0) return prev;
+        const next = prev.slice();
+        next[idx] = fromAssetResponse(response);
+        return next;
+      });
+    });
+  }, []);
 
   const handleSelect = useCallback(
     (asset: AssetModel) => {

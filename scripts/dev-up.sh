@@ -107,6 +107,43 @@ echo ""
 
 # Set PYTHONPATH
 export PYTHONPATH="$PROJECT_ROOT"
+BACKEND_RELOAD_ARGS=(
+    --reload
+    --reload-dir pixsim7/backend/main
+    --reload-dir pixsim7/common
+    --reload-dir pixsim7/automation
+    --reload-dir pixsim7/embedding
+    --reload-dir pixsim7/codegen
+    --reload-dir pixsim_logging
+    --reload-dir pixsim_settings
+    --reload-dir libs/pixverse-py/pixverse
+    --reload-include '*.py'
+    --reload-exclude 'tests/*'
+    --reload-exclude 'tests/**'
+    --reload-exclude 'pixsim7/backend/tests/*'
+    --reload-exclude 'pixsim7/backend/tests/**'
+    --reload-exclude 'data/*'
+    --reload-exclude 'data/**'
+    --reload-exclude 'docs/*'
+    --reload-exclude 'docs/**'
+    --reload-exclude 'examples/*'
+    --reload-exclude 'examples/**'
+    --reload-exclude 'node_modules/*'
+    --reload-exclude 'node_modules/**'
+    --reload-exclude '.git/*'
+    --reload-exclude '.git/**'
+    --reload-exclude '.pytest_cache/*'
+    --reload-exclude '.pytest_cache/**'
+    --reload-exclude '.mypy_cache/*'
+    --reload-exclude '.mypy_cache/**'
+    --reload-exclude '**/__pycache__/**'
+    --reload-exclude '**/*.pyc'
+    --reload-exclude '**/*.log'
+    --reload-exclude '**/logs/**'
+    --reload-exclude '**/dist/**'
+    --reload-exclude '**/build/**'
+    --reload-exclude '**/.svelte-kit/**'
+)
 
 # Function to cleanup on exit
 cleanup() {
@@ -156,7 +193,7 @@ echo "Starting backend API (http://localhost:8001)..."
 nohup uvicorn pixsim7.backend.main.main:app \
     --host 0.0.0.0 \
     --port 8001 \
-    --reload \
+    "${BACKEND_RELOAD_ARGS[@]}" \
     --no-access-log \
     > "$DEV_LOG_DIR/backend.log" 2>&1 &
 echo $! > "$DEV_LOG_DIR/backend.pid"

@@ -13,7 +13,7 @@
  */
 
 import { Button } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 import { getAsset, setSignalOverride } from '@lib/api/assets';
@@ -266,7 +266,7 @@ function ViewModeSwitcher({
  * per-tag state so taps reflect instantly and toggling one voice never blocks or
  * clobbers another; re-syncs from the asset when its server tags change.
  */
-function SignalRefTagger({ asset }: { asset: AssetModel }) {
+function SignalRefTagger({ asset, trailing }: { asset: AssetModel; trailing?: ReactNode }) {
   const serverTags = signalRefTags(asset);
   // Optimistic active set + per-tag in-flight, so the buttons reflect taps
   // instantly and toggling one never blocks/clobbers another (multiple
@@ -324,14 +324,15 @@ function SignalRefTagger({ asset }: { asset: AssetModel }) {
               e.stopPropagation();
               void toggle(p.tag);
             }}
-            title={p.title}
-            className={`rounded border px-1.5 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+            title={`${p.label} — ${p.title}`}
+            aria-label={p.label}
+            className={`flex h-5 w-5 items-center justify-center rounded border text-xs font-medium leading-none transition-colors disabled:opacity-50 ${
               on
                 ? 'border-purple-500 bg-purple-600 text-white'
                 : 'border-neutral-300 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-400 dark:hover:bg-neutral-800'
             }`}
           >
-            {p.glyph} {p.label}
+            {p.glyph}
           </button>
         );
       })}
@@ -360,9 +361,10 @@ function SignalRefTagger({ asset }: { asset: AssetModel }) {
             setDraft('');
           }}
           title="Add a custom voice label (e.g. weird-warble) — doubles as a short note"
-          className="rounded border border-dashed border-neutral-300 px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-400 dark:hover:bg-neutral-800"
+          aria-label="Add custom reference label"
+          className="flex h-5 w-5 items-center justify-center rounded border border-dashed border-neutral-300 text-xs leading-none text-neutral-500 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-400 dark:hover:bg-neutral-800"
         >
-          + label
+          +
         </button>
       ) : (
         <input
@@ -380,6 +382,7 @@ function SignalRefTagger({ asset }: { asset: AssetModel }) {
           className="w-28 rounded border border-neutral-300 bg-white px-1.5 py-0.5 text-xs text-neutral-700 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200"
         />
       )}
+      {trailing && <span className="ml-auto">{trailing}</span>}
     </div>
   );
 }
@@ -545,6 +548,7 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
       {
         id: 'keep',
         label: '✓ Keep',
+        compactLabel: '✓',
         hotkey: 'k',
         hotkeyLabel: 'K',
         advance: 'stay',
@@ -556,6 +560,7 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
       {
         id: 'flag',
         label: '⚠ Flag',
+        compactLabel: '⚠',
         hotkey: 'f',
         hotkeyLabel: 'F',
         advance: 'stay',
@@ -715,10 +720,7 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
         decisions={decisions}
         cardActions={cardActions}
         cardFooter={(asset) => (
-          <>
-            <SignalRefTagger asset={asset} />
-            <SignalDetectionButton asset={asset} />
-          </>
+          <SignalRefTagger asset={asset} trailing={<SignalDetectionButton asset={asset} />} />
         )}
         gestureSurfaceId="signal-triage"
         cardWidgets={buildSignalScoreWidgets}
@@ -923,14 +925,14 @@ function TriageRowStrip({
                       variant={active ? 'primary' : d.variant ?? 'secondary'}
                       className="flex-1 text-sm"
                       onClick={() => void d.run(asset)}
+                      title={d.label}
                     >
-                      {d.label}
+                      {d.compactLabel ?? d.label}
                     </Button>
                   );
                 })}
               </div>
-              <SignalRefTagger asset={asset} />
-              <SignalDetectionButton asset={asset} />
+              <SignalRefTagger asset={asset} trailing={<SignalDetectionButton asset={asset} />} />
             </div>
           </div>
         ))}

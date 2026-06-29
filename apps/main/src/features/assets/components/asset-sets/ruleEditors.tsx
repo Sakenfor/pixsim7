@@ -44,6 +44,7 @@ export const UPLOAD_SOURCE_OPTIONS = [
 export const PROVIDER_STATUS_OPTIONS = [
   { value: '', label: 'Any' },
   { value: 'ok', label: 'Provider OK' },
+  { value: 'not_flagged', label: 'Not Provider Flagged' },
   { value: 'local_only', label: 'Local Only' },
   { value: 'flagged', label: 'Flagged' },
   { value: 'unknown', label: 'Unknown' },

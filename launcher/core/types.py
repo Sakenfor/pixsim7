@@ -37,6 +37,7 @@ class ServiceDefinition:
     program: str
     args: List[str]
     cwd: str
+    description: Optional[str] = None
     env_overrides: Optional[Dict[str, str]] = None
     url: Optional[str] = None
     health_url: Optional[str] = None

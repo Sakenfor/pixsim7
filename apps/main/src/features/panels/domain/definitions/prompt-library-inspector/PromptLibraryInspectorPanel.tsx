@@ -32,6 +32,7 @@ import { useCompositionPackages } from '@/stores/compositionPackageStore';
 
 import { AuthoringPanel } from '../authoring';
 import { BlockExplorerPanel } from '../block-explorer/BlockExplorerPanel';
+import { PromptFamilyCandidatesPanel } from '../prompt-family-candidates';
 import { BlockMatrixView } from '../block-matrix/BlockMatrixView';
 import {
   DEFAULT_BLOCK_MATRIX_PRESETS,
@@ -47,7 +48,7 @@ import {
 import { LatinComposerWorkbench } from './LatinComposerWorkbench';
 import { PromptInteractionsWorkbench } from './PromptInteractionsWorkbench';
 
-type TabId = 'packages' | 'templates' | 'blocks' | 'matrix' | 'interactions' | 'latin-composer' | 'vocabulary' | 'authoring' | 'prompt-authoring';
+type TabId = 'packages' | 'templates' | 'blocks' | 'matrix' | 'interactions' | 'latin-composer' | 'vocabulary' | 'families' | 'authoring' | 'prompt-authoring';
 
 const NAV_SECTIONS = [
   {
@@ -78,6 +79,7 @@ const NAV_SECTIONS = [
       { id: 'interactions' as TabId, label: 'Interactions', icon: <Icon name="sparkles" size={12} className="flex-shrink-0" /> },
       { id: 'latin-composer' as TabId, label: 'Latin Composer', icon: <Icon name="wand" size={12} className="flex-shrink-0" /> },
       { id: 'vocabulary' as TabId, label: 'Vocabulary', icon: <Icon name="sparkles" size={12} className="flex-shrink-0" /> },
+      { id: 'families' as TabId, label: 'Families', icon: <Icon name="layers" size={12} className="flex-shrink-0" /> },
     ],
   },
 ];
@@ -1110,6 +1112,12 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
       {tab === 'vocabulary' && (
         <div className="flex-1 min-h-0">
           <VocabularyCandidatesPanel />
+        </div>
+      )}
+
+      {tab === 'families' && (
+        <div className="flex-1 min-h-0">
+          <PromptFamilyCandidatesPanel />
         </div>
       )}
 

@@ -15,7 +15,8 @@
  * `media-card-badge-skin`.
  */
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+
+import { ShapeStage, type Shape3DMotion } from '../shape3d/ShapeStage';
 
 export type CubeFaceName = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom';
 
@@ -71,6 +72,12 @@ export interface CubeFacesProps {
    * animation-duration. Lowest precedence: `spin` then `sway` then `toss`.
    */
   toss?: boolean | string;
+  /**
+   * Explicit motion descriptor — takes precedence over the `spin`/`sway`/`toss`
+   * booleans. Lets new motion types (e.g. `tumble`) flow through without adding a
+   * boolean per type. The legacy booleans remain for existing callers.
+   */
+  motion?: Shape3DMotion;
   className?: string;
 }
 
@@ -89,6 +96,21 @@ const FACE_BRIGHTNESS: Record<CubeFaceName, number> = {
   bottom: 0.7,
 };
 
+// Precedence if several are set: spin → sway → toss.
+function resolveMotion(
+  spin?: boolean | string,
+  sway?: boolean | string,
+  toss?: boolean | string,
+): Shape3DMotion | undefined {
+  const pick = (v: boolean | string | undefined): string | undefined | true =>
+    v === true ? true : typeof v === 'string' ? v : undefined;
+  for (const [type, v] of [['spin', spin], ['sway', sway], ['toss', toss]] as const) {
+    const r = pick(v);
+    if (r) return { type, duration: r === true ? undefined : r };
+  }
+  return undefined;
+}
+
 export function CubeFaces({
   size = 16,
   faces,
@@ -100,23 +122,10 @@ export function CubeFaces({
   spin,
   sway,
   toss,
+  motion,
   className,
 }: CubeFacesProps) {
-  const [hovered, setHovered] = useState(false);
   const half = size / 2;
-  // Precedence if several are set: spin → sway → toss. Resolve each to a duration.
-  const spinDur = spin === true ? '2.2s' : typeof spin === 'string' ? spin : undefined;
-  const swayDur = sway === true ? '1.6s' : typeof sway === 'string' ? sway : undefined;
-  const tossDur = toss === true ? '2.4s' : typeof toss === 'string' ? toss : undefined;
-  const animClass = spinDur
-    ? 'animate-cube-spin'
-    : swayDur
-      ? 'animate-cube-sway'
-      : tossDur
-        ? 'animate-cube-toss'
-        : undefined;
-  const animDur = spinDur ?? swayDur ?? tossDur;
-
   const faceTransforms: Record<CubeFaceName, string> = {
     front: `translateZ(${half}px)`,
     back: `rotateY(180deg) translateZ(${half}px)`,
@@ -126,68 +135,42 @@ export function CubeFaces({
     bottom: `rotateX(-90deg) translateZ(${half}px)`,
   };
 
-  const pose = hovered && hoverTilt ? hoverTilt : tilt;
-
   return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+    <ShapeStage
+      size={size}
+      tilt={tilt}
+      hoverTilt={hoverTilt}
+      motion={motion ?? resolveMotion(spin, sway, toss)}
+      motionFamily="cube"
       className={className}
-      style={{ width: size, height: size, perspective: `${size * 6}px`, flexShrink: 0 }}
-      aria-hidden
     >
-      <div
-        className={animClass}
-        style={
-          animDur
-            ? {
-                width: '100%',
-                height: '100%',
-                position: 'relative',
-                transformStyle: 'preserve-3d',
-                // The spin/sway keyframe owns `transform`; pass the resting
-                // X-tilt in via the CSS var so it animates around the same pose.
-                ['--cube-tilt-x' as string]: `${tilt.x}deg`,
-                animationDuration: animDur,
-              }
-            : {
-                width: '100%',
-                height: '100%',
-                position: 'relative',
-                transformStyle: 'preserve-3d',
-                transform: `rotateX(${pose.x}deg) rotateY(${pose.y}deg)`,
-                transition: 'transform 150ms ease',
-              }
-        }
-      >
-        {(Object.keys(faceTransforms) as CubeFaceName[]).map((face) => {
-          const skin = faces?.[face];
-          return (
-            <div
-              key={face}
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transform: faceTransforms[face],
-                backfaceVisibility: 'hidden',
-                background: skin?.color ?? neutral,
-                color: '#fff',
-                border: `1px solid ${outline ?? 'rgba(255,255,255,0.25)'}`,
-                borderRadius: 2,
-                boxShadow: outline
-                  ? `inset 0 0 4px rgba(0,0,0,0.35), 0 0 5px ${outline}`
-                  : 'inset 0 0 4px rgba(0,0,0,0.35)',
-                filter: shade ? `brightness(${FACE_BRIGHTNESS[face]})` : undefined,
-              }}
-            >
-              {skin?.content}
-            </div>
-          );
-        })}
-      </div>
-    </div>
+      {(Object.keys(faceTransforms) as CubeFaceName[]).map((face) => {
+        const skin = faces?.[face];
+        return (
+          <div
+            key={face}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transform: faceTransforms[face],
+              backfaceVisibility: 'hidden',
+              background: skin?.color ?? neutral,
+              color: '#fff',
+              border: `1px solid ${outline ?? 'rgba(255,255,255,0.25)'}`,
+              borderRadius: 2,
+              boxShadow: outline
+                ? `inset 0 0 4px rgba(0,0,0,0.35), 0 0 5px ${outline}`
+                : 'inset 0 0 4px rgba(0,0,0,0.35)',
+              filter: shade ? `brightness(${FACE_BRIGHTNESS[face]})` : undefined,
+            }}
+          >
+            {skin?.content}
+          </div>
+        );
+      })}
+    </ShapeStage>
   );
 }

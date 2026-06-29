@@ -19,5 +19,5 @@ export default definePanel({
   consumesCapabilities: ['generation:scope'],
   componentSettings: [QUICKGEN_SETTINGS_COMPONENT_ID],
   supportsCompactMode: false,
-  supportsMultipleInstances: false,
+  supportsMultipleInstances: true,
 });

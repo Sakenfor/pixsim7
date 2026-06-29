@@ -3,11 +3,21 @@
  * straight from Redis (backend-independent). See launcher/api/routes/workers.py.
  */
 
+export interface WorkerTask {
+  name: string
+  label: string
+  runtime: boolean
+}
+
 export interface WorkerFamily {
   role: string
   label: string
   service_key: string
   queue: string
+  description: string | null
+  settings_class: string | null
+  functions: WorkerTask[]
+  cron_functions: WorkerTask[]
   /** Heartbeat key present in Redis (TTL'd) → worker is publishing. */
   alive: boolean
   heartbeat_age_s: number | null

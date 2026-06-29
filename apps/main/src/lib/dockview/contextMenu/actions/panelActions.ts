@@ -345,7 +345,6 @@ export const propertiesAction: MenuAction = {
       panelDefinition: panelDef,
       hostId: effectiveHostId,
       data: ctx.data as Record<string, unknown> | undefined,
-      capabilities: ctx.capabilities,
     });
   },
 };

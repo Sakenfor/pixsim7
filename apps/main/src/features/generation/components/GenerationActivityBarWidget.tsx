@@ -10,9 +10,9 @@ import { useHoverExpand } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 
-import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+import { renderShape } from '@lib/ui/shape3d';
 
-import { NavIcon } from '@/components/navigation/ActivityBar';
+import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
 import { syncGenerationsFromApi } from '../hooks/useRecentGenerations';
@@ -171,7 +171,15 @@ export function GenerationActivityBarWidget() {
         }`}
         aria-label={`Generations: ${activeCount} active`}
       >
-        <NavIcon name="sparkles" size={18} />
+        {/* 3D gem ornament (WebGL octahedron, shape registry) in place of the
+            flat sparkles glyph. WebGL needs a concrete colour (no currentColor),
+            so mirror the button's amber/neutral state explicitly; spins while
+            generations are active. */}
+        {renderShape('gem', {
+          size: 22,
+          color: isActive ? '#fbbf24' : '#9ca3af',
+          motion: isActive ? { type: 'spin' } : undefined,
+        })}
 
         {/* Connection dot — red when disconnected for visibility */}
         <div

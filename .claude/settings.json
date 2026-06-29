@@ -7,16 +7,22 @@
       "WebFetch(domain:localhost)",
       "WebFetch",
       "NotebookEdit",
-      "Bash"
+      "Bash",
+      "Agent",
+      "TodoWrite",
+      "WebSearch"
     ],
     "deny": []
   },
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "AskUserQuestion",
+        "matcher": "AskUserQuestion|EnterPlanMode|ExitPlanMode|mcp__pixsim__.*",
         "hooks": [
-          {"type": "command", "command": "python -m pixsim7.client.hook_pretool"}
+          {
+            "type": "command",
+            "command": "python -m pixsim7.client.hook_pretool"
+          }
         ]
       }
     ]

@@ -111,6 +111,16 @@ export function GalleryGrid<T>({
   const effectiveScrollRef = scrollParentRef ?? ancestorScrollRef;
 
   const isEmpty = items.length === 0;
+  // Only surface the empty state once a fetch has actually settled with no
+  // results — not while the first/next page is still in flight, and not before
+  // it starts (when `hasMore` is still optimistically true). Without this gate a
+  // surface flashes its "nothing here" copy during every load (the Signal Triage
+  // "Nothing left to triage" false-empty). Reuses the loading/hasMore the caller
+  // already threads through pagination/loadMore, so most callers need no change;
+  // callers that pass neither keep the old "empty whenever items is empty".
+  const isLoading = pagination?.loading ?? loadMore?.loading ?? false;
+  const moreToLoad = pagination?.hasMore ?? loadMore?.hasMore ?? false;
+  const showEmptyState = isEmpty && !!emptyState && !isLoading && !moreToLoad;
 
   const renderedCards = items.map((item, index) => {
     const key = getKey ? getKey(item, index) : index;
@@ -141,7 +151,7 @@ export function GalleryGrid<T>({
 
       {before}
 
-      {isEmpty && emptyState ? (
+      {showEmptyState ? (
         emptyState
       ) : (
         // Both layouts route through MasonryGrid's viewport virtualization so a

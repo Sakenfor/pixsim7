@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 
-import { getAsset } from '@lib/api/assets';
+import { getAssetCohortCounts } from '@lib/api/assets';
 import { useContentInset } from '@lib/layout/edgeInsets';
 import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
 import { getMediaCardPreset, isOverlayPosition } from '@lib/ui/overlay';
@@ -17,7 +17,6 @@ import { useOverlayWidgetSettingsStore } from '@lib/widgets';
 import type { AssetModel } from '@features/assets';
 import { mediaCardPropsFromAsset } from '@features/assets/components/shared/mediaCardPropsFromAsset';
 import { buildActiveTargetWidgets, selectActiveTargetSets } from '@features/assets/lib/activeTargetWidgets';
-import { assetEvents } from '@features/assets/lib/assetEvents';
 import { isBackendAssetId } from '@features/assets/lib/backendAssetId';
 import { isFavoriteAsset } from '@features/assets/lib/favoriteTag';
 import { useAssetSets } from '@features/assets/stores/assetSetStore';
@@ -28,6 +27,7 @@ import { useSurfaceSetBadgesExpanded } from '@features/assets/stores/setBadgeExp
 import { buildMediaCardOverlayData } from '../mediaCardRuntimeWidgetBuilder';
 import type { MediaCardOverlayData } from '../mediaCardWidgets';
 import { createDefaultMediaCardWidgets } from '../mediaCardWidgets';
+import { useSiblingCountsStore } from '../siblingCountsStore';
 import { applyMediaOverlayPolicyChain } from '../overlayWidgetPolicy';
 import { resolveMediaCardOverlayProps } from '../resolveMediaCardOverlayProps';
 
@@ -101,13 +101,11 @@ const SIBLING_BADGES_ENABLED = !!getMediaCardPreset('media-card-default')?.capab
 /**
  * Backfill cohort counts for the *focused* asset only.
  *
- * The viewer's neighbor-walk sequence skips the ~2.5s/page cohort scan
- * (`useAssetSequence` → include_cohort_counts:false), so assets reached by
- * prev/next arrive with empty `cohortCounts` and the similarity badge would
- * render as dim, count-less handles. Displaying one asset is cheap, though —
- * `GET /assets/{id}` recomputes its counts — so when the focused asset lacks
- * them we fetch just that one and emit it. `assetViewerStore` reconciles the
- * update back into `_assetModel`, which re-feeds this hook with live counts.
+ * Cohort counts no longer ride on the asset response — they load lazily from
+ * `GET /assets/{id}/cohort-counts` into the transient {@link useSiblingCountsStore},
+ * which the similarity badge subscribes to. The gallery populates them on hover,
+ * but the viewer has no equivalent hover trigger, so when the focused asset's
+ * counts aren't cached yet we fetch just that one and park them in the store.
  * Deduped per id so a legitimately empty cohort (or a fast back-and-forth)
  * doesn't loop.
  */
@@ -118,14 +116,14 @@ function useFocusedAssetCohortCounts(asset: AssetModel | null): void {
     if (!SIBLING_BADGES_ENABLED || !asset) return;
     const id = asset.id;
     if (!isBackendAssetId(id)) return;
-    if (asset.cohortCounts && Object.keys(asset.cohortCounts).length > 0) return;
+    if (useSiblingCountsStore.getState().counts.has(id)) return;
     if (fetchedIdsRef.current.has(id)) return;
     fetchedIdsRef.current.add(id);
 
     let cancelled = false;
-    getAsset(id)
-      .then((response) => {
-        if (!cancelled) assetEvents.emitAssetUpdated(response);
+    getAssetCohortCounts(id)
+      .then((counts) => {
+        if (!cancelled) useSiblingCountsStore.getState().set(id, counts);
       })
       .catch(() => {
         // Best-effort — a failed backfill just leaves the count-less handle.
@@ -221,6 +219,9 @@ export function useOverlayWidgetsForAsset({
       name: 'Asset Overlay (viewer)',
       widgets,
       spacing: 'compact',
+      // Same box-separation pass as the gallery card so the viewer's badges,
+      // button group, and set column stop overlapping each other too.
+      boxSeparation: true,
     };
 
     // One source of truth for the data object — the same builder the gallery

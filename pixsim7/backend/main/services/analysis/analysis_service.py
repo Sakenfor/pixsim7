@@ -93,6 +93,7 @@ class AnalysisService:
         priority: int = 5,
         enqueue: bool = True,
         embedder_id: Optional[str] = None,
+        retry: bool = False,
     ) -> AssetAnalysis:
         """
         Create a new asset analysis job.
@@ -126,6 +127,7 @@ class AnalysisService:
             priority=priority,
             enqueue=enqueue,
             embedder_id=embedder_id,
+            retry=retry,
         )
         return analysis
 
@@ -143,10 +145,16 @@ class AnalysisService:
         enqueue: bool = True,
         embedder_id: Optional[str] = None,
         backfill_run_id: Optional[int] = None,
+        retry: bool = False,
     ) -> tuple[AssetAnalysis, bool]:
         """
         Create analysis and return `(analysis, created)` where `created=False`
         indicates idempotent dedupe hit.
+
+        `retry=True` is an explicit user-initiated re-run: it ignores a prior
+        FAILED row for this exact input and creates a fresh attempt. The default
+        (`retry=False`, used by on_ingest and bulk backfills) treats a prior
+        failure as deduped so failures are not silently re-enqueued.
         """
         asset = await self._get_asset(asset_id)
         if asset.user_id != user.id:
@@ -238,6 +246,7 @@ class AnalysisService:
             analyzer_id=resolved_execution.analyzer_id,
             effective_config_hash=resolved_execution.effective_config_hash,
             input_fingerprint=input_fingerprint,
+            include_failed=not retry,
         )
         if existing is not None:
             logger.info(
@@ -631,7 +640,20 @@ class AnalysisService:
         analyzer_id: str,
         effective_config_hash: str,
         input_fingerprint: str,
+        include_failed: bool = True,
     ) -> Optional[AssetAnalysis]:
+        # FAILED is part of the dedupe set by default: a prior failure for this
+        # exact (asset, point, analyzer, config, input) suppresses a fresh
+        # *automatic* attempt, so on_ingest re-fires and backfills stop piling up
+        # duplicate failures (e.g. an outage that failed thousands at once).
+        # An explicit user retry passes include_failed=False to re-attempt.
+        statuses = [
+            AnalysisStatus.PENDING,
+            AnalysisStatus.PROCESSING,
+            AnalysisStatus.COMPLETED,
+        ]
+        if include_failed:
+            statuses.append(AnalysisStatus.FAILED)
         result = await self.db.execute(
             select(AssetAnalysis)
             .where(AssetAnalysis.asset_id == asset_id)
@@ -639,15 +661,7 @@ class AnalysisService:
             .where(AssetAnalysis.analyzer_id == analyzer_id)
             .where(AssetAnalysis.effective_config_hash == effective_config_hash)
             .where(AssetAnalysis.input_fingerprint == input_fingerprint)
-            .where(
-                AssetAnalysis.status.in_(
-                    [
-                        AnalysisStatus.PENDING,
-                        AnalysisStatus.PROCESSING,
-                        AnalysisStatus.COMPLETED,
-                    ]
-                )
-            )
+            .where(AssetAnalysis.status.in_(statuses))
             .order_by(AssetAnalysis.created_at.desc())
             .limit(1)
         )

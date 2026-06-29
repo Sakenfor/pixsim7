@@ -25,6 +25,7 @@ export { SurfacePresetPicker, type SurfacePresetPickerProps } from './components
 // ============================================================================
 
 export { GalleryLayoutControls } from './components/GalleryLayoutControls';
+export { GalleryViewMenu } from './components/GalleryViewMenu';
 
 // ============================================================================
 // Components - Panels

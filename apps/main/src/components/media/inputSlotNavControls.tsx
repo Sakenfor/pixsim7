@@ -29,6 +29,7 @@ import {
   type AssetSetSlotRef,
 } from '@features/generation';
 
+import { useIsCoarsePointer } from '@/lib/ui/coarsePointer';
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 import type { OperationType } from '@/types/operations';
 
@@ -215,6 +216,7 @@ export interface CohortPillProps {
 }
 
 export function CohortPill({ asset, operationType, bare = false, scrollHint }: CohortPillProps) {
+  const isCoarse = useIsCoarsePointer();
   const { useInputStore } = useGenerationScopeStores();
   // Normalize legacy persisted `'prompt'` (old cohort name) → `'source'`.
   const cohort = useInputStore((s) => {
@@ -348,59 +350,82 @@ export function CohortPill({ asset, operationType, bare = false, scrollHint }: C
       e.stopPropagation();
       scrollHint.onNext?.();
     };
-    return (
-      <div
-        className={`${className} select-none`}
-        role="group"
-        aria-label={`Cohort: ${label}`}
-        title={sourceAvailable ? `${toggleTitle} · hold to switch` : toggleTitle}
-        onPointerDown={onPressDown}
-        onPointerMove={onPressMove}
-        onPointerUp={clearLongPress}
-        onPointerCancel={clearLongPress}
-        onClickCapture={onClickCaptureSuppress}
-        onContextMenu={(e) => e.preventDefault()}
+
+    // Shared chevron/label builders so the touch (vertical) and desktop
+    // (horizontal) layouts differ only in arrangement + hit-target size.
+    const chevron = (
+      dir: 'prev' | 'next',
+      onClick: (e: React.MouseEvent) => void,
+      enabled: boolean,
+    ) => (
+      <button
+        key={scrollHint.dir === dir ? `${dir}-${scrollHint.tick}` : dir}
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onClick}
+        disabled={!enabled}
+        // Touch: keep the chevrons tight vertically (-my-0.5, gap-0 container)
+        // but widen the tap area horizontally (px-2) so they're easy to hit
+        // without the column growing tall. Shared spacing with the pool nav
+        // (MediaCardQueueNav) so both vertical chevron stacks match.
+        className={`${isCoarse ? 'px-2 -my-0.5' : '-my-0.5'} flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === dir ? 'animate-bounce-once' : ''}`}
+        title={dir === 'prev' ? 'Previous neighbor' : 'Next neighbor'}
+        aria-label={dir === 'prev' ? 'Previous neighbor' : 'Next neighbor'}
       >
-        <span className="flex flex-col items-center leading-none">
-          <button
-            key={scrollHint.dir === 'prev' ? `up-${scrollHint.tick}` : 'up'}
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handlePrev}
-            disabled={!scrollHint.onPrev}
-            className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'prev' ? 'animate-bounce-once' : ''}`}
-            title="Previous neighbor"
-            aria-label="Previous neighbor"
-          >
-            <Icon name="chevronUp" size={10} />
-          </button>
-          {/* Cohort indicator — click toggles (desktop / precise taps); a hold
-              anywhere on the badge also toggles (large mobile target, see
-              container). The trailing click of a hold is swallowed by
-              onClickCaptureSuppress so the two never double-fire. */}
+        <Icon name={dir === 'prev' ? 'chevronUp' : 'chevronDown'} size={isCoarse ? 16 : 10} />
+      </button>
+    );
+
+    const containerProps = {
+      role: 'group' as const,
+      'aria-label': `Cohort: ${label}`,
+      title: sourceAvailable ? `${toggleTitle} · hold to switch` : toggleTitle,
+      onPointerDown: onPressDown,
+      onPointerMove: onPressMove,
+      onPointerUp: clearLongPress,
+      onPointerCancel: clearLongPress,
+      onClickCapture: onClickCaptureSuppress,
+      onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+    };
+
+    // Touch: stack vertically — prev on top, next on the bottom, the toggle
+    // (icon + label, one wide target) between them. The full label height
+    // separating the two chevrons makes prev/next hard to mis-tap, and the
+    // chevrons get a larger padded hit area than the cramped desktop pair.
+    if (isCoarse) {
+      return (
+        <div className={`${className} select-none !flex-col !gap-0`} {...containerProps}>
+          {chevron('prev', handlePrev, Boolean(scrollHint.onPrev))}
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={toggle}
             disabled={!sourceAvailable}
-            className={`flex items-center justify-center transition-colors ${!sourceAvailable ? 'opacity-30 cursor-default' : 'cursor-pointer hover:text-white'}`}
+            className={`flex items-center gap-1 px-1 ${!sourceAvailable ? 'opacity-30 cursor-default' : 'cursor-pointer'}`}
             title={toggleTitle}
             aria-label={`Toggle cohort: ${label}`}
           >
             <Icon name={cohortIconName} size={12} />
+            <span className="gen-scrub-label">{label}</span>
           </button>
-          <button
-            key={scrollHint.dir === 'next' ? `down-${scrollHint.tick}` : 'down'}
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handleNext}
-            disabled={!scrollHint.onNext}
-            className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-default transition-colors ${scrollHint.dir === 'next' ? 'animate-bounce-once' : ''}`}
-            title="Next neighbor"
-            aria-label="Next neighbor"
+          {chevron('next', handleNext, Boolean(scrollHint.onNext))}
+        </div>
+      );
+    }
+
+    // Desktop: compact horizontal pill — a tight vertical chevron column
+    // (cohort icon a non-interactive indicator between them) beside the label.
+    return (
+      <div className={`${className} select-none`} {...containerProps}>
+        <span className="flex flex-col items-center leading-none">
+          {chevron('prev', handlePrev, Boolean(scrollHint.onPrev))}
+          <span
+            className={`flex items-center justify-center ${!sourceAvailable ? 'opacity-30' : ''}`}
+            aria-hidden="true"
           >
-            <Icon name="chevronDown" size={10} />
-          </button>
+            <Icon name={cohortIconName} size={12} />
+          </span>
+          {chevron('next', handleNext, Boolean(scrollHint.onNext))}
         </span>
         {/* Label — click toggles (desktop); hold on the badge also toggles. */}
         <button

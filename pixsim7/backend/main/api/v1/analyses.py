@@ -63,6 +63,15 @@ class CreateAnalysisRequest(BaseModel):
         le=10,
         description="Job priority (0=highest, 10=lowest)"
     )
+    retry: bool = Field(
+        True,
+        description=(
+            "Re-run even if a prior attempt for this exact input FAILED. "
+            "A per-asset analyze is an explicit user action, so this defaults "
+            "to true; automatic paths (on_ingest, bulk backfill) do not retry "
+            "failures by default."
+        ),
+    )
 
 
 class AnalysisResponse(BaseModel):
@@ -269,6 +278,7 @@ async def create_analysis(
             prompt=request.prompt,
             params=request.params,
             priority=request.priority,
+            retry=request.retry,
         )
 
         return _build_analysis_response(analysis)

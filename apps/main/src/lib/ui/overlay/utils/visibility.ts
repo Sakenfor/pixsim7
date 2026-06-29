@@ -34,6 +34,14 @@ export function shouldShowWidget(
     return true;
   }
 
+  // Inverse of hover-container: visible at rest, hidden while the container is
+  // hovered. Lets a resting badge cede its spot to a hover-only widget in the
+  // same place (e.g. the static duration badge yielding to the scrubber's live
+  // timestamp) instead of the two stacking.
+  if (trigger === 'no-hover-container' && !state.isContainerHovered) {
+    return true;
+  }
+
   if (trigger === 'hover-sibling' && state.isSiblingHovered) {
     return true;
   }
@@ -281,7 +289,7 @@ export function validateVisibilityConfig(config: VisibilityConfig): string | nul
   }
 
   // Validate trigger
-  const validTriggers = ['always', 'hover', 'hover-container', 'hover-sibling', 'focus', 'active'];
+  const validTriggers = ['always', 'hover', 'hover-container', 'no-hover-container', 'hover-sibling', 'focus', 'active'];
   if (typeof config.trigger === 'string' && !validTriggers.includes(config.trigger)) {
     return `Invalid trigger: ${config.trigger}`;
   }

@@ -5,7 +5,7 @@
 
 import { getEngineBrand } from '@lib/agent/engineBrands';
 import { Icon, type IconName } from '@lib/icons';
-import { CubeFaces } from '@lib/ui/cube';
+import { renderShape } from '@lib/ui/shape3d';
 
 import { useAppearanceStore } from '@features/appearance';
 
@@ -96,7 +96,7 @@ export function EngineProfileIcon({
    * `pulse` fades it, `nudge` bumps it periodically. `duration` is the CSS
    * animation-duration (drive it off the same activity signal as the flat ring).
    */
-  statusMotion?: { type: 'spin' | 'sway' | 'toss' | 'pulse' | 'nudge'; duration?: string } | null;
+  statusMotion?: { type: 'spin' | 'sway' | 'toss' | 'tumble' | 'pulse' | 'nudge'; duration?: string } | null;
 }) {
   const iconSkin = useAppearanceStore((s) => s.iconSkin);
   const brand = getEngineBrand(engine);
@@ -112,18 +112,17 @@ export function EngineProfileIcon({
       : health === 'healthy'
         ? 'absolute -inset-px rounded-full ring-1 ring-signal-success/70'
         : null;
-  // Cube skin: a theme-coloured cube replaces the flat brand-circle + glyph.
-  // Faces use the `--color-accent` token (and its contrast-paired
-  // `--color-accent-text` for the glyph), so the cube follows the active theme
-  // and any panel skin that overrides accent in its subtree — rather than the
-  // fixed engine-brand hue. A gentle tilt keeps the front face near head-on so
-  // the glyph stays legible; the health ring still haloes the bounding box.
-  // Gated by the global `iconSkin` setting. First surface for the 3D-icon trial.
-  if (iconSkin === 'cube') {
-    const cubeSize = size + 4;
-    // Status reads on the cube's own edges (3D glow) instead of a flat ring.
-    // An explicit activity outline (working/waiting/unread) wins; otherwise fall
-    // back to engine-dispatch health (healthy = soft success, unhealthy = error).
+  // Shape skin: a theme-coloured 3D ornament (cube / star / …) replaces the flat
+  // brand-circle + glyph. The body uses the `--color-accent` token (and its
+  // contrast-paired `--color-accent-text` for the glyph), so it follows the
+  // active theme and any panel skin that overrides accent in its subtree. Agent
+  // status is traced on the shape itself (3D edge glow), and the motion preset
+  // animates it. Gated by the global `iconSkin` setting; shape chosen by its value.
+  if (iconSkin !== 'flat') {
+    const shapeSize = size + 4;
+    // Status reads on the shape itself (glow) instead of a flat ring. An explicit
+    // activity outline (working/waiting/unread) wins; otherwise fall back to
+    // engine-dispatch health (healthy = soft success, unhealthy = error).
     const healthOutline =
       health === 'unhealthy'
         ? 'rgb(var(--error))'
@@ -131,30 +130,24 @@ export function EngineProfileIcon({
           ? 'rgb(var(--success) / 0.75)'
           : undefined;
     const outline = statusOutline ?? healthOutline;
-    // 3D motions live inside the cube; envelope effects (pulse/nudge) wrap it so
-    // the cube's pose is preserved.
+    // 3D motions (spin/sway/toss) live inside the shape; envelope effects
+    // (pulse/nudge) wrap it so the shape's pose is preserved.
     const motionType = statusMotion?.type;
     const motionDur = statusMotion?.duration;
-    const cube = (
-      <CubeFaces
-        size={cubeSize}
-        neutral="rgb(var(--color-accent))"
-        tilt={{ x: -16, y: 20 }}
-        hoverTilt={{ x: -24, y: 34 }}
-        outline={outline}
-        spin={motionType === 'spin' ? (motionDur ?? true) : undefined}
-        sway={motionType === 'sway' ? (motionDur ?? true) : undefined}
-        toss={motionType === 'toss' ? (motionDur ?? true) : undefined}
-        faces={{
-          front: {
-            color: 'rgb(var(--color-accent))',
-            content: (
-              <Icon name={icon} size={Math.round(size * 0.9)} color="rgb(var(--color-accent-text))" />
-            ),
-          },
-        }}
-      />
-    );
+    const motion3d =
+      motionType === 'spin' ||
+      motionType === 'sway' ||
+      motionType === 'toss' ||
+      motionType === 'tumble'
+        ? ({ type: motionType, duration: motionDur } as const)
+        : undefined;
+    const shape = renderShape(iconSkin, {
+      size: shapeSize,
+      color: 'rgb(var(--color-accent))',
+      outline,
+      motion: motion3d,
+      content: <Icon name={icon} size={Math.round(size * 0.9)} color="rgb(var(--color-accent-text))" />,
+    });
     const envelopeClass =
       motionType === 'pulse' ? 'animate-pulse' : motionType === 'nudge' ? 'animate-cube-nudge-loop' : null;
     return (
@@ -167,10 +160,10 @@ export function EngineProfileIcon({
             className={`inline-flex ${envelopeClass}`}
             style={motionDur ? { animationDuration: motionDur } : undefined}
           >
-            {cube}
+            {shape}
           </span>
         ) : (
-          cube
+          shape
         )}
       </span>
     );

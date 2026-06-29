@@ -135,6 +135,8 @@ export interface TargetToggleWidgetOptions {
    * a non-member still has a greyed control to add/inspect.
    */
   alwaysVisible?: boolean;
+  /** Override the default member/addable visibility policy. */
+  visibility?: VisibilityConfig;
 }
 
 /**
@@ -161,7 +163,7 @@ export function buildTargetToggleWidget(
     ...createBadgeWidget({
     id: options.id ?? 'target-toggle',
     ...BADGE_SLOT.topRight,
-    visibility: { trigger: isMember || options.alwaysVisible ? 'always' : 'hover-container' },
+    visibility: options.visibility ?? { trigger: isMember || options.alwaysVisible ? 'always' : 'hover-container' },
     variant: 'icon',
     icon: options.icon || (isMember ? 'check' : 'plus'),
     shape: 'circle',
@@ -173,9 +175,9 @@ export function buildTargetToggleWidget(
         ? '!bg-emerald-600/90 !text-white backdrop-blur-sm shadow-sm'
         : '!bg-white/95 dark:!bg-neutral-900/95 !text-neutral-700 dark:!text-neutral-200 hover:!bg-accent/10 shadow-sm')
     }${options.extraClassName ? ` ${options.extraClassName}` : ''}`,
-    // Keep status/favorite/tag controls at the top-right leader positions.
-    priority: BADGE_PRIORITY.status + 1,
+    // These live in the scrollable set-glyph region under the pinned count
+    // header, so keep their z-order below that header and the fixed controls.
+    priority: BADGE_PRIORITY.status - 2,
     }),
   };
 }
-

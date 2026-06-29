@@ -27,6 +27,94 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
+def mark_provider_copy_removed(asset: Asset, *, reason: str | None = None) -> None:
+    """
+    Mark an asset's provider copy as removed while keeping provider IDs for history.
+    """
+    meta = dict(asset.media_metadata or {})
+    meta["provider_removed"] = True
+    meta["provider_removed_at"] = datetime.now(timezone.utc).isoformat()
+    if reason:
+        meta["provider_removed_reason"] = reason
+    asset.media_metadata = meta
+
+
+async def delete_from_provider_by_snapshot(
+    *,
+    asset_id: int,
+    provider_id: str,
+    provider_asset_id: str,
+    provider_account_id: int | None,
+    media_type: Any | None,
+    media_metadata: dict | None,
+) -> bool:
+    """
+    Attempt to delete asset from provider using snapshotted values (best effort).
+
+    Opens its own session so callers may invoke it after committing their
+    current unit of work or from background/worker contexts.
+    """
+    from pixsim7.backend.main.domain.providers.models import ProviderAccount
+    from pixsim7.backend.main.infrastructure.database.session import get_async_session
+
+    try:
+        from pixsim7.backend.main.services.provider.provider_service import registry
+        provider = registry.get(provider_id)
+
+        if not hasattr(provider, 'delete_asset'):
+            logger.info(
+                "provider_delete_not_supported",
+                provider_id=provider_id,
+                asset_id=asset_id,
+            )
+            return False
+
+        if not provider_account_id:
+            logger.warning(
+                "provider_delete_no_account",
+                provider_id=provider_id,
+                asset_id=asset_id,
+            )
+            return False
+
+        async with get_async_session() as db:
+            account = await db.get(ProviderAccount, provider_account_id)
+            if not account:
+                logger.warning(
+                    "provider_delete_account_not_found",
+                    asset_id=asset_id,
+                    provider_account_id=provider_account_id,
+                )
+                return False
+
+            await provider.delete_asset(
+                account=account,
+                provider_asset_id=provider_asset_id,
+                media_type=media_type,
+                media_metadata=media_metadata,
+            )
+
+        logger.info(
+            "provider_delete_success",
+            provider_id=provider_id,
+            asset_id=asset_id,
+            provider_asset_id=provider_asset_id,
+        )
+        return True
+
+    except Exception as e:
+        logger.error(
+            "provider_delete_failed",
+            provider_id=provider_id,
+            asset_id=asset_id,
+            provider_asset_id=provider_asset_id,
+            error=str(e),
+            error_type=e.__class__.__name__,
+            exc_info=True,
+        )
+        return False
+
+
 class AssetDeletionMixin:
     """Mixin providing asset deletion methods."""
 
@@ -214,10 +302,7 @@ class AssetDeletionMixin:
 
         # Record an honest marker: the local record stays, but the provider copy
         # is being removed. Reassign the dict so SQLAlchemy sees the JSON change.
-        meta = dict(asset.media_metadata or {})
-        meta["provider_removed"] = True
-        meta["provider_removed_at"] = datetime.now(timezone.utc).isoformat()
-        asset.media_metadata = meta
+        mark_provider_copy_removed(asset, reason="manual")
         self.db.add(asset)
         await self.db.commit()
 
@@ -251,9 +336,9 @@ class AssetDeletionMixin:
         provider_id: str,
         provider_asset_id: str,
         provider_account_id: int | None,
-        media_type: str | None,
+        media_type: Any | None,
         media_metadata: dict | None,
-    ) -> None:
+    ) -> bool:
         """
         Attempt to delete asset from provider using snapshotted values (best effort).
 
@@ -261,60 +346,11 @@ class AssetDeletionMixin:
         session because the request-scoped session has already been closed by
         FastAPI dependency teardown by the time this runs.
         """
-        from pixsim7.backend.main.domain.providers.models import ProviderAccount
-        from pixsim7.backend.main.infrastructure.database.session import get_async_session
-
-        try:
-            from pixsim7.backend.main.services.provider.provider_service import registry
-            provider = registry.get(provider_id)
-
-            if not hasattr(provider, 'delete_asset'):
-                logger.info(
-                    "provider_delete_not_supported",
-                    provider_id=provider_id,
-                    asset_id=asset_id,
-                )
-                return
-
-            if not provider_account_id:
-                logger.warning(
-                    "provider_delete_no_account",
-                    provider_id=provider_id,
-                    asset_id=asset_id,
-                )
-                return
-
-            async with get_async_session() as db:
-                account = await db.get(ProviderAccount, provider_account_id)
-                if not account:
-                    logger.warning(
-                        "provider_delete_account_not_found",
-                        asset_id=asset_id,
-                        provider_account_id=provider_account_id,
-                    )
-                    return
-
-                await provider.delete_asset(
-                    account=account,
-                    provider_asset_id=provider_asset_id,
-                    media_type=media_type,
-                    media_metadata=media_metadata,
-                )
-
-            logger.info(
-                "provider_delete_success",
-                provider_id=provider_id,
-                asset_id=asset_id,
-                provider_asset_id=provider_asset_id,
-            )
-
-        except Exception as e:
-            logger.error(
-                "provider_delete_failed",
-                provider_id=provider_id,
-                asset_id=asset_id,
-                provider_asset_id=provider_asset_id,
-                error=str(e),
-                error_type=e.__class__.__name__,
-                exc_info=True,
-            )
+        return await delete_from_provider_by_snapshot(
+            asset_id=asset_id,
+            provider_id=provider_id,
+            provider_asset_id=provider_asset_id,
+            provider_account_id=provider_account_id,
+            media_type=media_type,
+            media_metadata=media_metadata,
+        )

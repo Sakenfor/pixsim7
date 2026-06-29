@@ -176,6 +176,18 @@ export function renderBridgeError(result: Pick<BridgeResult, 'error' | 'error_co
   return result.error || 'No response from agent';
 }
 
+const LIMIT_ERROR_CODES = new Set(['agent_rate_limited']);
+const SESSION_LIMIT_TEXT_RE = /\b(?:you(?:'|\u2019)ve|you have)\s+hit\s+your\s+(?:session|usage|rate)\s+limit\b|\b(?:hit|reached|exceeded)\s+(?:your\s+)?session\s+limit\b|\bsession\s+limit\s+(?:hit|reached|exceeded)\b|\b(?:session|usage)\s+limit\b[^.!?\n]{0,80}\breset(?:s|ting)?\b|\brate[-\s]?limited\b|\btoo many requests\b/i;
+
+export function isAgentLimitError(
+  value: Pick<BridgeResult, 'error' | 'error_code' | 'response'> | string | null | undefined,
+): boolean {
+  if (!value) return false;
+  if (typeof value === 'string') return SESSION_LIMIT_TEXT_RE.test(value);
+  if (value.error_code && LIMIT_ERROR_CODES.has(value.error_code)) return true;
+  return SESSION_LIMIT_TEXT_RE.test([value.error, value.response].filter(Boolean).join('\n'));
+}
+
 /** Find the pool session matching a tab's CLI session ID. */
 export function findPoolSession(bridge: BridgeStatus | null, cliSessionId: string | null): PoolSessionInfo | null {
   if (!bridge?.agents || !cliSessionId) return null;

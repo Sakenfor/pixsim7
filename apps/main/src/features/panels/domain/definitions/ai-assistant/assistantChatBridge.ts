@@ -1026,6 +1026,20 @@ class AssistantChatBridge {
     }
   }
 
+  /** Inject a user message into the in-flight turn (live steering — type while
+   *  the agent works). Requires a live WS turn; returns false if the WS isn't
+   *  open (steering can't ride the SSE single-POST path), so the caller can
+   *  keep the text instead of dropping it. The injected message produces more
+   *  events on the SAME request — it does NOT create a new request. */
+  steer(tabId: string, message: string): boolean {
+    if (!message.trim()) return false;
+    if (this._wsConnected && this._ws?.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify({ type: 'steer', tab_id: tabId, message }));
+      return true;
+    }
+    return false;
+  }
+
   /** Get the current request for a tab (if any) */
   get(tabId: string): BridgeRequest | undefined {
     return this._requests.get(tabId);

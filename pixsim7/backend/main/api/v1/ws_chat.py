@@ -1539,6 +1539,22 @@ async def websocket_chat(
                 tab_id = data.get("tab_id", "")
                 existing = active_dispatches.pop(tab_id, None)
                 await _cancel_dispatch_task(existing, tab_id=tab_id, reason="cancel")
+                # Real stop: cancelling our dispatch task above only stops the
+                # server awaiting — the remote CLI keeps running. Tell the
+                # owning bridge to interrupt the live turn so the agent actually
+                # halts (Claude via an `interrupt` control_request; hard-stop
+                # fallback for engines without a control channel).
+                try:
+                    from pixsim7.backend.main.services.llm.remote_cmd_bridge import (
+                        remote_cmd_bridge,
+                    )
+                    await remote_cmd_bridge.abort_tab(tab_id, user_id=user_id)
+                except Exception as exc:
+                    logger.warning(
+                        "ws_chat_abort_bridge_failed",
+                        tab_id=tab_id,
+                        error=str(exc),
+                    )
                 # Phase 4b: dispatch aborted — any pending question on this
                 # tab is moot, so clear its nudge.
                 try:
@@ -1557,6 +1573,30 @@ async def websocket_chat(
                     "type": "result", "tab_id": tab_id,
                     "ok": False,
                     **_error_payload("cancelled", code="cancelled"),
+                })
+
+            elif msg_type == "steer":
+                # Live steering: inject a user message into the in-flight turn
+                # for this tab (type-while-it-works). Routed to the owning
+                # bridge, which writes it into the running CLI's input stream.
+                tab_id = data.get("tab_id", "")
+                steer_message = data.get("message", "")
+                try:
+                    from pixsim7.backend.main.services.llm.remote_cmd_bridge import (
+                        remote_cmd_bridge,
+                    )
+                    delivered = await remote_cmd_bridge.steer_tab(
+                        tab_id, steer_message, user_id=user_id,
+                    )
+                except Exception as exc:
+                    delivered = False
+                    logger.warning(
+                        "ws_chat_steer_failed", tab_id=tab_id, error=str(exc),
+                    )
+                # Echo an ack so the client knows whether the steer reached a
+                # live turn (vs. arriving after it ended — caller may re-send).
+                await websocket.send_json({
+                    "type": "steer_ack", "tab_id": tab_id, "delivered": bool(delivered),
                 })
 
             elif msg_type == "confirmation_response":

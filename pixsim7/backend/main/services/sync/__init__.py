@@ -39,9 +39,9 @@ async def run_startup_syncs(db: AsyncSession) -> None:
     Called once from the app lifespan after the database is ready.
     Add new TTL sync consumers here as they are created.
     """
-    from pixsim7.backend.main.services.testing.sync import ensure_synced
+    from pixsim7.backend.main.services.testing.sync import ensure_startup_synced
 
-    result = await ensure_synced(db)
+    result = await ensure_startup_synced(db)
     if result and result.ran:
         logger.info(
             "startup_sync_complete",

@@ -508,6 +508,135 @@ class TestBridgeTargeting:
 # ── bridge:status_changed event publishing ───────────────────────
 
 
+class TestAbortTab:
+    """abort_tab — resolve the active task for a tab and tell its bridge to
+    interrupt the live CLI turn (the real-stop path behind the cancel button)."""
+
+    @pytest.mark.asyncio
+    async def test_sends_abort_to_owning_agent(self):
+        bridge = RemoteCommandBridge()
+        agent = _make_agent(agent_id="a1", task_id="task-1")
+        bridge._agents["a1"] = agent
+        bridge._active_tasks["task-1"] = {
+            "_ts": datetime.now(timezone.utc),
+            "bridge_client_id": "a1",
+            "tab_id": "tab-xyz",
+            "user_id": None,
+        }
+
+        ok = await bridge.abort_tab("tab-xyz")
+
+        assert ok is True
+        agent.websocket.send_json.assert_awaited_once_with(
+            {"type": "abort", "task_id": "task-1"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_no_matching_tab(self):
+        bridge = RemoteCommandBridge()
+        agent = _make_agent(agent_id="a1", task_id="task-1")
+        bridge._agents["a1"] = agent
+        bridge._active_tasks["task-1"] = {
+            "_ts": datetime.now(timezone.utc),
+            "bridge_client_id": "a1",
+            "tab_id": "tab-xyz",
+        }
+
+        ok = await bridge.abort_tab("other-tab")
+
+        assert ok is False
+        agent.websocket.send_json.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_blank_tab_id_is_noop(self):
+        bridge = RemoteCommandBridge()
+        assert await bridge.abort_tab("") is False
+        assert await bridge.abort_tab("   ") is False
+
+    @pytest.mark.asyncio
+    async def test_respects_user_scoping(self):
+        """A user may only abort their own (or shared) tasks — never another
+        user's in-flight turn on a shared backend."""
+        bridge = RemoteCommandBridge()
+        agent = _make_agent(agent_id="a1", task_id="task-1", user_id=1)
+        bridge._agents["a1"] = agent
+        bridge._active_tasks["task-1"] = {
+            "_ts": datetime.now(timezone.utc),
+            "bridge_client_id": "a1",
+            "tab_id": "tab-xyz",
+            "user_id": 1,
+        }
+
+        # Wrong user → no abort dispatched.
+        assert await bridge.abort_tab("tab-xyz", user_id=2) is False
+        agent.websocket.send_json.assert_not_awaited()
+
+        # Owning user → dispatched.
+        assert await bridge.abort_tab("tab-xyz", user_id=1) is True
+        agent.websocket.send_json.assert_awaited_once()
+
+
+class TestSteerTab:
+    """steer_tab — inject a user message into the in-flight turn for a tab
+    (live steering / type-while-it-works)."""
+
+    @pytest.mark.asyncio
+    async def test_sends_steer_to_owning_agent(self):
+        bridge = RemoteCommandBridge()
+        agent = _make_agent(agent_id="a1", task_id="task-1")
+        bridge._agents["a1"] = agent
+        bridge._active_tasks["task-1"] = {
+            "_ts": datetime.now(timezone.utc),
+            "bridge_client_id": "a1",
+            "tab_id": "tab-xyz",
+            "user_id": None,
+        }
+
+        ok = await bridge.steer_tab("tab-xyz", "actually focus on the API layer")
+
+        assert ok is True
+        agent.websocket.send_json.assert_awaited_once_with(
+            {"type": "steer", "task_id": "task-1", "message": "actually focus on the API layer"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_blank_message_is_noop(self):
+        bridge = RemoteCommandBridge()
+        agent = _make_agent(agent_id="a1", task_id="task-1")
+        bridge._agents["a1"] = agent
+        bridge._active_tasks["task-1"] = {
+            "_ts": datetime.now(timezone.utc),
+            "bridge_client_id": "a1",
+            "tab_id": "tab-xyz",
+        }
+
+        assert await bridge.steer_tab("tab-xyz", "   ") is False
+        agent.websocket.send_json.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_no_active_turn(self):
+        bridge = RemoteCommandBridge()
+        # No active task for the tab → nothing to steer.
+        assert await bridge.steer_tab("tab-xyz", "hello") is False
+
+    @pytest.mark.asyncio
+    async def test_respects_user_scoping(self):
+        bridge = RemoteCommandBridge()
+        agent = _make_agent(agent_id="a1", task_id="task-1", user_id=1)
+        bridge._agents["a1"] = agent
+        bridge._active_tasks["task-1"] = {
+            "_ts": datetime.now(timezone.utc),
+            "bridge_client_id": "a1",
+            "tab_id": "tab-xyz",
+            "user_id": 1,
+        }
+
+        assert await bridge.steer_tab("tab-xyz", "hi", user_id=2) is False
+        agent.websocket.send_json.assert_not_awaited()
+        assert await bridge.steer_tab("tab-xyz", "hi", user_id=1) is True
+        agent.websocket.send_json.assert_awaited_once()
+
+
 class TestBridgeStatusEvents:
     """connect/disconnect should publish bridge:status_changed so the
     frontend bridgeStatusStore can skip its 15s polling heartbeat."""

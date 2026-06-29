@@ -137,6 +137,7 @@ export function GalleryFilters({
         >
           <option value="">All Status</option>
           <option value="ok">Provider OK</option>
+          <option value="not_flagged">Not Provider Flagged</option>
           <option value="local_only">Local Only</option>
           <option value="flagged">Flagged</option>
           <option value="unknown">Unknown</option>

@@ -110,6 +110,59 @@ class TestDevPlansUpdateEndpoint:
         assert principal.id == 123
 
     @pytest.mark.asyncio
+    async def test_update_checkpoints_append_deep_merges_fields_and_steps(self):
+        """checkpoints_append is a non-destructive per-id deep-merge: a partial
+        checkpoint must not drop un-sent fields (evidence/last_update) or
+        un-sent steps. This is the footgun the old whole-replace had."""
+        app = _app(authenticated=True)
+        update_result = _update_result(changes=[{"field": "checkpoints"}])
+        mock_update = AsyncMock(return_value=update_result)
+
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {
+                        "id": "cp1",
+                        "label": "CP 1",
+                        "status": "active",
+                        "evidence": [{"kind": "note", "ref": "prior proof"}],
+                        "last_update": {"by": "someone", "note": "earlier"},
+                        "steps": [
+                            {"id": "s1", "label": "first", "done": False},
+                            {"id": "s2", "label": "second", "done": False},
+                        ],
+                    }
+                ]
+            )
+        )
+
+        # Caller only re-sends the id + one flipped step.
+        payload = {
+            "checkpoints_append": [
+                {"id": "cp1", "steps": [{"id": "s1", "done": True}]}
+            ]
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update),
+        ):
+            async with _client(app) as c:
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
+
+        assert response.status_code == 200
+        merged = mock_update.await_args.args[2]["checkpoints"][0]
+        # Un-sent fields preserved
+        assert merged["label"] == "CP 1"
+        assert merged["evidence"] == [{"kind": "note", "ref": "prior proof"}]
+        assert merged["last_update"] == {"by": "someone", "note": "earlier"}
+        # Steps merged by id: s1 flipped, s2 preserved (not dropped)
+        steps_by_id = {s["id"]: s for s in merged["steps"]}
+        assert steps_by_id["s1"]["done"] is True
+        assert steps_by_id["s1"]["label"] == "first"
+        assert steps_by_id["s2"]["done"] is False
+
+    @pytest.mark.asyncio
     async def test_update_explicit_fields_override_patch_keys(self):
         app = _app(authenticated=True)
         update_result = _update_result(changes=[{"field": "stage"}])

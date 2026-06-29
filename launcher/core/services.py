@@ -41,6 +41,7 @@ SKIP_DIRS = {
 class ServiceDef:
     key: str
     title: str
+    description: Optional[str]
     program: str
     args: List[str]
     cwd: str
@@ -272,6 +273,98 @@ _PYTHON_ENV = {
     "PYTHONUNBUFFERED": "1",
 }
 
+_BACKEND_RELOAD_EXCLUDES = [
+    "tests/*",
+    "tests/**",
+    "pixsim7/backend/tests/*",
+    "pixsim7/backend/tests/**",
+    "data/*",
+    "data/**",
+    "docs/*",
+    "docs/**",
+    "examples/*",
+    "examples/**",
+    "node_modules/*",
+    "node_modules/**",
+    ".git/*",
+    ".git/**",
+    ".pytest_cache/*",
+    ".pytest_cache/**",
+    ".mypy_cache/*",
+    ".mypy_cache/**",
+    "**/__pycache__/**",
+    "**/*.pyc",
+    "**/*.log",
+    "**/logs/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/.svelte-kit/**",
+]
+
+
+def _existing_reload_dirs(paths: Iterable[str]) -> List[str]:
+    """Resolve reload roots to existing absolute paths, preserving order."""
+    resolved: List[str] = []
+    seen: set[str] = set()
+    for raw_path in paths:
+        path = Path(raw_path)
+        if not path.is_absolute():
+            path = Path(ROOT) / path
+        if not path.is_dir():
+            continue
+        normalized = str(path)
+        if normalized in seen:
+            continue
+        resolved.append(normalized)
+        seen.add(normalized)
+    return resolved
+
+
+def _module_package_dir(module: str) -> Optional[str]:
+    module_name = module.split(":", 1)[0]
+    if "." not in module_name:
+        return None
+    return module_name.rsplit(".", 1)[0].replace(".", os.sep)
+
+
+def _default_backend_reload_dirs(module: str) -> List[str]:
+    """Default source roots whose Python changes should restart a backend."""
+    package_dir = _module_package_dir(module)
+    roots: List[str] = [package_dir] if package_dir else []
+
+    if module.startswith("launcher."):
+        roots.extend([
+            "launcher",
+            "pixsim7/codegen",
+            "pixsim7/common",
+            "pixsim_logging",
+        ])
+    elif module.startswith("pixsim7.backend.generation."):
+        roots.extend([
+            "pixsim7/backend/generation",
+            "pixsim7/backend/main",
+            "pixsim7/common",
+            "pixsim7/automation",
+            "pixsim7/embedding",
+            "pixsim7/codegen",
+            "pixsim_logging",
+            "pixsim_settings",
+            "libs/pixverse-py/pixverse",
+        ])
+    elif module.startswith("pixsim7.backend.main."):
+        roots.extend([
+            "pixsim7/backend/main",
+            "pixsim7/common",
+            "pixsim7/automation",
+            "pixsim7/embedding",
+            "pixsim7/codegen",
+            "pixsim_logging",
+            "pixsim_settings",
+            "libs/pixverse-py/pixverse",
+        ])
+
+    return _existing_reload_dirs(roots)
+
 
 class ServiceConverter:
     """Base converter — shared logic for all service types."""
@@ -288,6 +381,7 @@ class ServiceConverter:
         return ServiceDef(
             key=sid,
             title=self._title(config),
+            description=config.get("description"),
             program=self._program(config),
             args=self._args(config),
             cwd=cwd,
@@ -406,7 +500,7 @@ class BackendConverter(ServiceConverter):
     def _args(self, config):
         port = self._resolve_port(config)
         module = config.get("module", "pixsim7.backend.main.main:app")
-        return [
+        args = [
             "-m",
             "uvicorn",
             module,
@@ -417,6 +511,23 @@ class BackendConverter(ServiceConverter):
             "--reload",
             "--no-access-log",
         ]
+        args.extend(self._reload_args(config, module))
+        return args
+
+    def _reload_args(self, config, module: str) -> List[str]:
+        configured_dirs = config.get("reload_dirs")
+        reload_dirs = (
+            _existing_reload_dirs(configured_dirs)
+            if isinstance(configured_dirs, list)
+            else _default_backend_reload_dirs(module)
+        )
+        args: List[str] = []
+        for reload_dir in reload_dirs:
+            args.extend(["--reload-dir", reload_dir])
+        args.extend(["--reload-include", "*.py"])
+        for pattern in config.get("reload_excludes", _BACKEND_RELOAD_EXCLUDES):
+            args.extend(["--reload-exclude", pattern])
+        return args
 
     def _env(self, config):
         return _merge_env_overrides(_PYTHON_ENV, config)

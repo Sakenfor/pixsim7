@@ -13,8 +13,8 @@
  *   />
  */
 import type { VersionEntry } from '@pixsim7/shared.api.client/domains';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { Popover } from '@pixsim7/shared.ui';
+import { useCallback, useMemo, useRef, useState, type RefObject } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -136,6 +136,7 @@ export function VersionNavigator({
           }}
           onClose={closeTimeline}
           anchorRect={anchorRect}
+          triggerRef={triggerRef}
           renderEntry={renderEntry}
         />
       )}
@@ -151,6 +152,7 @@ interface VersionTimelineDropdownProps {
   onSelect: (entry: VersionEntry) => void;
   onClose: () => void;
   anchorRect: DOMRect;
+  triggerRef: RefObject<HTMLButtonElement | null>;
   renderEntry?: (entry: VersionEntry, isCurrent: boolean) => React.ReactNode;
 }
 
@@ -160,60 +162,28 @@ function VersionTimelineDropdown({
   onSelect,
   onClose,
   anchorRect,
+  triggerRef,
   renderEntry,
 }: VersionTimelineDropdownProps) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Position
-  const style = useMemo(() => {
-    const { innerWidth, innerHeight } = window;
-    const width = 220;
-    const maxHeight = 280;
-
-    let top = anchorRect.bottom + 4;
-    let left = anchorRect.left;
-
-    if (top + maxHeight > innerHeight - 16) {
-      top = anchorRect.top - maxHeight - 4;
-    }
-    if (top < 16) top = 16;
-    if (left + width > innerWidth - 16) {
-      left = innerWidth - width - 16;
-    }
-    if (left < 16) left = 16;
-
-    return { top, left, width, maxHeight };
-  }, [anchorRect]);
-
-  // Close on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
-
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
-
   // Show newest first
   const reversed = useMemo(() => [...versions].reverse(), [versions]);
 
-  return createPortal(
-    <div
-      ref={ref}
-      className="fixed z-popover bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl overflow-hidden flex flex-col"
-      style={style}
+  return (
+    <Popover
+      open
+      anchor={anchorRect}
+      placement="bottom"
+      align="start"
+      offset={4}
+      onClose={onClose}
+      triggerRef={triggerRef}
+      className="w-[220px]"
+      style={{ maxHeight: 280 }}
     >
+      <div
+        className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl overflow-hidden flex flex-col"
+        style={{ maxHeight: 280 }}
+      >
       {/* Header */}
       <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-neutral-200 dark:border-neutral-700 shrink-0">
         <span className="text-[11px] font-medium text-th-secondary">
@@ -303,8 +273,8 @@ function VersionTimelineDropdown({
           );
         })}
       </div>
-    </div>,
-    document.body,
+      </div>
+    </Popover>
   );
 }
 

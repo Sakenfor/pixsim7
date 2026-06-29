@@ -421,7 +421,13 @@ class GenerationLifecycleService:
         return generation
 
     async def _increment_prompt_metrics(self, prompt_version_id) -> None:
-        """Increment prompt version usage metrics"""
+        """Increment prompt version usage metrics.
+
+        Called only from mark_completed (the success path, which always carries a
+        produced asset_id), so this bumps both the total generation_count and the
+        successful_assets count. successful_assets is the "proven" signal the
+        prompt similarity hybrid re-rank boosts on (see PromptEmbeddingService).
+        """
         from uuid import UUID
         from pixsim7.backend.main.domain.prompt import PromptVersion
 
@@ -432,4 +438,5 @@ class GenerationLifecycleService:
 
         if prompt_version:
             prompt_version.generation_count = (prompt_version.generation_count or 0) + 1
+            prompt_version.successful_assets = (prompt_version.successful_assets or 0) + 1
             await self.db.commit()

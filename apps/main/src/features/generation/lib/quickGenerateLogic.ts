@@ -198,6 +198,23 @@ export function buildCompositionAssetsFromAssetIds(
   }));
 }
 
+function providerUploadHintsForPayload(asset: Partial<AssetModel>): Record<string, unknown> | undefined {
+  const providerUploads = asset.providerUploads;
+  if (!providerUploads || typeof providerUploads !== 'object') {
+    return undefined;
+  }
+  const entries = Object.entries(providerUploads).filter(([, value]) => {
+    if (typeof value === 'string') {
+      return value.trim().length > 0;
+    }
+    if (value && typeof value === 'object') {
+      return Object.values(value as Record<string, unknown>).some(Boolean);
+    }
+    return Boolean(value);
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 /**
  * Build and validate a generation request for QuickGenerateModule.
  *
@@ -359,9 +376,12 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
       if (!assetId && !url) {
         return null;
       }
+      const providerUploads = providerUploadHintsForPayload(resolvedAsset);
       return {
         ...(assetId ? { asset: `asset:${assetId}` } : {}),
         ...(url ? { url } : {}),
+        ...(resolvedAsset.providerId ? { provider_id: resolvedAsset.providerId } : {}),
+        ...(providerUploads ? { provider_uploads: providerUploads } : {}),
         layer: index,
         role,
         media_type: mediaType,

@@ -53,7 +53,7 @@ const displayTab: SettingTab = {
     {
       id: 'gallery',
       title: 'Gallery',
-      description: 'Thumbnail quality and loading for remote/cloud provider assets.',
+      description: 'Image quality for gallery cards and local-folder browsing.',
       fields: [
         // Live preview at the top of the group — shows what each tier looks
         // like on real card sizes for the current display, so the dropdown
@@ -76,23 +76,12 @@ const displayTab: SettingTab = {
             { value: 'auto', label: 'Auto (preview when available)' },
           ],
         },
-      ],
-    },
-    {
-      id: 'local-folders',
-      title: 'Local Folders',
-      description: 'Thumbnail loading for assets browsed from local folders.',
-      fields: [
         {
-          id: 'lf_previewMode',
-          type: 'select',
-          label: 'Preview Mode',
-          description: 'Thumbnails are cached and use less memory. Original shows the file directly (fastest first load, more RAM).',
-          defaultValue: 'thumbnail',
-          options: [
-            { value: 'thumbnail', label: 'Generate Thumbnails (400px, cached)' },
-            { value: 'original', label: 'Original Images (fastest, more memory)' },
-          ],
+          id: 'preferOriginal',
+          type: 'toggle',
+          label: 'Use Original Sources',
+          description: 'Override the quality dropdown and load full-resolution originals for every card (applies to gallery + local folders). Best for occasional close inspection — leaving it on can lag large grids since each card loads its full source bytes.',
+          defaultValue: false,
         },
       ],
     },
@@ -106,7 +95,7 @@ const displayTab: SettingTab = {
      {
        id: 'derivatives',
        title: 'Derivatives',
-       description: 'What the ingestion worker generates and at what quality. Changes affect new uploads; run tools/backfill_preview_derivatives.py to update existing assets after a size change.',
+       description: 'What the ingestion worker generates and at what quality. Changes affect new uploads; use the "Preview Derivatives" card in Library → Maintenance to regenerate existing assets after a size change.',
        fields: [
          {
            id: 'generate_thumbnails',
@@ -488,6 +477,7 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
 
   // Gallery settings (local)
   const qualityMode = useAssetViewerStore((s) => s.settings.qualityMode);
+  const preferOriginal = useAssetViewerStore((s) => s.settings.preferOriginal);
   const updateGallerySettings = useAssetViewerStore((s) => s.updateSettings);
 
   // Media settings (local)
@@ -503,11 +493,9 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
   const lf_autoHashOnSelect = useLocalFolderSettingsStore((s) => s.autoHashOnSelect);
   const lf_autoCheckBackend = useLocalFolderSettingsStore((s) => s.autoCheckBackend);
   const lf_hashChunkSize = useLocalFolderSettingsStore((s) => s.hashChunkSize);
-  const lf_previewMode = useLocalFolderSettingsStore((s) => s.previewMode);
   const setLfAutoHashOnSelect = useLocalFolderSettingsStore((s) => s.setAutoHashOnSelect);
   const setLfAutoCheckBackend = useLocalFolderSettingsStore((s) => s.setAutoCheckBackend);
   const setLfHashChunkSize = useLocalFolderSettingsStore((s) => s.setHashChunkSize);
-  const setLfPreviewMode = useLocalFolderSettingsStore((s) => s.setPreviewMode);
 
   // Media settings (server)
   const serverSettings = useMediaSettingsStore((s) => s.serverSettings);
@@ -544,6 +532,7 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
 
       // Gallery settings
       if (fieldId === 'qualityMode') return qualityMode;
+      if (fieldId === 'preferOriginal') return preferOriginal;
 
       // Local media settings
       if (fieldId === 'preventDiskCache') return preventDiskCache;
@@ -555,7 +544,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       if (fieldId === 'lf_autoHashOnSelect') return lf_autoHashOnSelect;
       if (fieldId === 'lf_autoCheckBackend') return lf_autoCheckBackend;
       if (fieldId === 'lf_hashChunkSize') return lf_hashChunkSize;
-      if (fieldId === 'lf_previewMode') return lf_previewMode;
 
       // Synthetic field: preview_size_px presents the [W, H] tuple as a
       // single dropdown value (the width — H is always equal in our
@@ -597,6 +585,10 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
         updateGallerySettings({ qualityMode: value as GalleryQualityMode });
         return;
       }
+      if (fieldId === 'preferOriginal') {
+        updateGallerySettings({ preferOriginal: value as boolean });
+        return;
+      }
 
       // Local media settings
       if (fieldId === 'preventDiskCache') {
@@ -621,10 +613,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       }
       if (fieldId === 'lf_hashChunkSize') {
         setLfHashChunkSize(value);
-        return;
-      }
-      if (fieldId === 'lf_previewMode') {
-        setLfPreviewMode(value);
         return;
       }
 
@@ -674,12 +662,12 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       'similarity.upload.phashThreshold': uploadChecks.phashThreshold,
       deleteFromProvider,
       qualityMode,
+      preferOriginal,
       preventDiskCache,
       groupMultiLayout: gallerySettings.groupMultiLayout ?? 'stack',
       lf_autoHashOnSelect,
       lf_autoCheckBackend,
       lf_hashChunkSize,
-      lf_previewMode,
       ...(serverSettings ?? {}),
       // Synthetic field surfaced on the Derivatives group as a dropdown.
       preview_size_px: serverSettings?.preview_size?.[0]?.toString() ?? '1600',

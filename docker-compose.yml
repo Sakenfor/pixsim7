@@ -77,7 +77,58 @@ services:
       - ./data/storage:/app/storage  # User uploads, generated videos
       - ./data/logs:/app/logs        # Application logs
       - ./data/cache:/app/cache      # Any cache files
-    command: uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 --port 8000 --reload
+    command:
+      - uvicorn
+      - pixsim7.backend.main.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/pixsim7/backend/main
+      - --reload-dir
+      - /app/pixsim7/common
+      - --reload-dir
+      - /app/pixsim7/automation
+      - --reload-dir
+      - /app/pixsim7/embedding
+      - --reload-dir
+      - /app/pixsim7/codegen
+      - --reload-include
+      - "*.py"
+      - --reload-exclude
+      - "tests/*"
+      - --reload-exclude
+      - "tests/**"
+      - --reload-exclude
+      - "pixsim7/backend/tests/*"
+      - --reload-exclude
+      - "pixsim7/backend/tests/**"
+      - --reload-exclude
+      - "data/*"
+      - --reload-exclude
+      - "data/**"
+      - --reload-exclude
+      - "docs/*"
+      - --reload-exclude
+      - "docs/**"
+      - --reload-exclude
+      - "examples/*"
+      - --reload-exclude
+      - "examples/**"
+      - --reload-exclude
+      - "**/__pycache__/**"
+      - --reload-exclude
+      - "**/*.pyc"
+      - --reload-exclude
+      - "**/*.log"
+      - --reload-exclude
+      - "**/logs/**"
+      - --reload-exclude
+      - "**/dist/**"
+      - --reload-exclude
+      - "**/build/**"
     restart: unless-stopped
     logging:
       driver: "json-file"

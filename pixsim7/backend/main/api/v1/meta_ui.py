@@ -20,7 +20,7 @@ from pixsim7.backend.main.services.meta.ui_catalog_registry import ui_catalog_re
 
 router = APIRouter(prefix="/meta/ui", tags=["meta", "ui-catalog"])
 
-UI_CATALOG_CONTRACT_VERSION = "2026-03-17.1"
+UI_CATALOG_CONTRACT_VERSION = "2026-05-14.1"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -15,7 +15,7 @@
  * per card — so it toggles every card on the surface at once and is remembered
  * there.
  *
- * Expanded glyphs: green (member, always visible) or grey (addable, hover-only).
+ * Revealed glyphs: green (member) or grey (addable).
  * Clicking toggles membership — silent remove, reversible by clicking again.
  * See plan `sets-multi-target-add`.
  */
@@ -33,9 +33,10 @@ import { sortByAddRecency } from '../stores/setAddRecencyStore';
 import { useSetBadgeExpansionStore } from '../stores/setBadgeExpansionStore';
 
 /**
- * How many of the most-recently-added-to sets get a glyph at rest while the
- * badges are collapsed (a quick-re-add shortcut shown alongside the count
- * badge). Set to 0 to restore the pure count-only collapsed look.
+ * How many of the most-recently-added-to sets get a glyph while the hover/tap
+ * affordance is revealed but collapsed (a quick-re-add shortcut shown
+ * alongside the count badge). Set to 0 to restore the pure count-only
+ * collapsed look.
  */
 const COLLAPSED_PREVIEW_COUNT = 3;
 
@@ -80,6 +81,7 @@ function countMemberships(assetId: number, activeSets: ManualAssetSet[]): number
 
 /** Press-and-hold threshold (ms) that opens the active-target picker. */
 const LONG_PRESS_MS = 450;
+const ACTIVE_TARGET_VISIBILITY = { trigger: 'hover-container' } as const;
 
 /**
  * The collapsed count badge: a circular glyph (matching the per-set toggles)
@@ -175,11 +177,10 @@ function SetCountBadge({
 }
 
 /**
- * Build the (pinned, always-reachable) collapse/expand control. Shown at rest
+ * Build the pinned collapse/expand control. Revealed on card hover/tap,
  * regardless of membership — greyed when the asset is in none of the sets — so a
- * non-member still has a control to expand and add. It's a single small badge,
- * so the at-rest cost is low; without it a non-member card would have no visible
- * set affordance at all (you couldn't tune/add/remove).
+ * non-member still has a control to expand and add without putting set chrome
+ * on every resting card.
  */
 function buildSetBadgeToggle(
   memberCount: number,
@@ -192,10 +193,13 @@ function buildSetBadgeToggle(
     id: 'set-target-toggle',
     type: 'custom',
     ...BADGE_SLOT.topRight,
-    visibility: { trigger: 'always' },
-    // Just above the per-set glyphs (status + 1) so it leads them in the stack,
-    // and pinned (no `scrollable`) so it stays put while the glyphs scroll.
-    priority: BADGE_PRIORITY.status + 2,
+    visibility: ACTIVE_TARGET_VISIBILITY,
+    // Last pinned item before the scrollable per-set glyphs: the stack renderer
+    // renders all pinned widgets before the scroll region, so this must sort
+    // below other top-right pinned badges to keep the count visually attached
+    // to the expanding set-glyph column.
+    priority: BADGE_PRIORITY.status - 1,
+    style: { className: '-mt-1' },
     interactive: true,
     handlesOwnInteraction: true,
     render: () => (
@@ -278,10 +282,9 @@ function ActiveTargetPickerList() {
  * - `animateIn` adds a one-shot pop-in (used when glyphs appear on expand, so
  *   the open reads as an animation rather than an instant swap — not applied to
  *   the always-on single-set case, which would re-pop on every render).
- * - `alwaysVisible` keeps even non-member (addable) glyphs visible at rest. Used
- *   for the lone single-set glyph so a non-member still has a greyed control;
- *   left off when expanding 2+ (the pinned count badge is the at-rest affordance
- *   there, and the addable glyphs stay hover-only to keep the open row clean).
+ * - `alwaysVisible` includes non-member (addable) glyphs in the revealed stack.
+ *   The active-target affordance is still hover/tap-revealed so resting cards
+ *   don't carry set-management chrome.
  */
 function buildPerSetGlyphs(
   assetId: number,
@@ -303,6 +306,7 @@ function buildPerSetGlyphs(
         tooltip: isMember ? `In "${set.name}" — click to remove` : `Add to "${set.name}"`,
         extraClassName: animateIn ? 'animate-scale-in' : undefined,
         alwaysVisible,
+        visibility: ACTIVE_TARGET_VISIBILITY,
       },
     );
   });
@@ -332,9 +336,8 @@ export function buildActiveTargetWidgets(
   // been added yet (empty recency map is a no-op sort).
   const ordered = sortByAddRecency(activeSets, options.lastAddedAt ?? {});
 
-  // Single set: render its glyph directly (collapsing one is pointless), kept
-  // visible even for non-members so there's always a greyed control to add. The
-  // edit pip rides on the count badge, so it only appears from 2+ sets on.
+  // Single set: render its glyph directly (collapsing one is pointless), but
+  // still reveal it only on hover/tap like the multi-set affordance.
   if (ordered.length === 1) {
     return buildPerSetGlyphs(assetId, ordered, { alwaysVisible: true });
   }
@@ -342,10 +345,10 @@ export function buildActiveTargetWidgets(
   const memberCount = countMemberships(assetId, ordered);
   const toggle = buildSetBadgeToggle(memberCount, ordered.length, options);
   if (options.expanded) {
-    return [toggle, ...buildPerSetGlyphs(assetId, ordered, { animateIn: true })];
+    return [toggle, ...buildPerSetGlyphs(assetId, ordered, { animateIn: true, alwaysVisible: true })];
   }
-  // Collapsed: count badge + the top-N *actually* added-to glyphs, kept visible
-  // at rest as a quick re-add shortcut (the count badge still leads / expands).
+  // Collapsed: count badge + the top-N *actually* added-to glyphs, all
+  // hover/tap-revealed as a quick re-add shortcut.
   // Only sets with a real add-timestamp qualify — never pad with untouched sets,
   // or a freshly-flagged target with no add history would show here unprompted.
   const recency = options.lastAddedAt ?? {};

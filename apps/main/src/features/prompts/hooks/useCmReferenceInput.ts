@@ -110,9 +110,9 @@ export function useCmReferenceInput(
     const coords = view.coordsAtPos(triggerPos);
     if (!coords) { setAnchor(null); return; }
 
-    const editorDom = view.dom;
-    const container = editorDom.offsetParent as HTMLElement | null;
-    const containerRect = container?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+    // Viewport-relative coordinates so callers can render the picker in a
+    // portal at document.body level (escaping local stacking contexts).
+    const containerRect = new DOMRect(0, 0, window.innerWidth, window.innerHeight);
     const { style } = getViewportAwarePopupPosition({
       anchorRect: coords,
       containerRect,

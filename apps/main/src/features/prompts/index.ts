@@ -111,7 +111,11 @@ export {
   type QuickGenerateBindings,
 } from './hooks/useQuickGenerateBindings';
 
-export { useQuickGenerateController } from '@features/generation/hooks/useQuickGenerateController';
+export {
+  useQuickGenerateController,
+  GenerationControllerProvider,
+  type QuickGenerateController,
+} from '@features/generation/hooks/useQuickGenerateController';
 
 // ============================================================================
 // Library - Generation Logic

@@ -9,6 +9,16 @@ import { useBurstGesture, BurstLadder } from './burstGesture';
 const EMPTY_STEPS: number[] = [];
 const NOOP = () => {};
 
+// Responsive-windowing calibration (`responsiveVisible`). Visible count grows
+// continuously with width instead of snapping at coarse breakpoints, and — key
+// fix — it keeps graduating past 4 rather than jumping straight to "show all"
+// (which previously left a card wide enough for a 5th button stuck at 4, then
+// crammed every item at once). FIRST is the px budget for the first item
+// (container padding + one button); PER is each additional item. Calibrated to
+// match the prior 2/3/4 breakpoints at 78/112/152px.
+const WINDOW_FIRST_ITEM_PX = 40;
+const WINDOW_PER_ITEM_PX = 32;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -153,6 +163,24 @@ export interface ButtonGroupProps {
    * (centered when possible). Useful for keeping a primary action visible.
    */
   preferredVisibleId?: string;
+  /**
+   * Pixels to subtract from the measured `.cq-scale` host width before deciding
+   * how many items fit. Lets a centered overlay group reserve room at the edges
+   * (e.g. keep the bottom corners clear for badges) by windowing to a narrower
+   * effective width instead of spanning the whole card. Only affects
+   * `responsiveVisible` windowing; default 0.
+   */
+  widthInset?: number;
+  /**
+   * Controlled wheel-cycle window offset. When a number is provided it overrides
+   * the internal auto-centered offset, so several groups can share one scroll
+   * position (e.g. all generation pills on a media-card surface). Leave
+   * undefined for self-managed per-instance state; pair with
+   * {@link onWindowOffsetChange} to write back wheel steps.
+   */
+  windowOffset?: number;
+  /** Called with the next offset on each wheel-cycle step (controlled use). */
+  onWindowOffsetChange?: (next: number) => void;
 }
 
 // ============================================================================
@@ -256,6 +284,9 @@ export function ButtonGroup({
   responsiveVisible = false,
   visibleCount,
   preferredVisibleId,
+  widthInset = 0,
+  windowOffset: controlledWindowOffset,
+  onWindowOffsetChange,
 }: ButtonGroupProps) {
   if (items.length === 0) return null;
 
@@ -264,7 +295,27 @@ export function ButtonGroup({
   const rootRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
   const [hasResponsiveHost, setHasResponsiveHost] = useState(false);
-  const [windowOffset, setWindowOffset] = useState(0);
+  // Internal (uncontrolled) offset. The *effective* offset below prefers a
+  // controlled value when one is supplied, letting groups share a scroll
+  // position across instances; the auto-centering effect only ever writes the
+  // internal copy, so a freshly-mounted sibling never clobbers the shared value.
+  const [internalOffset, setInternalOffset] = useState(0);
+  const windowOffset = controlledWindowOffset ?? internalOffset;
+  const windowOffsetRef = useRef(windowOffset);
+  windowOffsetRef.current = windowOffset;
+  // A wheel step updates the internal copy (so uncontrolled use works) AND
+  // notifies the controller (so controlled/shared use works).
+  const commitWindowOffset = useCallback(
+    (next: number) => {
+      setInternalOffset(next);
+      onWindowOffsetChange?.(next);
+    },
+    [onWindowOffsetChange],
+  );
+  // The wheel listener binds once (passive:false), so reach the latest commit
+  // through a ref rather than capturing a stale closure.
+  const commitWindowOffsetRef = useRef(commitWindowOffset);
+  commitWindowOffsetRef.current = commitWindowOffset;
   const itemIds = useMemo(() => items.map((item) => item.id), [items]);
   const itemIdsSignature = useMemo(() => itemIds.join('|'), [itemIds]);
 
@@ -281,7 +332,7 @@ export function ButtonGroup({
     setHasResponsiveHost(true);
 
     const update = () => {
-      setContainerWidth(host.clientWidth || 0);
+      setContainerWidth(Math.max(0, (host.clientWidth || 0) - widthInset));
     };
 
     update();
@@ -290,7 +341,7 @@ export function ButtonGroup({
     const observer = new ResizeObserver(update);
     observer.observe(host);
     return () => observer.disconnect();
-  }, [responsiveVisible]);
+  }, [responsiveVisible, widthInset]);
 
   const resolvedVisibleCount = useMemo(() => {
     if (typeof visibleCount === 'number') {
@@ -299,32 +350,29 @@ export function ButtonGroup({
     if (!responsiveVisible || !hasResponsiveHost || containerWidth <= 0) {
       return items.length;
     }
-    if (containerWidth < 78) return Math.min(items.length, 1);
-    if (containerWidth < 112) return Math.min(items.length, 2);
-    if (containerWidth < 152) return Math.min(items.length, 3);
-    if (containerWidth < 188) return Math.min(items.length, 4);
-    return items.length;
+    const fit = Math.floor((containerWidth - WINDOW_FIRST_ITEM_PX) / WINDOW_PER_ITEM_PX) + 1;
+    return Math.max(1, Math.min(items.length, fit));
   }, [visibleCount, responsiveVisible, hasResponsiveHost, containerWidth, items.length]);
 
   useEffect(() => {
     if (resolvedVisibleCount >= items.length) {
-      setWindowOffset(0);
+      setInternalOffset(0);
       return;
     }
     if (!preferredVisibleId) {
-      setWindowOffset(0);
+      setInternalOffset(0);
       return;
     }
 
     const preferredIndex = itemIds.findIndex((id) => id === preferredVisibleId);
     if (preferredIndex < 0) {
-      setWindowOffset(0);
+      setInternalOffset(0);
       return;
     }
 
     const centered = preferredIndex - Math.floor(resolvedVisibleCount / 2);
     const normalized = ((centered % items.length) + items.length) % items.length;
-    setWindowOffset(normalized);
+    setInternalOffset(normalized);
   }, [itemIdsSignature, items.length, preferredVisibleId, resolvedVisibleCount]);
 
   const renderedItems = useMemo(() => {
@@ -365,12 +413,11 @@ export function ButtonGroup({
 
       const step = delta > 0 ? 1 : -1;
       const len = itemsLengthRef.current;
-      setWindowOffset((prev) => {
-        const next = prev + step;
-        if (next < 0) return len - 1;
-        if (next >= len) return 0;
-        return next;
-      });
+      const prev = windowOffsetRef.current;
+      let next = prev + step;
+      if (next < 0) next = len - 1;
+      else if (next >= len) next = 0;
+      commitWindowOffsetRef.current(next);
 
       // Bob the brackets in scroll direction
       setScrollDir(step as 1 | -1);

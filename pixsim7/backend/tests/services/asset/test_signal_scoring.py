@@ -1,10 +1,11 @@
 """Unit tests for the signal-scan scoring model (``score_metrics``).
 
-Locks the v4 tonal-audio behaviour: only the DEEP flatness band (< 0.25) flags
-broken on its own; the 0.25–0.38 mid-zone is corroboration-only (+1) and must be
-joined by a corroborating axis to reach 'broken'. v3 flagged 0.25–0.32 alone
-(+3), which false-flagged genuine tonal/musical clips. See plan
-signal-scan-recalibration.
+Locks the v5 audio behaviour: the audio-fingerprint match is the PRIMARY audio
+axis (flags broken on its own), and tonal flatness is DEMOTED to a corroborating
+axis worth at most +1 — ANY flatness below 0.38 nudges +1 and NONE flags broken
+alone, deep or shallow. (v4 still flagged the deep <0.25 band alone at +4; on 425
+user labels that band did not separate broken from kept and was the main
+false-positive engine — see _tonal_points / plan signal-scan-recalibration.)
 """
 from __future__ import annotations
 
@@ -18,11 +19,20 @@ def _broken(metrics, render_ratio=None) -> bool:
     return score_metrics(metrics, render_ratio=render_ratio)[1]
 
 
-# ---- tonal-audio primary axis ----
-def test_deep_tonal_flags_alone():
-    # flatness < 0.25 → +4, suspicious on its own (no other signal present).
+# ---- tonal-audio corroborating axis (v5: demoted, ≤ +1, never flags alone) ----
+def test_deep_tonal_is_corroborating_only():
+    # v5: even the deep band (< 0.25) is just +1 corroboration now — no longer
+    # the v4 flags-alone +4. Alone it stays borderline, never broken.
     score, broken = score_metrics({"spectral_flatness": 0.20})
+    assert score == 1 and broken is False
+
+
+def test_audio_fingerprint_is_the_primary_audio_axis():
+    # The new v5 primary: a strong fingerprint match (>= 0.60) flags broken alone.
+    score, broken = score_metrics({}, audio_ref_match=0.65)
     assert score == 4 and broken is True
+    # A weak match (>= 0.50) is +2 — needs a corroborating axis to reach broken.
+    assert score_metrics({}, audio_ref_match=0.55) == (2, False)
 
 
 def test_moderate_tonal_does_not_flag_alone():

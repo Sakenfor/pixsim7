@@ -22,6 +22,11 @@ export interface AnalysisResult {
   role_in_sequence?: string;
   sequence_context?: SequenceContext;
   tokens?: { lines: PromptTokenLine[] };
+  variable_hints?: {
+    saved: string[];
+    detected: string[];
+    unsaved_detected: string[];
+  };
 }
 
 export interface SequenceContext {

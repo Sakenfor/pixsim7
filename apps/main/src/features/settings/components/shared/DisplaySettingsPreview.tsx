@@ -462,9 +462,8 @@ export function DisplaySettingsPreview() {
           `preview_size` from {configuredPreviewSize} → {recommendedPreviewSize}
           {' '}would give {(recommendedPreviewSize / largeDevicePx).toFixed(2)}×
           {' '}headroom. Existing previews stay at the old size until
-          regenerated — run{' '}
-          <code className="font-mono">python tools/backfill_preview_derivatives.py --apply</code>
-          {' '}to refresh the whole library.
+          regenerated — use the <strong>Preview Derivatives</strong> card in
+          {' '}Library → Maintenance to refresh the library.
         </div>
       )}
     </div>

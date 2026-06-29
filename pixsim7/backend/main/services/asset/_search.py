@@ -240,13 +240,22 @@ class AssetSearchMixin:
         if sync_status:
             query = query.where(Asset.sync_status == sync_status)
         if provider_status:
-            # "flagged" is stored in media_metadata, not derivable from URL heuristics
-            if provider_status == "flagged":
+            provider_flagged_value = Asset.media_metadata["provider_flagged"].as_string()
+            provider_flagged_expr = provider_flagged_value == "true"
+            if provider_status == "not_flagged":
                 query = query.where(
-                    Asset.media_metadata["provider_flagged"].as_string() == "true"
+                    or_(
+                        provider_flagged_value.is_(None),
+                        provider_flagged_value != "true",
+                    )
                 )
             else:
                 provider_status_expr = case(
+                    (provider_flagged_expr, literal("flagged")),
+                    (
+                        Asset.media_metadata["provider_removed"].as_string() == "true",
+                        literal("local_only"),
+                    ),
                     (Asset.remote_url.ilike("http%"), literal("ok")),
                     (
                         and_(

@@ -169,6 +169,15 @@ export interface MediaCardRuntimeProps {
    */
   overlayPolicyChain?: OverlayPolicyStep[];
 
+  /**
+   * Externally force video playback without this exact card being hovered (the
+   * clip loops but the scrub timeline/chrome stays gated on real hover). OR'd
+   * with the touch viewport-autoplay signal. Used by surfaces that play a small
+   * batch at once — e.g. Triage's row mode plays the whole hovered row. Bounded
+   * by the global decoder pool (≈3 concurrent), so keep the batch small.
+   */
+  forcePlay?: boolean;
+
   /** Callback to toggle the favorite tag */
   onToggleFavorite?: () => void;
 
@@ -355,6 +364,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     overlayConfig: customOverlayConfig,
     customWidgets = [],
     overlayPresetId,
+    forcePlay: forcePlayProp = false,
     width,
     height,
     contextMenuAsset,
@@ -1006,6 +1016,10 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       widgets: merged.widgets ?? [],
       spacing: customOverlayConfig?.spacing || merged.spacing || (isCompact ? 'compact' : 'normal'),
       collisionDetection: merged.collisionDetection ?? hasPickerWidgets,
+      // Gallery/non-picker cards get the box-separation pass (stack groups +
+      // ungrouped button group all see each other); picker cards keep the
+      // anchor-swap collision path. The two are mutually exclusive by design.
+      boxSeparation: merged.boxSeparation ?? !hasPickerWidgets,
     };
 
     // Safety net: ensure preset-specific widgets are filtered based on capabilities.
@@ -1225,8 +1239,8 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
         customState={useMemo(() => ({
           gesturePhase: gesture.phase,
           edgeInset: gesture.edgeInset,
-          forcePlay: isAutoplayFocused,
-        }), [gesture.phase, gesture.edgeInset, isAutoplayFocused])}
+          forcePlay: isAutoplayFocused || forcePlayProp,
+        }), [gesture.phase, gesture.edgeInset, isAutoplayFocused, forcePlayProp])}
         onWidgetClick={undefined}
       >
         <div

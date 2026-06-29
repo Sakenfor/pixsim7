@@ -66,6 +66,12 @@ const LazyCubeWidgetOverlay = lazy(() =>
   }))
 );
 
+const LazyMobileQuickGenLauncher = lazy(() =>
+  import('@features/generation/components/MobileQuickGenLauncher').then((moduleValue) => ({
+    default: moduleValue.MobileQuickGenLauncher,
+  }))
+);
+
 const LazyPluginOverlays = lazy(() =>
   import('./components/PluginOverlays').then((moduleValue) => ({
     default: moduleValue.PluginOverlays,
@@ -268,6 +274,15 @@ function App() {
             <ErrorBoundary>
               <Suspense fallback={null}>
                 <LazyCubeWidgetOverlay />
+              </Suspense>
+            </ErrorBoundary>
+          )}
+          {/* Mobile QuickGen launcher — standalone FAB entry to Quick Generate
+              on phones (self-gates to mobile viewports; null on desktop) */}
+          {isAuthenticated && (
+            <ErrorBoundary>
+              <Suspense fallback={null}>
+                <LazyMobileQuickGenLauncher />
               </Suspense>
             </ErrorBoundary>
           )}

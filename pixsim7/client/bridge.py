@@ -23,7 +23,7 @@ import time
 import traceback
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from urllib import parse as urlparse
 from urllib import request as urlrequest
 
@@ -278,6 +278,14 @@ class Bridge:
         # task on this bridge. Plan: agent-confirmation-hooks /
         # cross-tab-fanout-fix.
         self._cli_session_to_task: dict[str, str] = {}
+
+        # task_id -> live pool Session, populated the moment the pool routes a
+        # turn (via send_message's on_session_bound). Lets an inbound `abort`
+        # frame interrupt the correct in-flight CLI turn — a real stop, not
+        # just abandoning the server-side await. Cleared in _handle_task's
+        # finally. Kept separate from _inflight_tasks because that dict is
+        # JSON-serialised into pool_status and a Session isn't serialisable.
+        self._task_sessions: dict[str, Any] = {}
 
     @staticmethod
     def _get_valid_token() -> Optional[str]:
@@ -751,6 +759,19 @@ class Bridge:
                         # Fire-and-forget — don't block the message loop
                         # so concurrent tasks can be dispatched to different pool sessions
                         asyncio.ensure_future(self._handle_task(ws, msg))
+
+                    elif msg_type == "abort":
+                        # Real stop: interrupt the live CLI turn for this task.
+                        # Fire-and-forget so a slow interrupt can't wedge the
+                        # message loop (and block other tabs' traffic).
+                        asyncio.ensure_future(self._handle_abort(msg.get("task_id", "")))
+
+                    elif msg_type == "steer":
+                        # Live steering: inject a user message into the in-flight
+                        # turn (type-while-it-works). Fire-and-forget, same as abort.
+                        asyncio.ensure_future(
+                            self._handle_steer(msg.get("task_id", ""), msg.get("message", ""))
+                        )
 
                     elif msg_type == "confirmation_response":
                         # User responded to a prompt — unblock the waiting task
@@ -1584,6 +1605,45 @@ class Bridge:
             }
         return {"error": text, "error_code": "task_error", "error_details": {}}
 
+    async def _handle_abort(self, task_id: str) -> None:
+        """Interrupt the live CLI turn for an in-flight task (real stop).
+
+        The server sends this when the user cancels a turn. We resolve the
+        pool Session bound for ``task_id`` and ask it to interrupt; the turn
+        then ends through its normal result/error path. A no-op if the task
+        already finished (session entry gone) or was never bound.
+        """
+        task_id = (task_id or "").strip()
+        if not task_id:
+            return
+        session = self._task_sessions.get(task_id)
+        if session is None:
+            get_logger().info("abort_no_session", task=task_id[:8])
+            return
+        try:
+            ok = await session.interrupt()
+            get_logger().info("abort_interrupt", task=task_id[:8], ok=ok)
+        except Exception as exc:
+            get_logger().warning("abort_interrupt_failed", task=task_id[:8], error=str(exc))
+
+    async def _handle_steer(self, task_id: str, message: str) -> None:
+        """Inject a user message into the in-flight turn for *task_id* (live
+        steering). No-op if the task already finished or the engine has no
+        mid-turn input channel.
+        """
+        task_id = (task_id or "").strip()
+        if not task_id or not (message or "").strip():
+            return
+        session = self._task_sessions.get(task_id)
+        if session is None:
+            get_logger().info("steer_no_session", task=task_id[:8])
+            return
+        try:
+            ok = await session.steer(message)
+            get_logger().info("steer_injected", task=task_id[:8], ok=ok, chars=len(message))
+        except Exception as exc:
+            get_logger().warning("steer_failed", task=task_id[:8], error=str(exc))
+
     async def _handle_task(self, ws, msg: dict) -> None:
         """Handle an incoming task from the backend."""
         task_id = msg.get("task_id", "?")
@@ -1928,11 +1988,17 @@ class Bridge:
                 get_logger().info("tool_gate_result", tool=tool_name, approved=approved)
                 return approved
 
+            def _bind_session(session) -> None:
+                # Capture the routed session so an inbound `abort` can interrupt
+                # this exact turn (see _handle_abort).
+                self._task_sessions[task_id] = session
+
             keepalive_task = asyncio.create_task(send_keepalive())
             try:
                 session_id, response = await self._pool.send_message(
                     prompt, timeout=timeout, images=images, on_progress=on_progress,
                     tool_gate=tool_gate if gated_tools else None,
+                    on_session_bound=_bind_session,
                     bridge_session_id=meta["bridge_session_id"],
                     engine=meta["engine"],
                     model=meta["model"],
@@ -2026,6 +2092,7 @@ class Bridge:
             # no longer actively running this task. Drop it so the next
             # pool_status reflects reality.
             self._inflight_tasks.pop(task_id, None)
+            self._task_sessions.pop(task_id, None)
             # Drop reverse cli_session → task mappings that pointed here so a
             # PreToolUse hook /confirm arriving after task completion doesn't
             # route to a stale task. Iterate by list() since we mutate.

@@ -35,6 +35,12 @@ function getPanelComposerConfig(widget: WidgetDefinition) {
   };
 }
 
+function toOptionalText(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return undefined;
+}
+
 export function HudWidgetLibrary({ layoutId, selectedRegion }: HudWidgetLibraryProps) {
   const store = useHudLayoutStore();
   const [searchQuery, setSearchQuery] = useState('');
@@ -42,10 +48,11 @@ export function HudWidgetLibrary({ layoutId, selectedRegion }: HudWidgetLibraryP
 
   const widgets = blockWidgets.getAll();
   const filteredWidgets = widgets.filter((widget) => {
+    const widgetDescription = toOptionalText(widget.description);
     const matchesSearch =
       searchQuery === '' ||
       widget.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      widget.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      widgetDescription?.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesCategory = selectedCategory === 'all' || widget.category === selectedCategory;
 
@@ -188,9 +195,9 @@ export function HudWidgetLibrary({ layoutId, selectedRegion }: HudWidgetLibraryP
                   {widget.category}
                 </span>
               </div>
-              {widget.description && (
+              {toOptionalText(widget.description) && (
                 <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2">
-                  {widget.description}
+                  {toOptionalText(widget.description)}
                 </p>
               )}
               <div className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">

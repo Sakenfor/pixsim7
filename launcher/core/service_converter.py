@@ -177,6 +177,7 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
         program=service_def.program,
         args=service_def.args,
         cwd=service_def.cwd,
+        description=service_def.description,
         env_overrides=service_def.env_overrides,
         url=service_def.url,
         health_url=service_def.health_url,

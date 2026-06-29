@@ -68,6 +68,12 @@ interface ChatMessage {
    */
   recovered?: boolean;
   /**
+   * Set when this user message was injected into a turn already in flight
+   * (live steering) rather than starting a new turn. Drives a small "Steered"
+   * marker so the transcript shows it landed mid-work. Presentation-only.
+   */
+  steered?: boolean;
+  /**
    * Structured marker for system messages with semantic meaning.
    * Currently only `'abandoned'` (set by the backend's drain placeholder
    * when the agent never replied). Drives `responseLost` so the rose

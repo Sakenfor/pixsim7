@@ -53,6 +53,9 @@ class InstanceOptionResponse(BaseModel):
     description: str = ""
     default: Optional[object] = None
     storage: str = "config"
+    options: Optional[List[object]] = None
+    min: Optional[float] = None
+    max: Optional[float] = None
 
 
 class AnalyzerResponse(BaseModel):
@@ -1499,6 +1502,9 @@ def _build_analyzer_response(analyzer) -> AnalyzerResponse:
                 description=opt.description,
                 default=opt.default,
                 storage=opt.storage,
+                options=opt.options,
+                min=opt.min,
+                max=opt.max,
             )
             for opt in effective_options
         ],

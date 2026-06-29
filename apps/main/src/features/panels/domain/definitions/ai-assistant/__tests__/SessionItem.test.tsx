@@ -11,7 +11,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import type { ChatTab } from '../assistantChatStore';
-import type { UnifiedProfile } from '../assistantTypes';
+import { isAgentLimitError, type UnifiedProfile } from '../assistantTypes';
 import { SessionItem } from '../SessionItem';
 
 const PROFILE = {
@@ -44,7 +44,11 @@ function makeTab(overrides: Partial<ChatTab> = {}): ChatTab {
 
 const NOOP = () => {};
 
-function renderItem(tab: ChatTab, profiles: readonly UnifiedProfile[] = [PROFILE]) {
+function renderItem(
+  tab: ChatTab,
+  profiles: readonly UnifiedProfile[] = [PROFILE],
+  props: { hasLimitStop?: boolean; hasUnread?: boolean; hasPendingQuestion?: boolean } = {},
+) {
   return render(
     <SessionItem
       tab={tab}
@@ -52,6 +56,7 @@ function renderItem(tab: ChatTab, profiles: readonly UnifiedProfile[] = [PROFILE
       profiles={profiles}
       tabCount={2}
       isSending={false}
+      {...props}
       renamingTabId={null}
       renameValue=""
       onSetActive={NOOP}
@@ -92,5 +97,19 @@ describe('SessionItem agent-set identity', () => {
     // The validity guard falls back to the profile/engine glyph rather than
     // rendering the raw string (Icon's raw-text fallback) inside the circle.
     expect(screen.queryByText('definitely-not-a-real-icon-xyz')).toBeNull();
+  });
+
+  it('marks a row whose latest turn stopped on an agent limit', () => {
+    renderItem(makeTab(), [PROFILE], { hasLimitStop: true, hasUnread: true });
+    expect(screen.getByTitle('Stopped: agent session or rate limit hit')).toBeTruthy();
+  });
+});
+
+describe('assistant limit error detection', () => {
+  it('matches Claude session-limit text and the bridge rate-limit code', () => {
+    expect(isAgentLimitError("You've hit your session limit · resets 5:20am (Europe/Belgrade)")).toBe(true);
+    expect(isAgentLimitError({ error_code: 'agent_rate_limited', error: 'Rate limited' })).toBe(true);
+    expect(isAgentLimitError({ response: "You've hit your session limit - resets 5:20am" })).toBe(true);
+    expect(isAgentLimitError('Request timed out - no response from agent.')).toBe(false);
   });
 });

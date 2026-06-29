@@ -9,7 +9,7 @@
  */
 import type { CubeMotionPreset } from '@features/appearance';
 
-export type CubeMotionType = 'spin' | 'sway' | 'toss' | 'pulse' | 'nudge';
+export type CubeMotionType = 'spin' | 'sway' | 'toss' | 'tumble' | 'pulse' | 'nudge';
 export interface CubeMotionSpec {
   type: CubeMotionType;
   duration?: string;
@@ -24,9 +24,9 @@ interface PresetStates {
 }
 
 export const CUBE_MOTION_PRESETS: Record<CubeMotionPreset, PresetStates> = {
-  // Expressive: snapping toss while working, a nudge for unread.
+  // Expressive: a continuous diagonal tumble (tumbleweed) while working, a nudge for unread.
   lively: {
-    working: 'toss',
+    working: 'tumble',
     waiting: { type: 'pulse', duration: '1.4s' },
     unread: { type: 'nudge', duration: '3.5s' },
   },
@@ -51,6 +51,7 @@ export const CUBE_MOTION_PRESETS: Record<CubeMotionPreset, PresetStates> = {
 // the raw pulse, the pulse envelope tracks it 1:1.
 const WORKING_ACTIVITY_SCALE: Record<CubeMotionType, number> = {
   toss: 3,
+  tumble: 3.5, // steady continuous diagonal roll; busier ⇒ rolls a bit faster
   sway: 1.8,
   spin: 2,
   pulse: 1,
@@ -63,6 +64,10 @@ export function workingMotionFor(
   workPulse: string,
 ): CubeMotionSpec | undefined {
   if (!type) return undefined;
+  // Continuous motions (tumble) must keep a STABLE duration — feeding the
+  // ever-changing activity cadence as animation-duration restarts the CSS
+  // animation each tick and visibly cuts the roll. Use the keyframe default.
+  if (type === 'tumble') return { type };
   const scale = WORKING_ACTIVITY_SCALE[type];
   const duration = `${(parseFloat(workPulse) * scale).toFixed(2)}s`;
   return { type, duration };

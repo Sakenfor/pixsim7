@@ -9,6 +9,34 @@
 import type { OverlayWidget, OverlayAnchor, OverlayPosition } from '../types';
 import { isOverlayPosition } from '../types';
 
+/**
+ * Per-stack-group overflow behavior.
+ *
+ * A group with `overflowScroll` folds its widgets into a wheel-scrollable region
+ * (see `StackGroupContainer`) when the column is taller than the room down to the
+ * card edge, instead of being clipped by the card. This generalizes the
+ * set-badge scroll affordance to any corner badge column (model / favorite /
+ * quick-tag / set …) so a short landscape card can still reach every badge.
+ *
+ * `pinnedLeaderCount` keeps that many highest-priority widgets always-visible
+ * above the scroll region (e.g. the status badge), scrolling only the remainder.
+ */
+export interface StackGroupScrollPolicy {
+  overflowScroll: boolean;
+  /** Highest-priority widgets to keep pinned above the scroll region. Default 0. */
+  pinnedLeaderCount?: number;
+}
+
+/**
+ * Overflow policy keyed by `stackGroup` name — the same well-known names
+ * `BADGE_SLOT` assigns (`badges-tl`, `badges-tr`). Both top corners scroll the
+ * whole column on overflow while pinning their single status leader.
+ */
+export const STACK_GROUP_SCROLL_POLICY: Record<string, StackGroupScrollPolicy> = {
+  'badges-tl': { overflowScroll: true, pinnedLeaderCount: 1 },
+  'badges-tr': { overflowScroll: true, pinnedLeaderCount: 1 },
+};
+
 export interface StackGroupInfo {
   /** Composite key: `${stackGroup}:${anchor}` */
   key: string;
@@ -26,6 +54,9 @@ export interface StackGroupInfo {
   widgets: OverlayWidget[];
   /** Max priority among children (used for z-index) */
   maxPriority: number;
+  /** Resolved overflow-scroll policy for this group (undefined = legacy per-widget
+   *  `scrollable` split: only opted-in widgets scroll, the rest stay pinned). */
+  scrollPolicy?: StackGroupScrollPolicy;
 }
 
 export interface PartitionResult {
@@ -119,6 +150,7 @@ export function partitionByStackGroup(widgets: OverlayWidget[]): PartitionResult
       alignItems: leaderAlignment ?? getAlignItems(group.anchor),
       widgets: group.widgets,
       maxPriority,
+      scrollPolicy: STACK_GROUP_SCROLL_POLICY[group.stackGroup],
     });
   }
 

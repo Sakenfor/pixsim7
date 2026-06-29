@@ -10,7 +10,11 @@ import type { MenuAction } from '../types';
 /** Shape of context data registered by PromptComposer */
 export interface PromptTextContextData {
   prompt: string;
+  skinPanelId?: string;
   setPrompt: (value: string) => void;
+  insertTextAtSelection?: (text: string) => boolean;
+  getSelectedText?: () => string;
+  flushSnapshot?: () => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -45,15 +49,22 @@ const redoAction: MenuAction = {
 
 const copyAction: MenuAction = {
   id: 'prompt-text:copy',
-  label: 'Copy prompt',
+  label: 'Copy',
   icon: 'copy',
   shortcut: 'Ctrl+C',
   category: 'clipboard',
   availableIn: ['prompt-text'],
-  disabled: (ctx) => !getData(ctx)?.prompt,
+  disabled: (ctx) => {
+    const selected = getData(ctx)?.getSelectedText?.() ?? '';
+    return selected.length === 0;
+  },
   execute: (ctx) => {
-    const prompt = getData(ctx)?.prompt;
-    if (prompt) void navigator.clipboard.writeText(prompt);
+    const d = getData(ctx);
+    if (!d) return;
+    const selected = d.getSelectedText?.();
+    if (selected && selected.length > 0) {
+      void navigator.clipboard.writeText(selected);
+    }
   },
 };
 
@@ -69,7 +80,10 @@ const pasteAction: MenuAction = {
     if (!d) return;
     try {
       const text = await navigator.clipboard.readText();
-      if (text) d.setPrompt(text);
+      if (!text) return;
+      d.flushSnapshot?.();
+      if (d.insertTextAtSelection?.(text)) return;
+      d.setPrompt(text);
     } catch {
       // Clipboard access denied
     }
@@ -87,7 +101,10 @@ const clearAction: MenuAction = {
   divider: true,
   execute: (ctx) => {
     const d = getData(ctx);
-    if (d?.prompt) d.setPrompt('');
+    if (d?.prompt) {
+      d.flushSnapshot?.();
+      d.setPrompt('');
+    }
   },
 };
 

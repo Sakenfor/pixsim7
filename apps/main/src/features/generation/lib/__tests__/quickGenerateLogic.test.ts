@@ -146,6 +146,44 @@ describe('buildGenerationRequest', () => {
     });
   });
 
+  it('carries provider upload hints on composition assets built from queued inputs', async () => {
+    const context = createBaseContext({
+      operationType: 'image_to_video',
+      prompt: 'Slow camera drift',
+      operationInputs: [
+        {
+          id: 'source',
+          asset: {
+            id: 10,
+            mediaType: 'image',
+            providerId: 'local',
+            providerUploads: {
+              pixverse: 'https://media.pixverse.ai/upload/source.jpg',
+            },
+          },
+          queuedAt: '',
+        },
+      ] as any,
+      dynamicParams: {},
+    });
+
+    const result = await buildGenerationRequest(context);
+
+    expect(result.error).toBeUndefined();
+    expect(result.params?.composition_assets).toEqual([
+      {
+        asset: 'asset:10',
+        provider_id: 'local',
+        provider_uploads: {
+          pixverse: 'https://media.pixverse.ai/upload/source.jpg',
+        },
+        layer: 0,
+        role: 'source_image',
+        media_type: 'image',
+      },
+    ]);
+  });
+
   it('stamps input_provenance from a carried assetSetProvenance marker', async () => {
     const context = createBaseContext({
       operationType: 'image_to_image',

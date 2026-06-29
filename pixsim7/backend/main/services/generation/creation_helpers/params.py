@@ -207,8 +207,9 @@ def canonicalize_params(
         # Canonical composition assets for multi-image edits
         composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
 
-        # Debug logging for IMAGE_TO_IMAGE canonicalization
-        logger.info(
+        # Per-create diagnostics — DEBUG so it stays available behind a level
+        # toggle without spamming production INFO logs.
+        logger.debug(
             "canonicalize_i2i_debug",
             extra={
                 "has_composition_assets": bool(composition_assets),
@@ -363,8 +364,11 @@ def canonicalize_params(
             canonical["artificial_extend"] = ae_from_config
 
     # Warn when legacy URL params are present alongside asset IDs
-    # This indicates incomplete frontend migration to the asset ID pattern
-    warn_legacy_asset_params(canonical, operation_type)
+    # This indicates incomplete frontend migration to the asset ID pattern.
+    # Inspect the *input* params/gen_config — by this point ``canonical`` has
+    # already collapsed legacy fields into composition_assets, so checking
+    # canonical was a no-op (the keys we look for were never written there).
+    warn_legacy_asset_params(params, gen_config, operation_type)
 
     logger.info(
         f"Canonicalized structured params for {provider_id}: "
@@ -376,7 +380,8 @@ def canonicalize_params(
 
 
 def warn_legacy_asset_params(
-    canonical: Dict[str, Any],
+    params: Dict[str, Any],
+    gen_config: Dict[str, Any],
     operation_type: OperationType,
 ) -> None:
     """
@@ -387,37 +392,64 @@ def warn_legacy_asset_params(
 
     Legacy params (deprecated):
     - image_url, video_url, image_urls
-    - source_asset_id, source_asset_ids
+    - source_asset_id, source_asset_ids (snake) / sourceAssetId, sourceAssetIds (camel)
     - original_video_id
 
     New params (preferred):
     - composition_assets
 
+    Inspects both ``params`` (request root) and ``gen_config``
+    (``params["generation_config"]``) since the frontend may carry legacy
+    fields in either spot. Both snake_case and camelCase variants are
+    checked because Pydantic normalization happens against the schema model
+    but the original request dict is what reaches canonicalize_params.
+
     Logging levels:
-    - WARNING: When legacy params are present alongside asset IDs (drift)
-    - ERROR: When legacy params are used alone (should migrate to asset IDs)
+    - WARNING: When legacy params are present alongside composition_assets (drift)
+    - ERROR: When legacy params are used alone (should migrate to composition_assets)
     """
     from typing import Any as _Any
 
-    # Define legacy keys per operation type
+    # Per-op legacy keys. camelCase variants included for source_asset_id(s)
+    # because the frontend historically emitted those (see api.ts).
     legacy_keys_by_op = {
-        OperationType.IMAGE_TO_VIDEO: ["image_url", "source_asset_id"],
-        OperationType.IMAGE_TO_IMAGE: ["image_url", "image_urls", "source_asset_ids"],
-        OperationType.VIDEO_EXTEND: ["video_url", "original_video_id", "source_asset_id"],
-        OperationType.VIDEO_TRANSITION: ["image_urls", "source_asset_ids"],
+        OperationType.IMAGE_TO_VIDEO: [
+            "image_url", "source_asset_id", "sourceAssetId",
+        ],
+        OperationType.IMAGE_TO_IMAGE: [
+            "image_url", "image_urls",
+            "source_asset_id", "source_asset_ids",
+            "sourceAssetId", "sourceAssetIds",
+        ],
+        OperationType.VIDEO_EXTEND: [
+            "video_url", "original_video_id",
+            "source_asset_id", "sourceAssetId",
+        ],
+        OperationType.VIDEO_TRANSITION: [
+            "image_urls", "source_asset_ids", "sourceAssetIds",
+        ],
     }
 
     legacy_keys = legacy_keys_by_op.get(operation_type, [])
     if not legacy_keys:
         return
 
-    # Check if we have composition assets
-    has_composition_assets = bool(canonical.get("composition_assets"))
+    def _lookup(key: str) -> _Any:
+        # gen_config takes precedence — that's where the structured payload
+        # lives and where the canonicalizer reads from.
+        value = gen_config.get(key) if gen_config else None
+        if value is None:
+            value = params.get(key)
+        return value
 
-    # Check for legacy params
-    found_legacy = [key for key in legacy_keys if canonical.get(key)]
+    found_legacy = [key for key in legacy_keys if _lookup(key)]
     if not found_legacy:
         return
+
+    has_composition_assets = bool(
+        (gen_config.get("composition_assets") if gen_config else None)
+        or params.get("composition_assets")
+    )
 
     def _is_asset_ref_value(value: _Any) -> bool:
         if value is None:
@@ -435,13 +467,13 @@ def warn_legacy_asset_params(
             return value.startswith(("http://", "https://", "file://", "upload/"))
         return False
 
-    if found_legacy:
-        legacy_values = [canonical.get(key) for key in found_legacy]
-        if all(_is_asset_ref_value(value) for value in legacy_values) and not any(
-            _is_url_value(value) for value in legacy_values
-        ):
-            # These are asset refs, not legacy URL params.
-            return
+    legacy_values = [_lookup(key) for key in found_legacy]
+    if all(_is_asset_ref_value(value) for value in legacy_values) and not any(
+        _is_url_value(value) for value in legacy_values
+    ):
+        # All values are bare asset refs (e.g. integer IDs) rather than URLs —
+        # less serious than URL drift, skip the noise.
+        return
 
     if has_composition_assets:
         # Log warning - both legacy and new params present (drift)

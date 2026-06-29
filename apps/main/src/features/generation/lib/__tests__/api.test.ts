@@ -1,9 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { prepareGenerateAssetSubmission } from '../api';
+import { generateAsset, prepareGenerateAssetSubmission } from '../api';
 
-const { getSupportedControlsMock } = vi.hoisted(() => ({
+const { createGenerationMock, getSupportedControlsMock, uploadAssetToProviderMock } = vi.hoisted(() => ({
+  createGenerationMock: vi.fn(),
   getSupportedControlsMock: vi.fn(() => [] as string[]),
+  uploadAssetToProviderMock: vi.fn(),
+}));
+
+vi.mock('@lib/api/assets', () => ({
+  uploadAssetToProvider: uploadAssetToProviderMock,
+}));
+
+vi.mock('@lib/api/generations', () => ({
+  createGeneration: createGenerationMock,
 }));
 
 vi.mock('@features/providers', () => ({
@@ -14,7 +24,10 @@ vi.mock('@features/providers', () => ({
 
 describe('prepareGenerateAssetSubmission', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    createGenerationMock.mockResolvedValue({ id: 123, status: 'pending' });
     getSupportedControlsMock.mockReturnValue([]);
+    uploadAssetToProviderMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -65,5 +78,59 @@ describe('prepareGenerateAssetSubmission', () => {
 
     expect(config.artificial_extend).toEqual(marker);
     expect(config.style?.pixverse?.artificialExtend).toBeUndefined();
+  });
+
+  it('skips i2v preflight reupload when composition asset has a target provider upload hint', async () => {
+    await generateAsset({
+      prompt: 'move',
+      providerId: 'pixverse',
+      operationType: 'image_to_video',
+      extraParams: {
+        composition_assets: [
+          {
+            asset: 'asset:10',
+            media_type: 'image',
+            provider_uploads: {
+              pixverse: 'https://media.pixverse.ai/upload/source.jpg',
+            },
+          },
+        ],
+      },
+    });
+
+    expect(uploadAssetToProviderMock).not.toHaveBeenCalled();
+    expect(createGenerationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('dedupes concurrent i2v preflight uploads for the same provider asset', async () => {
+    let resolveUpload: (() => void) | undefined;
+    uploadAssetToProviderMock.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveUpload = resolve;
+      }),
+    );
+
+    const request = {
+      prompt: 'move',
+      providerId: 'pixverse',
+      operationType: 'image_to_video' as const,
+      extraParams: {
+        composition_assets: [
+          { asset: 'asset:20', media_type: 'image' },
+        ],
+      },
+    };
+
+    const first = generateAsset(request);
+    const second = generateAsset(request);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(uploadAssetToProviderMock).toHaveBeenCalledTimes(1);
+    expect(uploadAssetToProviderMock).toHaveBeenCalledWith(20, 'pixverse');
+
+    resolveUpload?.();
+    await Promise.all([first, second]);
+
+    expect(createGenerationMock).toHaveBeenCalledTimes(2);
   });
 });

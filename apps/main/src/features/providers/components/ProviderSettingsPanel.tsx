@@ -25,6 +25,7 @@ interface ProviderSettings {
   global_password: string | null;
   auto_reauth_enabled: boolean;
   auto_reauth_max_retries: number;
+  auto_delete_unflagged_generated_after_ingest: boolean;
 }
 
 type SidebarSelection =
@@ -527,7 +528,12 @@ export function ProviderSettingsPanel() {
   const loadProviderSettings = async (providerId: string) => {
     try {
       const settings = await pixsimClient.get<ProviderSettings>(`/providers/${providerId}/settings`);
-      setProviderSettings(settings);
+      setProviderSettings({
+        ...settings,
+        auto_delete_unflagged_generated_after_ingest: Boolean(
+          settings.auto_delete_unflagged_generated_after_ingest
+        ),
+      });
     } catch (error) {
       console.error('Failed to load provider settings:', error);
     }
@@ -542,6 +548,8 @@ export function ProviderSettingsPanel() {
         global_password: providerSettings.global_password || null,
         auto_reauth_enabled: providerSettings.auto_reauth_enabled,
         auto_reauth_max_retries: providerSettings.auto_reauth_max_retries,
+        auto_delete_unflagged_generated_after_ingest:
+          providerSettings.auto_delete_unflagged_generated_after_ingest,
       });
 
       const tempSuccess = document.createElement('div');
@@ -1313,6 +1321,26 @@ export function ProviderSettingsPanel() {
                     </label>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400 ml-6 mt-1">
                       Automatically re-login using Playwright when session expires (error 10005)
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="rounded border-neutral-300 dark:border-neutral-600"
+                        checked={Boolean(providerSettings.auto_delete_unflagged_generated_after_ingest)}
+                        onChange={(e) => setProviderSettings({
+                          ...providerSettings,
+                          auto_delete_unflagged_generated_after_ingest: e.target.checked,
+                        })}
+                      />
+                      <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                        Delete generated media from provider after local ingest
+                      </span>
+                    </label>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 ml-6 mt-1">
+                      Only removes generated provider copies after PixSim has stored a local copy and the provider did not flag the asset.
                     </p>
                   </div>
 

@@ -492,20 +492,24 @@ async def resolve_composition_assets_for_pixverse(
 
             # If validation failed and we're in WebAPI mode, try to resolve UUID to URL
             if not validated_ref and api_mode == PixverseApiMode.WEBAPI:
-                is_uuid = looks_like_pixverse_uuid(str(provider_ref)) if provider_ref else False
+                raw_provider_ref = str(provider_ref) if provider_ref else ""
+                is_uuid = looks_like_pixverse_uuid(raw_provider_ref) if raw_provider_ref else False
+                is_numeric_ref = raw_provider_ref.isdigit() or raw_provider_ref.startswith("img_id:")
                 logger.info(
                     "pixverse_uuid_resolution_attempt",
                     asset_id=asset_id,
                     provider_ref=str(provider_ref)[:60] if provider_ref else None,
                     is_uuid=is_uuid,
+                    is_numeric_ref=is_numeric_ref,
                     has_provider=bool(provider),
                     has_account=bool(account),
                     has_remote_url=bool(asset_remote_url),
                 )
 
                 if provider and account and provider_ref:
-                    # Check if it looks like a UUID - need to resolve via Pixverse API
-                    if is_uuid:
+                    # UUIDs and OpenAPI img_ids need metadata lookup to become
+                    # WebAPI-ready customer_img_url/customer_video_url values.
+                    if is_uuid or is_numeric_ref:
                         media_type = item_media_type or media_type_filter or "image"
                         try:
                             resolved_url = await provider._resolve_webapi_url_from_id(
@@ -518,16 +522,20 @@ async def resolve_composition_assets_for_pixverse(
                             if resolved_url:
                                 validated_ref = resolved_url
                                 logger.info(
-                                    "pixverse_uuid_resolved_to_url",
+                                    "pixverse_provider_ref_resolved_to_url",
                                     asset_id=asset_id,
-                                    uuid=str(provider_ref)[:36],
+                                    provider_ref=str(provider_ref)[:60],
+                                    is_uuid=is_uuid,
+                                    is_numeric_ref=is_numeric_ref,
                                     resolved_url=resolved_url[:80],
                                 )
                         except Exception as e:
                             logger.warning(
-                                "pixverse_uuid_resolution_failed",
+                                "pixverse_provider_ref_resolution_failed",
                                 asset_id=asset_id,
-                                uuid=str(provider_ref)[:36],
+                                provider_ref=str(provider_ref)[:60],
+                                is_uuid=is_uuid,
+                                is_numeric_ref=is_numeric_ref,
                                 error=str(e),
                             )
 

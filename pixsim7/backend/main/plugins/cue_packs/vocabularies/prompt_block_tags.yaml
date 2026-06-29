@@ -173,6 +173,7 @@ tags:
     data_type: string
     allowed_values:
       - normal
+      - wide_angle
       - telephoto
       - macro
       - fisheye

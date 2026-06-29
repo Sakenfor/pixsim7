@@ -555,14 +555,14 @@ export function SignalDetectionButton({ asset }: { asset: AssetModel }) {
           toggle();
         }}
         title="Detection — chroma fingerprint, melody playback, and score breakdown"
-        className={`mt-2 inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-medium transition-colors ${
+        aria-label="Detection"
+        className={`flex h-5 w-5 items-center justify-center rounded border transition-colors ${
           open
             ? 'border-purple-500 bg-purple-600 text-white'
             : 'border-neutral-300 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-400 dark:hover:bg-neutral-800'
         }`}
       >
         <Icon name="activity" size={12} />
-        Detection
       </button>
       <Popover
         anchor={triggerRef.current}

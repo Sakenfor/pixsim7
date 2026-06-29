@@ -11,13 +11,17 @@ Endpoints:
 
 See docs/BACKEND_STARTUP.md for semantics and usage in k8s/ECS.
 """
+import logging
 import os
+import time
 from datetime import datetime, timezone
 from fastapi import APIRouter, Response, Request, status as http_status
 from pydantic import BaseModel, Field
 from typing import Literal
 
 from pixsim7.backend.main.shared.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Health"])
 
@@ -105,19 +109,41 @@ async def health_check():
     from pixsim7.backend.main.infrastructure.database.session import get_async_session
     from sqlalchemy import text
 
+    _t0 = time.perf_counter()
+
     # Check Redis
+    _redis_t0 = time.perf_counter()
     redis_status = "connected" if await check_redis_connection() else "disconnected"
+    _redis_dur_ms = (time.perf_counter() - _redis_t0) * 1000
 
     # Check database
     db_status = "connected"
+    _db_t0 = time.perf_counter()
     try:
         async with get_async_session() as db:
             await db.execute(text("SELECT 1"))
     except Exception as e:
         db_status = f"error: {e.__class__.__name__}"
+    _db_dur_ms = (time.perf_counter() - _db_t0) * 1000
 
     # Overall status
     overall_status = "healthy" if db_status == "connected" else "degraded"
+
+    # Log slow probes — Vite dev proxy treats >1s as "down". Anything over
+    # ~250ms is worth surfacing because that's where event-loop starvation
+    # starts to show up on burst workloads.
+    _total_ms = (time.perf_counter() - _t0) * 1000
+    if _total_ms > 250:
+        logger.warning(
+            "health_check_slow",
+            extra={
+                "duration_ms": round(_total_ms, 1),
+                "db_ms": round(_db_dur_ms, 1),
+                "redis_ms": round(_redis_dur_ms, 1),
+                "db_status": db_status,
+                "redis_status": redis_status,
+            },
+        )
 
     return HealthResponse(
         status=overall_status,

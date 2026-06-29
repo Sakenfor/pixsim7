@@ -6,7 +6,7 @@
  */
 
 import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { Icon, type IconName } from '@lib/icons';
 
@@ -192,6 +192,14 @@ interface MediaControlBarProps {
   showCapture?: boolean;
   captureDisabled?: boolean;
   onCaptureFrame?: () => void;
+
+  /**
+   * Optional transport row (play/pause, scrub, volume) rendered full-width above
+   * the nav/zoom row. Supplied for video assets so the playback controls live
+   * here, below the media, instead of as a native overlay that collides with the
+   * floating generation pill. See {@link VideoTransportControls}.
+   */
+  transport?: ReactNode;
 }
 
 export function MediaControlBar({
@@ -213,9 +221,11 @@ export function MediaControlBar({
   showCapture,
   captureDisabled,
   onCaptureFrame,
+  transport,
 }: MediaControlBarProps) {
   return (
     <div className="flex-shrink-0 border-t border-neutral-200 dark:border-neutral-700">
+      {transport}
       <div className="flex items-center justify-between px-3 py-1.5">
         {/* Left: Navigation + scope */}
         <div className="flex items-center gap-2">

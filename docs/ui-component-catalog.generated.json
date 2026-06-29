@@ -1,6 +1,6 @@
 {
   "$schema": "ui-component-catalog",
-  "generatedAt": "2026-04-30",
+  "generatedAt": "2026-06-17",
   "description": "Auto-generated catalog of shared UI components, icons, and theme tokens. Use these instead of writing inline UI with raw Tailwind classes.",
   "agentGuidance": {
     "rules": [
@@ -20,8 +20,8 @@
       "Tooltip? → Tooltip (not title attribute or custom hover div)"
     ]
   },
-  "componentCount": 76,
-  "hookCount": 14,
+  "componentCount": 78,
+  "hookCount": 16,
   "package": "@pixsim7/shared.ui",
   "components": [
     {
@@ -109,7 +109,7 @@
       "name": "ActionHintBadge",
       "kind": "component",
       "sourceFile": "packages/shared/ui/src/ButtonGroup.tsx",
-      "description": "Additional className applied to this item's button element */ buttonClassName?: string; /** Inline style applied to this item's button element */ buttonStyle?: React.CSSProperties; onClick?: (e: React.MouseEvent) => void; /** Middle-click handler */ onAuxClick?: (e: React.MouseEvent) => void; title?: string; disabled?: boolean; /** Right-click handler */ onContextMenu?: (e: React.MouseEvent) => void; /** Small badge rendered at top-right corner of the button (e.g. mode indicator) */ badge?: React.ReactNode; /** Content to show on hover (expands in opposite direction of layout) */ expandContent?: React.ReactNode; /** Delay before showing expand content (ms) */ expandDelay?: number; /** Delay before hiding expand content (ms) - allows time to move mouse to expanded content */ collapseDelay?: number; } // ============================================================================ // ActionHintBadge — small corner badge for action buttons // ============================================================================ export interface ActionHintBadgeProps { /** Icon node to render inside the badge (optional — omit for a plain dot) */ icon?: React.ReactNode; /** Background color class. Default: 'bg-accent-muted' */ colorClass?: string; /** Border color class. Default: 'border-accent-hover' */ borderClass?: string; className?: string; } /** Tiny badge indicator for action buttons. Render inside a `relative` container — positions itself at top-right. // Dot-only <ActionHintBadge /> // With icon <ActionHintBadge icon={<Icon name=\"refresh-cw\" size={7} color=\"#fff\" />} />",
+      "description": "Additional className applied to this item's button element */ buttonClassName?: string; /** Inline style applied to this item's button element */ buttonStyle?: React.CSSProperties; onClick?: (e: React.MouseEvent) => void; /** Middle-click handler */ onAuxClick?: (e: React.MouseEvent) => void; /** Pointer-enter handler (e.g. lazy-load expand content on hover) */ onMouseEnter?: (e: React.MouseEvent) => void; title?: string; disabled?: boolean; /** Right-click handler */ onContextMenu?: (e: React.MouseEvent) => void; /** Small badge rendered at top-right corner of the button (e.g. mode indicator) */ badge?: React.ReactNode; /** Content to show on hover (expands in opposite direction of layout) */ expandContent?: React.ReactNode; /** Delay before showing expand content (ms) */ expandDelay?: number; /** Delay before hiding expand content (ms) - allows time to move mouse to expanded content */ collapseDelay?: number; /** Press-and-drag-up burst gesture (fire N times). Opt-in; see ButtonGroupBurst. */ burst?: ButtonGroupBurst; } // ============================================================================ // ActionHintBadge — small corner badge for action buttons // ============================================================================ export interface ActionHintBadgeProps { /** Icon node to render inside the badge (optional — omit for a plain dot) */ icon?: React.ReactNode; /** Background color class. Default: 'bg-accent-muted' */ colorClass?: string; /** Border color class. Default: 'border-accent-hover' */ borderClass?: string; className?: string; } /** Tiny badge indicator for action buttons. Render inside a `relative` container — positions itself at top-right. // Dot-only <ActionHintBadge /> // With icon <ActionHintBadge icon={<Icon name=\"refresh-cw\" size={7} color=\"#fff\" />} />",
       "props": [
         {
           "name": "icon",
@@ -161,6 +161,12 @@
           "type": "string",
           "required": false,
           "description": ""
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": "Native tooltip text (also used as the accessible label)."
         }
       ],
       "examples": [],
@@ -209,6 +215,22 @@
           "description": ""
         }
       ],
+      "examples": []
+    },
+    {
+      "name": "BurstLadder",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/burstGesture.tsx",
+      "description": "Floating count slider anchored above a button. Use for compact buttons where an inline track wouldn't fit (e.g. the media-card pill).",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "BurstTrackOverlay",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/burstGesture.tsx",
+      "description": "Floating count slider anchored above a button. Use for compact buttons where an inline track wouldn't fit (e.g. the media-card pill). / export function BurstLadder({ state, orientation = 'vertical', placement = 'top', offset = 8, }: { state: BurstGestureState; orientation?: BurstOrientation; placement?: AnchorPlacement; offset?: number; }) { if (!state.active) return null; const anchor = state.buttonRef.current; if (!anchor) return null; return ( <PortalFloat anchor={anchor} placement={placement} offset={offset}> <BurstChips state={state} orientation={orientation} /> </PortalFloat> ); } /** Inline count slider that overlays its (relatively-positioned) host button — the button visually becomes the slider track. Use for wide pill rows. Render as a child of a `relative` button.",
+      "props": [],
       "examples": []
     },
     {
@@ -285,6 +307,18 @@
           "type": "boolean",
           "required": false,
           "description": "Render expand content in a portal to escape overflow/stacking-context constraints"
+        },
+        {
+          "name": "expandClamp",
+          "type": "boolean",
+          "required": false,
+          "description": "Clamp portaled expand content within the viewport so it doesn't clip at screen edges (nudges it into view — e.g. a top-placed menu near the top edge \"pops lower\"). Only applies when `portal` is set."
+        },
+        {
+          "name": "expandViewportMargin",
+          "type": "number",
+          "required": false,
+          "description": "Minimum margin (px) from viewport edges when clamping expand content."
         },
         {
           "name": "wheelCycle",
@@ -436,7 +470,7 @@
       "name": "DisclosureSection",
       "kind": "component",
       "sourceFile": "packages/shared/ui/src/disclosure/DisclosureSection.tsx",
-      "description": "DisclosureSection - React component for collapsible content sections A ready-to-use component that combines the disclosure state with proper styling, animations, and accessibility. / import * as React from 'react'; import { useDisclosure } from './useDisclosure'; import clsx from 'clsx'; export interface DisclosureSectionProps { /** Section label/title */ label: React.ReactNode; /** Content to show when expanded */ children: React.ReactNode; /** Initial open state */ defaultOpen?: boolean; /** Controlled open state */ isOpen?: boolean; /** Callback when toggled */ onToggle?: (isOpen: boolean) => void; /** Icon style: 'chevron' or 'plusMinus' */ iconStyle?: 'chevron' | 'plusMinus'; /** Size variant */ size?: 'sm' | 'md'; /** Additional class for the container */ className?: string; /** Additional class for the header/trigger */ headerClassName?: string; /** Additional class for the content */ contentClassName?: string; /** Whether to show border around content */ bordered?: boolean; /** Disable the toggle interaction */ disabled?: boolean; /** Actions rendered at the end of the header row, outside the toggle click area */ actions?: React.ReactNode; /** When true, only show actions when the section is open */ actionsWhenOpen?: boolean; /** When true, section stretches to fill available height (flex-1) when open. Use inside a flex column. */ fillHeight?: boolean; /** Badge/count element rendered after the label */ badge?: React.ReactNode; } /** A collapsible section with header and expandable content ```tsx <DisclosureSection label=\"Details\" defaultOpen={false}> <p>Hidden content here</p> </DisclosureSection> ```",
+      "description": "Section label/title */ label: React.ReactNode; /** Content to show when expanded */ children: React.ReactNode; /** Initial open state */ defaultOpen?: boolean; /** Controlled open state */ isOpen?: boolean; /** Callback when toggled */ onToggle?: (isOpen: boolean) => void; /** Icon style: 'chevron' or 'plusMinus' */ iconStyle?: 'chevron' | 'plusMinus'; /** Size variant */ size?: 'sm' | 'md'; /** Additional class for the container */ className?: string; /** Additional class for the header/trigger */ headerClassName?: string; /** Additional class for the content */ contentClassName?: string; /** Whether to show border around content */ bordered?: boolean; /** Disable the toggle interaction */ disabled?: boolean; /** Actions rendered at the end of the header row, outside the toggle click area */ actions?: React.ReactNode; /** When true, only show actions when the section is open */ actionsWhenOpen?: boolean; /** When true, section stretches to fill available height (flex-1) when open. Use inside a flex column. */ fillHeight?: boolean; /** Badge/count element rendered after the label */ badge?: React.ReactNode; /** When set, open/closed state is persisted across remounts and reloads via the shared `useUiCollapsed` store. Use stable colon-separated keys (e.g. `'shadow:promptBox:roles'`). Ignored if `isOpen` (controlled mode) is also provided — controlled state wins. / persistKey?: string; } /** A collapsible section with header and expandable content ```tsx <DisclosureSection label=\"Details\" defaultOpen={false}> <p>Hidden content here</p> </DisclosureSection> ```",
       "props": [
         {
           "name": "label",
@@ -533,6 +567,12 @@
           "type": "React.ReactNode",
           "required": false,
           "description": "Badge/count element rendered after the label"
+        },
+        {
+          "name": "persistKey",
+          "type": "string",
+          "required": false,
+          "description": "When set, open/closed state is persisted across remounts and reloads via the shared `useUiCollapsed` store. Use stable colon-separated keys (e.g. `'shadow:promptBox:roles'`). Ignored if `isOpen` (controlled mode) is also provided — controlled state wins."
         }
       ],
       "examples": [
@@ -657,7 +697,7 @@
       "name": "DropdownDivider",
       "kind": "component",
       "sourceFile": "packages/shared/ui/src/Dropdown.tsx",
-      "description": "DropdownItem — individual menu item in a dropdown / export interface DropdownItemProps { /** Click handler / onClick?: () => void; /** Whether the item is disabled / disabled?: boolean; /** Icon to display before the text (React node) / icon?: React.ReactNode; /** Content of the item / children: React.ReactNode; /** Additional CSS classes / className?: string; /** Visual variant / variant?: 'default' | 'danger' | 'primary' | 'success'; /** Optional right-side content (shortcut, chevron, etc.) / rightSlot?: React.ReactNode; } export function DropdownItem({ onClick, disabled = false, icon, children, className, variant = 'default', rightSlot, }: DropdownItemProps) { const variantClasses = { default: 'hover:bg-neutral-100 dark:hover:bg-neutral-700', danger: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20', primary: 'text-accent hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/20', success: 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20', }; return ( <button onClick={onClick} disabled={disabled} className={clsx( 'w-full text-left text-xs px-2 py-1 rounded flex items-center gap-2', disabled ? 'opacity-50 cursor-not-allowed' : variantClasses[variant], className )} > {icon && <span className=\"flex-shrink-0\">{icon}</span>} <span className=\"flex-1\">{children}</span> {rightSlot && <span className=\"flex items-center gap-1 text-[10px] text-neutral-400\">{rightSlot}</span>} </button> ); } /** DropdownDivider — divider between dropdown items",
+      "description": "DropdownItem — individual menu item in a dropdown / export interface DropdownItemProps { /** Click handler / onClick?: () => void; /** Whether the item is disabled / disabled?: boolean; /** Icon to display before the text (React node) / icon?: React.ReactNode; /** Content of the item / children: React.ReactNode; /** Additional CSS classes / className?: string; /** Visual variant / variant?: 'default' | 'danger' | 'primary' | 'success'; /** Optional right-side content (shortcut, chevron, etc.) / rightSlot?: React.ReactNode; } export function DropdownItem({ onClick, disabled = false, icon, children, className, variant = 'default', rightSlot, }: DropdownItemProps) { const variantClasses = { default: 'hover:bg-neutral-100 dark:hover:bg-neutral-700', danger: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20', primary: 'text-accent hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/20', success: 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20', }; return ( <button type=\"button\" role=\"menuitem\" onClick={onClick} disabled={disabled} className={clsx( 'w-full text-left text-xs px-2 py-1 rounded flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-accent', disabled ? 'opacity-50 cursor-not-allowed' : variantClasses[variant], className )} > {icon && <span className=\"flex-shrink-0\">{icon}</span>} <span className=\"flex-1\">{children}</span> {rightSlot && <span className=\"flex items-center gap-1 text-[10px] text-neutral-400\">{rightSlot}</span>} </button> ); } /** DropdownDivider — divider between dropdown items",
       "props": [],
       "examples": []
     },
@@ -716,7 +756,7 @@
       "name": "DropdownSectionHeader",
       "kind": "component",
       "sourceFile": "packages/shared/ui/src/Dropdown.tsx",
-      "description": "Click handler / onClick?: () => void; /** Whether the item is disabled / disabled?: boolean; /** Icon to display before the text (React node) / icon?: React.ReactNode; /** Content of the item / children: React.ReactNode; /** Additional CSS classes / className?: string; /** Visual variant / variant?: 'default' | 'danger' | 'primary' | 'success'; /** Optional right-side content (shortcut, chevron, etc.) / rightSlot?: React.ReactNode; } export function DropdownItem({ onClick, disabled = false, icon, children, className, variant = 'default', rightSlot, }: DropdownItemProps) { const variantClasses = { default: 'hover:bg-neutral-100 dark:hover:bg-neutral-700', danger: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20', primary: 'text-accent hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/20', success: 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20', }; return ( <button onClick={onClick} disabled={disabled} className={clsx( 'w-full text-left text-xs px-2 py-1 rounded flex items-center gap-2', disabled ? 'opacity-50 cursor-not-allowed' : variantClasses[variant], className )} > {icon && <span className=\"flex-shrink-0\">{icon}</span>} <span className=\"flex-1\">{children}</span> {rightSlot && <span className=\"flex items-center gap-1 text-[10px] text-neutral-400\">{rightSlot}</span>} </button> ); } /** DropdownDivider — divider between dropdown items / export function DropdownDivider() { return <div className=\"border-t dark:border-neutral-700 my-1\" />; } /** DropdownSectionHeader — small uppercase label for grouping dropdown items. Usage: <DropdownSectionHeader>Strategy</DropdownSectionHeader> <DropdownItem .../>",
+      "description": "Icon to display before the text (React node) / icon?: React.ReactNode; /** Content of the item / children: React.ReactNode; /** Additional CSS classes / className?: string; /** Visual variant / variant?: 'default' | 'danger' | 'primary' | 'success'; /** Optional right-side content (shortcut, chevron, etc.) / rightSlot?: React.ReactNode; } export function DropdownItem({ onClick, disabled = false, icon, children, className, variant = 'default', rightSlot, }: DropdownItemProps) { const variantClasses = { default: 'hover:bg-neutral-100 dark:hover:bg-neutral-700', danger: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20', primary: 'text-accent hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/20', success: 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20', }; return ( <button type=\"button\" role=\"menuitem\" onClick={onClick} disabled={disabled} className={clsx( 'w-full text-left text-xs px-2 py-1 rounded flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-accent', disabled ? 'opacity-50 cursor-not-allowed' : variantClasses[variant], className )} > {icon && <span className=\"flex-shrink-0\">{icon}</span>} <span className=\"flex-1\">{children}</span> {rightSlot && <span className=\"flex items-center gap-1 text-[10px] text-neutral-400\">{rightSlot}</span>} </button> ); } /** DropdownDivider — divider between dropdown items / export function DropdownDivider() { return <div role=\"separator\" className=\"border-t dark:border-neutral-700 my-1\" />; } /** DropdownSectionHeader — small uppercase label for grouping dropdown items. Usage: <DropdownSectionHeader>Strategy</DropdownSectionHeader> <DropdownItem .../>",
       "props": [],
       "examples": []
     },
@@ -1382,6 +1422,12 @@
           "type": "string",
           "required": false,
           "description": ""
+        },
+        {
+          "name": "inlineChildExtra",
+          "type": "boolean",
+          "required": false,
+          "description": "Render child `extra` content inline on the same row (right-aligned) instead of wrapping to a second line. Keeps rows single-height/dense."
         }
       ],
       "examples": []
@@ -1402,9 +1448,9 @@
       "props": [
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg'",
           "required": false,
-          "description": "Visual size variant"
+          "description": "Visual size variant. `xs` is a dense control for tight panels (settings rows, toolbars) — smaller text and minimal vertical padding."
         },
         {
           "name": "className",
@@ -1733,6 +1779,13 @@
           "description": "Trigger element ref — excluded from click-outside detection"
         },
         {
+          "name": "triggerHasPopup",
+          "type": "'dialog' | 'menu' | 'listbox' | 'tree' | 'grid'",
+          "required": false,
+          "description": "What kind of popup the trigger opens, used to set `aria-haspopup` on the trigger when `triggerRef` is provided.",
+          "default": "'dialog'."
+        },
+        {
           "name": "clamp",
           "type": "boolean",
           "required": false,
@@ -1942,6 +1995,12 @@
           "description": ""
         },
         {
+          "name": "readOnly",
+          "type": "boolean",
+          "required": false,
+          "description": "Read-only mode: blocks editing like `disabled`, but without the grayed-out (opacity-60 + not-allowed cursor) visual treatment. Use for inspector/viewer surfaces that should look identical to the editable composer."
+        },
+        {
           "name": "autoFocus",
           "type": "boolean",
           "required": false,
@@ -1964,6 +2023,12 @@
           "type": "boolean",
           "required": false,
           "description": ""
+        },
+        {
+          "name": "counterAccessory",
+          "type": "React.ReactNode",
+          "required": false,
+          "description": "Optional node rendered next to the character counter (e.g. a status chip)."
         },
         {
           "name": "resizable",
@@ -2069,6 +2134,12 @@
           "type": "boolean",
           "required": false,
           "description": ""
+        },
+        {
+          "name": "counterAccessory",
+          "type": "React.ReactNode",
+          "required": false,
+          "description": "Optional node rendered next to the character counter (e.g. a status chip)."
         },
         {
           "name": "resizable",
@@ -2356,9 +2427,9 @@
       "props": [
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg'",
           "required": false,
-          "description": "Visual size variant"
+          "description": "Visual size variant. `xs` is a dense control for tight panels and toolbars — smaller text and minimal vertical padding."
         },
         {
           "name": "className",
@@ -2377,6 +2448,12 @@
           "type": "boolean",
           "required": false,
           "description": "Use transparent background (for inline selects)"
+        },
+        {
+          "name": "width",
+          "type": "'full' | 'auto'",
+          "required": false,
+          "description": "Width behaviour. `full` (default) fills its container; `auto` sizes to content — use for inline toolbar selects that should not stretch."
         }
       ],
       "examples": []
@@ -2532,6 +2609,12 @@
           "type": "boolean",
           "required": false,
           "description": "Hide title when inside a floating panel or when dockview tabs are visible."
+        },
+        {
+          "name": "inlineChildExtra",
+          "type": "boolean",
+          "required": false,
+          "description": "Render child `extra` inline (right-aligned, single row) instead of a 2nd line."
         }
       ],
       "examples": [],
@@ -2704,11 +2787,48 @@
       "useInsteadOf": "inline stat/metric card implementations"
     },
     {
-      "name": "StatusBadge",
+      "name": "StatusDot",
       "kind": "component",
-      "sourceFile": "packages/shared/ui/src/StatusBadge.tsx",
-      "description": "",
-      "props": [],
+      "sourceFile": "packages/shared/ui/src/StatusPill.tsx",
+      "description": "Render a leading colored dot matching the tone. */ dot?: boolean; size?: 'xs' | 'sm'; /** Corner shape. `pill` (default) is fully rounded; `square` uses a small radius for tabular/dense layouts where matching adjacent text columns reads cleaner than a full pill. / shape?: 'pill' | 'square'; className?: string; } const TONE_CLASSES: Record<StatusTone, { bg: string; text: string; dot: string }> = { info:    { bg: 'bg-blue-100 dark:bg-blue-900/30',    text: 'text-blue-700 dark:text-blue-300',       dot: 'bg-blue-500' }, success: { bg: 'bg-green-100 dark:bg-green-900/30',  text: 'text-green-700 dark:text-green-300',     dot: 'bg-green-500' }, warning: { bg: 'bg-amber-100 dark:bg-amber-900/30',  text: 'text-amber-700 dark:text-amber-300',     dot: 'bg-amber-500' }, danger:  { bg: 'bg-red-100 dark:bg-red-900/30',      text: 'text-red-700 dark:text-red-300',         dot: 'bg-red-500' }, neutral: { bg: 'bg-neutral-200 dark:bg-neutral-800', text: 'text-neutral-700 dark:text-neutral-300', dot: 'bg-neutral-500' }, muted:   { bg: 'bg-transparent',                      text: 'text-neutral-500 dark:text-neutral-400', dot: 'bg-neutral-400' }, }; export interface StatusDotProps { /** Semantic tone — maps to a canonical dot color. Ignored when `color` is set. */ tone?: StatusTone; /** Explicit Tailwind background class (e.g. `bg-emerald-400`). Overrides `tone`. */ color?: string; /** Pulse animation (e.g. degraded / connecting states). */ pulse?: boolean; /** `sm` = 1.5×1.5 (default), `xs` = 1×1. */ size?: 'xs' | 'sm'; className?: string; /** Native tooltip text. */ title?: string; } /** StatusDot — bare colored status indicator dot. Centralizes the `w-1.5 h-1.5 rounded-full shrink-0` shape boilerplate. Use `tone` for semantic colors or `color` for a bespoke palette (StatusPill renders an empty pill background, so it is not a fit for a standalone dot).",
+      "props": [
+        {
+          "name": "tone",
+          "type": "StatusTone",
+          "required": false,
+          "description": "Semantic tone — maps to a canonical dot color. Ignored when `color` is set."
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "required": false,
+          "description": "Explicit Tailwind background class (e.g. `bg-emerald-400`). Overrides `tone`."
+        },
+        {
+          "name": "pulse",
+          "type": "boolean",
+          "required": false,
+          "description": "Pulse animation (e.g. degraded / connecting states)."
+        },
+        {
+          "name": "size",
+          "type": "'xs' | 'sm'",
+          "required": false,
+          "description": "`sm` = 1.5×1.5 (default), `xs` = 1×1."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": "Native tooltip text."
+        }
+      ],
       "examples": []
     },
     {
@@ -2740,6 +2860,12 @@
           "type": "'xs' | 'sm'",
           "required": false,
           "description": ""
+        },
+        {
+          "name": "shape",
+          "type": "'pill' | 'square'",
+          "required": false,
+          "description": "Corner shape. `pill` (default) is fully rounded; `square` uses a small radius for tabular/dense layouts where matching adjacent text columns reads cleaner than a full pill."
         },
         {
           "name": "className",
@@ -3201,6 +3327,75 @@
       "examples": []
     },
     {
+      "name": "useBurstGesture",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/burstGesture.tsx",
+      "description": "Reusable \"burst\" gesture: press-and-hold (or drag) a button to reveal a count slider, drag to choose how many times to fire, release to commit. A quick tap (no hold, no drag) falls through to the button's normal click. Orientation-aware so it fits both narrow buttons (vertical — drag up) and wide pill rows (horizontal — drag right). Extras: - Drag back past the start (or press Escape) to cancel — releases nothing. - Drag past the last ladder stop to enter a free counter (capped) for counts beyond the presets. The gesture is driven by window-level listeners (so moves keep arriving once the pointer leaves the button) and suppresses native HTML5 drag for the press duration (media cards and slot containers have `draggable` ancestors that would otherwise hijack the drag).",
+      "props": [
+        {
+          "name": "steps",
+          "type": "number[]",
+          "required": true,
+          "description": "Ascending count stops the slider snaps through, e.g. [1, 2, 3, 5, 10]."
+        },
+        {
+          "name": "onFire",
+          "type": "(count: number) => void",
+          "required": true,
+          "description": "Fire `count` times. Called on release after an engaged, non-cancelled gesture."
+        },
+        {
+          "name": "orientation",
+          "type": "BurstOrientation",
+          "required": false,
+          "description": "Drag axis: 'vertical' (up = more) or 'horizontal' (right = more). Default vertical."
+        },
+        {
+          "name": "stepPx",
+          "type": "number",
+          "required": false,
+          "description": "Pixels of travel between steps. Default 22."
+        },
+        {
+          "name": "threshold",
+          "type": "number",
+          "required": false,
+          "description": "Movement (px) before the gesture engages from a drag. Default 5."
+        },
+        {
+          "name": "holdMs",
+          "type": "number",
+          "required": false,
+          "description": "Hold time (ms) that reveals the slider without any movement. Default 160."
+        },
+        {
+          "name": "cancelPx",
+          "type": "number",
+          "required": false,
+          "description": "Drag back past the start by this many px to enter the cancel zone. Default 20."
+        },
+        {
+          "name": "customStepPx",
+          "type": "number",
+          "required": false,
+          "description": "Pixels of travel per +1 once past the last preset stop. Default 12."
+        },
+        {
+          "name": "maxCount",
+          "type": "number",
+          "required": false,
+          "description": "Hard cap on the count the free counter can reach. Default 50."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false,
+          "description": "When true the gesture is inert (handlers no-op)."
+        }
+      ],
+      "examples": []
+    },
+    {
       "name": "useDetachableSidebarNav",
       "kind": "hook",
       "sourceFile": "packages/shared/ui/src/hooks/useDetachableSidebar.ts",
@@ -3381,6 +3576,41 @@
       "examples": []
     },
     {
+      "name": "useFocusTrap",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/hooks/useFocusTrap.ts",
+      "description": "Whether the trap is active. */ active: boolean; /** Ref to the container element to trap focus within. */ containerRef: RefObject<HTMLElement | null>; /** When the trap activates, move focus into the container if it isn't already. Defaults to true. / autoFocus?: boolean; /** When the trap deactivates, return focus to the previously focused element. Defaults to true. / restoreFocus?: boolean; } /** Trap Tab/Shift+Tab focus inside a container while active. Optionally moves initial focus into the container and restores focus to the previously focused element on deactivation.",
+      "props": [
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": true,
+          "description": "Whether the trap is active."
+        },
+        {
+          "name": "containerRef",
+          "type": "RefObject<HTMLElement | null>",
+          "required": true,
+          "description": "Ref to the container element to trap focus within."
+        },
+        {
+          "name": "autoFocus",
+          "type": "boolean",
+          "required": false,
+          "description": "When the trap activates, move focus into the container if it isn't already.",
+          "default": "true."
+        },
+        {
+          "name": "restoreFocus",
+          "type": "boolean",
+          "required": false,
+          "description": "When the trap deactivates, return focus to the previously focused element.",
+          "default": "true."
+        }
+      ],
+      "examples": []
+    },
+    {
       "name": "useHoverExpand",
       "kind": "hook",
       "sourceFile": "packages/shared/ui/src/useHoverExpand.ts",
@@ -3439,14 +3669,6 @@
       "examples": [
         "* // Example 1: Delta-based resize (Control Center style)\n * const { isDragging, handleMouseDown } = useResizeHandle({\n *   onResize: ({ delta }) => {\n *     const newSize = Math.max(200, Math.min(800, initialSize + delta));\n *     setSize(newSize);\n *   },\n *   orientation: 'vertical'\n * });\n *\n * // Example 2: Position-based resize (Asset Viewer style)\n * const { isDragging, handleMouseDown } = useResizeHandle({\n *   onResize: ({ position, event }) => {\n *     const container = containerRef.current;\n *     if (!container) return;\n *     const rect = container.getBoundingClientRect();\n *     const percentage = ((rect.width - (position - rect.left)) / rect.width) * 100;\n *     const constrained = Math.max(20, Math.min(60, percentage));\n *     setPanelWidth(constrained);\n *   },\n *   orientation: 'vertical'\n * });\n *\n * return (\n *   <ResizeDivider\n *     onMouseDown={handleMouseDown}\n *     isDragging={isDragging}\n *     orientation=\"vertical\"\n *   />\n * );\n *"
       ]
-    },
-    {
-      "name": "useSidebarCollapse",
-      "kind": "hook",
-      "sourceFile": "packages/shared/ui/src/hooks/useSidebarCollapse.ts",
-      "description": "",
-      "props": [],
-      "examples": []
     },
     {
       "name": "useSidebarNav",
@@ -3518,6 +3740,14 @@
       "description": "Hook to manage tooltip dismissal state with localStorage Usage: const { dismissed, dismiss } = useTooltipDismissal('welcome-tooltip'); if (!dismissed) { return <Tooltip content=\"Welcome!\" />; }",
       "props": [],
       "examples": []
+    },
+    {
+      "name": "useUiCollapsed",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/hooks/useUiCollapsed.ts",
+      "description": "useUiCollapsed — generic per-key persistence for collapse / expand UI state. One Zustand-persisted bag of `Record<string, boolean>` keyed by stable caller-provided ids. Drop-in replacement for `useState(false)` whenever a UI element should remember whether it's collapsed across reloads, dock moves, or component re-mounts. Use anywhere you'd otherwise reach for ad-hoc localStorage or a feature-specific Zustand field. Examples of good keys: useUiCollapsed('shadow:promptBox') useUiCollapsed('shadow:composer:roles:subject') useUiCollapsed('characters:detail:meta') Conventions: - Keys are colon-separated `<domain>:<surface>:<element>` strings. Stable keys persist across renames; treat them like a tiny schema. - Pass `persistKey` undefined to opt out of persistence (falls back to local component state). Useful for ad-hoc instances that shouldn't pollute the shared bag. - The default (`defaultCollapsed`) is what's returned for keys that have never been written. Changing the default does *not* retroactively rewrite previously-stored values. Storage: localStorage only (key `pixsim7:uiCollapsed-v1`). Cross-device sync would require swapping to `createBackendStorage`; UI collapse state is borderline cosmetic so we haven't paid that cost yet.",
+      "props": [],
+      "examples": []
     }
   ],
   "patterns": [
@@ -3565,6 +3795,8 @@
       "alertCircle",
       "alertTriangle",
       "analysis",
+      "anchor",
+      "apple",
       "archive",
       "arrow-down",
       "arrow-left",
@@ -3578,25 +3810,42 @@
       "arrowRightLeft",
       "arrowUp",
       "arrowUpDown",
+      "atom",
       "audio",
+      "award",
       "bar-chart",
       "barChart",
       "beaker",
+      "beer",
       "bell",
+      "bike",
+      "bird",
       "blocks",
+      "bomb",
+      "bookmark",
       "bot",
       "box",
+      "boxes",
       "brain",
+      "brush",
+      "bug",
+      "cake",
       "camera",
+      "car",
+      "cat",
       "check",
       "check-circle",
       "check-square",
       "checkCircle",
       "checkSquare",
+      "cherry",
       "chevronDown",
       "chevronLeft",
       "chevronRight",
       "chevronUp",
+      "chevronsLeft",
+      "chevronsRight",
+      "circle",
       "clapperboard",
       "clipboard",
       "clipboard-paste",
@@ -3607,9 +3856,13 @@
       "close",
       "cloud",
       "code",
+      "coffee",
       "columns",
+      "compass",
       "copy",
       "cpu",
+      "crosshair",
+      "crown",
       "cubeBack",
       "cubeBottom",
       "cubeFront",
@@ -3620,27 +3873,42 @@
       "cut",
       "database",
       "delete",
+      "diamond",
+      "dice",
+      "dog",
       "download",
       "drama",
+      "droplet",
+      "droplets",
       "edit",
+      "eraser",
       "error",
       "external-link",
       "externalLink",
       "eye",
       "eyeOff",
+      "feather",
       "file-code",
       "fileCode",
       "fileQuestion",
       "fileText",
       "film",
       "filter",
+      "fish",
+      "flag",
+      "flame",
       "flask",
+      "flower",
       "folder",
       "folder-open",
       "folderOpen",
       "folderTree",
+      "footprints",
+      "frown",
       "gamepad",
       "gauge",
+      "gem",
+      "ghost",
       "git-branch",
       "gitBranch",
       "globe",
@@ -3648,17 +3916,23 @@
       "graph",
       "grid",
       "grid-3x3",
+      "hammer",
       "hand",
       "hash",
       "heart",
+      "hexagon",
       "history",
       "home",
+      "ice-cream",
+      "iceCream",
       "image",
       "info",
+      "joystick",
       "key",
       "layers",
       "layout",
       "layoutGrid",
+      "leaf",
       "library",
       "lightbulb",
       "link",
@@ -3672,23 +3946,32 @@
       "log-out",
       "logIn",
       "logOut",
+      "magnet",
       "map",
+      "map-pin",
+      "mapPin",
       "maximize-2",
       "maximize2",
+      "meh",
       "messageSquare",
+      "mic",
       "minimize-2",
       "minimize2",
       "minus",
+      "moon",
       "more-horizontal",
       "more-vertical",
       "moreHorizontal",
       "moreVertical",
+      "mountain",
       "mousePointer",
       "move",
       "move-left",
       "move-right",
       "moveLeft",
       "moveRight",
+      "music",
+      "octagon",
       "package",
       "paintbrush",
       "palette",
@@ -3696,6 +3979,8 @@
       "penTool",
       "pencil",
       "pin",
+      "pizza",
+      "plane",
       "play",
       "plug",
       "plus",
@@ -3703,6 +3988,7 @@
       "plusSquare",
       "prompt",
       "prompts",
+      "puzzle",
       "quest",
       "radio",
       "redo",
@@ -3711,27 +3997,44 @@
       "refresh",
       "refreshCw",
       "remove",
+      "rocket",
       "rotate-ccw",
       "rotateCcw",
       "rows",
+      "ruler",
       "save",
       "search",
       "send",
       "settings",
+      "shapes",
       "shield",
+      "ship",
       "shuffle",
+      "skull",
       "sliders",
+      "smile",
+      "snowflake",
+      "sparkle",
       "sparkles",
+      "speaker",
       "square",
       "star",
       "stop",
       "success",
+      "sun",
+      "swords",
       "tag",
       "tags",
       "target",
+      "thumbs-up",
+      "thumbsUp",
       "trash",
       "trash-2",
       "trash2",
+      "trees",
+      "triangle",
+      "trophy",
+      "tv",
       "undo",
       "undo-2",
       "undo2",
@@ -3741,10 +4044,13 @@
       "user",
       "users",
       "video",
+      "volume",
       "wand",
       "wand-2",
       "wand2",
       "warning",
+      "wind",
+      "wine",
       "wrench",
       "x",
       "x-circle",
@@ -3756,7 +4062,7 @@
       "✨",
       "📦"
     ],
-    "count": 196,
+    "count": 272,
     "usage": "Import { Icon, IconName } from \"@lib/icons\". Use <Icon name=\"iconName\" size={16} />. For white icons on colored backgrounds use color=\"#fff\" prop."
   },
   "theme": {

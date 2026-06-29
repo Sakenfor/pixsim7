@@ -13,9 +13,15 @@ import { EdgeInsetsScope } from '@lib/layout/edgeInsets';
 import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 import { OverlayContainer } from '@lib/ui/overlay';
 
+import { archiveAssetAndBroadcast } from '@features/assets/lib/archive';
 import { toggleFavoriteById } from '@features/assets/lib/favoriteTag';
 import { setSignalOverrideById } from '@features/assets/lib/signalOverride';
+import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
+import { useDeleteModalStore } from '@features/assets/stores/deleteModalStore';
+import { useMediaGenerationActions } from '@features/generation';
 import { useAssetRegionStore, useCaptureRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
+
+import type { MediaCardActions } from '@/components/media/MediaCard';
 
 import { useOverlayWidgetsForAsset } from '../../hooks/useOverlayWidgetsForAsset';
 import { useProvideRegionAnnotations } from '../capabilities';
@@ -28,6 +34,7 @@ import { useFrameCapture, useOverlayShortcuts, useViewerContext } from './hooks'
 import { MediaControlBar } from './MediaControlBar';
 import { MediaDisplay, type FitMode } from './MediaDisplay';
 import { useMediaMaximize } from './useMediaMaximize';
+import { VideoTransportControls } from './VideoTransportControls';
 import { ViewerToolStrip } from './ViewerToolStrip';
 import { useViewerViewportStore } from './viewerViewportStore';
 
@@ -438,6 +445,69 @@ function MediaPanelInner({ context }: MediaPanelProps) {
     if (typeof id === 'number') void setSignalOverrideById(id, decision);
   }, [asset?._assetModel?.id]);
 
+  // Asset-scoped card actions a viewer swipe can resolve to (directly, via the
+  // gallery mirror, or the long-press radial). These reach the gesture engine
+  // through `cardResolverContext` below; any action NOT supplied here silently
+  // no-ops — the gesture animates and shows its label, but no handler runs (the
+  // bug that left archive-from-viewer not leaving the recent strip).
+  //
+  // Generation actions are wired via `useMediaGenerationActions` (below), which
+  // resolves the nearest generation widget through the capability registry — the
+  // viewer is a GenerationCapableHost (ViewerQuickGenerate), so the same widget
+  // the gallery cards target is available here too.
+  //
+  // Still intentionally absent: `upload` (needs an upload-provider target),
+  // `addToActiveSet` (asset-set store), and `approve` (review context). They
+  // stay no-ops until that context is threaded, rather than being faked here.
+  const currentAssetModel = asset?._assetModel ?? null;
+  const archiveCb = useCallback(() => {
+    const id = currentAssetModel?.id;
+    if (typeof id === 'number') {
+      // archiveAssetAndBroadcast pairs the soft-hide PATCH with the 'archived'
+      // removal event so every live surface (recent strip, gallery, probes)
+      // drops the card.
+      void archiveAssetAndBroadcast(id).catch((err) =>
+        console.error('Failed to archive asset:', err));
+    }
+  }, [currentAssetModel?.id]);
+
+  const deleteCb = useCallback(() => {
+    // Mirror the gallery/context-menu delete: open the confirm modal, which
+    // owns the actual delete + removal broadcast. Never deletes outright.
+    if (currentAssetModel) {
+      useDeleteModalStore.getState().openDeleteModal(currentAssetModel);
+    }
+  }, [currentAssetModel]);
+
+  const openDetailsCb = useCallback(() => {
+    const id = currentAssetModel?.id;
+    if (typeof id === 'number') {
+      useAssetDetailStore.getState().setDetailAssetId(id);
+    }
+  }, [currentAssetModel?.id]);
+
+  // Generation card actions, bound to the current asset. Each wrapper ignores
+  // the gesture's positional id and uses the current model — mirroring the
+  // gallery controller's per-card `buildCardActions` binding. `quickGenerate`
+  // forwards the gesture's scalable count / duration override when present.
+  const generationActions = useMediaGenerationActions();
+  const generationCardActions = useMemo<MediaCardActions>(() => {
+    const model = currentAssetModel;
+    if (!model) return {};
+    return {
+      onImageToImage: () => generationActions.queueImageToImage(model),
+      onImageToVideo: () => generationActions.queueImageToVideo(model),
+      onVideoExtend: () => generationActions.queueVideoExtend(model),
+      onAddToTransition: () => generationActions.queueAddToTransition(model),
+      onAddToGenerate: () => generationActions.queueAutoGenerate(model),
+      onQuickAdd: () => void generationActions.quickGenerate(model),
+      onQuickGenerate: (_id, count, overrides) =>
+        generationActions.quickGenerate(model, { count, duration: overrides?.duration }),
+      onUpgradeModel: () => void generationActions.upgradeModel(model),
+      onPatchAsset: () => void generationActions.patchAsset(model),
+    };
+  }, [generationActions, currentAssetModel]);
+
   const viewerGestureCtx = useMemo<ViewerGestureContext>(() => ({
     navigatePrev,
     navigateNext,
@@ -446,11 +516,15 @@ function MediaPanelInner({ context }: MediaPanelProps) {
     toggleFavorite: toggleFavoriteCb,
     cardResolverContext: {
       actions: {
+        ...generationCardActions,
         onMarkSignalFlag: () => markSignalCb('broken'),
         onMarkSignalKeep: () => markSignalCb('clean'),
+        onArchive: archiveCb,
+        onDelete: deleteCb,
+        onOpenDetails: openDetailsCb,
       },
     },
-  }), [navigatePrev, navigateNext, resolvedContext.closeViewer, toggleFitModeCb, toggleFavoriteCb, markSignalCb]);
+  }), [navigatePrev, navigateNext, resolvedContext.closeViewer, toggleFitModeCb, toggleFavoriteCb, markSignalCb, archiveCb, deleteCb, openDetailsCb, generationCardActions]);
 
   const viewerGesture = useViewerGestures(viewerGestureCtx);
   const gesturesActive = viewerGesture.enabled && effectiveOverlayMode === 'none' && !isZoomed;
@@ -670,6 +744,11 @@ function MediaPanelInner({ context }: MediaPanelProps) {
         showCapture={asset?.type === 'video' && activeOverlayId !== 'capture'}
         captureDisabled={isCapturing}
         onCaptureFrame={captureFrame}
+        transport={
+          asset?.type === 'video' ? (
+            <VideoTransportControls videoRef={videoRef} assetId={asset.id} />
+          ) : undefined
+        }
       />
     </div>
   );

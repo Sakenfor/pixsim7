@@ -1,4 +1,4 @@
-import { Dropdown, Z } from '@pixsim7/shared.ui';
+import { Dropdown, Popover, Z } from '@pixsim7/shared.ui';
 import {
   useCallback,
   useEffect,
@@ -8,7 +8,6 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
 import type { IconName } from '@lib/icons';
@@ -432,7 +431,6 @@ export function FilterDropdown({
   const minWidth = wide ? 340 : 220;
   const maxWidth = wide ? 520 : 360;
   const width = Math.min(maxWidth, Math.max(minWidth, rect.width));
-  const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
   const top = rect.bottom + spacing;
   const maxHeight = Math.max(120, window.innerHeight - top - 16);
 
@@ -443,6 +441,7 @@ export function FilterDropdown({
       positionMode="static"
       minWidth={`${width}px`}
       className={wide ? 'max-w-[520px]' : 'max-w-[360px]'}
+      closeOnOutsideClick={mode === 'inline'}
       triggerRef={triggerRef}
     >
       {children}
@@ -473,18 +472,25 @@ export function FilterDropdown({
     );
   }
 
-  return createPortal(
-    <div
-      className="z-popover"
-      style={{ position: 'fixed', left, top, maxHeight }}
+  return (
+    <Popover
+      open={visible}
+      anchor={anchorEl}
+      placement="bottom"
+      align="start"
+      offset={spacing}
+      onClose={onClose || (() => undefined)}
+      closeOnClickOutside={Boolean(onClose)}
+      closeOnEscape={Boolean(onClose)}
+      className={wide ? 'max-w-[520px]' : 'max-w-[360px]'}
+      style={{ width, maxHeight }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       onFocusCapture={onFocusCapture}
       onBlurCapture={onBlurCapture}
     >
       {content}
-    </div>,
-    document.body,
+    </Popover>
   );
 }
 
@@ -912,18 +918,18 @@ function OverflowMenu<T>({
             );
           }
 
-          return createPortal(
-            <div
-              className="z-popover"
-              style={{
-                position: 'fixed',
-                left: Math.max(8, Math.min(rect.left, window.innerWidth - 240 - 8)),
-                top: rect.bottom + 6,
-              }}
+          return (
+            <Popover
+              open={open}
+              anchor={anchorRef.current}
+              placement="bottom"
+              align="start"
+              offset={6}
+              onClose={() => setOpen(false)}
+              triggerRef={anchorRef}
             >
               {content}
-            </div>,
-            document.body,
+            </Popover>
           );
         })()}
     </div>

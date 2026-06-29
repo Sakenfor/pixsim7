@@ -220,6 +220,7 @@ async def list_services(
         services.append(ServiceStateResponse(
             key=key,
             title=state.definition.title,
+            description=getattr(state.definition, 'description', None),
             status=status,
             health=health,
             pid=pid,
@@ -273,6 +274,7 @@ async def get_service_status(
     return ServiceStateResponse(
         key=service_key,
         title=state.definition.title,
+        description=getattr(state.definition, 'description', None),
         status=map_service_status(state.status),
         health=health,
         pid=state.pid or state.detected_pid,
@@ -318,6 +320,7 @@ async def get_service_definition(
     return ServiceDefinitionResponse(
         key=defn.key,
         title=defn.title,
+        description=getattr(defn, 'description', None),
         program=defn.program,
         args=defn.args,
         cwd=defn.cwd,

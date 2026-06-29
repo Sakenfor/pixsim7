@@ -330,17 +330,40 @@ except ImportError:
 if __name__ == "__main__":
     import uvicorn
 
+    repo_root = Path(__file__).resolve().parents[3]
+    reload_dirs = [
+        path for path in (
+            Path(__file__).parent,
+            repo_root / "pixsim7" / "common",
+            repo_root / "pixsim7" / "automation",
+            repo_root / "pixsim7" / "embedding",
+            repo_root / "pixsim7" / "codegen",
+            repo_root / "pixsim_logging",
+            repo_root / "pixsim_settings",
+            repo_root / "libs" / "pixverse-py" / "pixverse",
+        )
+        if path.is_dir()
+    ]
+
     uvicorn.run(
-        "main:app",
+        "pixsim7.backend.main.main:app",
         host=settings.host,
         port=settings.port,
         reload=settings.debug,
         # Limit hot-reload to backend sources and ignore local runtime/build outputs
-        reload_dirs=[str(Path(__file__).parent)],
+        reload_dirs=[str(path) for path in reload_dirs],
         reload_includes=["*.py"],
         reload_excludes=[
+            "tests/*",
+            "tests/**",
+            "pixsim7/backend/tests/*",
+            "pixsim7/backend/tests/**",
             "data/*",
             "data/**",
+            "docs/*",
+            "docs/**",
+            "examples/*",
+            "examples/**",
             ".pixsim/*",
             ".pixsim/**",
             ".pixsim7/*",

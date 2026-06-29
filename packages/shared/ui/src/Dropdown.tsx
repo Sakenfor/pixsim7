@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 
@@ -14,6 +14,31 @@ import clsx from 'clsx';
  *   <DropdownItem onClick={handleAction}>Delete</DropdownItem>
  * </Dropdown>
  */
+
+const HIDDEN_SCROLLBAR_CLASS = 'pixsim-dropdown-scrollbar-hidden';
+const HIDDEN_SCROLLBAR_STYLE_ID = 'pixsim-dropdown-scrollbar-style';
+const SCROLL_EPSILON = 2;
+
+function ensureHiddenScrollbarStyle() {
+  if (typeof document === 'undefined' || document.getElementById(HIDDEN_SCROLLBAR_STYLE_ID)) {
+    return;
+  }
+
+  const styleEl = document.createElement('style');
+  styleEl.id = HIDDEN_SCROLLBAR_STYLE_ID;
+  styleEl.textContent = `
+.${HIDDEN_SCROLLBAR_CLASS} {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.${HIDDEN_SCROLLBAR_CLASS}::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+`;
+  document.head.appendChild(styleEl);
+}
 
 export interface DropdownProps {
   /**
@@ -53,6 +78,26 @@ export interface DropdownProps {
    */
   className?: string;
   /**
+   * Inline styles for layout constraints such as viewport-capped menus.
+   */
+  style?: React.CSSProperties;
+  /**
+   * Additional classes for the scrollable content viewport.
+   */
+  scrollViewportClassName?: string;
+  /**
+   * Inline styles for the scrollable content viewport.
+   */
+  scrollViewportStyle?: React.CSSProperties;
+  /**
+   * Hide native scrollbars in the scrollable viewport.
+   */
+  hideScrollbar?: boolean;
+  /**
+   * Show top/bottom chevrons when the scrollable viewport has hidden overflow.
+   */
+  scrollIndicators?: boolean;
+  /**
    * When true, render the dropdown into a portal on document.body
    * so it escapes overflow: hidden containers.
    */
@@ -74,12 +119,70 @@ export function Dropdown({
   minWidth = '150px',
   closeOnOutsideClick = true,
   className,
+  style,
+  scrollViewportClassName,
+  scrollViewportStyle,
+  hideScrollbar = false,
+  scrollIndicators = false,
   portal = false,
   triggerRef,
 }: DropdownProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const scrollViewportRef = useRef<HTMLDivElement>(null);
+  const [scrollState, setScrollState] = useState({ up: false, down: false });
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  const updateScrollState = useCallback(() => {
+    const viewport = scrollViewportRef.current;
+    if (!viewport) return;
+
+    const maxScrollTop = viewport.scrollHeight - viewport.clientHeight;
+    const next = {
+      up: viewport.scrollTop > SCROLL_EPSILON,
+      down: maxScrollTop - viewport.scrollTop > SCROLL_EPSILON,
+    };
+
+    setScrollState((prev) => (
+      prev.up === next.up && prev.down === next.down ? prev : next
+    ));
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!(hideScrollbar || scrollIndicators)) return;
+    ensureHiddenScrollbarStyle();
+  }, [hideScrollbar, scrollIndicators]);
+
+  useLayoutEffect(() => {
+    if (!isOpen || !scrollIndicators) {
+      setScrollState({ up: false, down: false });
+      return;
+    }
+
+    const viewport = scrollViewportRef.current;
+    if (!viewport) return;
+
+    updateScrollState();
+    const deferredUpdate = typeof window.requestAnimationFrame === 'function'
+      ? window.requestAnimationFrame(updateScrollState)
+      : window.setTimeout(updateScrollState, 0);
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateScrollState)
+      : null;
+
+    resizeObserver?.observe(viewport);
+    window.addEventListener('resize', updateScrollState);
+
+    return () => {
+      if (typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(deferredUpdate);
+      } else {
+        window.clearTimeout(deferredUpdate);
+      }
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateScrollState);
+    };
+  }, [children, isOpen, scrollIndicators, updateScrollState]);
 
   // Reflect open state on the trigger for assistive tech.
   useEffect(() => {
@@ -189,6 +292,7 @@ export function Dropdown({
       onKeyDown={handleKeyDown}
       className={clsx(
         'bg-white dark:bg-neutral-800 border dark:border-neutral-700 rounded shadow-lg z-dropdown',
+        scrollIndicators && 'relative overflow-hidden',
         modeClass,
         positionClass,
         className
@@ -197,9 +301,27 @@ export function Dropdown({
         minWidth,
         left: positionMode === 'fixed' ? anchorPosition?.x : undefined,
         top: positionMode === 'fixed' ? anchorPosition?.y : undefined,
+        ...style,
       }}
     >
-      <div className="p-2 space-y-1">{children}</div>
+      <div
+        ref={scrollViewportRef}
+        onScroll={scrollIndicators ? updateScrollState : undefined}
+        className={clsx(
+          'p-2 space-y-1',
+          (hideScrollbar || scrollIndicators) && HIDDEN_SCROLLBAR_CLASS,
+          scrollViewportClassName,
+        )}
+        style={scrollViewportStyle}
+      >
+        {children}
+      </div>
+      {scrollIndicators && (
+        <>
+          <DropdownScrollIndicator edge="top" visible={scrollState.up} />
+          <DropdownScrollIndicator edge="bottom" visible={scrollState.down} />
+        </>
+      )}
     </div>
   );
 
@@ -208,6 +330,41 @@ export function Dropdown({
   }
 
   return dropdown;
+}
+
+function DropdownScrollIndicator({
+  edge,
+  visible,
+}: {
+  edge: 'top' | 'bottom';
+  visible: boolean;
+}) {
+  const isTop = edge === 'top';
+
+  return (
+    <div
+      aria-hidden="true"
+      className={clsx(
+        'pointer-events-none absolute inset-x-0 z-20 flex justify-center transition-opacity duration-150',
+        isTop ? 'top-1' : 'bottom-1',
+        visible ? 'opacity-100' : 'opacity-0',
+      )}
+    >
+      <span className="flex h-4 min-w-7 items-center justify-center rounded-full bg-white/95 text-neutral-500 shadow-sm ring-1 ring-neutral-200/90 dark:bg-neutral-800/95 dark:text-neutral-300 dark:ring-neutral-700/90">
+        <svg
+          className="h-3 w-3"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d={isTop ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'} />
+        </svg>
+      </span>
+    </div>
+  );
 }
 
 /**

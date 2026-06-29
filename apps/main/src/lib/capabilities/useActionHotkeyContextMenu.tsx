@@ -1,4 +1,6 @@
 import {
+  CursorMenu,
+  DropdownItem,
   getShortcutSignature,
   Modal,
   parseShortcutString,
@@ -9,7 +11,6 @@ import {
   useCallback,
   useMemo,
   useState,
-  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -277,18 +278,6 @@ export function useActionHotkeyContextMenu(): UseActionHotkeyContextMenuResult {
     ? effectiveActionMap.get(contextActionId)?.shortcut
     : undefined;
 
-  const contextMenuStyle = useMemo<CSSProperties | undefined>(() => {
-    if (!contextMenu || typeof window === 'undefined') {
-      return undefined;
-    }
-    const menuWidth = 224;
-    const menuHeight = hasContextOverride ? 84 : 44;
-    return {
-      left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - menuWidth - 8)),
-      top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - menuHeight - 8)),
-    };
-  }, [contextMenu, hasContextOverride]);
-
   const handleEditorKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
@@ -301,38 +290,27 @@ export function useActionHotkeyContextMenu(): UseActionHotkeyContextMenuResult {
 
   const hotkeyContextMenu = (
     <>
-      {contextMenu && contextMenuStyle && (
-        <>
-          <div
-            className="fixed inset-0 z-[80]"
-            onClick={() => setContextMenu(null)}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              setContextMenu(null);
-            }}
-          />
-          <div
-            className="fixed z-[81] min-w-[14rem] rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
-            style={contextMenuStyle}
+      {contextMenu && (
+        <CursorMenu
+          position={contextMenu}
+          onClose={() => setContextMenu(null)}
+          minWidth="14rem"
+        >
+          <DropdownItem
+            className="text-sm"
+            onClick={() => openEditor(contextMenu.target)}
           >
-            <button
-              type="button"
-              className="w-full text-left px-3 py-2 rounded text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-              onClick={() => openEditor(contextMenu.target)}
+            {contextActionShortcut ? 'Edit Hotkey' : 'Add Hotkey'}
+          </DropdownItem>
+          {hasContextOverride && (
+            <DropdownItem
+              className="text-sm"
+              onClick={() => resetHotkeyOverride(contextMenu.target)}
             >
-              {contextActionShortcut ? 'Edit Hotkey' : 'Add Hotkey'}
-            </button>
-            {hasContextOverride && (
-              <button
-                type="button"
-                className="w-full text-left px-3 py-2 rounded text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                onClick={() => resetHotkeyOverride(contextMenu.target)}
-              >
-                Reset Hotkey
-              </button>
-            )}
-          </div>
-        </>
+              Reset Hotkey
+            </DropdownItem>
+          )}
+        </CursorMenu>
       )}
 
       <Modal

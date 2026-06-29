@@ -19,6 +19,16 @@ export interface HudLayoutBuilderProps {
   worldId: number | string;
 }
 
+function formatGridDimension(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return String(value);
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value;
+  }
+  return 'N/A';
+}
+
 export function HudLayoutBuilder({ worldId }: HudLayoutBuilderProps) {
   const store = useHudLayoutStore();
   const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(null);
@@ -51,6 +61,11 @@ export function HudLayoutBuilder({ worldId }: HudLayoutBuilderProps) {
   }, [selectedLayoutId, store]);
 
   const currentRegionLayout = activeLayout?.regions.find((r) => r.region === selectedRegion);
+  const widgetCount = Array.isArray(currentRegionLayout?.composition?.widgets)
+    ? currentRegionLayout.composition.widgets.length
+    : 0;
+  const gridColumns = formatGridDimension(currentRegionLayout?.composition?.layout?.columns);
+  const gridRows = formatGridDimension(currentRegionLayout?.composition?.layout?.rows);
 
   const handleLayoutSelect = (layoutId: string) => {
     setSelectedLayoutId(layoutId);
@@ -149,13 +164,13 @@ export function HudLayoutBuilder({ worldId }: HudLayoutBuilderProps) {
               <div>
                 <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-1">Widgets</p>
                 <p className="text-sm text-neutral-900 dark:text-neutral-100">
-                  {currentRegionLayout.composition.widgets.length}
+                  {widgetCount}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-1">Grid</p>
                 <p className="text-sm text-neutral-900 dark:text-neutral-100">
-                  {currentRegionLayout.composition.layout.columns} × {currentRegionLayout.composition.layout.rows}
+                  {gridColumns} × {gridRows}
                 </p>
               </div>
             </div>

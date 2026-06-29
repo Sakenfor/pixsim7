@@ -23,10 +23,17 @@ import {
 
 import type { MenuAction, MenuActionContext } from '../types';
 
-const AVAILABLE: Array<'tab' | 'panel-content'> = ['tab', 'panel-content'];
+const AVAILABLE: Array<'tab' | 'panel-content' | 'prompt-text'> = ['tab', 'panel-content', 'prompt-text'];
+
+function skinPanelId(ctx: MenuActionContext): string {
+  const dataSkinPanelId = ctx.data?.skinPanelId;
+  return typeof dataSkinPanelId === 'string' && dataSkinPanelId.length > 0
+    ? dataSkinPanelId
+    : ctx.panelId ?? '';
+}
 
 function currentSelection(ctx: MenuActionContext) {
-  return selectPanelSkin(usePanelSkinStore.getState(), ctx.panelId ?? '');
+  return selectPanelSkin(usePanelSkinStore.getState(), skinPanelId(ctx));
 }
 
 function setSkin(panelId: string, patch: Partial<PanelSkinSelection>) {
@@ -40,9 +47,9 @@ export const panelSkinAction: MenuAction = {
   category: 'panel',
   hideWhenEmpty: true,
   availableIn: AVAILABLE,
-  visible: (ctx) => isSkinnablePanel(ctx.panelId),
+  visible: (ctx) => isSkinnablePanel(skinPanelId(ctx)),
   children: (ctx) => {
-    const panelId = ctx.panelId;
+    const panelId = skinPanelId(ctx);
     if (!panelId) return [];
     const sel = currentSelection(ctx);
     const items: MenuAction[] = [];

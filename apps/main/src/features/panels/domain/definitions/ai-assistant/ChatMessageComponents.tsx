@@ -547,6 +547,12 @@ export function MessageBubble({
           : msg.recovered ? 'bg-signal-warning/10 text-th border border-dashed border-signal-warning/50'
           : 'bg-surface-secondary text-th'
       }`}>
+        {msg.role === 'user' && msg.steered && (
+          <div className="flex items-center gap-1 mb-1 text-[10px] opacity-70" title="Sent while the agent was working — injected into the running turn">
+            <Icon name="arrowRight" size={9} />
+            <span>Steered</span>
+          </div>
+        )}
         {msg.role === 'assistant' && msg.thinkingLog && msg.thinkingLog.length > 0 && (
           <ThinkingBlock entries={msg.thinkingLog} userMessage={userMessage} />
         )}

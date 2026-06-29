@@ -844,6 +844,9 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
         params: sourceParams,
         successMessage: 'Regenerating...',
         silent: options?.silent,
+        // Regenerate reuses the source asset's cached provider upload; the
+        // preflight gate still validates it, but should not show upload UI.
+        skipUploadToast: true,
       });
     } catch (error) {
       console.error('Failed to regenerate:', error);

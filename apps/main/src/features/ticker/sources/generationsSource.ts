@@ -22,6 +22,8 @@ import {
 } from '../stores/tickerSettingsStore';
 
 const SOURCE_ID = 'generations';
+const LIVE_GENERATION_TTL_MS = 10 * 60 * 1000;
+const INITIAL_ACTIVE_LIMIT = 5;
 
 interface GenerationsSourceSettings {
   /** Emit a "started" event when a new generation enters an active status. */
@@ -54,6 +56,51 @@ function readSettings(): GenerationsSourceSettings {
     SOURCE_ID,
     DEFAULT_SETTINGS,
   );
+}
+
+function toEpochMs(value: string | null | undefined): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function buildInitialActiveEvent(
+  id: number,
+  status: GenerationStatus,
+  now: number,
+  settings: GenerationsSourceSettings,
+): TickerEvent | null {
+  if (status === 'processing') {
+    if (!settings.showProcessing) return null;
+    return {
+      id: `gen-${id}-processing-initial-${now}`,
+      sourceId: SOURCE_ID,
+      message: `#${id} processing...`,
+      icon: '⚙️',
+      color: 'text-amber-500',
+      refType: 'generation',
+      refId: String(id),
+      timestamp: now,
+      ttl: LIVE_GENERATION_TTL_MS,
+    };
+  }
+
+  if (isActiveStatus(status)) {
+    if (!settings.showStarted) return null;
+    return {
+      id: `gen-${id}-started-initial-${now}`,
+      sourceId: SOURCE_ID,
+      message: `#${id} started`,
+      icon: '🚀',
+      color: 'text-blue-500',
+      refType: 'generation',
+      refId: String(id),
+      timestamp: now,
+      ttl: LIVE_GENERATION_TTL_MS,
+    };
+  }
+
+  return null;
 }
 
 export const generationsSource: TickerSource = {
@@ -94,6 +141,19 @@ export const generationsSource: TickerSource = {
   ],
   defaultSettings: DEFAULT_SETTINGS,
 
+  async initial() {
+    const now = Date.now();
+    const settings = readSettings();
+    const active = Array.from(useGenerationsStore.getState().generations.entries())
+      .filter(([, gen]) => isActiveStatus(gen.status))
+      .sort((a, b) => toEpochMs(b[1].updatedAt) - toEpochMs(a[1].updatedAt))
+      .slice(0, INITIAL_ACTIVE_LIMIT);
+
+    return active
+      .map(([id, gen]) => buildInitialActiveEvent(id, gen.status, now, settings))
+      .filter((event): event is TickerEvent => event !== null);
+  },
+
   subscribe(emit) {
     // Seed the prev-status map with whatever's already in the store at
     // subscribe time. Existing entries are NOT emitted — we only want to
@@ -131,6 +191,7 @@ export const generationsSource: TickerSource = {
             refType: 'generation',
             refId: String(id),
             timestamp: now,
+            ttl: LIVE_GENERATION_TTL_MS,
           };
         } else if (
           prevStatus &&
@@ -147,6 +208,7 @@ export const generationsSource: TickerSource = {
             refType: 'generation',
             refId: String(id),
             timestamp: now,
+            ttl: LIVE_GENERATION_TTL_MS,
           };
         } else if (currentStatus === 'completed') {
           if (!settings.showCompleted) return;
@@ -159,6 +221,7 @@ export const generationsSource: TickerSource = {
             refType: 'generation',
             refId: String(id),
             timestamp: now,
+            ttl: LIVE_GENERATION_TTL_MS,
           };
         } else if (currentStatus === 'failed') {
           if (!settings.showFailed) return;
@@ -175,6 +238,7 @@ export const generationsSource: TickerSource = {
             refType: 'generation',
             refId: String(id),
             timestamp: now,
+            ttl: LIVE_GENERATION_TTL_MS,
           };
         }
 

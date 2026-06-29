@@ -341,6 +341,8 @@ class ContentPackMatrixManifestResponse(BaseModel):
     # Pack-level grouping bucket (Path B taxonomy). Independent of block category.
     # Read from root manifest.yaml via pack_manifest_header.read_pack_manifest_header.
     category: Optional[str] = None
+    # Optional UI icon token declared by the pack manifest.
+    icon: Optional[str] = None
     matrix_presets: List[ContentPackMatrixPresetResponse] = Field(default_factory=list)
 
 

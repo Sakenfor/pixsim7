@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
 
+import { useIsCoarsePointer } from '@/lib/ui/coarsePointer';
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 import type { MediaCardQueueConfig } from './MediaCard';
@@ -60,6 +61,7 @@ export function MediaCardQueueNav({
   };
 }) {
   const { currentIndex, totalCount, items, onPrev, onNext, onSelect } = queue;
+  const isCoarse = useIsCoarsePointer();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [showGrid, setShowGrid] = useState(false);
   const [popupPos, setPopupPos] = useState<PopupPosition | null>(null);
@@ -145,11 +147,13 @@ export function MediaCardQueueNav({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={handleSlotPrev}
                   disabled={!scrubHint.onPrev}
-                  className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-30 disabled:cursor-default transition-colors ${scrubHint.dir === 'prev' ? 'animate-bounce-once' : ''}`}
+                  // Touch: widen the tap area (px-2) while staying tight
+                  // vertically — matches CohortPill's vertical chevron spacing.
+                  className={`${isCoarse ? 'px-2 -my-0.5' : '-my-0.5'} flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-30 disabled:cursor-default transition-colors ${scrubHint.dir === 'prev' ? 'animate-bounce-once' : ''}`}
                   title="Previous asset (pool)"
                   aria-label="Previous asset"
                 >
-                  <Icon name="chevronUp" size={10} />
+                  <Icon name="chevronUp" size={isCoarse ? 16 : 10} />
                 </button>
                 {countEl}
                 <button
@@ -158,11 +162,11 @@ export function MediaCardQueueNav({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={handleSlotNext}
                   disabled={!scrubHint.onNext}
-                  className={`-my-0.5 flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-30 disabled:cursor-default transition-colors ${scrubHint.dir === 'next' ? 'animate-bounce-once' : ''}`}
+                  className={`${isCoarse ? 'px-2 -my-0.5' : '-my-0.5'} flex items-center justify-center text-emerald-400 hover:text-emerald-300 disabled:opacity-30 disabled:cursor-default transition-colors ${scrubHint.dir === 'next' ? 'animate-bounce-once' : ''}`}
                   title="Next asset (pool)"
                   aria-label="Next asset"
                 >
-                  <Icon name="chevronDown" size={10} />
+                  <Icon name="chevronDown" size={isCoarse ? 16 : 10} />
                 </button>
               </span>
             );

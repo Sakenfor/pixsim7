@@ -162,7 +162,7 @@ export function SessionItem({
     color: string;
     title: string;
     pulse: string | null;
-    motion?: { type: 'spin' | 'sway' | 'toss' | 'pulse' | 'nudge'; duration?: string };
+    motion?: { type: 'spin' | 'sway' | 'toss' | 'tumble' | 'pulse' | 'nudge'; duration?: string };
   } | null = isFailedCreate
     ? { ring: 'ring-signal-error', color: 'rgb(var(--error))', title: "Couldn't save this tab to the server — retry or dismiss", pulse: null }
     : hasLimitStop
@@ -202,12 +202,12 @@ export function SessionItem({
           engine={tab.engine}
           icon={tabIcon}
           size={12}
-          statusOutline={iconSkin === 'cube' ? status?.color : undefined}
-          statusMotion={iconSkin === 'cube' ? status?.motion : undefined}
+          statusOutline={iconSkin !== 'flat' ? status?.color : undefined}
+          statusMotion={iconSkin !== 'flat' ? status?.motion : undefined}
         />
-        {/* Flat skin: 2D status halo. Cube skin routes the status to the cube's
-            own edges (above), so the flat ring is suppressed there. */}
-        {status && iconSkin !== 'cube' && (
+        {/* Flat skin: 2D status halo. Shape skins (cube/star) route the status
+            to the shape itself (above), so the flat ring is suppressed there. */}
+        {status && iconSkin === 'flat' && (
           <span
             aria-hidden="true"
             className={`pointer-events-none absolute -inset-0.5 rounded-full ring-2 ${status.ring} shadow-[0_0_5px_var(--tw-ring-color)] ${status.pulse ? 'animate-pulse' : ''}`}

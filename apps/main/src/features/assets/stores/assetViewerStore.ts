@@ -208,6 +208,36 @@ function shouldSuppressFollowLatest(): boolean {
   return videoPlaying || zoomedIn || overlayActive || annotating || capturing || masking || maskSaving;
 }
 
+/**
+ * Auto-follow debounce.
+ *
+ * Under follow-latest, each newly-prepended head normally swaps `currentAsset`
+ * immediately — which remounts the `key={asset.id}` autoPlay <video> and spins
+ * up a fresh GPU/native decoder. During a rapid generation burst that mounts
+ * (and orphans) one decoder per arrival, and Chrome reclaims them lazily, so
+ * native memory balloons far beyond anything the JS heap reports.
+ *
+ * Instead we coalesce: anchor on the asset the user is parked on, reset a short
+ * settle timer on every fresh head, and perform a SINGLE swap to the newest
+ * head once arrivals quiet. A 30-clip burst becomes one decoder mount.
+ *
+ * Module-level + `hmrSingleton` so the in-flight timer survives HMR re-evals
+ * (mirrors the store's own subscription guard below).
+ */
+const FOLLOW_SETTLE_MS = 300;
+const followDebounce = hmrSingleton<{
+  timer: ReturnType<typeof setTimeout> | null;
+  anchorId: string | number | null;
+}>('assetViewerStore:followDebounce', () => ({ timer: null, anchorId: null }));
+
+function cancelFollowDebounce(): void {
+  if (followDebounce.timer != null) {
+    clearTimeout(followDebounce.timer);
+    followDebounce.timer = null;
+  }
+  followDebounce.anchorId = null;
+}
+
 export const useAssetViewerStore = create<AssetViewerState>()(
   persist(
     (set, get) => ({
@@ -418,32 +448,66 @@ export const useAssetViewerStore = create<AssetViewerState>()(
               oldHead !== newHead &&
               newHead !== undefined
             ) {
+              // Commit the fresh list right away and flag the new head as
+              // pending so the recent strip pulses immediately. The actual
+              // viewer swap (which remounts the <video> + spins up a decoder)
+              // is deferred below so a burst doesn't churn one decoder per clip.
+              set({
+                scopes: { ...scopes, [id]: { label, assets } },
+                pendingHeadId: newHead,
+              });
+
               // Auto-follow only applies when the user is parked on the head.
               // If they've deliberately navigated away to inspect an earlier
               // asset (strip click, wheel, prev/next), a freshly-landed video
               // may not have reached readyState>=2 yet — so `shouldSuppress…`
               // can't see it as "playing" and would happily rip the viewer
               // onto the new head. Treat being off-head as an explicit "don't
-              // follow" and just flag the arrival as pending instead.
-              const userOnHead = currentAsset.id === oldHead;
-              // Suppress auto-follow while the user is actively engaged with
-              // media (playback/zoom/overlay editing), and stash the new head
-              // as "pending" so the recent strip can flag it instead of
-              // ripping the viewer off the current asset.
-              if (!userOnHead || shouldSuppressFollowLatest()) {
-                set({
-                  scopes: { ...scopes, [id]: { label, assets } },
-                  pendingHeadId: newHead,
-                });
+              // follow" and just leave it pending. `anchorId` keeps this true
+              // through a coalesced burst, where `currentAsset` stays parked on
+              // the pre-burst head while later arrivals advance `oldHead`.
+              const userParkedOnHead =
+                currentAsset.id === oldHead || currentAsset.id === followDebounce.anchorId;
+              // Also suppress while the user is actively engaged with media
+              // (playback/zoom/overlay editing) — the strip pulse already
+              // signals the arrival without stealing the viewer.
+              if (!userParkedOnHead || shouldSuppressFollowLatest()) {
+                cancelFollowDebounce();
                 return;
               }
-              set({
-                scopes: { ...scopes, [id]: { label, assets } },
-                assetList: assets,
-                currentIndex: 0,
-                currentAsset: assets[0],
-                pendingHeadId: null,
-              });
+
+              // Coalesce: anchor on what the user is parked on, reset the settle
+              // timer on every fresh head, and swap once arrivals quiet.
+              if (followDebounce.anchorId == null) {
+                followDebounce.anchorId = currentAsset.id;
+              }
+              if (followDebounce.timer != null) clearTimeout(followDebounce.timer);
+              followDebounce.timer = setTimeout(() => {
+                const anchorId = followDebounce.anchorId;
+                followDebounce.timer = null;
+                followDebounce.anchorId = null;
+
+                const st = get();
+                const scope = st.activeScopeId ? st.scopes[st.activeScopeId] : undefined;
+                const head = scope?.assets[0];
+                // Bail if the world moved under us during the settle window:
+                // follow-latest turned off, the user navigated away (currentAsset
+                // no longer the anchor), or they started playing/zooming/editing.
+                if (
+                  !head ||
+                  !st.settings.followLatest ||
+                  st.currentAsset?.id !== anchorId ||
+                  shouldSuppressFollowLatest()
+                ) {
+                  return;
+                }
+                set({
+                  assetList: scope.assets,
+                  currentIndex: 0,
+                  currentAsset: head,
+                  pendingHeadId: null,
+                });
+              }, FOLLOW_SETTLE_MS);
               return;
             }
 

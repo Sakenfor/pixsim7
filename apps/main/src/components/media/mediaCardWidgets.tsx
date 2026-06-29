@@ -130,10 +130,9 @@ export interface MediaCardOverlayData {
   // Versioning
   /** Version number within a version family (null = standalone) */
   versionNumber?: number | null;
-  /** Cohort counts for the similarity badge, keyed by lit-facet letters in
-   *  canonical i<p<s order (i, p, s, ip, is, ps, ips). The faceted badge reads
-   *  the entry for the user's chosen facet lens. */
-  cohortCounts?: Record<string, number>;
+  // NOTE: cohort/sibling counts are no longer carried on the overlay data — the
+  // similarity badge reads them from the transient `siblingCountsStore` (lazy
+  // hover fetch). See plan media-card-sibling-badges.
   onFilterByTagShortcut?: (tagSlug: string) => void;
   // Picker (CompactAssetCard merger) — read by createVideoScrubber per render.
   lockedTimestamp?: number;
@@ -681,7 +680,12 @@ export function createStatusWidget(props: MediaCardResolvedProps): OverlayWidget
 }
 
 /**
- * Create duration badge widget (bottom-right)
+ * Create duration badge widget.
+ *
+ * Lives in the top-left stack (under the media-type icon) rather than the
+ * bottom-right corner so it sits exactly where the video scrubber renders its
+ * live scrub timestamp on hover — the duration reads in one consistent spot
+ * instead of appearing to jump corner-to-corner when you hover.
  */
 export function createDurationWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { mediaType, durationSec } = props;
@@ -696,12 +700,16 @@ export function createDurationWidget(props: MediaCardResolvedProps): OverlayWidg
 
   return createBadgeWidget({
     id: 'duration',
-    ...BADGE_SLOT.bottomRight,
+    ...BADGE_SLOT.topLeft,
     variant: 'text',
     labelBinding: createBindingFromValue('label', () => durationText),
     color: 'gray',
     className: '!bg-black/60 !text-white text-[10px]',
     priority: BADGE_PRIORITY.background,
+    // Show total duration at rest; hide on hover so the scrubber's live
+    // timestamp (rendered in the same top-left region) is the only readout —
+    // one duration indicator, one place, no double-up.
+    visibility: { trigger: 'no-hover-container', transition: 'fade' },
   });
 }
 
@@ -1078,7 +1086,7 @@ function FavoriteBadgeContent({ data }: { data: MediaCardOverlayData }) {
   // being pointed at a different asset (viewer nav, input-slot walk).
   useEffect(() => {
     setIsFav(!!data.isFavorite);
-  }, [data.isFavorite]);
+  }, [data.id, data.isFavorite]);
 
   // Listen for the favorite write landing for THIS asset, from any surface.
   useEffect(() => {

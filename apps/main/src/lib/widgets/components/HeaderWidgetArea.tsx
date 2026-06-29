@@ -5,6 +5,7 @@
  * Provides right-click context menu to add/remove widgets.
  */
 
+import { CursorMenu, DropdownItem } from '@pixsim7/shared.ui';
 import { useState, useCallback, useMemo } from 'react';
 
 import { Icon } from '@lib/icons';
@@ -84,47 +85,35 @@ function AddWidgetMenu({
 
   if (nonEmptyCategories.length === 0) {
     return (
-      <div
-        className="fixed z-50 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 text-sm"
-        style={{ left: position.x, top: position.y }}
-      >
+      <CursorMenu position={position} onClose={onClose} minWidth="160px">
         <div className="px-2 py-1 text-neutral-500">No widgets available</div>
-      </div>
+      </CursorMenu>
     );
   }
 
   return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-
-      {/* Menu */}
-      <div
-        className="fixed z-50 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 min-w-[160px]"
-        style={{ left: position.x, top: position.y }}
-      >
-        <div className="px-3 py-1 text-xs font-semibold text-neutral-500 uppercase">
-          Add Widget
-        </div>
-        {nonEmptyCategories.map(([category, widgets]) => (
-          <div key={category}>
-            <div className="px-3 py-1 text-xs text-neutral-400 capitalize border-t border-neutral-100 dark:border-neutral-700 mt-1">
-              {category}
-            </div>
-            {widgets.map((widget) => (
-              <button
-                key={widget.id}
-                className="w-full px-3 py-1.5 text-left text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center gap-2"
-                onClick={() => handleAddWidget(widget)}
-              >
-                {widget.icon && <Icon name={widget.icon} size={16} />}
-                <span>{widget.title}</span>
-              </button>
-            ))}
-          </div>
-        ))}
+    <CursorMenu position={position} onClose={onClose} minWidth="160px">
+      <div className="px-2 py-1 text-xs font-semibold text-neutral-500 uppercase">
+        Add Widget
       </div>
-    </>
+      {nonEmptyCategories.map(([category, widgets]) => (
+        <div key={category}>
+          <div className="px-2 py-1 text-xs text-neutral-400 capitalize border-t border-neutral-100 dark:border-neutral-700 mt-1">
+            {category}
+          </div>
+          {widgets.map((widget) => (
+            <DropdownItem
+              key={widget.id}
+              className="text-sm"
+              icon={widget.icon ? <Icon name={widget.icon} size={16} /> : undefined}
+              onClick={() => handleAddWidget(widget)}
+            >
+              {widget.title}
+            </DropdownItem>
+          ))}
+        </div>
+      ))}
+    </CursorMenu>
   );
 }
 
@@ -201,20 +190,15 @@ export function HeaderWidgetArea({ area, className = '' }: HeaderWidgetAreaProps
 
       {/* Instance context menu */}
       {menuPosition && selectedInstanceId && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={handleCloseMenu} />
-          <div
-            className="fixed z-50 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 min-w-[120px]"
-            style={{ left: menuPosition.x, top: menuPosition.y }}
+        <CursorMenu position={menuPosition} onClose={handleCloseMenu} minWidth="120px">
+          <DropdownItem
+            variant="danger"
+            className="text-sm"
+            onClick={handleRemoveWidget}
           >
-            <button
-              className="w-full px-3 py-1.5 text-left text-sm hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400"
-              onClick={handleRemoveWidget}
-            >
-              Remove Widget
-            </button>
-          </div>
-        </>
+            Remove Widget
+          </DropdownItem>
+        </CursorMenu>
       )}
     </div>
   );

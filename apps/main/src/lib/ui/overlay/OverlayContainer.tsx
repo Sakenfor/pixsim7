@@ -12,30 +12,48 @@ import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react'
 import { useWidgetData, type DataSourceBinding } from '@lib/dataBinding';
 
 import { OverlayWidget } from './OverlayWidget';
-import type { OverlayConfiguration, WidgetContext, WidgetPosition } from './types';
+import type { OverlayConfiguration, WidgetContext, WidgetPosition, OverlayAnchor } from './types';
+import { isOverlayPosition } from './types';
+import {
+  resolveBoxSeparation,
+  type SeparationBox,
+  type Nudge,
+} from './utils/boxSeparation';
 import { handleCollisions } from './utils/collision';
 import { applyDefaults } from './utils/merge';
 import { positionToStyle } from './utils/position';
 import { partitionByStackGroup, type StackGroupInfo } from './utils/stacking';
 import { validateAndLog } from './utils/validation';
 
+const EMPTY_NUDGES: Map<string, Nudge> = new Map();
+
+/** Shallow-equal two nudge maps so the effect can bail without a re-render. */
+function nudgeMapsEqual(a: Map<string, Nudge>, b: Map<string, Nudge>): boolean {
+  if (a === b) return true;
+  if (a.size !== b.size) return false;
+  for (const [key, av] of a) {
+    const bv = b.get(key);
+    if (!bv || bv.dx !== av.dx || bv.dy !== av.dy) return false;
+  }
+  return true;
+}
+
 
 const isDev = import.meta.env?.DEV ?? false;
 
 /**
- * Ceiling on a scrollable stack region's length (~5 compact badges). The actual
- * cap is the smaller of this and the measured distance down to the card's edge
- * (see {@link STACK_EDGE_MARGIN}), so on a short card it folds well above the
- * bottom instead of nearly reaching it.
+ * Initial guess for a scrollable stack region's length (~5 compact badges),
+ * used only before {@link measure} runs. After mount the cap is the measured
+ * room down to the card's edge (see {@link STACK_EDGE_MARGIN}) — no artificial
+ * ceiling — so the stack grows to fit the card and only scrolls when it can't.
  */
 const STACK_MAX_EXTENT = 132;
 /** Never shrink the scroll region below this — keep it usable on tiny cards. */
 const STACK_MIN_EXTENT = 44;
 /** Gap kept between the scroll region's far edge and the card edge. */
 const STACK_EDGE_MARGIN = 8;
-/** Cap the region to this fraction of the card so it stays proportionally tight
- *  on small cards (where the room-to-edge alone is still too generous). */
-const STACK_MAX_FRACTION = 0.42;
+/** Ignore transient 0fr/transitioning stack children when measuring a row. */
+const STACK_MIN_ITEM_EXTENT = 16;
 /**
  * Slack (px) added on the region's cross axis so a badge's hover-pop (scale up
  * to ~1.18×, see tailwind `hover-pop`) has room to grow instead of being
@@ -44,6 +62,30 @@ const STACK_MAX_FRACTION = 0.42;
  * doesn't actually keep the sides un-clipped — the padding does, and a matching
  * negative margin keeps the region's visual position unchanged. */
 const STACK_POP_SLACK = 5;
+
+function getStackItemExtent(el: HTMLDivElement, isColumn: boolean): number | null {
+  for (const child of Array.from(el.children)) {
+    const item = child as HTMLElement;
+    // Use the layout box (offset*), NOT getBoundingClientRect: the latter
+    // folds in CSS transforms, so a glyph mid hover-pop (scale ~1.18×) inflates
+    // the measured extent. A re-measure firing on scroll while a glyph is
+    // hovered would then shrink the quantized cap and push the tail items past
+    // the last reachable snap point — "not all active sets appear as we scroll".
+    const size = isColumn ? item.offsetHeight : item.offsetWidth;
+    if (size < STACK_MIN_ITEM_EXTENT) continue;
+    const style = window.getComputedStyle(item);
+    const margin = parseFloat(isColumn ? style.marginBottom : style.marginRight) || 0;
+    return size + margin;
+  }
+  return null;
+}
+
+function quantizeStackExtent(cap: number, el: HTMLDivElement, isColumn: boolean): number {
+  const itemExtent = getStackItemExtent(el, isColumn);
+  if (!itemExtent) return Math.max(STACK_MIN_EXTENT, cap);
+  const wholeItems = Math.max(1, Math.floor(cap / itemExtent));
+  return wholeItems * itemExtent;
+}
 
 /**
  * A single auto-stacked badge group (e.g. the top-right column). Capped via
@@ -59,10 +101,16 @@ function StackGroupContainer({
   group,
   baseStyle,
   renderWidget,
+  onRootRef,
+  nudge,
 }: {
   group: StackGroupInfo;
   baseStyle: React.CSSProperties;
   renderWidget: (widget: StackGroupInfo['widgets'][number]) => React.ReactNode;
+  /** Reports the group's positioned root element for box-separation measuring. */
+  onRootRef?: (el: HTMLDivElement | null) => void;
+  /** Box-separation translate applied to the whole group, composed onto baseStyle. */
+  nudge?: { dx: number; dy: number };
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [overflowing, setOverflowing] = useState(false);
@@ -74,11 +122,21 @@ function StackGroupContainer({
   const lastPos = useRef(0);
   const isColumn = group.flexDirection === 'column';
 
-  // Pinned badges (status/favorite/tag …) stay put at the anchor; only widgets
-  // opting into `scrollable` (e.g. set target-toggles) fold into the scroll
-  // region, so the pinned ones are never pushed out of view.
-  const pinned = group.widgets.filter((w) => !w.scrollable);
-  const scrollWidgets = group.widgets.filter((w) => w.scrollable);
+  // How the group splits into always-pinned vs scrollable widgets:
+  // - With an overflow-scroll policy (e.g. the top corner badge columns): keep
+  //   the top `pinnedLeaderCount` highest-priority widgets pinned and fold the
+  //   rest into the scroll region, so the whole column scrolls when it can't fit
+  //   a short card instead of being clipped. `group.widgets` is already sorted
+  //   priority-descending, so a slice is the leader split.
+  // - Without a policy (legacy): only widgets opting into `scrollable` (e.g. the
+  //   set target-toggle glyphs) scroll; everything else stays pinned.
+  const policy = group.scrollPolicy;
+  const pinned = policy?.overflowScroll
+    ? group.widgets.slice(0, policy.pinnedLeaderCount ?? 0)
+    : group.widgets.filter((w) => !w.scrollable);
+  const scrollWidgets = policy?.overflowScroll
+    ? group.widgets.slice(policy.pinnedLeaderCount ?? 0)
+    : group.widgets.filter((w) => w.scrollable);
   const scrollCount = scrollWidgets.length;
 
   const measure = useCallback(() => {
@@ -95,12 +153,15 @@ function StackGroupContainer({
       const room = isColumn
         ? cardRect.bottom - elRect.top - STACK_EDGE_MARGIN
         : cardRect.right - elRect.left - STACK_EDGE_MARGIN;
-      // Bound by the ceiling, the room down to the card edge, AND a fraction of
-      // the card — the last keeps it proportionally tight on small cards where
-      // room-to-edge alone still fills most of the card.
-      const cardExtent = isColumn ? cardRect.height : cardRect.width;
-      const cap = Math.min(STACK_MAX_EXTENT, room, cardExtent * STACK_MAX_FRACTION);
-      setMaxExtent(Math.max(STACK_MIN_EXTENT, cap));
+      // Bound only by the real room down to the card edge. The active-set cap
+      // (MAX_ACTIVE_TARGETS) is the user's intent for "how many sets" — the badge
+      // column shouldn't impose a tighter, separate ceiling that hides some of
+      // them. So the expanded stack grows to fill the card and only scrolls when
+      // it genuinely can't fit, instead of folding at an arbitrary 132px / 0.34×
+      // short-side fraction (which showed ~3 glyphs and scrolled the rest out of
+      // sight). Room-to-edge already keeps it from spilling past the card.
+      const cap = room;
+      setMaxExtent(quantizeStackExtent(cap, el, isColumn));
     }
 
     const size = isColumn ? el.clientHeight : el.clientWidth;
@@ -190,11 +251,27 @@ function StackGroupContainer({
     alignItems: group.alignItems,
   };
 
+  const nudgeTransform =
+    nudge && (nudge.dx !== 0 || nudge.dy !== 0)
+      ? `translate(${nudge.dx}px, ${nudge.dy}px)`
+      : undefined;
+  const composedTransform = [baseStyle.transform, nudgeTransform]
+    .filter(Boolean)
+    .join(' ') || undefined;
+
   return (
     <div
+      ref={onRootRef}
       data-overlay-stack-group={group.stackGroup}
       data-overlay-stack-anchor={group.anchor}
-      style={{ ...baseStyle, ...flexStyle, zIndex: group.maxPriority, pointerEvents: 'none' }}
+      style={{
+        ...baseStyle,
+        ...flexStyle,
+        transform: composedTransform,
+        transition: nudgeTransform ? 'transform 120ms ease-out' : baseStyle.transition,
+        zIndex: group.maxPriority,
+        pointerEvents: 'none',
+      }}
     >
       {pinned.map(renderWidget)}
       {scrollCount > 0 && (
@@ -239,6 +316,12 @@ function StackGroupContainer({
                   }),
               // Don't chain the wheel to the gallery when the stack hits its edge.
               overscrollBehavior: 'contain',
+              // No scroll-snap: snapping fires a delayed re-snap animation after
+              // the native wheel scroll — the "instant scroll, then a second slide
+              // ~0.2s later in the same direction" double-motion. `quantizeStackExtent`
+              // already sizes the viewport to a whole number of glyphs, so the
+              // region stays item-tidy without snapping. (mandatory also trapped the
+              // tail glyph out of reach; both issues go away by dropping snap.)
               // Capture pointer events (for wheel scroll) only while overflowing;
               // otherwise keep the gaps click-through to the card. A directional
               // resize cursor hints the region is wheel-scrollable.
@@ -328,6 +411,25 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRefs = useRef<Map<string, HTMLElement>>(new Map());
+  // Positioned root element per stack group, keyed by group.key — measured by
+  // the box-separation pass so a whole stack (e.g. the top-right set column)
+  // can be nudged as one unit.
+  const stackGroupRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const stackGroupRefCallbacks = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
+  const getStackGroupRefCallback = useCallback((key: string) => {
+    let cb = stackGroupRefCallbacks.current.get(key);
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => {
+        if (el) stackGroupRefs.current.set(key, el);
+        else stackGroupRefs.current.delete(key);
+      };
+      stackGroupRefCallbacks.current.set(key, cb);
+    }
+    return cb;
+  }, []);
+  // Per-unit translate from the box-separation pass (unit id = group key or
+  // ungrouped widget id).
+  const [unitNudges, setUnitNudges] = useState<Map<string, Nudge>>(EMPTY_NUDGES);
   // Stable per-widget ref callbacks — cached so React.memo children don't re-render
   const widgetRefCallbacks = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
   const getWidgetRefCallback = useCallback((widgetId: string) => {
@@ -432,6 +534,127 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
     };
   }, [ungrouped, collisionDetectionEnabled]);
 
+  // ── Box-separation pass ────────────────────────────────────────────────
+  // Treats each rendered overlay unit (stack-group container + each ungrouped
+  // widget) as a measured box and nudges lower-priority units off higher ones.
+  // Gated on hover because the overlaps it resolves (bottom button group,
+  // hover-revealed badges, expanded set column) only exist while hovered — this
+  // keeps resting galleries free of the measurement cost.
+  const boxSeparationEnabled = !!config.boxSeparation;
+  const hoverActive = isHovered || forceHovered;
+
+  // Mirror the applied nudges so the next measure can recover each unit's
+  // *natural* rect (measured − applied) instead of feeding moved boxes back in.
+  const appliedNudgesRef = useRef<Map<string, Nudge>>(unitNudges);
+  appliedNudgesRef.current = unitNudges;
+
+  useEffect(() => {
+    // Reset nudges whenever the pass is inactive (disabled or hover-out) so
+    // units glide back to their natural spots.
+    if (!boxSeparationEnabled || !hoverActive) {
+      setUnitNudges((prev) => (prev.size === 0 ? prev : EMPTY_NUDGES));
+      return;
+    }
+    const containerEl = containerRef.current;
+    if (!containerEl) return;
+
+    let debounceId: ReturnType<typeof setTimeout> | null = null;
+
+    const measure = () => {
+      const containerRect = containerEl.getBoundingClientRect();
+      if (containerRect.width === 0 && containerRect.height === 0) return;
+
+      const applied = appliedNudgesRef.current;
+      const boxes: SeparationBox[] = [];
+
+      const pushBox = (
+        id: string,
+        el: HTMLElement | undefined,
+        priority: number,
+        anchor: OverlayAnchor,
+      ) => {
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        // Skip hidden / collapsed units — they shouldn't reserve space.
+        if (r.width <= 0 || r.height <= 0) return;
+        const n = applied.get(id);
+        // Recover the natural (un-nudged) rect, relative to the container.
+        boxes.push({
+          id,
+          priority,
+          anchor,
+          rect: {
+            x: r.left - containerRect.left - (n?.dx ?? 0),
+            y: r.top - containerRect.top - (n?.dy ?? 0),
+            width: r.width,
+            height: r.height,
+          },
+        });
+      };
+
+      for (const group of stackGroups) {
+        pushBox(group.key, stackGroupRefs.current.get(group.key), group.maxPriority, group.anchor);
+      }
+      for (const widget of ungrouped) {
+        // Skip interaction layers (e.g. the full-card video scrubber) — they
+        // cover the whole card, so treating them as boxes would collide with
+        // every badge and their churning content would re-fire this pass while
+        // you hold still over the card. They opt out via `ignoreCollisions`,
+        // the same flag the legacy collision pass honors.
+        if (widget.ignoreCollisions) continue;
+        const anchor = isOverlayPosition(widget.position)
+          ? widget.position.anchor
+          : 'top-left';
+        pushBox(widget.id, widgetRefs.current.get(widget.id), widget.priority ?? 0, anchor);
+      }
+
+      const next = resolveBoxSeparation(boxes, {
+        x: 0,
+        y: 0,
+        width: containerRect.width,
+        height: containerRect.height,
+      });
+
+      setUnitNudges((prev) => (nudgeMapsEqual(prev, next) ? prev : next));
+    };
+
+    const debouncedMeasure = () => {
+      if (debounceId !== null) clearTimeout(debounceId);
+      debounceId = setTimeout(measure, 60);
+    };
+
+    // Measure right away, then again after the ~150ms reveal/expand transitions
+    // settle (the button group fades in and the set column expands on hover, so
+    // an immediate read would catch mid-transition sizes).
+    const timers = [
+      setTimeout(measure, 30),
+      setTimeout(measure, 220),
+    ];
+
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(debouncedMeasure);
+      observer.observe(containerEl);
+      // Observe each measured unit too: hover-reveal grows a widget from ~0 to
+      // full size and an expanding set column changes the group's height without
+      // resizing the container, so container-only observation would miss both.
+      // Excluded units (the video scrubber) are skipped so their churning
+      // content doesn't keep re-firing the pass while you hold still.
+      for (const el of stackGroupRefs.current.values()) observer.observe(el);
+      for (const widget of ungrouped) {
+        if (widget.ignoreCollisions) continue;
+        const el = widgetRefs.current.get(widget.id);
+        if (el) observer.observe(el);
+      }
+    }
+
+    return () => {
+      for (const t of timers) clearTimeout(t);
+      if (debounceId !== null) clearTimeout(debounceId);
+      observer?.disconnect();
+    };
+  }, [boxSeparationEnabled, hoverActive, stackGroups, ungrouped]);
+
   // Create widget context
   const context: WidgetContext = useMemo(
     () => ({
@@ -513,6 +736,7 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
             spacing={config.spacing ?? 'normal'}
             onWidgetClick={handleWidgetClick}
             onRef={getWidgetRefCallback(widget.id)}
+            nudge={unitNudges.get(widget.id)}
           />
         );
       })}
@@ -532,6 +756,8 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
             key={group.key}
             group={group}
             baseStyle={containerStyle}
+            onRootRef={getStackGroupRefCallback(group.key)}
+            nudge={unitNudges.get(group.key)}
             renderWidget={(widget) => (
               <OverlayWidget
                 key={widget.id}

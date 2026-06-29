@@ -162,8 +162,6 @@ export function GroupDragHandle({
     try {
       const sourceGroupRestoreHint = deriveFloatingGroupRestoreHint(api, sourceGroupId);
       floatPanelHandler(candidatePanelId, panel, {
-        width: 600,
-        height: 400,
         context: {
           ...buildFloatingOriginMetaRecord({
             sourceDockviewId: dockviewId ?? null,

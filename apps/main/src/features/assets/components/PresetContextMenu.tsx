@@ -1,5 +1,4 @@
-import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
-import { createPortal } from 'react-dom';
+import { CursorMenu, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
 
 import { Icon } from '@lib/icons';
 
@@ -24,52 +23,37 @@ export function PresetContextMenu({
   onUpdate,
   onDelete,
 }: PresetContextMenuProps) {
-  return createPortal(
-    <div
-      className="z-popover"
-      style={{
-        position: 'fixed',
-        left: menu.x,
-        top: menu.y,
-      }}
-    >
-      <Dropdown
-        isOpen
-        onClose={onClose}
-        positionMode="static"
-        minWidth="140px"
+  return (
+    <CursorMenu position={menu} onClose={onClose} minWidth="140px">
+      <DropdownItem
+        icon={<Icon name="edit" size={12} />}
+        onClick={() => {
+          onRename(menu.presetId);
+          onClose();
+        }}
       >
-        <DropdownItem
-          icon={<Icon name="edit" size={12} />}
-          onClick={() => {
-            onRename(menu.presetId);
-            onClose();
-          }}
-        >
-          Rename
-        </DropdownItem>
-        <DropdownItem
-          icon={<Icon name="save" size={12} />}
-          onClick={() => {
-            onUpdate(menu.presetId);
-            onClose();
-          }}
-        >
-          Update with current filters
-        </DropdownItem>
-        <DropdownDivider />
-        <DropdownItem
-          variant="danger"
-          icon={<Icon name="trash" size={12} />}
-          onClick={() => {
-            onDelete(menu.presetId);
-            onClose();
-          }}
-        >
-          Delete
-        </DropdownItem>
-      </Dropdown>
-    </div>,
-    document.body,
+        Rename
+      </DropdownItem>
+      <DropdownItem
+        icon={<Icon name="save" size={12} />}
+        onClick={() => {
+          onUpdate(menu.presetId);
+          onClose();
+        }}
+      >
+        Update with current filters
+      </DropdownItem>
+      <DropdownDivider />
+      <DropdownItem
+        variant="danger"
+        icon={<Icon name="trash" size={12} />}
+        onClick={() => {
+          onDelete(menu.presetId);
+          onClose();
+        }}
+      >
+        Delete
+      </DropdownItem>
+    </CursorMenu>
   );
 }

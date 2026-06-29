@@ -15,7 +15,7 @@ import json
 import os
 import shutil
 import tempfile
-from typing import Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from pixsim7.client.session import AgentCmdSession, MCPConfigRegenerator, SessionState
 from pixsim7.client.log import get_logger
@@ -754,6 +754,7 @@ class AgentPool:
         images: list[dict] | None = None,
         on_progress: "Callable[[str, str], None] | None" = None,
         tool_gate: "Callable[[str, dict], Awaitable[bool]] | None" = None,
+        on_session_bound: "Callable[[Any], None] | None" = None,
         bridge_session_id: str | None = None,
         engine: str | None = None,
         model: str | None = None,
@@ -830,6 +831,16 @@ class AgentPool:
         # actually dispatches with — not Claude's internal resume UUID.
         if bridge_session_id:
             session.bridge_session_id = bridge_session_id
+
+        # Hand the resolved session to the caller (bridge) so an out-of-band
+        # interrupt can reach the live CLI process *during* the turn — bound
+        # here (before the turn runs), so a stop pressed on turn 1 of a brand
+        # new conversation (no bridge_session_id yet) still has a handle.
+        if on_session_bound:
+            try:
+                on_session_bound(session)
+            except Exception:
+                get_logger().debug("on_session_bound_failed", exc_info=True)
 
         # Mark this session as having an actively-awaited turn so the stuck-busy
         # watchdog leaves it alone (see `_inflight_turns` + `_turn_inflight`).

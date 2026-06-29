@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   isVideoPlayingAsset: vi.fn<(assetId: string | number) => boolean>(),
@@ -48,6 +48,17 @@ vi.mock('../../models/asset', () => ({
 }));
 
 import { useAssetViewerStore, type ViewerAsset } from '../assetViewerStore';
+
+// Auto-follow swaps are debounced (decoder-churn coalescing), so the store now
+// schedules timers. Fake them file-wide so deferred swaps are deterministic and
+// no in-flight settle timer leaks into a later test.
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
 
 function makeViewerVideo(
   overrides: Partial<ViewerAsset> = {},
@@ -295,9 +306,59 @@ describe('assetViewerStore follow-latest respects explicit navigation', () => {
     const landed = makeViewerVideo({ id: 3 });
     useAssetViewerStore.getState().registerScope('recent', 'recent', [landed, a, b]);
 
+    // The swap is debounced — until the settle window elapses the viewer stays
+    // parked and only the strip pulse (pendingHeadId) advances.
+    expect(useAssetViewerStore.getState().currentAsset?.id).toBe(a.id);
+    expect(useAssetViewerStore.getState().pendingHeadId).toBe(landed.id);
+
+    vi.runOnlyPendingTimers();
+
     const state = useAssetViewerStore.getState();
     expect(state.currentAsset?.id).toBe(landed.id);
     expect(state.currentIndex).toBe(0);
     expect(state.pendingHeadId).toBeNull();
+  });
+
+  it('coalesces a burst of arrivals into a single swap to the newest head', () => {
+    const a = makeViewerVideo({ id: 1 });
+    useAssetViewerStore.getState().openViewer(a, [a], 'recent');
+
+    const b = makeViewerVideo({ id: 2 });
+    const c = makeViewerVideo({ id: 3 });
+    const d = makeViewerVideo({ id: 4 });
+    // Three heads land back-to-back with no settle between them.
+    useAssetViewerStore.getState().registerScope('recent', 'recent', [b, a]);
+    useAssetViewerStore.getState().registerScope('recent', 'recent', [c, b, a]);
+    useAssetViewerStore.getState().registerScope('recent', 'recent', [d, c, b, a]);
+
+    // Still parked on the pre-burst head; only the strip pulse advanced.
+    expect(useAssetViewerStore.getState().currentAsset?.id).toBe(a.id);
+    expect(useAssetViewerStore.getState().pendingHeadId).toBe(d.id);
+
+    vi.runOnlyPendingTimers();
+
+    // One swap, straight to the newest head — not one per arrival.
+    const state = useAssetViewerStore.getState();
+    expect(state.currentAsset?.id).toBe(d.id);
+    expect(state.currentIndex).toBe(0);
+    expect(state.pendingHeadId).toBeNull();
+  });
+
+  it('abandons a debounced follow when the user navigates away mid-burst', () => {
+    const a = makeViewerVideo({ id: 1 });
+    const b = makeViewerVideo({ id: 2 });
+    useAssetViewerStore.getState().openViewer(a, [a, b], 'recent');
+
+    const c = makeViewerVideo({ id: 3 });
+    useAssetViewerStore.getState().registerScope('recent', 'recent', [c, a, b]);
+
+    // User deliberately jumps to an earlier asset before the settle fires.
+    useAssetViewerStore.getState().navigateToAssetId(b.id);
+    expect(useAssetViewerStore.getState().currentAsset?.id).toBe(b.id);
+
+    vi.runOnlyPendingTimers();
+
+    // The pending settle must not rip the viewer back onto the head.
+    expect(useAssetViewerStore.getState().currentAsset?.id).toBe(b.id);
   });
 });

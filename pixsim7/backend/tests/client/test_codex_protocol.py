@@ -57,6 +57,27 @@ class TestCodexReasoningEffortNormalization:
         assert "model_reasoning_effort=high" in cmd
 
 
+class TestCodexExtractTurnId:
+    """extract_turn_id pulls the live turn id from turn/start acks and turn/*
+    notifications so the session can target turn/steer + turn/interrupt."""
+
+    def test_from_turn_start_ack(self):
+        p = CodexAppServerProtocol()
+        ack = {"id": 30, "result": {"turn": {"id": "turn_456", "status": "inProgress"}}}
+        assert p.extract_turn_id(ack) == "turn_456"
+
+    def test_from_turn_started_notification(self):
+        p = CodexAppServerProtocol()
+        note = {"method": "turn/started", "params": {"turn": {"id": "turn_789"}}}
+        assert p.extract_turn_id(note) == "turn_789"
+
+    def test_returns_none_for_unrelated_events(self):
+        p = CodexAppServerProtocol()
+        assert p.extract_turn_id({"method": "item/started", "params": {"item": {}}}) is None
+        assert p.extract_turn_id({"method": "item/agentMessage/delta", "params": {"delta": "x"}}) is None
+        assert p.extract_turn_id("not-a-dict") is None
+
+
 class TestCodexErrorParsing:
     def test_parses_method_error_notification(self):
         p = CodexAppServerProtocol()

@@ -28,10 +28,55 @@
   30%           { transform: scale(1.07); }
   42%           { transform: scale(1); }
 }
+/*
+ * "Tumble": a tumbleweed that moves in discrete HOPS — each hop arcs up while
+ * rotating ~120deg around a diagonal axis, lands, then a small pause before the
+ * next. Three hops per loop (3 × 120 = 360), so it ends back on the front face
+ * and translateY returns to 0 → seamless, PROVIDED the animation-duration stays
+ * constant (a changing duration restarts the animation and visibly cuts, so
+ * working-tumble uses a fixed duration, NOT the activity cadence).
+ */
+@keyframes cube-tumble {
+  /* hop 1 (up → rotate → land), then pause */
+  0%   { transform: translateY(0)     rotateX(var(--cube-tilt-x, -16deg)) rotate3d(1, 0.7, 0.2, 0deg); }
+  10%  { transform: translateY(-38%)  rotateX(var(--cube-tilt-x, -16deg)) rotate3d(1, 0.7, 0.2, 60deg); }
+  20%  { transform: translateY(0)     rotateX(var(--cube-tilt-x, -16deg)) rotate3d(1, 0.7, 0.2, 120deg); }
+  33%  { transform: translateY(0)     rotateX(var(--cube-tilt-x, -16deg)) rotate3d(1, 0.7, 0.2, 120deg); }
+  /* hop 2 */
+  43%  { transform: translateY(-38%)  rotateX(var(--cube-tilt-x, -16deg)) rotate3d(1, 0.7, 0.2, 180deg); }
+  53%  { transform: translateY(0)     rotateX(var(--cube-tilt-x, -16deg)) rotate3d(1, 0.7, 0.2, 240deg); }
+  66%  { transform: translateY(0)     rotateX(var(--cube-tilt-x, -16deg)) rotate3d(1, 0.7, 0.2, 240deg); }
+  /* hop 3 (lands back on the front face) */
+  76%  { transform: translateY(-38%)  rotateX(var(--cube-tilt-x, -16deg)) rotate3d(1, 0.7, 0.2, 300deg); }
+  86%  { transform: translateY(0)     rotateX(var(--cube-tilt-x, -16deg)) rotate3d(1, 0.7, 0.2, 360deg); }
+  100% { transform: translateY(0)     rotateX(var(--cube-tilt-x, -16deg)) rotate3d(1, 0.7, 0.2, 360deg); }
+}
 .animate-cube-spin       { animation: cube-spin 2.2s linear infinite; }
 .animate-cube-sway       { animation: cube-sway 1.6s ease-in-out infinite; }
 .animate-cube-toss       { animation: cube-toss 2.4s cubic-bezier(0.34, 1.56, 0.64, 1) infinite; }
+.animate-cube-tumble     { animation: cube-tumble 2.4s linear infinite; }
 .animate-cube-nudge-loop { animation: cube-nudge-loop 3.5s ease-in-out infinite; }
+
+/*
+ * Medallion motion family — in-plane (Z) rotation for flat shapes (e.g. the
+ * star). Keeps the shape face-on the whole time (a coin-flip / spin, never
+ * edge-on), unlike the cube family's Y-axis turn.
+ */
+@keyframes medallion-spin {
+  0%   { transform: rotateZ(0deg); }
+  100% { transform: rotateZ(360deg); }
+}
+@keyframes medallion-sway {
+  0%, 100% { transform: rotateZ(calc(-1 * var(--medallion-sway-amp, 16deg))); }
+  50%      { transform: rotateZ(var(--medallion-sway-amp, 16deg)); }
+}
+@keyframes medallion-toss {
+  0%        { transform: rotateZ(0deg); }
+  18%, 100% { transform: rotateZ(360deg); }
+}
+.animate-medallion-spin { animation: medallion-spin 2.6s linear infinite; }
+.animate-medallion-sway { animation: medallion-sway 1.8s ease-in-out infinite; }
+.animate-medallion-toss { animation: medallion-toss 2.4s cubic-bezier(0.34, 1.56, 0.64, 1) infinite; }
 
 /*
  * JetBrains Mono - self-hosted, used by the terminal panel skin via

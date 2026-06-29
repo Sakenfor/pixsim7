@@ -25,6 +25,8 @@ import { SERVICE_ICON_MAP, Server, Terminal, Database, Info, Wrench, Cpu, Bug, A
 import { useServicesStore } from '../stores/services'
 import { checkWindowAvailable, applyHookConfig } from '../api/client'
 import type { ServiceState } from '../api/client'
+import { getWorkerOverview, type WorkerOverview, type WorkerTask } from '../api/workers'
+import { usePollWhenVisible } from '../hooks/usePollWhenVisible'
 
 // ── Tab icons (rendered at 14px in the flexlayout tab bar) ──
 
@@ -64,6 +66,14 @@ const CATEGORY_LABELS: Record<string, string> = {
   models: 'Models',
   launcher: 'Launcher',
 }
+
+const ARQ_WORKER_SERVICE_KEYS = new Set([
+  'worker',
+  'generation-retry',
+  'simulation-worker',
+  'automation-worker',
+  'media-maintenance-worker',
+])
 
 function groupByCategory(services: ServiceState[]): { category: string; label: string; services: ServiceState[] }[] {
   const groups = new Map<string, ServiceState[]>()
@@ -168,22 +178,13 @@ export function ServiceInfoPanel() {
     return <div className="h-full flex items-center justify-center text-sm text-gray-500">Select a service</div>
   }
 
+  const isArqWorker = ARQ_WORKER_SERVICE_KEYS.has(service.key)
+
   return (
     <div className="p-3 space-y-3 overflow-y-auto h-full text-xs">
-      <CollapsiblePanel
-        title={service.title}
-        persistKey={`launcher:service:${service.key}:overview`}
-        contentClassName="space-y-1.5"
-      >
-        <SvcInfoRow label="Key" value={service.key} />
-        <SvcInfoRow label="Status" value={service.status} />
-        <SvcInfoRow label="Health" value={service.health} />
-        {service.pid && <SvcInfoRow label="PID" value={String(service.pid)} />}
-        {service.url && <SvcInfoRow label="URL" value={service.url} mono />}
-        {service.category && <SvcInfoRow label="Category" value={service.category} />}
-        {service.dev_peer_of && <SvcInfoRow label="Dev peer of" value={service.dev_peer_of} />}
-        {service.supports_recreate && <RecreateContainerButton serviceKey={service.key} />}
-      </CollapsiblePanel>
+      <ServiceOverviewPanel service={service} />
+
+      {isArqWorker && <WorkerServiceDetailPanel serviceKey={service.key} />}
 
       {selectedSection !== 'Sessions' && (
         <ServiceSettingsPanel
@@ -213,6 +214,160 @@ export function ServiceInfoPanel() {
       )}
     </div>
   )
+}
+
+function ServiceOverviewPanel({ service }: { service: ServiceState }) {
+  return (
+    <CollapsiblePanel
+      title={service.title}
+      persistKey={`launcher:service:${service.key}:overview`}
+      contentClassName="space-y-1.5"
+    >
+      {service.description && <SvcInfoRow label="Summary" value={service.description} />}
+      <SvcInfoRow label="Key" value={service.key} />
+      <SvcInfoRow label="Status" value={service.status} />
+      <SvcInfoRow label="Health" value={service.health} />
+      {service.pid && <SvcInfoRow label="PID" value={String(service.pid)} />}
+      {service.url && <SvcInfoRow label="URL" value={service.url} mono />}
+      {service.category && <SvcInfoRow label="Category" value={service.category} />}
+      {service.dev_peer_of && <SvcInfoRow label="Dev peer of" value={service.dev_peer_of} />}
+      {service.supports_recreate && <RecreateContainerButton serviceKey={service.key} />}
+    </CollapsiblePanel>
+  )
+}
+
+function WorkerServiceDetailPanel({ serviceKey }: { serviceKey: string }) {
+  const [data, setData] = useState<WorkerOverview | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  const refresh = useCallback(async () => {
+    const overview = await getWorkerOverview()
+    setData(overview)
+    setLoaded(true)
+  }, [])
+
+  useEffect(() => { refresh() }, [refresh])
+  usePollWhenVisible(refresh, 3000, true)
+
+  const family = data?.families.find((item) => item.service_key === serviceKey)
+
+  if (!loaded) {
+    return (
+      <CollapsiblePanel title="Worker" persistKey={`launcher:service:${serviceKey}:worker`} contentClassName="space-y-2">
+        <div className="text-[11px] text-gray-500 px-1 py-2">Loading worker details...</div>
+      </CollapsiblePanel>
+    )
+  }
+  if (!data) {
+    return (
+      <CollapsiblePanel title="Worker" persistKey={`launcher:service:${serviceKey}:worker`} contentClassName="space-y-2">
+        <div className="text-[11px] text-gray-500 px-1 py-2">Could not reach the launcher workers endpoint.</div>
+      </CollapsiblePanel>
+    )
+  }
+  if (!family) {
+    return (
+      <CollapsiblePanel title="Worker" persistKey={`launcher:service:${serviceKey}:worker`} contentClassName="space-y-2">
+        <div className="text-[11px] text-gray-500 px-1 py-2">No worker metadata found for this service.</div>
+      </CollapsiblePanel>
+    )
+  }
+
+  const functions = family.functions ?? []
+  const cronFunctions = family.cron_functions ?? []
+  const queuedTasks = uniqueWorkerTasks(functions.filter((task) => !task.runtime))
+  const cronTasks = uniqueWorkerTasks(cronFunctions.filter((task) => !task.runtime))
+  const runtimeTasks = uniqueWorkerTasks([...functions, ...cronFunctions].filter((task) => task.runtime))
+
+  return (
+    <CollapsiblePanel
+      title="Worker"
+      persistKey={`launcher:service:${serviceKey}:worker`}
+      contentClassName="space-y-3"
+    >
+      {!data.redis_ok && (
+        <div className="rounded border border-amber-700/40 bg-amber-900/15 px-2 py-1.5 text-[10px] text-amber-300">
+          Redis is unreachable at <span className="font-mono">{data.redis_url}</span>
+          {data.error ? <> ({data.error})</> : null}
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        {family.description && <SvcInfoRow label="Summary" value={family.description} />}
+        {family.settings_class && <SvcInfoRow label="Settings" value={family.settings_class} mono />}
+        <SvcInfoRow label="Role" value={family.role} />
+        <SvcInfoRow label="Queue" value={family.queue} mono />
+        <SvcInfoRow label="Heartbeat" value={family.alive ? `alive (${formatWorkerAge(family.heartbeat_age_s)} ago)` : 'offline'} />
+        {family.uptime_s != null && <SvcInfoRow label="Uptime" value={formatWorkerAge(family.uptime_s)} />}
+        {family.hostname && <SvcInfoRow label="Host" value={family.hostname} />}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <WorkerMetric label="Active" value={formatWorkerNumber(family.active)} />
+        <WorkerMetric label="Pending" value={formatWorkerNumber(family.pending)} />
+        <WorkerMetric label="Done" value={formatWorkerNumber(family.processed_jobs)} />
+        <WorkerMetric label="Failed" value={formatWorkerNumber(family.failed_jobs)} />
+        <WorkerMetric label="Success" value={family.success_rate == null ? '-' : `${Math.round(family.success_rate * 100)}%`} />
+        <WorkerMetric label="CPU" value={family.cpu_percent == null ? '-' : `${Math.round(family.cpu_percent)}%`} />
+        <WorkerMetric label="Memory" value={family.memory_mb == null ? '-' : `${Math.round(family.memory_mb)} MB`} />
+      </div>
+
+      <div className="space-y-3 border-t border-border pt-2">
+        <WorkerTaskGroup title="Queued work" tasks={queuedTasks} emptyText="No queued handlers declared." />
+        <WorkerTaskGroup title="Periodic work" tasks={cronTasks} emptyText="No periodic jobs declared." />
+        <WorkerTaskGroup title="Runtime support" tasks={runtimeTasks} emptyText="No runtime helpers declared." />
+      </div>
+    </CollapsiblePanel>
+  )
+}
+
+function uniqueWorkerTasks(tasks: WorkerTask[]): WorkerTask[] {
+  const seen = new Set<string>()
+  return tasks.filter((task) => {
+    if (seen.has(task.name)) return false
+    seen.add(task.name)
+    return true
+  })
+}
+
+function WorkerTaskGroup({ title, tasks, emptyText }: { title: string; tasks: WorkerTask[]; emptyText: string }) {
+  return (
+    <div className="space-y-1">
+      <div className="text-[10px] font-medium text-gray-400">{title}</div>
+      {tasks.length === 0 ? (
+        <div className="text-[10px] text-gray-600">{emptyText}</div>
+      ) : (
+        <div className="space-y-1">
+          {tasks.map((task) => (
+            <div key={task.name} className="flex min-w-0 items-center gap-2 rounded border border-border bg-surface px-2 py-1">
+              <span className="text-[11px] text-gray-200">{task.label}</span>
+              <span className="min-w-0 truncate text-[9px] font-mono text-gray-600">{task.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function WorkerMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded border border-border bg-surface px-2 py-1.5">
+      <div className="text-[13px] font-semibold tabular-nums text-gray-200">{value}</div>
+      <div className="text-[9px] uppercase tracking-wide text-gray-500">{label}</div>
+    </div>
+  )
+}
+
+function formatWorkerAge(s: number | null): string {
+  if (s == null) return '-'
+  if (s < 60) return `${Math.floor(s)}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m`
+  return `${Math.floor(s / 3600)}h`
+}
+
+function formatWorkerNumber(n: number | null): string {
+  return n == null ? '-' : String(n)
 }
 
 function SvcInfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {

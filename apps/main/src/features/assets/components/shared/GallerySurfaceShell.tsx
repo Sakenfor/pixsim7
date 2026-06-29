@@ -90,6 +90,14 @@ export interface GallerySurfaceShellProps {
   /** Grid/list content (rendered between filters and load-more) */
   children: ReactNode;
 
+  /**
+   * Pin the header + filters so they stay visible while only the content
+   * scrolls. Splits the shell into a fixed top block and an independently
+   * scrolling body (instead of one scroller where the filters scroll away).
+   * Off by default to leave existing surfaces untouched.
+   */
+  pinHeader?: boolean;
+
   /** Additional className for the outer container */
   className?: string;
 }
@@ -143,70 +151,60 @@ export function GallerySurfaceShell({
   loadMoreMode = 'button',
   loadMoreRootMargin,
   children,
+  pinHeader = false,
   className = '',
 }: GallerySurfaceShellProps) {
   const showFilters = filtersContent || (filters && onFiltersChange);
   const showEmpty = !loading && itemCount === 0 && emptyState;
   const showLoading = loading && itemCount === 0 && loadingContent;
 
-  return (
-    <div className={`p-6 space-y-4 h-full overflow-y-auto ${className}`}>
-      {/* Header. The surface switcher now lives in the persistent gallery chrome
-          bar (Assets.tsx), above every surface — no per-surface switcher here. */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">{title}</h1>
-          {subtitle && (
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">{subtitle}</p>
-          )}
-        </div>
-        {headerActions && <div className="flex items-center gap-2">{headerActions}</div>}
+  // Header. The surface switcher now lives in the persistent gallery chrome bar
+  // (Assets.tsx), above every surface — no per-surface switcher here. A surface
+  // whose name is already obvious from that switcher can pass an empty `title`
+  // (and no subtitle/actions) to drop the header row entirely.
+  const headerNode = (title || subtitle || headerActions) && (
+    <div className="flex items-center justify-between">
+      <div>
+        {title && <h1 className="text-xl font-semibold">{title}</h1>}
+        {subtitle && <p className="text-sm text-neutral-600 dark:text-neutral-400">{subtitle}</p>}
       </div>
+      {headerActions && <div className="flex items-center gap-2">{headerActions}</div>}
+    </div>
+  );
 
-      {/* Selection Summary (surface-specific) */}
-      {selectionSummary}
-
-      {/* Filters */}
-      {showFilters && (
-        <div className="bg-neutral-50 dark:bg-neutral-800 p-4 rounded border border-neutral-200 dark:border-neutral-700 space-y-3">
-          {(filtersHeader || filtersActions) && (
-            <div className="flex items-center justify-between">
-              {filtersHeader || <div />}
-              {filtersActions}
-            </div>
-          )}
-          {filtersContent
-            ? filtersContent
-            : filters && onFiltersChange && (
-                <GalleryFilters
-                  filters={filters}
-                  onFiltersChange={onFiltersChange}
-                  showSearch={showSearch}
-                  showMediaType={showMediaType}
-                  showSort={showSort}
-                  showProvider={showProvider}
-                  showProviderStatus={showProviderStatus}
-                  providers={providers}
-                  extraSortOptions={extraSortOptions}
-                  layout={filtersLayout}
-                />
-              )}
+  const filtersNode = showFilters && (
+    <div className="bg-neutral-50 dark:bg-neutral-800 p-4 rounded border border-neutral-200 dark:border-neutral-700 space-y-3">
+      {(filtersHeader || filtersActions) && (
+        <div className="flex items-center justify-between">
+          {filtersHeader || <div />}
+          {filtersActions}
         </div>
       )}
+      {filtersContent
+        ? filtersContent
+        : filters && onFiltersChange && (
+            <GalleryFilters
+              filters={filters}
+              onFiltersChange={onFiltersChange}
+              showSearch={showSearch}
+              showMediaType={showMediaType}
+              showSort={showSort}
+              showProvider={showProvider}
+              showProviderStatus={showProviderStatus}
+              providers={providers}
+              extraSortOptions={extraSortOptions}
+              layout={filtersLayout}
+            />
+          )}
+    </div>
+  );
 
-      {/* Error */}
+  const bodyNode = (
+    <>
       {error && <div className="text-red-600 text-sm">{error}</div>}
-
-      {/* Loading State */}
       {showLoading && loadingContent}
-
-      {/* Empty State */}
       {showEmpty && emptyState}
-
-      {/* Main Content (grid/list) */}
       {!showEmpty && !showLoading && children}
-
-      {/* Load More */}
       {onLoadMore && (
         <LoadMoreSection
           hasMore={hasMore}
@@ -217,6 +215,30 @@ export function GallerySurfaceShell({
           rootMargin={loadMoreRootMargin}
         />
       )}
+    </>
+  );
+
+  // Pinned: header + filters are a fixed top block; only the body scrolls (its
+  // own bounded overflow-y-auto, which the gallery grid virtualizes against).
+  if (pinHeader) {
+    return (
+      <div className={`flex flex-col h-full ${className}`}>
+        <div className="flex-shrink-0 space-y-4 border-b border-neutral-200 px-6 pb-4 pt-6 dark:border-neutral-800">
+          {headerNode}
+          {selectionSummary}
+          {filtersNode}
+        </div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">{bodyNode}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`p-6 space-y-4 h-full overflow-y-auto ${className}`}>
+      {headerNode}
+      {selectionSummary}
+      {filtersNode}
+      {bodyNode}
     </div>
   );
 }

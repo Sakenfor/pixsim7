@@ -1,3 +1,9 @@
+import clsx from 'clsx';
+
+import { usePanelSkin } from '@features/appearance';
+
+import { PROMPT_BOX_SKIN_PANEL_ID } from '../lib/promptBoxSkin';
+
 import { PromptComposer, type PromptComposerProps } from './PromptComposer';
 
 export interface PromptComposerTransitionDisplay {
@@ -50,6 +56,7 @@ export interface PromptComposerSurfaceProps {
 }
 
 export function PromptComposerSurface({ adapter, display }: PromptComposerSurfaceProps) {
+  const promptSkin = usePanelSkin(PROMPT_BOX_SKIN_PANEL_ID);
   const transition = display?.transition;
   const contentClassName = [
     display?.contentClassName ?? 'flex-1 min-h-0',
@@ -57,15 +64,23 @@ export function PromptComposerSurface({ adapter, display }: PromptComposerSurfac
   ]
     .filter(Boolean)
     .join(' ');
+  const containerClassName = clsx(
+    display?.containerClassName ?? 'h-full w-full p-2 flex flex-col gap-2',
+    promptSkin.className,
+    promptSkin.className && 'bg-surface text-th',
+  );
 
   return (
-    <div className={display?.containerClassName ?? 'h-full w-full p-2 flex flex-col gap-2'}>
+    <div
+      className={containerClassName}
+      data-skin-fx={promptSkin.rootProps['data-skin-fx']}
+    >
       <div
         className={contentClassName}
         style={{ transition: 'none', animation: 'none' }}
       >
         {transition && (
-          <div className="flex items-center justify-between text-[10px] text-neutral-500 dark:text-neutral-400 mb-1">
+          <div className="flex items-center justify-between text-[10px] text-th-muted mb-1">
             <div>
               {transition.transitionCount > 0
                 ? `Transition ${transition.transitionIndex + 1} -> ${transition.transitionIndex + 2}`
@@ -76,7 +91,7 @@ export function PromptComposerSurface({ adapter, display }: PromptComposerSurfac
                 value={transition.currentDuration}
                 onChange={(event) => transition.onDurationChange(Number(event.target.value))}
                 disabled={transition.disabled}
-                className="px-2 py-0.5 text-[10px] rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700"
+                className="px-2 py-0.5 text-[10px] rounded bg-surface-elevated text-th border border-th"
               >
                 {transition.durationOptions.map((option) => (
                   <option key={option} value={option}>{option}s</option>

@@ -140,6 +140,12 @@ class AgentProtocol:
         """
         return []
 
+    def extract_turn_id(self, raw: dict) -> str | None:
+        """Return the turn id carried by *raw*, if this protocol scopes work
+        into addressable turns (Codex app-server). Used to target mid-turn
+        operations (steer / interrupt). Default: no turn addressing."""
+        return None
+
 
 def _describe_hook_event(raw: dict) -> str:
     """Build a human-readable description of a hook lifecycle event."""
@@ -542,6 +548,22 @@ class CodexAppServerProtocol(AgentProtocol):
     def needs_jsonrpc_init(self) -> bool:
         """This protocol requires JSON-RPC initialize + thread/start before messages."""
         return True
+
+    def extract_turn_id(self, raw):
+        """Pull the turn id out of a turn/start ack or a turn/* notification.
+
+        Ack:          {"id":N,"result":{"turn":{"id":"turn_…"}}}
+        Notification: {"method":"turn/started","params":{"turn":{"id":"turn_…"}}}
+        Lets the session address ``turn/steer`` / ``turn/interrupt`` at the live
+        turn (both require the turn id)."""
+        if not isinstance(raw, dict):
+            return None
+        for container in (raw.get("result"), raw.get("params")):
+            if isinstance(container, dict):
+                turn = container.get("turn")
+                if isinstance(turn, dict) and turn.get("id"):
+                    return str(turn["id"])
+        return None
 
     def parse_event(self, raw):
         """Parse JSON-RPC notifications from app-server."""

@@ -83,6 +83,7 @@ export type VisibilityTrigger =
   | 'always'           // Always visible
   | 'hover'            // Visible when widget itself is hovered
   | 'hover-container'  // Visible when container is hovered
+  | 'no-hover-container' // Visible when container is NOT hovered (hides on hover)
   | 'hover-sibling'    // Visible when sibling widget is hovered
   | 'focus'            // Visible when widget has focus
   | 'active'           // Visible when widget is active
@@ -306,6 +307,18 @@ export interface OverlayConfiguration {
 
   /** Enable automatic collision detection and adjustment */
   collisionDetection?: boolean;
+
+  /**
+   * Enable the DOM-measured box-separation pass. Unlike {@link collisionDetection}
+   * (which anchor-swaps individual ungrouped widgets), this treats every rendered
+   * overlay *unit* — each stack-group container AND each ungrouped widget — as a
+   * measured box and nudges lower-priority units off higher-priority ones so the
+   * bottom button group, the bottom-left badge stack, and the (downward-growing)
+   * top-right set column stop overlapping. Runs only while the container is
+   * hovered (the overlaps it resolves are hover-time), debounced. Independent of
+   * `collisionDetection`; the two should not both be enabled on the same config.
+   */
+  boxSeparation?: boolean;
 
   // Defaults
   /** Default visibility config applied to all widgets */

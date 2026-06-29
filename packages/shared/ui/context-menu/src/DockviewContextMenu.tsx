@@ -5,7 +5,7 @@
  * Accepts optional renderIcon prop for app-specific icon rendering.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Dropdown, DropdownDivider, DropdownItem, Z } from '@pixsim7/shared.ui';
 import { useContextMenu } from './useContextMenu';
@@ -16,6 +16,13 @@ export type RenderIconFn = (name: string, size: number, className?: string) => R
 const defaultRenderIcon: RenderIconFn = (name, _size, className) => (
   <span className={className}>{name}</span>
 );
+
+const MENU_VIEWPORT_MARGIN = 10;
+const MENU_SCROLL_STYLE = {
+  maxHeight: 'min(420px, calc(100dvh - 20px))',
+  overflowY: 'auto',
+  overscrollBehavior: 'contain',
+} satisfies CSSProperties;
 
 /**
  * Renders a menu item's icon, overlaying the optional selection `badge` on its
@@ -66,15 +73,18 @@ export function ContextMenuPortal({ renderIcon = defaultRenderIcon }: ContextMen
       let finalX = x;
       let finalY = y;
 
-      if (x + rect.width > viewportWidth) {
-        finalX = viewportWidth - rect.width - 10;
+      if (x + rect.width > viewportWidth - MENU_VIEWPORT_MARGIN) {
+        finalX = viewportWidth - rect.width - MENU_VIEWPORT_MARGIN;
       }
 
-      if (y + rect.height > viewportHeight) {
-        finalY = viewportHeight - rect.height - 10;
+      if (y + rect.height > viewportHeight - MENU_VIEWPORT_MARGIN) {
+        finalY = viewportHeight - rect.height - MENU_VIEWPORT_MARGIN;
       }
 
-      setPosition({ x: Math.max(10, finalX), y: Math.max(10, finalY) });
+      setPosition({
+        x: Math.max(MENU_VIEWPORT_MARGIN, finalX),
+        y: Math.max(MENU_VIEWPORT_MARGIN, finalY),
+      });
     });
 
     return () => cancelAnimationFrame(raf);
@@ -134,6 +144,9 @@ export function ContextMenuPortal({ renderIcon = defaultRenderIcon }: ContextMen
         closeOnOutsideClick={false}
         minWidth="200px"
         className="min-w-[200px] max-w-[300px]"
+        scrollViewportStyle={MENU_SCROLL_STYLE}
+        hideScrollbar
+        scrollIndicators
       >
         {items.map(item => (
           <MenuItemComponent
@@ -201,20 +214,20 @@ function MenuItemComponent({ item, onClose, depth = 0, renderIcon }: MenuItemCom
       let x = itemRect.right + 4;
       let y = itemRect.top;
 
-      if (x + submenuWidth > viewportWidth - 10) {
+      if (x + submenuWidth > viewportWidth - MENU_VIEWPORT_MARGIN) {
         x = itemRect.left - submenuWidth - 4;
-        if (x < 10) {
-          x = 10;
+        if (x < MENU_VIEWPORT_MARGIN) {
+          x = MENU_VIEWPORT_MARGIN;
         }
       }
 
-      if (y + submenuHeight > viewportHeight - 10) {
-        const overflow = (y + submenuHeight) - (viewportHeight - 10);
-        y = Math.max(10, y - overflow);
+      if (y + submenuHeight > viewportHeight - MENU_VIEWPORT_MARGIN) {
+        const overflow = (y + submenuHeight) - (viewportHeight - MENU_VIEWPORT_MARGIN);
+        y = Math.max(MENU_VIEWPORT_MARGIN, y - overflow);
       }
 
-      if (y < 10) {
-        y = 10;
+      if (y < MENU_VIEWPORT_MARGIN) {
+        y = MENU_VIEWPORT_MARGIN;
       }
 
       setSubmenuPos({ x, y });
@@ -301,6 +314,9 @@ function MenuItemComponent({ item, onClose, depth = 0, renderIcon }: MenuItemCom
             closeOnOutsideClick={false}
             minWidth="200px"
             className="min-w-[200px] max-w-[300px] shadow-2xl ring-1 ring-neutral-600/30"
+            scrollViewportStyle={MENU_SCROLL_STYLE}
+            hideScrollbar
+            scrollIndicators
           >
             {item.children!.map(child => (
               <MenuItemComponent

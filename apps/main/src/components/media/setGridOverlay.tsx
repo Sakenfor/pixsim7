@@ -131,7 +131,13 @@ export function SetGridOverlay({ inputItem, operationType }: SetGridOverlayProps
         </div>
       ) : (
         <div
-          className="absolute inset-0 overflow-y-auto p-0.5 pt-7 grid grid-cols-3 gap-0.5 auto-rows-fr"
+          className="absolute inset-0 overflow-y-auto p-0.5 pt-7 grid gap-0.5 auto-rows-max"
+          // Auto-fill instead of a fixed 3-col track: thumbnails keep a minimum
+          // size and the grid sheds columns (3 → 2 → 1) as the slot narrows,
+          // rather than cramming three tiny cells on a mobile-width slot. The
+          // `min(100%, …)` floor avoids horizontal overflow when the slot is
+          // narrower than one minimum cell.
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 72px), 1fr))' }}
           // Stop wrapper click-to-select / dnd from firing on inner scroll /
           // thumbnail interactions; pin handlers stopPropagation too, but
           // background scroll-drag shouldn't bubble either.

@@ -16,6 +16,8 @@
 import { Button } from '@pixsim7/shared.ui';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import type { OverlayWidget } from '@lib/ui/overlay';
+
 import { MediaCard, type MediaCardActions } from '@/components/media/MediaCard';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 
@@ -28,8 +30,12 @@ import { GalleryGrid, GallerySurfaceShell } from './shared';
 /** One decision a reviewer can make on the focused asset. */
 export interface ReviewDecision {
   id: string;
-  /** Button label (e.g. "✓ Keep"). */
+  /** Button label (e.g. "✓ Keep"). Used for hotkey descriptions + the button
+   *  title; the on-button face falls back to this when {@link compactLabel} is unset. */
   label: string;
+  /** Compact on-button face (e.g. just "✓") for space-tight surfaces. The full
+   *  {@link label} still rides along as the button's title/tooltip. */
+  compactLabel?: string;
   /** Keyboard shortcut key (e.g. 'k'). */
   hotkey: string;
   /** Display form of the hotkey for the help modal (e.g. 'K'). */
@@ -64,14 +70,22 @@ export interface ReviewModeSurfaceProps {
   decisions: ReviewDecision[];
   /** Extra classes for a card wrapper (e.g. accepted/rejected tinting). */
   cardClassName?: (asset: AssetModel, isFocused: boolean) => string;
-  /** Badge/overlay rendered inside the card wrapper (e.g. a signal score chip). */
-  renderCardBadge?: (asset: AssetModel) => ReactNode;
+  /**
+   * Extra MediaCard overlay widgets for the focused card (e.g. a signal-score
+   * badge). Returned widgets are merged into the card's overlay via
+   * `customWidgets`, so they participate in the normal badge stacking /
+   * box-separation pass instead of overlapping hand-rolled — build them with
+   * `createBadgeWidget` + a `BADGE_SLOT`/`stackGroup`.
+   */
+  cardWidgets?: (asset: AssetModel) => OverlayWidget[];
   /** MediaCard overlay preset id. */
   overlayPresetId?: string;
   /** Gesture surface bound on each card (e.g. 'signal-triage'). */
   gestureSurfaceId?: string;
   /** Extra MediaCard actions merged onto the controller's per-asset actions. */
   cardActions?: (asset: AssetModel) => Partial<MediaCardActions>;
+  /** Extra content under the decision buttons (e.g. a reference-tagging row). */
+  cardFooter?: (asset: AssetModel) => ReactNode;
   /** Custom empty-queue content. */
   emptyState?: ReactNode;
   /** Run once on mount (e.g. select the initial triage queue). */
@@ -80,6 +94,8 @@ export interface ReviewModeSurfaceProps {
   helpRows?: { keys: string; label: string }[];
   /** Card edge length in px (default 320). */
   cardSize?: number;
+  /** Pin the header + filters so only the grid scrolls (see GallerySurfaceShell). */
+  pinHeader?: boolean;
 }
 
 export function ReviewModeSurface({
@@ -90,13 +106,15 @@ export function ReviewModeSurface({
   filtersContent,
   decisions,
   cardClassName,
-  renderCardBadge,
+  cardWidgets,
   overlayPresetId,
   gestureSurfaceId,
   cardActions,
+  cardFooter,
   emptyState,
   onMount,
   helpRows,
+  pinHeader,
   cardSize = 320,
 }: ReviewModeSurfaceProps) {
   const [focusedIndex, setFocusedIndex] = useState(0);
@@ -181,7 +199,6 @@ export function ReviewModeSurface({
         }${tone || 'border-neutral-200 dark:border-neutral-700'}`}
         onClick={() => setFocusedIndex(index)}
       >
-        {renderCardBadge?.(asset)}
         <MediaCard
           asset={asset}
           onToggleFavorite={() => toggleFavoriteTag(asset)}
@@ -189,6 +206,7 @@ export function ReviewModeSurface({
             ...controller.getAssetActions(asset),
             ...cardActions?.(asset),
           }}
+          customWidgets={cardWidgets?.(asset)}
           overlayPresetId={overlayPresetId}
           gestureSurfaceId={gestureSurfaceId}
         />
@@ -206,12 +224,14 @@ export function ReviewModeSurface({
                     perform(d, asset);
                   }}
                   className="flex-1 text-sm"
+                  title={d.label}
                 >
-                  {d.label}
+                  {d.compactLabel ?? d.label}
                 </Button>
               );
             })}
           </div>
+          {cardFooter?.(asset)}
         </div>
       </div>
     );
@@ -254,6 +274,7 @@ export function ReviewModeSurface({
         error={controller.error}
         loading={controller.loading}
         itemCount={assetCount}
+        pinHeader={pinHeader}
       >
         <GalleryGrid
           items={controller.assets}

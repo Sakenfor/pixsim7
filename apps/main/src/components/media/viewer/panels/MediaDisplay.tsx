@@ -257,7 +257,11 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
             src={resolvedMediaUrl}
             className={`${getFitClass()} rounded-lg transition-opacity ${videoReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
             style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})` }}
-            controls={videoReady}
+            // Native controls are off — playback is driven by the app's
+            // VideoTransportControls in MediaControlBar (below the media), so the
+            // control chrome no longer floats over the video and collides with
+            // the generation pill.
+            controls={false}
             autoPlay={settings.autoPlayVideos}
             loop={settings.loopVideos}
             preload="metadata"

@@ -128,6 +128,7 @@ class ProviderSettings(BaseModel):
     global_password: Optional[str] = None  # Global password for re-auth (encrypted in production)
     auto_reauth_enabled: bool = True  # Enable automatic re-auth on session expiry
     auto_reauth_max_retries: int = 3  # Max auto-reauth attempts
+    auto_delete_unflagged_generated_after_ingest: bool = False  # Delete unflagged generated provider copies after local ingest
 
 
 class ProviderSettingsUpdate(BaseModel):
@@ -135,6 +136,7 @@ class ProviderSettingsUpdate(BaseModel):
     global_password: Optional[str] = None
     auto_reauth_enabled: Optional[bool] = None
     auto_reauth_max_retries: Optional[int] = None
+    auto_delete_unflagged_generated_after_ingest: Optional[bool] = None
 
 
 class PixverseCostEstimateRequest(BaseModel):
@@ -669,7 +671,8 @@ async def get_provider_settings(
         provider_id=provider_id,
         global_password=None,
         auto_reauth_enabled=True,
-        auto_reauth_max_retries=3
+        auto_reauth_max_retries=3,
+        auto_delete_unflagged_generated_after_ingest=False,
     )
 
 

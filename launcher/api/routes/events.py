@@ -63,6 +63,15 @@ async def websocket_events(
     # schedule sends from any thread (e.g. the Qt GUI thread publishing
     # health events via the EventBus).
     _loop = asyncio.get_event_loop()
+    subscribed = False
+
+    def _cleanup_connection():
+        """Remove this socket from all connection tracking."""
+        nonlocal subscribed
+        _active_connections.discard(websocket)
+        if subscribed:
+            subscribed = False
+            event_bus.unsubscribe("*", _on_event)
 
     # Event handler - sends events to this WebSocket
     async def send_event(event: Event):
@@ -76,17 +85,20 @@ async def websocket_events(
             )
             await websocket.send_json(event_data.dict())
         except Exception:
-            pass
+            _cleanup_connection()
 
     def _on_event(event: Event):
         """Thread-safe: schedule send_event on uvicorn's event loop."""
+        if not subscribed:
+            return
         try:
             _loop.call_soon_threadsafe(asyncio.ensure_future, send_event(event))
         except RuntimeError:
-            pass  # loop closed
+            _cleanup_connection()
 
     # Subscribe to all events
     event_bus.subscribe("*", _on_event)
+    subscribed = True
 
     try:
         # Keep connection alive and handle client messages
@@ -111,9 +123,7 @@ async def websocket_events(
 
     finally:
         # Clean up
-        _active_connections.discard(websocket)
-        # Note: We don't unsubscribe from event bus because we used a lambda
-        # In production, you'd want to track the handler and unsubscribe
+        _cleanup_connection()
 
 
 def _serialize_event_data(data: any) -> dict:
