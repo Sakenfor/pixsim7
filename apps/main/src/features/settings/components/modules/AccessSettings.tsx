@@ -457,6 +457,10 @@ function AgentProfileScopes({ userId }: { userId: number }) {
   const [error, setError] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, ScopeDraft>>({});
+  // Drill-down selection within this section: null = profile list, else the
+  // expanded scope editor for one profile. Keeps the four scope editors out of
+  // sight until a profile is picked — far less vertical stacking, mobile-friendly.
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
 
   const [planOptions, setPlanOptions] = useState<ScopeOption[]>([]);
   const [worldOptions, setWorldOptions] = useState<ScopeOption[]>([]);
@@ -466,6 +470,7 @@ function AgentProfileScopes({ userId }: { userId: number }) {
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
+    setSelectedProfileId(null); // reset drill-down when the target user changes
     try {
       const resp = await listAdminAgentProfiles(userId);
       setProfiles(resp.profiles);
@@ -573,6 +578,15 @@ function AgentProfileScopes({ userId }: { userId: number }) {
     [applyUpdated],
   );
 
+  // Derive the drill-down target up here (one profile open at a time) so the
+  // editor branch can stay declarative — `find` tolerates a stale id after a
+  // reload by resolving to null, which falls back to the list.
+  const selectedProfile =
+    selectedProfileId != null ? profiles.find((p) => p.id === selectedProfileId) ?? null : null;
+  const selDraft = selectedProfile ? drafts[selectedProfile.id] ?? EMPTY_DRAFT : EMPTY_DRAFT;
+  const selBusy = selectedProfile ? savingId === selectedProfile.id : false;
+  const selDirty = selectedProfile ? !draftEquals(selDraft, draftFor(selectedProfile)) : false;
+
   return (
     <>
       <SectionHeader className="mt-2">Agent profile scopes</SectionHeader>
@@ -589,89 +603,123 @@ function AgentProfileScopes({ userId }: { userId: number }) {
         <div className="rounded border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-[11px] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/30">
           No agent profiles for this user yet.
         </div>
+      ) : selectedProfile ? (
+        <div className="space-y-1.5 rounded border border-neutral-200 bg-white px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-900/40">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedProfileId(null)}
+              className="shrink-0 text-[11px] text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+            >
+              ‹ Back
+            </button>
+            <Badge
+              color={selectedProfile.status === 'active' ? 'green' : 'gray'}
+              className="!text-[9px] !px-1.5 !py-0"
+            >
+              {selectedProfile.status}
+            </Badge>
+            <span className="truncate text-[11px] font-medium text-neutral-800 dark:text-neutral-100">
+              {selectedProfile.label}
+            </span>
+            {selectedProfile.is_global && (
+              <Badge color="blue" className="!text-[9px] !px-1.5 !py-0">
+                global
+              </Badge>
+            )}
+            <code className="ml-auto text-[9px] text-neutral-400" title={selectedProfile.id}>
+              {selectedProfile.agent_type}
+            </code>
+          </div>
+          <ScopeFieldEditor
+            label="Plans"
+            options={planOptions}
+            value={selDraft.plans}
+            canDeny={denyAllowed('plans')}
+            onChange={(next) => setDraftField(selectedProfile.id, 'plans', next)}
+            disabled={selBusy}
+          />
+          <ScopeFieldEditor
+            label="Worlds"
+            options={worldOptions}
+            value={selDraft.worlds}
+            canDeny={denyAllowed('worlds')}
+            onChange={(next) => setDraftField(selectedProfile.id, 'worlds', next)}
+            disabled={selBusy}
+          />
+          <ScopeFieldEditor
+            label="Projects"
+            options={projectOptions}
+            value={selDraft.projects}
+            canDeny={denyAllowed('projects')}
+            onChange={(next) => setDraftField(selectedProfile.id, 'projects', next)}
+            disabled={selBusy}
+          />
+          <ScopeFieldEditor
+            label="Contracts"
+            options={contractOptions}
+            value={selDraft.contracts}
+            canDeny={denyAllowed('contracts')}
+            onChange={(next) => setDraftField(selectedProfile.id, 'contracts', next)}
+            disabled={selBusy}
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="primary"
+              loading={selBusy}
+              disabled={!selDirty}
+              onClick={() => void saveScopes(selectedProfile)}
+            >
+              Save scopes
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={selBusy}
+              onClick={() => void toggleStatus(selectedProfile)}
+            >
+              {selectedProfile.status === 'paused' ? 'Resume' : 'Pause'}
+            </Button>
+          </div>
+          <ProfileDetailPanel profile={selectedProfile} options={optionMaps} />
+        </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1">
           {profiles.map((p) => {
-            const d = drafts[p.id] ?? EMPTY_DRAFT;
-            const busy = savingId === p.id;
-            const dirty = !draftEquals(d, draftFor(p));
+            const dirty = !draftEquals(drafts[p.id] ?? EMPTY_DRAFT, draftFor(p));
             return (
-              <div
+              <button
                 key={p.id}
-                className="space-y-1.5 rounded border border-neutral-200 bg-white px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-900/40"
+                type="button"
+                onClick={() => setSelectedProfileId(p.id)}
+                className="flex w-full items-center gap-2 rounded border border-neutral-200 bg-white px-2.5 py-2 text-left transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900/40 dark:hover:bg-neutral-800/40"
               >
-                <div className="flex items-center gap-2">
-                  <Badge
-                    color={p.status === 'active' ? 'green' : 'gray'}
-                    className="!text-[9px] !px-1.5 !py-0"
-                  >
-                    {p.status}
+                <Badge
+                  color={p.status === 'active' ? 'green' : 'gray'}
+                  className="!text-[9px] !px-1.5 !py-0 shrink-0"
+                >
+                  {p.status}
+                </Badge>
+                <span className="truncate text-[11px] font-medium text-neutral-800 dark:text-neutral-100">
+                  {p.label}
+                </span>
+                {p.is_global && (
+                  <Badge color="blue" className="!text-[9px] !px-1.5 !py-0 shrink-0">
+                    global
                   </Badge>
-                  <span className="truncate text-[11px] font-medium text-neutral-800 dark:text-neutral-100">
-                    {p.label}
-                  </span>
-                  {p.is_global && (
-                    <Badge color="blue" className="!text-[9px] !px-1.5 !py-0">
-                      global
-                    </Badge>
-                  )}
-                  <code className="ml-auto text-[9px] text-neutral-400" title={p.id}>
-                    {p.agent_type}
-                  </code>
-                </div>
-                <ScopeFieldEditor
-                  label="Plans"
-                  options={planOptions}
-                  value={d.plans}
-                  canDeny={denyAllowed('plans')}
-                  onChange={(next) => setDraftField(p.id, 'plans', next)}
-                  disabled={busy}
-                />
-                <ScopeFieldEditor
-                  label="Worlds"
-                  options={worldOptions}
-                  value={d.worlds}
-                  canDeny={denyAllowed('worlds')}
-                  onChange={(next) => setDraftField(p.id, 'worlds', next)}
-                  disabled={busy}
-                />
-                <ScopeFieldEditor
-                  label="Projects"
-                  options={projectOptions}
-                  value={d.projects}
-                  canDeny={denyAllowed('projects')}
-                  onChange={(next) => setDraftField(p.id, 'projects', next)}
-                  disabled={busy}
-                />
-                <ScopeFieldEditor
-                  label="Contracts"
-                  options={contractOptions}
-                  value={d.contracts}
-                  canDeny={denyAllowed('contracts')}
-                  onChange={(next) => setDraftField(p.id, 'contracts', next)}
-                  disabled={busy}
-                />
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    loading={busy}
-                    disabled={!dirty}
-                    onClick={() => void saveScopes(p)}
-                  >
-                    Save scopes
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void toggleStatus(p)}
-                  >
-                    {p.status === 'paused' ? 'Resume' : 'Pause'}
-                  </Button>
-                </div>
-                <ProfileDetailPanel profile={p} options={optionMaps} />
-              </div>
+                )}
+                {dirty && (
+                  <span
+                    title="Unsaved scope changes"
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+                  />
+                )}
+                <code className="ml-auto shrink-0 text-[9px] text-neutral-400" title={p.id}>
+                  {p.agent_type}
+                </code>
+                <span className="shrink-0 text-neutral-400">›</span>
+              </button>
             );
           })}
         </div>
@@ -1202,14 +1250,18 @@ export function AccessSettings() {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    // h-full + min-h-0 so this fills the bounded SettingsContent wrapper and the
+    // inner list/detail columns' overflow-y-auto have a bounded ancestor to
+    // scroll against. Without it the panel grows to content height and the
+    // parent's overflow-hidden just clips it (bounded-scroll-ancestor rule).
+    <div className="flex h-full min-h-0 flex-col gap-3">
       {error && (
         <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
           {error}
         </div>
       )}
 
-      <div className="flex overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800" style={{ minHeight: 360 }}>
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800" style={{ minHeight: 360 }}>
         {/* -- Left: User list -- */}
         <div className="flex w-[220px] shrink-0 flex-col border-r border-neutral-200 bg-neutral-50/50 dark:border-neutral-800 dark:bg-neutral-900/30">
           <div className="border-b border-neutral-200 p-2 dark:border-neutral-800">
