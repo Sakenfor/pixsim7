@@ -1051,6 +1051,12 @@ export function openSimilarityGallery(
 
   if (parts.length === 0) return;
 
+  // Match the badge COUNT, which excludes broken clips (AssetSiblingCountService
+  // uses the same `not_effectively_broken_clause` predicate as this `exclude_broken`
+  // registry filter). Without it the mini-gallery would list flagged / heuristic-
+  // broken siblings the badge omitted from its count — a count/list mismatch.
+  filters.exclude_broken = true;
+
   void import('@features/workspace/stores/workspaceStore').then(({ useWorkspaceStore }) => {
     useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
       context: {

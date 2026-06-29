@@ -74,12 +74,6 @@ export interface AssetModel {
   hasGenerationContext?: boolean;
   /** True when at least one other asset lists this one as its source/parent (via lineage or upload_context) */
   hasChildren?: boolean;
-  /** Cohort counts for the similarity badge, keyed by lit-facet letters in
-   *  canonical i<p<s order: i, p, s, ip, is, ps, ips (i=inputs, p=prompt,
-   *  s=seed). Each value is the user-scoped, include-self count of assets
-   *  matching ALL facets in that combo; 0 when the asset lacks a facet. The
-   *  badge displays the entry for the user's chosen facet lens. */
-  cohortCounts?: Record<string, number>;
   /** True when this image was CDN-salvaged from a Pixverse false-filter / stuck-processing state */
   recovered?: boolean;
   /** Broken-video heuristic score 0-6 (mirror of signal_metrics.score). */
@@ -174,6 +168,26 @@ export function getAssetDisplayUrls(asset: AssetModel): {
 }
 
 /**
+ * "Likely broken" — a clip the user manually flagged (`signalOverride ===
+ * 'broken'`) OR the heuristic scored suspicious (`signalSuspicious`, score >= 3)
+ * and the user hasn't rescued with a Keep (`signalOverride !== 'clean'`).
+ *
+ * This is the LOOSE, review-cue definition — purely for non-destructive visual
+ * hints (the Recent strip's outline), NOT for hiding. It deliberately differs
+ * from the backend `effectively_broken_clause` (manual flag ONLY), which is what
+ * actually hides/discounts clips: the heuristic over-fires (~27% of videos) so
+ * it must never auto-hide, but it IS useful as a "review me" marker in Recent —
+ * where fresh clips aren't manually flagged yet, so a manual-only cue would
+ * almost never show.
+ */
+export function isLikelyBroken(
+  asset: Pick<AssetModel, 'signalOverride' | 'signalSuspicious'>,
+): boolean {
+  if (asset.signalOverride === 'broken') return true;
+  return !!asset.signalSuspicious && asset.signalOverride !== 'clean';
+}
+
+/**
  * Maps an API AssetResponse to internal AssetModel.
  * This is the only place where snake_case -> camelCase conversion happens.
  */
@@ -210,7 +224,6 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     sourceGenerationId: response.source_generation_id,
     hasGenerationContext: response.has_generation_context ?? false,
     hasChildren: (response as any).has_children ?? false,
-    cohortCounts: ((response as any).cohort_counts ?? {}) as Record<string, number>,
     recovered: response.recovered ?? false,
     signalScore: (response as any).signal_score ?? null,
     signalOverride: (response as any).signal_override ?? null,

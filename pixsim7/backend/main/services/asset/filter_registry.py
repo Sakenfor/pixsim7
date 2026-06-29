@@ -1333,6 +1333,7 @@ def register_default_asset_filters() -> None:
             option_source="static",
             label_map={
                 "ok": "OK",
+                "not_flagged": "Not Provider Flagged",
                 "local_only": "Local Only",
                 "flagged": "Flagged",
                 "unknown": "Unknown",
@@ -1419,14 +1420,14 @@ def register_default_asset_filters() -> None:
             condition_builder=lambda v: (_signal_override == "broken") if v else None,
         )
     )
-    # "Hide broken" used by the default gallery's "Show broken" toggle: drops BOTH
-    # manual flags AND current-version heuristic high-score (>= 3) clips that
-    # aren't user-kept. Supersedes the old manual-only `exclude_override_broken`
-    # (retired — `exclude_broken` covers it). Shares one predicate with the
-    # cohort/sibling badge counts so the gallery and the card badge agree on what
-    # "broken" means. Triage + the explicit signal_* filters opt back in to see
-    # these. This is plumbing for the chrome-bar toggle, not a user-facing filter
-    # chip (the frontend hides it from the filter bar). See effectively_broken_clause.
+    # "Hide broken" used by the default gallery's "Show broken" toggle: drops
+    # clips you MANUALLY flagged broken (signal_override == 'broken'). The
+    # heuristic score (>= 3) is intentionally NOT hidden here — it over-fires
+    # (~27% of videos) and would bury the gallery; it stays a Triage signal. See
+    # effectively_broken_clause for the rationale. Shares that one predicate with
+    # the cohort/sibling badge counts so the gallery and the card badge agree on
+    # what "broken" means. This is plumbing for the chrome-bar toggle, not a
+    # user-facing filter chip (the frontend hides it from the filter bar).
     from pixsim7.backend.main.services.asset.signal_analysis import (
         not_effectively_broken_clause,
     )
@@ -1436,7 +1437,7 @@ def register_default_asset_filters() -> None:
             key="exclude_broken",
             type="boolean",
             label="Hide broken",
-            description="Exclude broken clips: manually flagged OR current-version heuristic score >= 3 (minus your Keeps).",
+            description="Exclude clips you manually flagged broken (signal override = broken).",
             condition_builder=lambda v: not_effectively_broken_clause() if v else None,
         )
     )

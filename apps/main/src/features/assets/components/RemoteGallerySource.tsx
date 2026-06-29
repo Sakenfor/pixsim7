@@ -1,6 +1,5 @@
 import { Button, useToastStore } from '@pixsim7/shared.ui';
 import { type ComponentProps, type ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 
@@ -364,7 +363,7 @@ function AssetSetChip({
           </button>
         </div>
       </div>
-      {rowMenu && createPortal(
+      {rowMenu && (
         <ChipContextMenu
           x={rowMenu.x}
           y={rowMenu.y}
@@ -374,8 +373,7 @@ function AssetSetChip({
             chipState.closeChip(chipKey);
           }}
           onClose={() => setRowMenu(null)}
-        />,
-        document.body,
+        />
       )}
     </FilterChip>
   );
@@ -595,8 +593,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     () => (new URLSearchParams(location.search).get('surface') || 'assets-default') === 'assets-default',
     [location.search],
   );
-  const hideFlagged = useGalleryViewPrefsStore((s) => s.hideFlagged);
-  const setHideFlagged = useGalleryViewPrefsStore((s) => s.setHideFlagged);
+  // Read-only here: the "Show broken" toggle now lives in the chrome "View" menu
+  // (GalleryViewMenu) which writes galleryViewPrefsStore; we just consume the
+  // flag to inject `exclude_broken` into the query on the default surface.
+  const hideBroken = useGalleryViewPrefsStore((s) => s.hideBroken);
 
   const groupSearchOverrides = useMemo(() => {
     // Build union of asset IDs from checked filter sets
@@ -621,13 +621,14 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     const groupPart = isLeafGroup ? { group_path: groupPathPayload, group_filter: groupFilter } : {};
     const idsPart = asset_ids ? { asset_ids } : {};
     const hidePart =
-      isDefaultGallerySurface && hideFlagged ? { exclude_override_broken: true } : {};
-    // exclude_override_broken is a registry filter not in the generated
-    // AssetSearchRequest type; the backend accepts it. Cast like other
-    // pass-through registry filters.
+      isDefaultGallerySurface && hideBroken ? { exclude_broken: true } : {};
+    // exclude_broken is a registry filter not in the generated AssetSearchRequest
+    // type; the backend accepts it. It drops both manually-flagged AND
+    // heuristic-high-score (>= 3, not kept) clips — same predicate the cohort
+    // badge counts use. Cast like other pass-through registry filters.
     const merged = { ...groupPart, ...idsPart, ...hidePart } as Partial<AssetSearchRequest>;
     return Object.keys(merged).length > 0 ? merged : undefined;
-  }, [groupFilter, groupPathPayload, isLeafGroup, filterSetIds, allSets, setsStatus, isDefaultGallerySurface, hideFlagged]);
+  }, [groupFilter, groupPathPayload, isLeafGroup, filterSetIds, allSets, setsStatus, isDefaultGallerySurface, hideBroken]);
   const initialPageRef = useRef(parsePageParam(location.search));
   const controller = useAssetsController({
     initialPage: initialPageRef.current,
@@ -1611,22 +1612,9 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
               <option value="alpha">A-Z</option>
             </select>
 
-            {/* Show/hide clips you've manually flagged broken (hidden by default,
-                this surface only). Persisted via galleryViewPrefsStore. */}
-            <label
-              className="inline-flex items-center gap-1.5 h-7 px-2 text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-              title="Show clips you've flagged broken (hidden by default)"
-            >
-              <input
-                type="checkbox"
-                className="accent-accent"
-                checked={!hideFlagged}
-                onChange={(e) => setHideFlagged(!e.target.checked)}
-              />
-              Show flagged
-            </label>
-
-            {/* Injected toolbar controls from parent shell */}
+            {/* Injected toolbar controls from parent shell (surface switcher,
+                card-preset picker, and the "View" menu that now holds the
+                Show-broken toggle, layout controls, Panels, and Live status). */}
             {toolbarExtra}
           </div>
           <FilterPresetBar

@@ -1,6 +1,6 @@
 import { Ref } from '@pixsim7/shared.ref.core';
 import type { AssetRef } from '@pixsim7/shared.types';
-import { Dropdown, DropdownItem, DropdownDivider, useToast } from '@pixsim7/shared.ui';
+import { useToast } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -22,6 +22,7 @@ import {
   extractUploadError,
 } from '@features/assets';
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets/stores/assetViewerStore';
+import { useSurfaceChromeSlot } from '@features/assets/stores/surfaceChromeSlotStore';
 import {
   CAP_ASSET_SELECTION,
   useProvideCapability,
@@ -29,8 +30,7 @@ import {
 } from '@features/contextHub';
 import { useControlCenterLayout } from '@features/controlCenter';
 import {
-  GalleryLayoutControls,
-  GallerySurfaceSwitcher,
+  GalleryViewMenu,
   SurfacePresetPicker,
   // mergeBadgeConfig,
   deriveOverlayPresetIdFromBadgeConfig,
@@ -38,13 +38,12 @@ import {
   getAllAssetSources,
   type AssetSourceId,
 } from '@features/gallery';
-import { useGenerationWebSocket } from '@features/generation';
 import { usePanelConfigStore, type GalleryPanelSettings } from '@features/panels';
 import { useWorkspaceStore } from '@features/workspace';
 
 
 import { AssetViewerLayout } from '../components/media/AssetViewerLayout';
-import { Icon, IconBadge } from '../lib/icons';
+import { Icon } from '../lib/icons';
 
 
 const DEFAULT_GALLERY_LAYOUT: 'masonry' | 'grid' = 'masonry';
@@ -73,7 +72,6 @@ export function AssetsRoute() {
   const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  const { isConnected: generationWsConnected } = useGenerationWebSocket();
   const { style: layoutStyle } = useControlCenterLayout();
   const [isTransitioning, setIsTransitioning] = useState(false);
 
@@ -184,6 +182,11 @@ export function AssetsRoute() {
   const persistedLayout = parseGalleryLayoutSetting(gallerySettings.layout);
   const persistedCardSize = parseGalleryCardSizeSetting(gallerySettings.cardSize);
 
+  // Portal target so the active surface can drop its own view controls (e.g.
+  // Triage's Grid/Row toggle + batch pager) into the chrome strip next to the
+  // layout/size controls. Stable setter → safe as a ref callback.
+  const setChromeSlot = useSurfaceChromeSlot((s) => s.setEl);
+
   useEffect(() => {
     setLayoutState((current) => (current === persistedLayout ? current : persistedLayout));
   }, [persistedLayout]);
@@ -202,9 +205,6 @@ export function AssetsRoute() {
     setCardSizeState(normalized);
     updatePanelSettings('gallery', { cardSize: normalized });
   }, [updatePanelSettings]);
-
-  // Dropdown states
-  const [panelsDropdownOpen, setPanelsDropdownOpen] = useState(false);
 
   // Get current surface ID from URL (for remote gallery)
   // Active gallery surface (remote-gallery only). Drives where the chrome controls
@@ -367,13 +367,23 @@ export function AssetsRoute() {
           flex-shrink-0 sibling so the gallery container keeps its bounded height. */}
       {activeSourceId === 'remote-gallery' && activeSurfaceId !== 'assets-default' && (
         <div className="flex-shrink-0 flex flex-wrap items-center gap-2 px-3 sm:px-6 pt-3 sm:pt-4 pb-1">
-          <GallerySurfaceSwitcher mode="dropdown" />
-          <GalleryLayoutControls
+          {/* SurfacePresetPicker is the single surface switcher (+ card preset) —
+              its Surface section replaces the old standalone GallerySurfaceSwitcher. */}
+          <SurfacePresetPicker
+            currentPresetId={currentOverlayPresetId}
+            onPresetChange={handleOverlayPresetChange}
+          />
+          {/* Layout/size + panels + live in one menu. No Show-broken toggle here:
+              Triage/Review always show broken clips. */}
+          <GalleryViewMenu
             layout={layout}
             setLayout={setLayout}
             cardSize={cardSize}
             setCardSize={setCardSize}
+            showLayout
           />
+          {/* Active surface portals its own view controls here (see useSurfaceChromeSlot). */}
+          <div ref={setChromeSlot} className="flex flex-wrap items-center gap-2" />
         </div>
       )}
 
@@ -404,92 +414,24 @@ export function AssetsRoute() {
               toolbarExtra={
                 <>
                   {activeSourceId === 'remote-gallery' && (
-                    <>
-                      <GallerySurfaceSwitcher mode="dropdown" />
-                      <GalleryLayoutControls
-                        layout={layout}
-                        setLayout={setLayout}
-                        cardSize={cardSize}
-                        setCardSize={setCardSize}
-                      />
-                      <SurfacePresetPicker
-                        currentPresetId={currentOverlayPresetId}
-                        onPresetChange={handleOverlayPresetChange}
-                      />
-                    </>
+                    <SurfacePresetPicker
+                      currentPresetId={currentOverlayPresetId}
+                      onPresetChange={handleOverlayPresetChange}
+                    />
                   )}
-                  <div className="relative">
-                    <button
-                      onClick={() => setPanelsDropdownOpen(!panelsDropdownOpen)}
-                      className="h-7 px-1.5 text-xs inline-flex items-center gap-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                      title="Open panels"
-                    >
-                      <Icon name="layoutGrid" size={13} />
-                      <span>Panels</span>
-                      <Icon name="chevronDown" size={10} className={`transition-transform ${panelsDropdownOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                    <Dropdown
-                      isOpen={panelsDropdownOpen}
-                      onClose={() => setPanelsDropdownOpen(false)}
-                      position="bottom-right"
-                      minWidth="180px"
-                    >
-                      <DropdownItem
-                        onClick={() => {
-                          useWorkspaceStore.getState().openFloatingPanel('settings');
-                          setPanelsDropdownOpen(false);
-                        }}
-                        icon={<IconBadge name="settings" size={12} variant="muted" />}
-                      >
-                        Settings
-                      </DropdownItem>
-                      <DropdownItem
-                        onClick={() => {
-                          useWorkspaceStore.getState().openFloatingPanel('generations');
-                          setPanelsDropdownOpen(false);
-                        }}
-                        icon={<IconBadge name="sparkles" size={12} variant="success" />}
-                      >
-                        Generations
-                      </DropdownItem>
-                      <DropdownItem
-                        onClick={() => {
-                          useWorkspaceStore.getState().openFloatingPanel('providers');
-                          setPanelsDropdownOpen(false);
-                        }}
-                        icon={<IconBadge name="plug" size={12} variant="info" />}
-                      >
-                        Providers
-                      </DropdownItem>
-                      <DropdownDivider />
-                      <DropdownItem
-                        onClick={() => {
-                          useWorkspaceStore.getState().openFloatingPanel('dev-tools');
-                          setPanelsDropdownOpen(false);
-                        }}
-                        icon={<IconBadge name="wrench" size={12} variant="warning" />}
-                      >
-                        Dev Tools
-                      </DropdownItem>
-                    </Dropdown>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (generationWsConnected) {
-                        useWorkspaceStore.getState().openFloatingPanel('generations');
-                      }
-                    }}
-                    className={`h-7 px-1.5 text-xs inline-flex items-center gap-1.5 rounded border transition-colors ${
-                      generationWsConnected
-                        ? 'border-green-500/30 bg-green-500/5 text-green-600 dark:text-green-400 hover:bg-green-500/10'
-                        : 'border-amber-500/30 bg-amber-500/5 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
-                    }`}
-                    title={generationWsConnected ? 'Generation feed live - click to open' : 'Generation feed offline'}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full ${generationWsConnected ? 'bg-green-500 animate-pulse-subtle' : 'bg-amber-500'}`} />
-                    <span>{generationWsConnected ? 'Live' : 'Offline'}</span>
-                  </button>
+                  {/* Single "View" menu folds in layout/size, Show broken, the
+                      Panels launchers, and the Live status — declutters the row.
+                      Layout + Show-broken only on the remote-gallery default
+                      surface (toolbarExtra renders there); other sources get just
+                      the Panels/Live items. */}
+                  <GalleryViewMenu
+                    layout={layout}
+                    setLayout={setLayout}
+                    cardSize={cardSize}
+                    setCardSize={setCardSize}
+                    showLayout={activeSourceId === 'remote-gallery'}
+                    showBrokenToggle={activeSourceId === 'remote-gallery'}
+                  />
                 </>
               }
             />

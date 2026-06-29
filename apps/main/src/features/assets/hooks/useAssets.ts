@@ -24,7 +24,7 @@ export type AssetFilters = {
   sort?: 'new' | 'old' | 'size';  // Removed 'alpha' - Asset has no name field
   media_type?: 'video' | 'image' | 'audio' | '3d_model' | Array<'video' | 'image' | 'audio' | '3d_model'>;
   upload_method?: string | string[];
-  provider_status?: 'ok' | 'local_only' | 'unknown' | 'flagged';
+  provider_status?: 'ok' | 'local_only' | 'unknown' | 'flagged' | 'not_flagged';
   include_archived?: boolean;
   /** Restrict results to ONLY archived assets (overrides include_archived). */
   archived_only?: boolean;
@@ -272,8 +272,20 @@ export function useAssets(options?: {
 
   // Track whether server-only overrides/filters are active so the prepend
   // subscriber can skip when it can't validate the asset client-side.
-  const hasRequestOverridesRef = useRef(!!requestOverrides && Object.keys(requestOverrides).length > 0);
-  hasRequestOverridesRef.current = !!requestOverrides && Object.keys(requestOverrides).length > 0;
+  //
+  // `exclude_broken` is deliberately NOT counted here: it's the default gallery's
+  // "hide broken" override, but unlike group/set/asset_ids overrides it IS
+  // client-verifiable (a freshly created asset is never manually-flagged broken),
+  // so it must not disable live-prepend. Counting it was why the default gallery
+  // stopped showing new generations live while Recent (which has no overrides)
+  // kept updating — the override is always on by default. The exclude_broken
+  // constraint is instead enforced in the client-side matchesFilters check below.
+  const scopingOverrideKeys = (o?: Partial<AssetSearchRequest>) =>
+    o ? Object.keys(o).filter((k) => k !== 'exclude_broken') : [];
+  const hasRequestOverridesRef = useRef(scopingOverrideKeys(requestOverrides).length > 0);
+  hasRequestOverridesRef.current = scopingOverrideKeys(requestOverrides).length > 0;
+  const excludeBrokenActiveRef = useRef(false);
+  excludeBrokenActiveRef.current = !!(requestOverrides as Record<string, unknown> | undefined)?.exclude_broken;
   const extraRegistryFiltersRef = useRef(extraRegistryFilters);
   extraRegistryFiltersRef.current = extraRegistryFilters;
 
@@ -764,7 +776,10 @@ export function useAssets(options?: {
           (Array.isArray(filterParams.upload_method)
             ? filterParams.upload_method.includes(asset.upload_method)
             : asset.upload_method === filterParams.upload_method)) &&
-        (!filterParams.provider_status || asset.provider_status === filterParams.provider_status) &&
+        (!filterParams.provider_status ||
+          (filterParams.provider_status === 'not_flagged'
+            ? asset.provider_status !== 'flagged'
+            : asset.provider_status === filterParams.provider_status)) &&
         (!filterParams.tag ||
           (Array.isArray(filterParams.tag)
             ? filterParams.tag.some((tag) => tags.includes(tag))
@@ -773,7 +788,12 @@ export function useAssets(options?: {
           asset.description?.toLowerCase().includes(filterParams.q.toLowerCase()) ||
           tags.some(t => t.toLowerCase().includes(filterParams.q!.toLowerCase()))) &&
         // Skip non-content assets (masks, guidance, etc.) from gallery prepend
-        ((asset as any).asset_kind ?? 'content') === (filterParams.asset_kind ?? 'content');
+        ((asset as any).asset_kind ?? 'content') === (filterParams.asset_kind ?? 'content') &&
+        // Honour the default gallery's "hide broken" override client-side. New
+        // assets are never manually-flagged broken, so this passes for fresh
+        // generations; it only screens a (rare) create event for an already-
+        // flagged asset.
+        (!excludeBrokenActiveRef.current || ((asset as any).signal_override ?? null) !== 'broken');
 
       // Only live-prepend on page 1 with default sort (newest first).
       const isDefaultSort = !filterParams.sort_by || (filterParams.sort_by === 'created_at' && filterParams.sort_dir === 'desc');
@@ -797,7 +817,15 @@ export function useAssets(options?: {
       const isDefaultSort =
         !filterParams.sort_by ||
         (filterParams.sort_by === 'created_at' && filterParams.sort_dir === 'desc');
-      if (currentPageRef.current === 1 && isDefaultSort) {
+      const willRefetch = currentPageRef.current === 1 && isDefaultSort;
+      // Breadcrumb for the intermittent "stale until refresh" bug: shows whether
+      // a resync actually backfilled this surface or was skipped (and why) — the
+      // gallery only re-fetches on the live head (page 1, default sort).
+      console.info(
+        `[useAssets] resync ${willRefetch ? 'refetching head' : 'SKIPPED'}`,
+        { page: currentPageRef.current, isDefaultSort },
+      );
+      if (willRefetch) {
         void goToPageRef.current(1);
       }
     });

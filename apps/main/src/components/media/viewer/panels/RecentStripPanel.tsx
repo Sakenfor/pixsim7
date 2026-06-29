@@ -20,7 +20,7 @@ import { Icon } from '@lib/icons';
 import { useAssetEngagement, useAssetViewerStore, type ViewerAsset } from '@features/assets';
 import { archiveAssetAndBroadcast } from '@features/assets/lib/archive';
 import { toggleFavoriteById } from '@features/assets/lib/favoriteTag';
-import { getAssetDisplayUrls } from '@features/assets/models/asset';
+import { getAssetDisplayUrls, isLikelyBroken } from '@features/assets/models/asset';
 
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 
@@ -118,6 +118,13 @@ const StripThumb = memo(function StripThumb({ asset, isActive, isPending, onClic
   // active/hover state) so the probe cue layers on top without flicker.
   const isProbe = asset._assetModel?.assetKind === 'probe';
 
+  // Likely-broken cue — a red outline so manually-flagged OR heuristic-suspicious
+  // (score >= 3) clips are marked for review in Recent (non-destructive; they are
+  // NOT hidden — only manual flags hide, see effectively_broken_clause). Takes
+  // priority over the amber probe ring (broken matters more than throwaway) but
+  // yields to the transient gesture-committed ring.
+  const isBroken = model ? isLikelyBroken(model) : false;
+
   // "Already reviewed" cue — a small corner dot reflecting how far the user
   // got with this asset. Emerald = fully reviewed (image opened, or video
   // watched to the end), amber = video started but not finished, sky = video
@@ -158,9 +165,10 @@ const StripThumb = memo(function StripThumb({ asset, isActive, isPending, onClic
           : 'border-transparent hover:border-neutral-400 dark:hover:border-neutral-500',
         isPending && !isActive ? 'ring-2 ring-blue-400 animate-pulse' : '',
         isCommitted ? 'ring-2 ring-emerald-400' : '',
-        isProbe && !isActive && !isPending && !isCommitted ? 'ring-2 ring-amber-400' : '',
+        isBroken && !isPending && !isCommitted ? 'ring-2 ring-red-500' : '',
+        isProbe && !isBroken && !isActive && !isPending && !isCommitted ? 'ring-2 ring-amber-400' : '',
       ].join(' ')}
-      title={asset.name}
+      title={isBroken ? `${asset.name} — flagged broken` : asset.name}
     >
       {thumbSrc && !thumbFailed ? (
         <img

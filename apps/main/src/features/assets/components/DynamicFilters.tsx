@@ -1,4 +1,4 @@
-import { Dropdown } from '@pixsim7/shared.ui';
+import { CursorMenu, Dropdown, DropdownItem, Popover } from '@pixsim7/shared.ui';
 import {
   useCallback,
   useLayoutEffect,
@@ -7,7 +7,6 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
 
@@ -86,6 +85,15 @@ const FILTER_GROUPS: Record<string, { label: string; icon: string; order: number
 const GROUPED_FILTER_KEYS = new Set(
   Object.values(FILTER_GROUPS).flatMap((g) => g.keys),
 );
+
+/**
+ * Registry filters that exist for backend plumbing but must NOT render as
+ * user-facing filter chips. `exclude_broken` is driven by the gallery chrome's
+ * "Show broken" toggle (galleryViewPrefsStore → RemoteGallerySource injects it),
+ * so surfacing it again as a loose chip is redundant and confusing. Hidden here
+ * rather than dropped from filter metadata so the toggle can still send the key.
+ */
+const HIDDEN_FILTER_KEYS = new Set(['exclude_broken', 'exclude_override_broken']);
 
 /** Filters whose options are grouped into collapsible namespaces. */
 const GROUPED_FILTER_CONFIG: Record<string, {
@@ -239,6 +247,7 @@ export function DynamicFilters({
 
     const all = metadata.filters
       .filter((f) => {
+        if (HIDDEN_FILTER_KEYS.has(f.key)) return false;
         const canonicalKey = FILTER_KEY_ALIASES[f.key];
         if (canonicalKey && availableKeys.has(canonicalKey)) return false;
         if (include && !include.includes(f.key)) return false;
@@ -568,7 +577,7 @@ export function DynamicFilters({
           hasSelection={hasOverflowSelection}
         />
       )}
-      {chipMenu && createPortal(
+      {chipMenu && (
         <ChipContextMenu
           x={chipMenu.x}
           y={chipMenu.y}
@@ -576,8 +585,7 @@ export function DynamicFilters({
           onTogglePin={() => { togglePin(chipMenu.key); setChipMenu(null); }}
           onBrowse={onBrowseFilter ? () => { onBrowseFilter(chipMenu.key, filters); setChipMenu(null); } : undefined}
           onClose={() => setChipMenu(null)}
-        />,
-        document.body,
+        />
       )}
     </div>
   );
@@ -602,56 +610,27 @@ export function ChipContextMenu({
   onBrowse?: () => void;
   onClose: () => void;
 }) {
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    const keyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('mousedown', handler);
-    document.addEventListener('keydown', keyHandler);
-    return () => {
-      document.removeEventListener('mousedown', handler);
-      document.removeEventListener('keydown', keyHandler);
-    };
-  }, [onClose]);
-
-  // Clamp to viewport
-  const left = Math.min(x, window.innerWidth - 180);
-  const top = Math.min(y, window.innerHeight - 120);
-
   return (
-    <div
-      ref={menuRef}
-      className="fixed z-popover min-w-[160px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl py-1"
-      style={{ left, top }}
-    >
+    <CursorMenu position={{ x, y }} onClose={onClose} minWidth="160px">
       {onTogglePin && (
-        <button
-          type="button"
+        <DropdownItem
           onClick={onTogglePin}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          className="text-sm"
+          icon={<Icon name="pin" size={14} className="w-3.5 h-3.5" />}
         >
-          <Icon name="pin" size={14} className="w-3.5 h-3.5" />
           <span>{isPinned ? 'Unpin filter' : 'Pin filter'}</span>
-        </button>
+        </DropdownItem>
       )}
       {onBrowse && (
-        <button
-          type="button"
+        <DropdownItem
           onClick={onBrowse}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          className="text-sm"
+          icon={<Icon name="image" size={14} className="w-3.5 h-3.5" />}
         >
-          <Icon name="image" size={14} className="w-3.5 h-3.5" />
           <span>Browse in gallery</span>
-        </button>
+        </DropdownItem>
       )}
-    </div>
+    </CursorMenu>
   );
 }
 
@@ -938,22 +917,6 @@ interface OverflowMenuProps {
 function OverflowMenu({ filters, metadata, values, onChange, hasSelection }: OverflowMenuProps) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
-  const [rect, setRect] = useState<DOMRect | null>(null);
-
-  useLayoutEffect(() => {
-    if (!open || !anchorRef.current) {
-      setRect(null);
-      return;
-    }
-    const update = () => setRect(anchorRef.current?.getBoundingClientRect() ?? null);
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [open]);
 
   return (
     <div className="relative flex-none">
@@ -970,19 +933,20 @@ function OverflowMenu({ filters, metadata, values, onChange, hasSelection }: Ove
       >
         <Icon name="moreHorizontal" size={14} className="w-3.5 h-3.5" />
       </button>
-      {open && rect && createPortal(
-        <div
-          className="z-popover"
-          style={{
-            position: 'fixed',
-            left: Math.max(8, Math.min(rect.left, window.innerWidth - 240 - 8)),
-            top: rect.bottom + 6,
-          }}
-        >
+      <Popover
+        open={open}
+        anchor={anchorRef.current}
+        placement="bottom"
+        align="start"
+        offset={6}
+        onClose={() => setOpen(false)}
+        triggerRef={anchorRef}
+      >
           <Dropdown
             isOpen={open}
             onClose={() => setOpen(false)}
             positionMode="static"
+            closeOnOutsideClick={false}
             minWidth="200px"
             className="max-w-[280px]"
           >
@@ -1110,9 +1074,7 @@ function OverflowMenu({ filters, metadata, values, onChange, hasSelection }: Ove
               })}
             </div>
           </Dropdown>
-        </div>,
-        document.body
-      )}
+      </Popover>
     </div>
   );
 }
@@ -1136,22 +1098,6 @@ interface FilterGroupChipProps {
 function FilterGroupChip({ label, icon, members, metadata, values, onChange }: FilterGroupChipProps) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
-  const [rect, setRect] = useState<DOMRect | null>(null);
-
-  useLayoutEffect(() => {
-    if (!open || !anchorRef.current) {
-      setRect(null);
-      return;
-    }
-    const update = () => setRect(anchorRef.current?.getBoundingClientRect() ?? null);
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [open]);
 
   const activeCount = members.reduce((n, m) => {
     const v = values[m.key as keyof AssetFilters];
@@ -1188,19 +1134,20 @@ function FilterGroupChip({ label, icon, members, metadata, values, onChange }: F
         </span>
         <span className="font-medium whitespace-nowrap">{label}</span>
       </button>
-      {open && rect && createPortal(
-        <div
-          className="z-popover"
-          style={{
-            position: 'fixed',
-            left: Math.max(8, Math.min(rect.left, window.innerWidth - 240 - 8)),
-            top: rect.bottom + 6,
-          }}
-        >
+      <Popover
+        open={open}
+        anchor={anchorRef.current}
+        placement="bottom"
+        align="start"
+        offset={6}
+        onClose={() => setOpen(false)}
+        triggerRef={anchorRef}
+      >
           <Dropdown
             isOpen={open}
             onClose={() => setOpen(false)}
             positionMode="static"
+            closeOnOutsideClick={false}
             minWidth="220px"
             className="max-w-[300px]"
           >
@@ -1228,9 +1175,7 @@ function FilterGroupChip({ label, icon, members, metadata, values, onChange }: F
               ))}
             </div>
           </Dropdown>
-        </div>,
-        document.body,
-      )}
+      </Popover>
     </div>
   );
 }
@@ -1252,46 +1197,28 @@ function FilterDropdown({
   onMouseLeave,
   children,
 }: FilterDropdownProps) {
-  const [rect, setRect] = useState<DOMRect | null>(null);
-
-  useLayoutEffect(() => {
-    if (!visible || !anchorEl) {
-      setRect(null);
-      return;
-    }
-
-    const update = () => {
-      setRect(anchorEl.getBoundingClientRect());
-    };
-
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [visible, anchorEl]);
-
-  if (!visible || !rect) {
+  if (!visible || !anchorEl) {
     return null;
   }
 
   const spacing = 8;
   const minWidth = 220;
   const maxWidth = 360;
+  const rect = anchorEl.getBoundingClientRect();
   const width = Math.min(maxWidth, Math.max(minWidth, rect.width));
-  const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
-  const top = rect.bottom + spacing;
 
-  return createPortal(
-    <div
-      className="z-popover"
-      style={{
-        position: 'fixed',
-        left,
-        top,
-      }}
+  return (
+    <Popover
+      open={visible}
+      anchor={anchorEl}
+      placement="bottom"
+      align="start"
+      offset={spacing}
+      onClose={onClose || (() => undefined)}
+      closeOnClickOutside={Boolean(onClose)}
+      closeOnEscape={Boolean(onClose)}
+      className="max-w-[360px]"
+      style={{ width }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
@@ -1299,13 +1226,13 @@ function FilterDropdown({
         isOpen={visible}
         onClose={onClose || (() => undefined)}
         positionMode="static"
+        closeOnOutsideClick={false}
         minWidth={`${width}px`}
         className="max-w-[360px]"
       >
         {children}
       </Dropdown>
-    </div>,
-    document.body
+    </Popover>
   );
 }
 

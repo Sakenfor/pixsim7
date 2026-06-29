@@ -31,6 +31,9 @@ from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.services.asset.signal_analysis import (
+    not_effectively_broken_clause,
+)
 
 # A single prompt grouping value: the family if the prompt belongs to one, else
 # the exact version (one-off prompts). family_id and version_id are disjoint
@@ -94,10 +97,11 @@ class AssetSiblingCountService:
             select(*cols, func.count(Asset.id))
             .where(Asset.user_id == owner_user_id)
             .where(tuple_(*cols).in_(list(keys)))
-            # Don't let user-confirmed-broken clips inflate the cohort counts shown
-            # on cards (consistent with hiding flagged clips). IS DISTINCT FROM
-            # keeps NULL + 'clean', drops only 'broken'.
-            .where(Asset.signal_override.is_distinct_from("broken"))
+            # Don't let broken clips inflate the cohort counts shown on cards —
+            # the same "effectively broken" definition the default gallery hides
+            # (manual flag OR current-version heuristic score >= 3, minus Keeps).
+            # See effectively_broken_clause for the shared predicate.
+            .where(not_effectively_broken_clause())
             .group_by(*cols)
         )
         counts: Dict[tuple, int] = {}

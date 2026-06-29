@@ -117,9 +117,24 @@ export class WebSocketManager {
   // and we force a reconnect.
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private awaitingPong = false;
+  // Debug breadcrumbs for diagnosing intermittent "gallery stale until refresh"
+  // reports. Records the infrequent lifecycle transitions (connect/open/close/
+  // reconnect/heartbeat/forceReconnect) with timestamps, plus the last inbound-
+  // message time so a "Live but silent" socket (readyState OPEN, no events) is
+  // distinguishable from a genuine disconnect. Capped ring buffer — survives in
+  // memory so you can inspect it AFTER noticing the stall. Dump via
+  // `window.__wsDebug()` (dev only). Not wired to any permanent UI.
+  private _events: { t: number; ev: string; detail?: string }[] = [];
+  private _lastMessageAt = 0;
 
   constructor() {
     this.installResumeListeners();
+  }
+
+  private logEvent(ev: string, detail?: string) {
+    this._events.push({ t: Date.now(), ev, detail });
+    if (this._events.length > 60) this._events.shift();
+    debugFlags.log('websocket', `[ws-event] ${ev}`, detail ?? '');
   }
 
   /**
@@ -214,17 +229,23 @@ export class WebSocketManager {
   }
 
   getDebugInfo() {
+    const now = Date.now();
     return {
       url: this._currentUrl,
       lastError: this._lastError,
       reconnectAttempts: this._reconnectAttempts,
       readyState: this.ws?.readyState ?? -1,
       refCount: this.refCount,
+      isConnected: this.isConnected,
+      lastMessageAt: this._lastMessageAt,
+      silentForMs: this._lastMessageAt ? now - this._lastMessageAt : null,
+      events: [...this._events],
     };
   }
 
   forceReconnect() {
     debugFlags.log('websocket', 'Force reconnect requested');
+    this.logEvent('forceReconnect');
     this.stopHeartbeat();
     this._reconnectAttempts = 0;
     if (this.ws) {
@@ -286,6 +307,7 @@ export class WebSocketManager {
         // interval — the socket is dead despite readyState OPEN. Reconnect.
         debugFlags.log('websocket', 'Heartbeat timed out (no pong) — forcing reconnect');
         this._lastError = 'heartbeat timeout (no pong)';
+        this.logEvent('heartbeat:timeout');
         this.forceReconnect();
         return;
       }
@@ -325,11 +347,13 @@ export class WebSocketManager {
       const targetUrl = WS_CANDIDATES[currentIndex];
       this._currentUrl = targetUrl;
       debugFlags.log('websocket', `Connecting to generation updates (${targetUrl})...`);
+      this.logEvent('connect:start', targetUrl);
       this.connectionOpened = false;
       const ws = new WebSocket(targetUrl);
 
       ws.onopen = () => {
         debugFlags.log('websocket', 'Connected to generation updates via', targetUrl);
+        this.logEvent('open', targetUrl);
         this.connectionOpened = true;
         this.isConnecting = false;
         this.isConnected = true;
@@ -344,6 +368,7 @@ export class WebSocketManager {
         // heartbeat. (The server's `pong` reply lands here too; parsing it as
         // a message is a no-op, but its arrival is the liveness signal.)
         this.awaitingPong = false;
+        this._lastMessageAt = Date.now();
         this.handleMessage(event);
       };
 
@@ -357,6 +382,7 @@ export class WebSocketManager {
 
       ws.onclose = (event) => {
         debugFlags.log('websocket', 'Disconnected from', targetUrl, '- will attempt reconnect in 5s…');
+        this.logEvent('close', `code=${event.code} wasOpen=${this.connectionOpened}`);
         this.stopHeartbeat();
         this.isConnecting = false;
         this.isConnected = false;
@@ -376,6 +402,7 @@ export class WebSocketManager {
 
         if (this.refCount > 0) {
           this._reconnectAttempts++;
+          this.logEvent('reconnect:scheduled', `attempt=${this._reconnectAttempts} in=5s`);
           if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
           }
@@ -456,6 +483,21 @@ export class WebSocketManager {
 }
 
 export const wsManager = hmrSingleton('wsManager', () => new WebSocketManager());
+
+// Dev-only console handle for diagnosing intermittent "gallery stale until
+// refresh" reports. When it happens: run `__wsDebug()` to dump the socket's
+// state + lifecycle breadcrumbs (did it drop? reconnect? when was the last
+// inbound message — i.e. is it "Live but silent"?), then `__wsForceReconnect()`
+// to close+reopen (the reopen re-emits `connected` → resync backfill). If a
+// reconnect fixes it, the bug is in the reconnect/resync path, not the data.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  const w = window as Window & {
+    __wsDebug?: () => unknown;
+    __wsForceReconnect?: () => void;
+  };
+  w.__wsDebug = () => wsManager.getDebugInfo();
+  w.__wsForceReconnect = () => wsManager.forceReconnect();
+}
 
 /**
  * Subscribe to a specific event pattern and bump the connection refcount.
