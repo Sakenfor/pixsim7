@@ -230,7 +230,6 @@ export function AppMapPanel() {
   const [originFilter, setOriginFilter] = useState<UnifiedPluginOrigin | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const nav = useSidebarNav<string, SectionId>({ sections: SECTIONS, initial: 'features', storageKey: 'app-map:nav' });
-  const activeSection = nav.activeId as SectionId;
   const [allPlugins, setAllPlugins] = useState<UnifiedPluginDescriptor[]>([]);
 
   // Architecture graph (unified backend + frontend data)
@@ -534,6 +533,99 @@ export function AppMapPanel() {
     URL.revokeObjectURL(url);
   };
 
+  // Each view is attached as the declarative `content` of its sidebar child, so
+  // SidebarContentLayout renders the active one itself — no manual
+  // `{activeSection === '…' && <X/>}` switch chain. See @pixsim7/shared.ui.
+  const sectionContent: Record<SectionId, React.ReactNode> = {
+    features: (
+      <FeaturesView
+        features={displayedFeatures}
+        selectedFeature={selectedFeature}
+        selectedFeatureRoutes={selectedFeatureRoutes}
+        selectedFeatureActions={selectedFeatureActions}
+        onSelectFeature={setSelectedFeatureId}
+      />
+    ),
+    plugins: (
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-700 px-4 py-2">
+          <div className="text-xs text-neutral-500 dark:text-neutral-400">Plugin view</div>
+          <div className="inline-flex rounded-md border border-neutral-200 dark:border-neutral-700 p-0.5">
+            <button
+              onClick={() => setPluginViewMode('list')}
+              className={`px-2 py-1 text-xs rounded ${
+                pluginViewMode === 'list'
+                  ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                  : 'text-neutral-600 dark:text-neutral-300'
+              }`}
+            >
+              List
+            </button>
+            <button
+              onClick={() => setPluginViewMode('graph')}
+              className={`px-2 py-1 text-xs rounded ${
+                pluginViewMode === 'graph'
+                  ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                  : 'text-neutral-600 dark:text-neutral-300'
+              }`}
+            >
+              Graph
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1">
+          {pluginViewMode === 'list' ? (
+            <PluginsView
+              allPlugins={displayedPlugins}
+              filteredPlugins={filteredPlugins}
+              familyFilter={familyFilter}
+              originFilter={originFilter}
+              searchQuery={searchQuery}
+              onFamilyFilterChange={setFamilyFilter}
+              onOriginFilterChange={setOriginFilter}
+              onSearchQueryChange={setSearchQuery}
+              pluginCounts={pluginCounts}
+              originCounts={originCounts}
+              pluginHealth={pluginHealth}
+              featureCount={displayedFeatures.length}
+            />
+          ) : (
+            <DependencyGraphPanel
+              features={displayedFeatures}
+              plugins={displayedPlugins}
+              backendLinks={graphData?.links ?? []}
+            />
+          )}
+        </div>
+      </div>
+    ),
+    registries: (
+      <RegistriesView
+        backendRegistryDescriptors={backendRegistryDescriptors}
+        backendRuntimeRegistries={backendRuntimeRegistries}
+        appMapRegistries={appMapRegistries}
+      />
+    ),
+    journeys: <JourneysView />,
+    testing: (
+      <CapabilityTestingPanel
+        features={allFeatures}
+        routes={allRoutes}
+        actions={allActions}
+      />
+    ),
+    backend: <BackendArchitecturePanel />,
+  };
+
+  const navSections = SECTIONS.map((section) => ({
+    ...section,
+    children: section.children.map((child) => ({
+      ...child,
+      content: sectionContent[child.id],
+    })),
+  }));
+
   return (
     <AppMapErrorBoundary>
       <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-950">
@@ -597,7 +689,7 @@ export function AppMapPanel() {
 
         {/* Sidebar + Content */}
         <SidebarContentLayout
-          sections={SECTIONS}
+          sections={navSections}
           activeSectionId={nav.activeSectionId}
           onSelectSection={nav.selectSection}
           activeChildId={nav.activeChildId}
@@ -609,96 +701,8 @@ export function AppMapPanel() {
           collapsible
           expandedWidth={144}
           persistKey="appmap-sidebar"
-        >
-          <div className="h-full overflow-hidden">
-            {activeSection === 'features' && (
-              <FeaturesView
-                features={displayedFeatures}
-                selectedFeature={selectedFeature}
-                selectedFeatureRoutes={selectedFeatureRoutes}
-                selectedFeatureActions={selectedFeatureActions}
-                onSelectFeature={setSelectedFeatureId}
-              />
-            )}
-
-            {activeSection === 'plugins' && (
-              <div className="flex h-full flex-col">
-                <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-700 px-4 py-2">
-                  <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                    Plugin view
-                  </div>
-                  <div className="inline-flex rounded-md border border-neutral-200 dark:border-neutral-700 p-0.5">
-                    <button
-                      onClick={() => setPluginViewMode('list')}
-                      className={`px-2 py-1 text-xs rounded ${
-                        pluginViewMode === 'list'
-                          ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
-                          : 'text-neutral-600 dark:text-neutral-300'
-                      }`}
-                    >
-                      List
-                    </button>
-                    <button
-                      onClick={() => setPluginViewMode('graph')}
-                      className={`px-2 py-1 text-xs rounded ${
-                        pluginViewMode === 'graph'
-                          ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
-                          : 'text-neutral-600 dark:text-neutral-300'
-                      }`}
-                    >
-                      Graph
-                    </button>
-                  </div>
-                </div>
-
-                <div className="min-h-0 flex-1">
-                  {pluginViewMode === 'list' ? (
-                    <PluginsView
-                      allPlugins={displayedPlugins}
-                      filteredPlugins={filteredPlugins}
-                      familyFilter={familyFilter}
-                      originFilter={originFilter}
-                      searchQuery={searchQuery}
-                      onFamilyFilterChange={setFamilyFilter}
-                      onOriginFilterChange={setOriginFilter}
-                      onSearchQueryChange={setSearchQuery}
-                      pluginCounts={pluginCounts}
-                      originCounts={originCounts}
-                      pluginHealth={pluginHealth}
-                      featureCount={displayedFeatures.length}
-                    />
-                  ) : (
-                    <DependencyGraphPanel
-                      features={displayedFeatures}
-                      plugins={displayedPlugins}
-                      backendLinks={graphData?.links ?? []}
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-
-            {activeSection === 'registries' && (
-              <RegistriesView
-                backendRegistryDescriptors={backendRegistryDescriptors}
-                backendRuntimeRegistries={backendRuntimeRegistries}
-                appMapRegistries={appMapRegistries}
-              />
-            )}
-
-            {activeSection === 'journeys' && <JourneysView />}
-
-            {activeSection === 'testing' && (
-              <CapabilityTestingPanel
-                features={allFeatures}
-                routes={allRoutes}
-                actions={allActions}
-              />
-            )}
-
-            {activeSection === 'backend' && <BackendArchitecturePanel />}
-          </div>
-        </SidebarContentLayout>
+          contentClassName="overflow-hidden"
+        />
       </div>
     </AppMapErrorBoundary>
   );

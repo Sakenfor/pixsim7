@@ -27,10 +27,10 @@ import {
   type UiStudioTabId,
   type UiStudioTargetContext,
 } from "@features/contextHub";
+import { HudDesignerPanel } from "@features/panels/domain/definitions/hud-designer/HudDesignerPanel";
 
 import { OverlayConfig } from "@/routes/OverlayConfig";
 
-import { HudDesignerPanel } from "@features/panels/domain/definitions/hud-designer/HudDesignerPanel";
 
 import { SurfaceWorkbenchPanel } from "./SurfaceWorkbenchPanel";
 
@@ -80,7 +80,7 @@ const STUDIO_SECTIONS: Array<{
 ];
 
 
-const STUDIO_SIDEBAR_SECTIONS: SidebarContentLayoutSection[] = STUDIO_SECTIONS.map(
+const STUDIO_SIDEBAR_SECTIONS: SidebarContentLayoutSection<UiStudioTabId>[] = STUDIO_SECTIONS.map(
   (section) => ({
     id: section.id,
     label: section.label,

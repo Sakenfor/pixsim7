@@ -42,8 +42,8 @@ export function ContentMapPanel() {
   const allSources = useMemo(() => getContentSources(), []);
 
   // Build sidebar sections from categories that have sources
-  const sections = useMemo<SidebarContentLayoutSection[]>(() => {
-    const result: SidebarContentLayoutSection[] = [];
+  const sections = useMemo<SidebarContentLayoutSection<never>[]>(() => {
+    const result: SidebarContentLayoutSection<never>[] = [];
     for (const cat of CONTENT_SOURCE_CATEGORY_ORDER) {
       const sources = getContentSourcesByCategory(cat);
       if (sources.length === 0) continue;

@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, AssetSvc, DatabaseSession
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.enums import MediaType
+from pixsim7.backend.main.services.asset.signal_scoring_params import ScoringParams
 from pixsim_logging import get_logger
 
 router = APIRouter(tags=["assets-maintenance"])
@@ -2109,14 +2110,17 @@ async def get_signal_scan_cohorts(
     """
     from pixsim7.backend.main.domain.generation.models import Generation
     from pixsim7.backend.main.services.asset.signal_analysis import (
-        RENDER_RATIO_WEAK,
         SCANNER_VERSION,
-        SUSPICIOUS_THRESHOLD,
+        load_scoring_params,
     )
     from pixsim7.backend.main.services.asset.cohort_baselines import (
         cohort_key,
         load_cohort_baselines,
     )
+
+    # Live tuned thresholds so this diagnostic table's buckets + effective render
+    # cutoff match what the scorer actually applies (see load_scoring_params).
+    _params = load_scoring_params()
 
     # The render-time baselines the scorer actually divides by (persisted),
     # so the table can show each cohort's real reference + effective cutoff.
@@ -2128,7 +2132,7 @@ async def get_signal_scan_cohorts(
 
     bucket_expr = case(
         (score_text.is_(None), "unscanned"),
-        (score_int >= SUSPICIOUS_THRESHOLD, "suspicious"),
+        (score_int >= _params.suspicious_threshold, "suspicious"),
         (score_int == 0, "clean"),
         else_="borderline",
     )
@@ -2251,7 +2255,7 @@ async def get_signal_scan_cohorts(
         bl = baselines.get(cohort_key(provider, op_str, model, quality, req_duration))
         bl_p50 = bl.get("p50") if bl else None
         bl_n = bl.get("n") if bl else None
-        flag_under = round(RENDER_RATIO_WEAK * bl_p50, 1) if bl_p50 else None
+        flag_under = round(_params.render_ratio_weak * bl_p50, 1) if bl_p50 else None
 
         out.append(CohortRow(
             provider=provider,
@@ -2310,6 +2314,28 @@ async def get_signal_calibration(
     )
 
     return await compute_calibration(db, admin.id)
+
+
+@router.post("/signal-calibration/preview")
+async def preview_signal_calibration(
+    candidate: ScoringParams,
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+) -> dict:
+    """Grade a CANDIDATE set of scoring thresholds against your broken/clean flags
+    without changing anything.
+
+    Body is a full ``ScoringParams`` (the live values + your edits). Re-scores the
+    labelled clips' stored metrics with both the live params and the candidate and
+    returns both confusion matrices, so the tuning panel can show the precision /
+    recall delta BEFORE you save + rescore. Read-only and cheap (no probing). See
+    services/asset/signal_calibration.preview_calibration.
+    """
+    from pixsim7.backend.main.services.asset.signal_calibration import (
+        preview_calibration,
+    )
+
+    return await preview_calibration(db, admin.id, candidate)
 
 
 # ===== Durable signal-scan reprobe runs =====

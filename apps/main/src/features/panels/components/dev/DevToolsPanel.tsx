@@ -158,8 +158,8 @@ export function DevToolsPanel() {
   }, [visibleTools]);
 
   // Build sidebar sections from categories that have tools
-  const sections = useMemo<SidebarContentLayoutSection[]>(() => {
-    const result: SidebarContentLayoutSection[] = [];
+  const sections = useMemo<SidebarContentLayoutSection<never>[]>(() => {
+    const result: SidebarContentLayoutSection<never>[] = [];
 
     if (recentTools.length > 0) {
       result.push({

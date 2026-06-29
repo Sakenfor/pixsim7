@@ -12,6 +12,7 @@ from typing import Optional
 
 from pydantic import Field
 
+from pixsim7.backend.main.services.asset.signal_scoring_params import ScoringParams
 from pixsim7.backend.main.services.system_config.settings_base import SettingsBase
 
 
@@ -101,6 +102,19 @@ class MediaSettings(SettingsBase):
             "loop holds the GIL, so throughput peaks around 4 threads and "
             "regresses beyond it (measured). 1 = serial. Live-tunable — applies "
             "on the next batch."
+        ),
+    )
+
+    # ── Signal-scan scoring thresholds (live-tunable, no reprobe) ─────────
+
+    signal_scoring: ScoringParams = Field(
+        default_factory=ScoringParams,
+        description=(
+            "Score-time thresholds for the broken-video (Video Health) detector. "
+            "Edited from the Video-Health scoring tuning panel and previewed against "
+            "your broken/clean labels before committing. All are applied at SCORE "
+            "time, so a cheap rescore (no ffmpeg reprobe) re-flags the library; the "
+            "media-maintenance worker reloads these at the start of every batch."
         ),
     )
 

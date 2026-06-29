@@ -70,12 +70,24 @@ from typing import Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.services.asset.signal_scoring_params import ScoringParams
 from pixsim_logging import get_logger
 
 logger = get_logger()
 
 # Bump when scoring changes so re-scans can be detected via prev_scanner_version.
 SCANNER_VERSION = "v5"
+
+# Default score-time thresholds. ScoringParams is the single source of truth for
+# the scorer's defaults; the back-compat module constants below are DERIVED from
+# this instance so they can never drift from it. The live system reads tuned
+# values from MediaSettings.signal_scoring via load_scoring_params().
+_DEFAULT_PARAMS = ScoringParams()
+
+# Back-compat module constants — DERIVED from _DEFAULT_PARAMS (the single source
+# of truth) so existing importers (signal_calibration et al.) keep working and the
+# values can never drift from the ScoringParams defaults. The live scorer reads
+# tuned values from MediaSettings.signal_scoring (load_scoring_params), NOT these.
 
 # Corroborating-axis thresholds. Each axis ORs its two sub-signals (they are
 # highly correlated; summing them was the v1 double-counting bug) and
@@ -85,24 +97,24 @@ SCANNER_VERSION = "v5"
 # ~+2.2 dB (peak) HIGHER than volumedetect's reference, so the thresholds are
 # shifted up by that offset to keep the (now corroboration-only) audio-quiet axis
 # firing equivalently. Approximate by design — it's a +1 nudge, not a primary.
-RMS_DB_THRESHOLD = -25.0            # audio-quiet axis: rms below this (was -28 @ volumedetect)
-PEAK_DB_THRESHOLD = -8.0           # audio-quiet axis: peak below this (was -10 @ volumedetect)
+RMS_DB_THRESHOLD = _DEFAULT_PARAMS.rms_db_threshold      # audio-quiet axis: rms below this
+PEAK_DB_THRESHOLD = _DEFAULT_PARAMS.peak_db_threshold    # audio-quiet axis: peak below this
 # Near-silence is a PRIMARY signal (flags ~alone), distinct from the +1 quiet
 # corroboration: a near-digital-silent clip is broken audio the melody matcher
 # can't catch (silence has no melody to cross-correlate). On 436 labels nothing
 # clean sits below -40 dB while 18 broken do, so this flags with no labeled false
 # positives. Supersedes (doesn't stack with) the +1 quiet nudge.
-RMS_SILENCE_THRESHOLD = -40.0      # rms below this → near-silent (primary)
-SILENCE_POINTS = 3                 # enough to flag alone (>= SUSPICIOUS_THRESHOLD)
-PHASH_FIRST_TO_LAST_THRESHOLD = 20  # visual-static axis: first→last below this
-PHASH_MEAN_DIV_THRESHOLD = 22.0    # visual-static axis: mean-div below this
+RMS_SILENCE_THRESHOLD = _DEFAULT_PARAMS.rms_silence_threshold  # rms below this → near-silent (primary)
+SILENCE_POINTS = _DEFAULT_PARAMS.silence_points          # enough to flag alone (>= SUSPICIOUS_THRESHOLD)
+PHASH_FIRST_TO_LAST_THRESHOLD = _DEFAULT_PARAMS.phash_first_to_last_threshold  # visual-static: first→last below this
+PHASH_MEAN_DIV_THRESHOLD = _DEFAULT_PARAMS.phash_mean_div_threshold  # visual-static: mean-div below this
 
 # Primary signal — render seconds / cohort-median (p50). Lower = faster-failed.
-RENDER_RATIO_STRONG = 0.5          # below this → +4 (strong fast-fail)
-RENDER_RATIO_MODERATE = 0.7        # below this → +2
-RENDER_RATIO_WEAK = 0.85           # below this → +1
+RENDER_RATIO_STRONG = _DEFAULT_PARAMS.render_ratio_strong      # below this → +4 (strong fast-fail)
+RENDER_RATIO_MODERATE = _DEFAULT_PARAMS.render_ratio_moderate  # below this → +2
+RENDER_RATIO_WEAK = _DEFAULT_PARAMS.render_ratio_weak          # below this → +1
 
-SUSPICIOUS_THRESHOLD = 3           # score >= this is flagged broken
+SUSPICIOUS_THRESHOLD = _DEFAULT_PARAMS.suspicious_threshold    # score >= this is flagged broken
 
 
 def effectively_broken_clause():
@@ -142,8 +154,8 @@ def not_effectively_broken_clause():
 # on 425 user labels: ~0.6 ≈ 86% precision. Strong flags broken alone (+4); weak
 # needs a corroborating axis (+2). Tunable WITHOUT a reprobe — re-scoring reads
 # the stored chroma_fp. See plan signal-scan-recalibration.
-AUDIO_REF_MATCH_STRONG = 0.60
-AUDIO_REF_MATCH_WEAK = 0.50
+AUDIO_REF_MATCH_STRONG = _DEFAULT_PARAMS.audio_ref_match_strong
+AUDIO_REF_MATCH_WEAK = _DEFAULT_PARAMS.audio_ref_match_weak
 # Loudness-aware ladder (v5.1). Loudness range (LRA) discriminates synthetic
 # broken audio (narrowband refusal voice / pitched hum, low LRA) from a genuine
 # dynamic soundtrack (breaths, music, ambience, high LRA) that merely cross-
@@ -157,8 +169,8 @@ AUDIO_REF_MATCH_WEAK = 0.50
 # weak->+1 demotion (same precision, higher recall) because it spares narrowband
 # weak matches. Missing LRA → treated as narrowband (keeps recall on old probes).
 # All tunable WITHOUT a reprobe (re-scoring reads the stored LRA + chroma_fp).
-AUDIO_REF_MATCH_STRONG_HI = 0.70
-AUDIO_REF_LRA_GATE = 12.0
+AUDIO_REF_MATCH_STRONG_HI = _DEFAULT_PARAMS.audio_ref_match_strong_hi
+AUDIO_REF_LRA_GATE = _DEFAULT_PARAMS.audio_ref_lra_gate
 
 # Per-category ladder overrides for the audio match. The matcher scores a clip
 # against EACH signalref category separately (melody / highpitch / squeal / …);
@@ -184,13 +196,18 @@ AUDIO_REF_CATEGORY_OVERRIDES: dict[str, dict[str, Any]] = {
 }
 
 
-def _audio_ref_cat_config(category: Optional[str]) -> dict[str, Any]:
-    """Ladder knobs for a category: module defaults + any per-category override."""
+def _audio_ref_cat_config(
+    category: Optional[str], params: ScoringParams = _DEFAULT_PARAMS
+) -> dict[str, Any]:
+    """Ladder knobs for a category: ``params`` base ladder + any per-category
+    override. ``params`` supplies the tunable base (hi/strong/weak/lra_gate); the
+    static AUDIO_REF_CATEGORY_OVERRIDES still layer on top (Phase-2 per-category
+    tuning)."""
     cfg = {
-        "hi": AUDIO_REF_MATCH_STRONG_HI,
-        "strong": AUDIO_REF_MATCH_STRONG,
-        "weak": AUDIO_REF_MATCH_WEAK,
-        "lra_gate": AUDIO_REF_LRA_GATE,
+        "hi": params.audio_ref_match_strong_hi,
+        "strong": params.audio_ref_match_strong,
+        "weak": params.audio_ref_match_weak,
+        "lra_gate": params.audio_ref_lra_gate,
     }
     if category and category in AUDIO_REF_CATEGORY_OVERRIDES:
         cfg.update(AUDIO_REF_CATEGORY_OVERRIDES[category])
@@ -207,7 +224,7 @@ def _audio_ref_cat_config(category: Optional[str]) -> dict[str, Any]:
 # discriminator for this library — render time, the v2 primary, barely separates
 # (broken render ~0.98x cohort). See plan signal-scan-recalibration.
 FLATNESS_STRONG = 0.25     # median flatness below this → +4 (deep broken band; flags alone)
-FLATNESS_WEAK = 0.38       # 0.25–0.38 → +1 (ambiguous mid-zone; corroboration-only, never flags alone)
+FLATNESS_WEAK = _DEFAULT_PARAMS.flatness_weak  # below this → +1 (corroboration-only, never flags alone)
 FRAME_TONAL_FLATNESS = 0.15  # per-frame flatness below this counts as a "tonal" frame
 # Sustained-tonal corroboration: fraction of frames that are tonal (tonal_frac)
 # above this is a separate broken cue from the flatness MEDIAN — a clip can have
@@ -215,7 +232,7 @@ FRAME_TONAL_FLATNESS = 0.15  # per-frame flatness below this counts as a "tonal"
 # corroboration only (never flags alone): on 436 labels it lifts recall ~2pts
 # with no added false positives. Deliberately corroboration-only — tonality is
 # the axis v5 demoted for false-flagging musical clips, so it must not flag solo.
-TONAL_FRAC_THRESHOLD = 0.55
+TONAL_FRAC_THRESHOLD = _DEFAULT_PARAMS.tonal_frac_threshold
 SPECTRAL_SR = 16000        # mono decode rate for the spectral probe
 SPECTRAL_WIN = 2048        # FFT window (samples)
 SPECTRAL_HOP = 1024        # hop between frames (samples)
@@ -489,20 +506,20 @@ def probe_spectral(source: str, *, threads: int = DEFAULT_FFMPEG_THREADS) -> dic
 
 # ---------- scoring ----------
 
-def _render_points(render_ratio: Optional[float]) -> int:
+def _render_points(render_ratio: Optional[float], params: ScoringParams = _DEFAULT_PARAMS) -> int:
     """Graded points for the cohort-relative render-time signal (a primary axis)."""
     if render_ratio is None:
         return 0
-    if render_ratio < RENDER_RATIO_STRONG:
+    if render_ratio < params.render_ratio_strong:
         return 4
-    if render_ratio < RENDER_RATIO_MODERATE:
+    if render_ratio < params.render_ratio_moderate:
         return 2
-    if render_ratio < RENDER_RATIO_WEAK:
+    if render_ratio < params.render_ratio_weak:
         return 1
     return 0
 
 
-def _tonal_points(flatness: Optional[float]) -> int:
+def _tonal_points(flatness: Optional[float], params: ScoringParams = _DEFAULT_PARAMS) -> int:
     """CORROBORATING points for low spectral flatness (≤ +1).
 
     v5 DEMOTED this from a primary axis. On 425 user labels tonal flatness did
@@ -514,7 +531,7 @@ def _tonal_points(flatness: Optional[float]) -> int:
     """
     if flatness is None:
         return 0
-    return 1 if flatness < FLATNESS_WEAK else 0
+    return 1 if flatness < params.flatness_weak else 0
 
 
 def _audio_ref_ladder(arm: float, loudness_range_db: Optional[float], cfg: dict[str, Any]) -> int:
@@ -540,6 +557,7 @@ def _audio_ref_points(
     audio_ref_match: Optional[float],
     loudness_range_db: Optional[float] = None,
     scores_by_category: Optional[dict[str, float]] = None,
+    params: ScoringParams = _DEFAULT_PARAMS,
 ) -> int:
     """Graded points for the broken-audio fingerprint match (PRIMARY, v5).
 
@@ -554,13 +572,13 @@ def _audio_ref_points(
     """
     if scores_by_category:
         return max(
-            (_audio_ref_ladder(s, loudness_range_db, _audio_ref_cat_config(cat))
+            (_audio_ref_ladder(s, loudness_range_db, _audio_ref_cat_config(cat, params))
              for cat, s in scores_by_category.items()),
             default=0,
         )
     if audio_ref_match is None:
         return 0
-    return _audio_ref_ladder(audio_ref_match, loudness_range_db, _audio_ref_cat_config(None))
+    return _audio_ref_ladder(audio_ref_match, loudness_range_db, _audio_ref_cat_config(None, params))
 
 
 def score_metrics(
@@ -568,22 +586,29 @@ def score_metrics(
     render_ratio: Optional[float] = None,
     audio_ref_match: Optional[float] = None,
     audio_ref_scores: Optional[dict[str, float]] = None,
+    params: Optional[ScoringParams] = None,
 ) -> tuple[int, bool]:
     """Compute (score, suspicious) from probed metrics + optional render ratio.
+
+    ``params`` supplies every score-time threshold (defaults to the static
+    _DEFAULT_PARAMS); the live system passes the user-tuned MediaSettings instance
+    so a rescore re-applies tuned thresholds without a reprobe, and the calibration
+    preview passes a candidate instance to grade it against the labels.
 
     Three PRIMARY axes, each able to flag on its own:
       * audio-fingerprint match vs the curated signalref:* references: 0/+1/+2/+4
         (v5's strongest audio discriminator — see _audio_ref_points);
       * render time vs cohort: 0/+1/+2/+4;
-      * near-silence (rms < RMS_SILENCE_THRESHOLD): +SILENCE_POINTS — broken
+      * near-silence (rms < rms_silence_threshold): +silence_points — broken
         silent audio the melody matcher structurally can't catch.
     Plus CORROBORATING axes worth at most +1 each — tonal flatness (v5 demoted it
     here from a primary axis), sustained-tonal fraction, audio-quiet, and visual-
     static; audio-quiet and visual-static each OR their two correlated sub-signals
-    rather than summing them. ``suspicious`` (score >= 3) is reachable via any
-    primary axis alone; a single corroborating axis never flags, but enough of
-    them lit together reach 3.
+    rather than summing them. ``suspicious`` (score >= threshold) is reachable via
+    any primary axis alone; a single corroborating axis never flags, but enough of
+    them lit together reach the threshold.
     """
+    p = params or _DEFAULT_PARAMS
     rms  = metrics.get("audio_rms_db")
     peak = metrics.get("audio_peak_db")
     f2l  = metrics.get("phash_first_to_last")
@@ -592,33 +617,33 @@ def score_metrics(
     lra  = metrics.get("loudness_range_db")
 
     tonal_frac = metrics.get("tonal_frac")
-    near_silent = rms is not None and rms < RMS_SILENCE_THRESHOLD
+    near_silent = rms is not None and rms < p.rms_silence_threshold
     audio_quiet = (
-        (rms  is not None and rms  < RMS_DB_THRESHOLD) or
-        (peak is not None and peak < PEAK_DB_THRESHOLD)
+        (rms  is not None and rms  < p.rms_db_threshold) or
+        (peak is not None and peak < p.peak_db_threshold)
     )
-    sustained_tonal = tonal_frac is not None and tonal_frac > TONAL_FRAC_THRESHOLD
+    sustained_tonal = tonal_frac is not None and tonal_frac > p.tonal_frac_threshold
     visual_static = (
-        (f2l  is not None and f2l  < PHASH_FIRST_TO_LAST_THRESHOLD) or
-        (mdf  is not None and mdf  < PHASH_MEAN_DIV_THRESHOLD)
+        (f2l  is not None and f2l  < p.phash_first_to_last_threshold) or
+        (mdf  is not None and mdf  < p.phash_mean_div_threshold)
     )
 
     # Primaries (each can flag broken alone): audio-fingerprint match, render,
     # and near-silence. Corroborating (≤ +1 each): tonal flatness, audio-quiet,
     # visual-static.
-    score = _audio_ref_points(audio_ref_match, lra, audio_ref_scores) + _render_points(render_ratio)
-    score += _tonal_points(flatness)
+    score = _audio_ref_points(audio_ref_match, lra, audio_ref_scores, p) + _render_points(render_ratio, p)
+    score += _tonal_points(flatness, p)
     # Near-silence is the primary audio-level signal; it supersedes the +1 quiet
     # nudge (don't double-count — near_silent implies audio_quiet).
     if near_silent:
-        score += SILENCE_POINTS
+        score += p.silence_points
     elif audio_quiet:
         score += 1
     if sustained_tonal:
         score += 1
     if visual_static:
         score += 1
-    return score, score >= SUSPICIOUS_THRESHOLD
+    return score, score >= p.suspicious_threshold
 
 
 # ---------- combined per-file probe ----------
@@ -653,12 +678,32 @@ def probe_path(source: str | Path, *, ffmpeg_threads: int = DEFAULT_FFMPEG_THREA
     return out
 
 
+def load_scoring_params() -> ScoringParams:
+    """The live, user-tuned score-time thresholds from ``MediaSettings.signal_scoring``.
+
+    The scorer's single read point for tuned thresholds. The media-maintenance
+    worker reloads MediaSettings at the start of every batch (see
+    ``SignalBackfillService._probe_tunables`` / ``_rescore_concurrency``), so a
+    change saved from the tuning panel is picked up by the next rescore batch with
+    no restart. Falls back to the static defaults if settings can't be read (cache
+    not yet hydrated, tests, etc.). Imported lazily to keep this module ORM-free at
+    import time and avoid an import cycle with services.media.settings."""
+    try:
+        from pixsim7.backend.main.services.media.settings import get_media_settings
+
+        sp = get_media_settings().signal_scoring
+        return sp if isinstance(sp, ScoringParams) else _DEFAULT_PARAMS
+    except Exception:  # noqa: BLE001 — never let a config read break scoring
+        return _DEFAULT_PARAMS
+
+
 def build_signal_metrics_payload(
     metrics: dict[str, Any],
     render_context: Optional[dict[str, Any]] = None,
     audio_ref_match: Optional[float] = None,
     audio_ref_label: Optional[str] = None,
     audio_ref_scores: Optional[dict[str, float]] = None,
+    params: Optional[ScoringParams] = None,
 ) -> dict[str, Any]:
     """Wrap a probed metrics dict into the canonical `signal_metrics` shape.
 
@@ -670,12 +715,20 @@ def build_signal_metrics_payload(
     ``audio_ref_scores`` the per-category map fed to scoring for per-category
     thresholds. All default to None → corroboration-only scoring. Excludes
     `user_override` (only the override endpoint writes that).
+
+    ``params`` are the score-time thresholds; when omitted the LIVE tuned values
+    are loaded from MediaSettings (``load_scoring_params``) — this is the chokepoint
+    that makes a rescore re-apply panel-tuned thresholds. The per-category
+    ``audio_ref_scores`` map is persisted too, so the calibration preview can
+    replay per-category scoring from stored metrics without re-matching.
     """
+    p = params or load_scoring_params()
     rc = render_context or {}
     render_ratio = rc.get("render_ratio")
     score, suspicious = score_metrics(
         metrics, render_ratio=render_ratio,
         audio_ref_match=audio_ref_match, audio_ref_scores=audio_ref_scores,
+        params=p,
     )
     return {
         "score":                     score,
@@ -696,6 +749,9 @@ def build_signal_metrics_payload(
         "syllabic_mod":              metrics.get("syllabic_mod"),
         "audio_ref_match":           audio_ref_match,
         "audio_ref_label":           audio_ref_label,
+        # Per-category scores persisted so the calibration preview can replay
+        # per-category scoring (squeal strong-only, etc.) from stored metrics.
+        "audio_ref_scores":          audio_ref_scores or None,
         "render_ratio":              render_ratio,
         "cohort_n":                  rc.get("cohort_n"),
         "cohort_p50_sec":            rc.get("cohort_p50_sec"),

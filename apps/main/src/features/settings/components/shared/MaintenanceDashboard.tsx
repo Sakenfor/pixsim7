@@ -22,9 +22,11 @@ import {
   DisclosureSection,
   LoadingSpinner,
   SidebarContentLayout,
+  type SidebarContentLayoutChild,
   type SidebarContentLayoutSection,
   StatusPill,
   type StatusTone,
+  useSidebarNav,
 } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -53,6 +55,7 @@ import {
 } from './maintenanceShared';
 import { Spinner } from './MaintenanceSpinner';
 import { ProviderConcurrencyRow } from './ProviderConcurrencyRow';
+import { ScoringTuningPanel } from './ScoringTuningPanel';
 import { SignalReprobeRunner } from './SignalReprobeRunner';
 
 const SURFACE = 'settings:maintenance-dashboard';
@@ -597,13 +600,10 @@ const signalScanConfig: RowConfig<SignalScanStats> = {
     if (d.errors > 0)  parts.push(`${d.errors} errors`);
     return parts.length > 0 ? parts.join(', ') : null;
   },
-  renderExtra: () => (
-    <div className="space-y-2">
-      <SignalReprobeRunner />
-      <CalibrationPanel />
-      <DurationCohortTable />
-    </div>
-  ),
+  // Calibration / Scoring tuning / Cohorts are sibling child panes in the
+  // Video Health sub-nav (see MaintenanceDashboard signalChildren); the scan
+  // detail keeps only the reprobe runner.
+  renderExtra: () => <SignalReprobeRunner />,
 };
 
 const previewBackfillConfig: RowConfig<PreviewBackfillStats> = {
@@ -3470,7 +3470,6 @@ function TaskPctBadge<S>({ task }: { task: MaintenanceTask<S> }) {
 export function MaintenanceDashboard() {
   const refreshCallbacks = useRef<(() => Promise<void>)[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeId, setActiveId] = useState<string>('overview');
 
   // One hook per RowConfig — all fire in parallel on mount, so sidebar badges
   // populate as stats come back.
@@ -3495,6 +3494,41 @@ export function MaintenanceDashboard() {
 
   const byTask = useAsyncTaskStore((s) => s.byTask);
 
+  // Video Health fans out into nested child panes (declarative `content` rendered
+  // by SidebarContentLayout — no manual switch). The parent's coverage stats live
+  // in "Scan & reprobe"; calibration / tuning / cohorts are siblings so the
+  // tune-and-see loop reads top-to-bottom without a long scroll.
+  const signalTask = taskMap.signal;
+  const signalChildren: SidebarContentLayoutChild[] = [
+    {
+      id: 'signal:scan',
+      label: 'Scan & reprobe',
+      content: (
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2 px-6 pt-4">
+            <TaskPctBadge task={signalTask} />
+          </div>
+          <MaintenanceTaskDetail task={signalTask} />
+        </div>
+      ),
+    },
+    {
+      id: 'signal:calibration',
+      label: 'Calibration',
+      content: <div className="p-4 max-w-2xl"><CalibrationPanel /></div>,
+    },
+    {
+      id: 'signal:tuning',
+      label: 'Scoring tuning',
+      content: <div className="p-4 max-w-2xl"><ScoringTuningPanel /></div>,
+    },
+    {
+      id: 'signal:cohorts',
+      label: 'Cohorts',
+      content: <div className="p-4"><DurationCohortTable /></div>,
+    },
+  ];
+
   const sections: SidebarContentLayoutSection[] = [
     {
       id: 'overview',
@@ -3506,14 +3540,14 @@ export function MaintenanceDashboard() {
       label: 'Storage Tiering',
       icon: <Icon name="database" size={14} />,
     },
-    ...STATS_TASK_NAV.map((entry) => {
+    ...STATS_TASK_NAV.map((entry): SidebarContentLayoutSection => {
       const taskEntry = taskMap[entry.id as keyof typeof taskMap];
       const isRunning = byTask[taskEntry.taskId]?.status === 'running';
-      return {
-        id: entry.id,
-        label: entry.label,
-        icon: isRunning ? <LoadingSpinner size="xs" /> : <Icon name={entry.icon} size={14} />,
-      };
+      const icon = isRunning ? <LoadingSpinner size="xs" /> : <Icon name={entry.icon} size={14} />;
+      // Video Health is the one stats task with nested child panes.
+      return entry.id === 'signal'
+        ? { id: entry.id, label: entry.label, icon, children: signalChildren }
+        : { id: entry.id, label: entry.label, icon };
     }),
     {
       id: 'provider-concurrency',
@@ -3537,17 +3571,25 @@ export function MaintenanceDashboard() {
     },
   ];
 
+  const nav = useSidebarNav({ sections, storageKey: 'maintenance-dashboard:nav' });
+
   // Each task hook is MaintenanceTask<S> for a different S; the generic detail
   // components only need a consistent (task.config + task.stats) pairing, so a
   // single `any` instantiation is sound and avoids a union-vs-generic mismatch.
+  // Video Health is excluded here — it renders via its child panes' declarative
+  // content, so the active leaf is a child id (not in taskMap) and this stays null.
   const activeTask: MaintenanceTask<any> | null =
-    activeId in taskMap ? (taskMap[activeId as keyof typeof taskMap] as MaintenanceTask<any>) : null;
+    nav.activeId in taskMap ? (taskMap[nav.activeId as keyof typeof taskMap] as MaintenanceTask<any>) : null;
 
   return (
     <SidebarContentLayout
       sections={sections}
-      activeSectionId={activeId}
-      onSelectSection={setActiveId}
+      activeSectionId={nav.activeSectionId}
+      activeChildId={nav.activeChildId}
+      onSelectSection={nav.selectSection}
+      onSelectChild={nav.selectChild}
+      expandedSectionIds={nav.expandedSectionIds}
+      onToggleExpand={nav.toggleExpand}
       sidebarTitle={
         <div className="flex items-center justify-between w-full gap-2 pr-2">
           <span className="text-xs font-medium">Maintenance</span>
@@ -3566,15 +3608,15 @@ export function MaintenanceDashboard() {
           only takes label+icon, so we render badges inside each detail pane's
           header via the TaskPctBadge helper — keeping the sidebar purely nav. */}
 
-      {activeId === 'overview' && (
+      {nav.activeId === 'overview' && (
         <div className="flex flex-col gap-0">
           <HealthHeader />
           <div className="h-px bg-border mx-3" />
-          <StorageOverview onRefresh={refreshCallbacks} onNavigate={setActiveId} />
+          <StorageOverview onRefresh={refreshCallbacks} onNavigate={nav.navigate} />
         </div>
       )}
 
-      {activeId === 'storage-tiering' && <StorageTieringPanel />}
+      {nav.activeId === 'storage-tiering' && <StorageTieringPanel />}
 
       {activeTask && (
         <div className="flex flex-col">
@@ -3585,21 +3627,21 @@ export function MaintenanceDashboard() {
         </div>
       )}
 
-      {activeId === 'provider-concurrency' && <ProviderConcurrencyRow />}
+      {nav.activeId === 'provider-concurrency' && <ProviderConcurrencyRow />}
 
-      {activeId === 'duplicates' && (
+      {nav.activeId === 'duplicates' && (
         <div className="p-4">
           <DuplicatesRow onRefresh={refreshCallbacks} />
         </div>
       )}
 
-      {activeId === 'thumbnails' && (
+      {nav.activeId === 'thumbnails' && (
         <div className="p-4">
           <ThumbnailRow onRefresh={refreshCallbacks} />
         </div>
       )}
 
-      {activeId === 'error-types' && <ErrorCatalogRow />}
+      {nav.activeId === 'error-types' && <ErrorCatalogRow />}
     </SidebarContentLayout>
   );
 }

@@ -9,10 +9,12 @@ false-positive engine — see _tonal_points / plan signal-scan-recalibration.)
 """
 from __future__ import annotations
 
+from pixsim7.backend.main.services.asset import signal_analysis as _sa
 from pixsim7.backend.main.services.asset.signal_analysis import (
     SUSPICIOUS_THRESHOLD,
     score_metrics,
 )
+from pixsim7.backend.main.services.asset.signal_scoring_params import ScoringParams
 
 
 def _broken(metrics, render_ratio=None) -> bool:
@@ -80,3 +82,46 @@ def test_corroborating_axes_alone_never_break():
     })
     assert score == 2 and broken is False
     assert SUSPICIOUS_THRESHOLD == 3
+
+
+# ---- tunable params (ScoringParams) ----
+def test_scoringparams_defaults_match_module_constants():
+    # The module constants are DERIVED from ScoringParams defaults — guard against
+    # drift if someone edits one but not the other.
+    p = ScoringParams()
+    assert _sa.RMS_DB_THRESHOLD == p.rms_db_threshold
+    assert _sa.PEAK_DB_THRESHOLD == p.peak_db_threshold
+    assert _sa.RMS_SILENCE_THRESHOLD == p.rms_silence_threshold
+    assert _sa.SILENCE_POINTS == p.silence_points
+    assert _sa.PHASH_FIRST_TO_LAST_THRESHOLD == p.phash_first_to_last_threshold
+    assert _sa.PHASH_MEAN_DIV_THRESHOLD == p.phash_mean_div_threshold
+    assert _sa.RENDER_RATIO_STRONG == p.render_ratio_strong
+    assert _sa.RENDER_RATIO_MODERATE == p.render_ratio_moderate
+    assert _sa.RENDER_RATIO_WEAK == p.render_ratio_weak
+    assert _sa.FLATNESS_WEAK == p.flatness_weak
+    assert _sa.TONAL_FRAC_THRESHOLD == p.tonal_frac_threshold
+    assert _sa.AUDIO_REF_MATCH_STRONG == p.audio_ref_match_strong
+    assert _sa.AUDIO_REF_MATCH_WEAK == p.audio_ref_match_weak
+    assert _sa.AUDIO_REF_MATCH_STRONG_HI == p.audio_ref_match_strong_hi
+    assert _sa.AUDIO_REF_LRA_GATE == p.audio_ref_lra_gate
+    assert _sa.SUSPICIOUS_THRESHOLD == p.suspicious_threshold
+
+
+def test_candidate_params_change_the_verdict():
+    # A weak fingerprint match (0.55) is +2 → not broken under defaults.
+    assert score_metrics({}, audio_ref_match=0.55) == (2, False)
+    # Lower the suspicious threshold to 2 → the same +2 now flags broken.
+    p = ScoringParams(suspicious_threshold=2)
+    assert score_metrics({}, audio_ref_match=0.55, params=p)[1] is True
+    # Or lower the strong-band floor so 0.55 grades as a strong (narrowband) +4.
+    p2 = ScoringParams(audio_ref_match_strong=0.50)
+    score, broken = score_metrics({}, audio_ref_match=0.55, params=p2)
+    assert score == 4 and broken is True
+
+
+def test_render_cutoff_is_tunable():
+    # Default weak cutoff is 0.85 → ratio 0.8 scores +1 (borderline, not broken).
+    assert score_metrics({}, render_ratio=0.8) == (1, False)
+    # Tighten the strong cutoff to 0.85 → ratio 0.8 is now a strong fast-fail (+4).
+    p = ScoringParams(render_ratio_strong=0.85)
+    assert score_metrics({}, render_ratio=0.8, params=p) == (4, True)

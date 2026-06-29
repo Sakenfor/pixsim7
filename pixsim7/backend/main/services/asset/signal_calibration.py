@@ -29,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.services.asset.signal_scoring_params import ScoringParams
 
 # Below this many labels per class, treat the report as directional only.
 MIN_PER_CLASS = 20
@@ -79,6 +80,101 @@ def _best_render_cutoff(labeled: list[tuple[float, bool]]) -> Optional[dict[str,
     if best:
         best.pop("_key", None)
     return best
+
+
+async def _load_labeled_metrics(
+    db: AsyncSession, user_id: int
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """``(broken, clean)`` lists of stored ``signal_metrics`` for the user's
+    explicitly-labelled videos (``user_override`` in {broken, clean})."""
+    rows = (
+        await db.execute(
+            select(Asset.media_metadata).where(
+                Asset.user_id == user_id,
+                Asset.media_type == "VIDEO",
+                Asset.is_archived == False,  # noqa: E712
+                Asset.signal_override.isnot(None),
+            )
+        )
+    ).all()
+    broken: list[dict[str, Any]] = []
+    clean: list[dict[str, Any]] = []
+    for (meta,) in rows:
+        sm = (meta or {}).get("signal_metrics") or {}
+        label = sm.get("user_override")
+        if label == "broken":
+            broken.append(sm)
+        elif label == "clean":
+            clean.append(sm)
+    return broken, clean
+
+
+def _confusion(
+    broken: list[dict[str, Any]], clean: list[dict[str, Any]], params: ScoringParams
+) -> dict[str, Any]:
+    """Confusion matrix + precision/recall/F1/accuracy of re-scoring the stored
+    metrics with ``params``.
+
+    Re-runs the full scorer over each clip's stored metrics (NOT the baked-in
+    ``suspicious``), so it reflects exactly what ``params`` would flag — the basis
+    for an apples-to-apples preview delta. Per-category audio scores
+    (``audio_ref_scores``) are replayed when present (stored since v5.x); older rows
+    fall back to the single ``audio_ref_match`` through the default-category ladder.
+    """
+    from pixsim7.backend.main.services.asset.signal_analysis import score_metrics
+
+    def is_broken(sm: dict[str, Any]) -> bool:
+        _, suspicious = score_metrics(
+            sm,
+            render_ratio=sm.get("render_ratio"),
+            audio_ref_match=sm.get("audio_ref_match"),
+            audio_ref_scores=sm.get("audio_ref_scores"),
+            params=params,
+        )
+        return suspicious
+
+    tp = sum(1 for sm in broken if is_broken(sm))
+    fn = len(broken) - tp
+    fp = sum(1 for sm in clean if is_broken(sm))
+    tn = len(clean) - fp
+    total = len(broken) + len(clean)
+    return {
+        "tp": tp, "fp": fp, "fn": fn, "tn": tn,
+        "accuracy": round((tp + tn) / total, 3) if total else 0.0,
+        **_prf(tp, fp, fn),
+    }
+
+
+async def preview_calibration(
+    db: AsyncSession, user_id: int, candidate: ScoringParams
+) -> dict[str, Any]:
+    """Grade a CANDIDATE set of scoring thresholds against the user's labels
+    WITHOUT changing anything.
+
+    Re-scores the labelled clips' stored metrics twice — with the live params and
+    with ``candidate`` — and returns both confusion matrices so the tuning panel
+    can show the precision/recall delta before the user commits + rescores. Cheap
+    (reads only labelled rows; no probing). The ``current`` baseline is itself a
+    re-score with the live params, so the delta isolates the effect of the candidate
+    change (it can differ slightly from the stored ``suspicious`` if the library was
+    last scored under different thresholds — that's the point: it shows the live
+    model, not a historical snapshot)."""
+    from pixsim7.backend.main.services.asset.signal_analysis import load_scoring_params
+
+    broken, clean = await _load_labeled_metrics(db, user_id)
+    n_broken, n_clean = len(broken), len(clean)
+    out: dict[str, Any] = {
+        "labels": {"broken": n_broken, "clean": n_clean, "total": n_broken + n_clean},
+        "sufficient": n_broken >= MIN_PER_CLASS and n_clean >= MIN_PER_CLASS,
+        "min_per_class": MIN_PER_CLASS,
+    }
+    if n_broken == 0 and n_clean == 0:
+        out["current"] = None
+        out["candidate"] = None
+        return out
+    out["current"] = _confusion(broken, clean, load_scoring_params())
+    out["candidate"] = _confusion(broken, clean, candidate)
+    return out
 
 
 async def compute_calibration(db: AsyncSession, user_id: int) -> dict[str, Any]:

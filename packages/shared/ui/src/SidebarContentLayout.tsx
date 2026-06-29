@@ -4,11 +4,44 @@ import clsx from 'clsx';
 import { HierarchicalSidebarNav, type HierarchicalSidebarNavItem } from './HierarchicalSidebarNav';
 import { SidebarPaneShell, type SidebarPaneShellProps } from './SidebarPaneShell';
 
-export interface SidebarContentLayoutSection {
+export interface SidebarContentLayoutChild<TChildId extends string = string> {
+  id: TChildId;
+  label: string;
+  icon?: ReactNode;
+  extra?: ReactNode;
+  /**
+   * Declarative content pane for this child. When set, the layout renders it for
+   * the active child itself — the consumer no longer needs a manual
+   * `{activeChildId === '…' && <X/>}` switch. A ReactNode is fine (element
+   * creation is cheap; only the active one is mounted). Omit to fall back to the
+   * parent section's `content`, then to the `children` render prop.
+   */
+  content?: ReactNode;
+}
+
+/**
+ * A sidebar section. Generic over the CHILD id type (`TChildId`, default
+ * `string`) so a consumer with narrow child ids can type them once and have that
+ * flow into a `useSidebarNav<…, TChildId>` call without a cast — pass
+ * `SidebarContentLayoutSection<MyChildId>[]`. Flat sections (no children) should
+ * use `SidebarContentLayoutSection<never>[]` so the (vacuous) child id matches a
+ * `useSidebarNav<…, never>`. The default keeps every existing `string`-id
+ * consumer working unchanged.
+ */
+export interface SidebarContentLayoutSection<TChildId extends string = string> {
   id: string;
   label: string;
   icon?: ReactNode;
-  children?: { id: string; label: string; icon?: ReactNode; extra?: ReactNode }[];
+  children?: SidebarContentLayoutChild<TChildId>[];
+  /**
+   * Declarative content pane for this section. When set, the layout renders it
+   * for the active section itself (see {@link SidebarContentLayoutChild.content}),
+   * so consumers can describe panes inline instead of hand-writing a
+   * `{activeSectionId === '…' && <X/>}` chain. Mixing is supported: sections
+   * without `content` fall through to the `children` render prop, so a consumer
+   * can migrate one section at a time.
+   */
+  content?: ReactNode;
   selectOnClick?: boolean;
   toggleOnClickIfExpandable?: boolean;
 }
@@ -24,7 +57,13 @@ export interface SidebarContentLayoutProps {
   sidebarTitle?: ReactNode;
   sidebarWidth?: string;
   variant?: 'light' | 'dark';
-  children: ReactNode;
+  /**
+   * Manual content render. Optional now: when a section/child declares `content`,
+   * the layout renders that for the active node and this prop is only the
+   * fallback for nodes that don't. Provide it for the classic
+   * `{activeId === '…' && <X/>}` pattern, omit it for fully-declarative sidebars.
+   */
+  children?: ReactNode;
   contentClassName?: string;
   navClassName?: string;
   className?: string;
@@ -78,6 +117,21 @@ export function SidebarContentLayout({
 }: SidebarContentLayoutProps) {
   const items: HierarchicalSidebarNavItem[] = sections;
 
+  // Resolve the active pane: prefer the active CHILD's declarative `content`,
+  // then the active SECTION's `content`, then the manual `children` render prop.
+  // The fall-through lets a consumer mix declarative and manual sections (and
+  // migrate incrementally) — a section without `content` simply uses `children`.
+  const activeSection = sections.find((s) => s.id === activeSectionId);
+  const activeChild = activeChildId
+    ? activeSection?.children?.find((c) => c.id === activeChildId)
+    : undefined;
+  const pane: ReactNode =
+    activeChild?.content !== undefined
+      ? activeChild.content
+      : activeSection?.content !== undefined
+      ? activeSection.content
+      : children;
+
   return (
     <div className={clsx('flex-1 flex min-h-0 h-full', className)}>
       <SidebarPaneShell
@@ -114,7 +168,7 @@ export function SidebarContentLayout({
       </SidebarPaneShell>
 
       <div className={clsx('flex-1 min-w-0 min-h-0 h-full', contentClassName)}>
-        {children}
+        {pane}
       </div>
     </div>
   );

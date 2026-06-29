@@ -39,8 +39,14 @@ async def compute_signal_stats(db: AsyncSession, user_id: int) -> dict[str, Any]
     """
     from pixsim7.backend.main.services.asset.signal_analysis import (
         SCANNER_VERSION,
-        SUSPICIOUS_THRESHOLD,
+        load_scoring_params,
     )
+
+    # Use the LIVE tuned broken cutoff so the dashboard's broken/borderline counts
+    # match what the scorer actually flagged (a tuned suspicious_threshold + rescore
+    # changes which scores are "broken"); the raw signal_score column is unchanged
+    # by tuning, so comparing it against the live threshold is exact post-rescore.
+    suspicious_threshold = load_scoring_params().suspicious_threshold
 
     current_ver = Asset.signal_scanner_version == SCANNER_VERSION
     score = Asset.signal_score
@@ -52,7 +58,7 @@ async def compute_signal_stats(db: AsyncSession, user_id: int) -> dict[str, Any]
         func.count(
             case((
                 current_ver
-                & (score >= SUSPICIOUS_THRESHOLD)
+                & (score >= suspicious_threshold)
                 & (func.coalesce(override, "") != "clean"),
                 1,
             ))
@@ -69,7 +75,7 @@ async def compute_signal_stats(db: AsyncSession, user_id: int) -> dict[str, Any]
             case((
                 current_ver
                 & (score >= 1)
-                & (score < SUSPICIOUS_THRESHOLD),
+                & (score < suspicious_threshold),
                 1,
             ))
         ).label("borderline"),
