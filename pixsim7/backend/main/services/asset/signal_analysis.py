@@ -174,7 +174,14 @@ AUDIO_REF_LRA_GATE = 12.0
 # or stricter with ``{"squeal": {"strong": 0.65}}``. Left empty (behavior-neutral)
 # until there's per-category data to justify a value. Keys: hi, strong, weak
 # (None = no weak band), lra_gate.
-AUDIO_REF_CATEGORY_OVERRIDES: dict[str, dict[str, Any]] = {}
+#
+# squeal = strong-only: a broad VOICE reference matches lots of genuine audio in
+# the weak band (0.50–0.60) but its real siblings cluster at >=0.70. On 436 labels
+# dropping squeal's weak band removes +2 clean false positives with no recall loss
+# (the 73-clip cluster matches strong). Voice categories should default here.
+AUDIO_REF_CATEGORY_OVERRIDES: dict[str, dict[str, Any]] = {
+    "squeal": {"weak": None},
+}
 
 
 def _audio_ref_cat_config(category: Optional[str]) -> dict[str, Any]:
