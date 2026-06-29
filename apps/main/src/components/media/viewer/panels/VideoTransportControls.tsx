@@ -17,7 +17,17 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
 import { Icon } from '@lib/icons';
 
-import { useVideoVolumeStore } from './videoVolumeStore';
+import { useVideoPlaybackStore } from './videoPlaybackStore';
+
+/** Throttle for writing the scrub position during playback (seconds of drift). */
+const POSITION_SAVE_INTERVAL_S = 5;
+
+/**
+ * Whether the persisted play/pause intent has been applied yet this page load.
+ * Module-scoped so it fires once for the first video shown after a refresh —
+ * NOT on every asset navigation (which should respect normal autoplay).
+ */
+let sessionPlayStateApplied = false;
 
 interface VideoTransportControlsProps {
   /** The shared viewer video element (see MediaDisplay `attachVideo`). */
@@ -37,66 +47,131 @@ export function VideoTransportControls({ videoRef, assetId }: VideoTransportCont
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(1);
 
-  // Persisted across refreshes (the <video> resets to default volume on reload).
-  const persistVolume = useVideoVolumeStore((s) => s.setVolume);
-  const persistMuted = useVideoVolumeStore((s) => s.setMuted);
-  // Latest stored prefs, read in the bind effect without making it re-run on
-  // every store change (we only apply them when the element/asset changes).
-  const storedRef = useRef({ volume: 1, muted: false });
-  storedRef.current = {
-    volume: useVideoVolumeStore((s) => s.volume),
-    muted: useVideoVolumeStore((s) => s.muted),
-  };
+  // Stable persisted setters (zustand selectors return stable identities).
+  const persistVolume = useVideoPlaybackStore((s) => s.setVolume);
+  const persistMuted = useVideoPlaybackStore((s) => s.setMuted);
+  const persistWasPlaying = useVideoPlaybackStore((s) => s.setWasPlaying);
+  const persistPosition = useVideoPlaybackStore((s) => s.setPosition);
+  const clearPosition = useVideoPlaybackStore((s) => s.clearPosition);
 
-  // Mirror the element's state. The element fires these for the new clip even
-  // though it's reused across clips (no per-asset remount), so this stays in
-  // sync through navigation; `assetId` re-binds it after a real remount.
+  // Last position written to the store, to throttle per-timeupdate writes.
+  const lastSavedRef = useRef(0);
+
+  // Mirror the element's state, and restore persisted prefs onto the (possibly
+  // fresh) element. The element is reused across clips (no per-asset remount),
+  // so its events keep us in sync through navigation; `assetId` re-binds after a
+  // real remount and per-asset position restore.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    const syncPlay = () => setPlaying(!v.paused);
-    const syncTime = () => setCurrent(v.currentTime);
-    const syncDuration = () =>
-      setDuration(Number.isFinite(v.duration) ? v.duration : 0);
+    const key = assetId != null ? String(assetId) : '';
+    // Read persisted prefs imperatively at bind time — no subscription, so
+    // position writes don't re-render or re-run this effect.
+    const stored = useVideoPlaybackStore.getState();
+
+    lastSavedRef.current = 0;
+
+    const savePosition = () => {
+      if (!key || !(v.currentTime > 0)) return;
+      lastSavedRef.current = v.currentTime;
+      persistPosition(key, v.currentTime);
+    };
+
+    const syncPlay = () => {
+      setPlaying(!v.paused);
+      if (v.paused) savePosition(); // capture where we paused
+    };
+    const syncTime = () => {
+      setCurrent(v.currentTime);
+      // Throttled position save during playback.
+      if (key && Math.abs(v.currentTime - lastSavedRef.current) >= POSITION_SAVE_INTERVAL_S) {
+        savePosition();
+      }
+    };
     const syncVolume = () => {
       setMuted(v.muted);
       setVolume(v.volume);
     };
+    const onEnded = () => {
+      // Finished — forget the position so it restarts from the top next time.
+      if (key) clearPosition(key);
+    };
 
-    // Restore the saved volume/mute onto the (possibly fresh) element before
-    // seeding, so a reload picks up the user's last choice instead of default.
-    v.volume = storedRef.current.volume;
-    v.muted = storedRef.current.muted;
+    // Restore scrub position + (once per page load) play state, gated on
+    // metadata being ready so seeking and play() are valid.
+    let restored = false;
+    const restoreOnceReady = () => {
+      setDuration(Number.isFinite(v.duration) ? v.duration : 0);
+      if (restored) return;
+      const dur = v.duration;
+      if (!Number.isFinite(dur) || dur <= 0) return;
+      restored = true;
+
+      const saved = key ? stored.positions[key] : undefined;
+      if (saved != null && saved > 0 && saved < dur - 0.5) {
+        try {
+          v.currentTime = saved;
+        } catch {
+          /* seek can throw if not seekable yet; the throttled saves recover it */
+        }
+      }
+
+      if (!sessionPlayStateApplied) {
+        sessionPlayStateApplied = true;
+        // null = no expressed preference → leave autoplay behavior alone.
+        if (stored.wasPlaying === true) void v.play().catch(() => {});
+        else if (stored.wasPlaying === false) v.pause();
+      }
+    };
+
+    // Apply saved volume/mute before seeding so a reload reflects the last choice.
+    v.volume = stored.volume;
+    v.muted = stored.muted;
 
     v.addEventListener('play', syncPlay);
     v.addEventListener('pause', syncPlay);
     v.addEventListener('timeupdate', syncTime);
-    v.addEventListener('durationchange', syncDuration);
-    v.addEventListener('loadedmetadata', syncDuration);
+    v.addEventListener('durationchange', restoreOnceReady);
+    v.addEventListener('loadedmetadata', restoreOnceReady);
     v.addEventListener('volumechange', syncVolume);
+    v.addEventListener('ended', onEnded);
 
     // Seed from the element's current state.
     syncPlay();
-    syncTime();
-    syncDuration();
+    setCurrent(v.currentTime);
     syncVolume();
+    if (v.readyState >= 1) restoreOnceReady();
+
+    // Save on tab hide too — a hard refresh/close may skip React unmount cleanup.
+    const onHide = () => savePosition();
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', onHide);
 
     return () => {
+      savePosition(); // persist on asset change / unmount
       v.removeEventListener('play', syncPlay);
       v.removeEventListener('pause', syncPlay);
       v.removeEventListener('timeupdate', syncTime);
-      v.removeEventListener('durationchange', syncDuration);
-      v.removeEventListener('loadedmetadata', syncDuration);
+      v.removeEventListener('durationchange', restoreOnceReady);
+      v.removeEventListener('loadedmetadata', restoreOnceReady);
       v.removeEventListener('volumechange', syncVolume);
+      v.removeEventListener('ended', onEnded);
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onHide);
     };
-  }, [videoRef, assetId]);
+  }, [videoRef, assetId, persistPosition, clearPosition]);
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
-    if (v.paused) void v.play().catch(() => {});
-    else v.pause();
-  }, [videoRef]);
+    if (v.paused) {
+      void v.play().catch(() => {});
+      persistWasPlaying(true);
+    } else {
+      v.pause();
+      persistWasPlaying(false);
+    }
+  }, [videoRef, persistWasPlaying]);
 
   const seek = useCallback(
     (time: number) => {
