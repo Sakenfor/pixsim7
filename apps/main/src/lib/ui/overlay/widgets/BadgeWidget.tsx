@@ -14,16 +14,56 @@
 import { Badge, useHoverExpand, PortalFloat } from '@pixsim7/shared.ui';
 import type { AnchorPlacement, AnchorAlign } from '@pixsim7/shared.ui';
 import React, { useRef } from 'react';
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 
 import type { DataBinding } from '@lib/editing-core';
 import { resolveDataBinding } from '@lib/editing-core';
 import { Icon } from '@lib/icons';
+import { registerStore } from '@lib/stores';
 import { CubeFaces } from '@lib/ui/cube';
 
 import { useAppearanceStore } from '@features/appearance';
 
-import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
+import { SPACING_VALUES } from '../types';
+import type { OverlayWidget, WidgetPosition, VisibilityConfig, WidgetContext } from '../types';
+
+// ---------------------------------------------------------------------------
+// Per-surface expansion state for click-expandable badge clusters
+// ---------------------------------------------------------------------------
+
+/**
+ * Click-expand state for {@link createExpandableBadge} clusters, scoped per
+ * surface (gallery, viewer, …) rather than per card — toggling one cluster
+ * expands every card's cluster on that surface and is remembered there. Mirrors
+ * the active-target set badges' {@link useSetBadgeExpansionStore} so the two
+ * cluster affordances behave the same way.
+ */
+const CLUSTER_EXPANSION_STORAGE_KEY = 'pixsim7-badge-cluster-expansion';
+
+interface BadgeClusterExpansionState {
+  expandedBySurface: Record<string, boolean>;
+  toggle: (surface: string) => void;
+}
+
+const useBadgeClusterExpansionStore = create<BadgeClusterExpansionState>()(
+  persist(
+    (set) => ({
+      expandedBySurface: {},
+      toggle: (surface) =>
+        set((s) => ({
+          expandedBySurface: {
+            ...s.expandedBySurface,
+            [surface]: !(s.expandedBySurface[surface] ?? false),
+          },
+        })),
+    }),
+    { name: CLUSTER_EXPANSION_STORAGE_KEY, version: 1 },
+  ),
+);
+
+registerStore({ id: 'overlay:badge-cluster-expansion', key: CLUSTER_EXPANSION_STORAGE_KEY });
 
 // ---------------------------------------------------------------------------
 // Badge position + stackGroup presets
@@ -320,6 +360,14 @@ export interface ExpandableBadgeItem {
   label: string;
   /** Optional Tailwind ring class accenting the glyph (e.g. a severity/category color). */
   ringClass?: string;
+  /**
+   * Optional 0..1 gauge value. When set, the glyph draws a partial arc (a
+   * progress ring) of this sweep length instead of the solid {@link ringClass}
+   * ring — e.g. a broken-video score where a fuller arc = higher score.
+   */
+  score?: number;
+  /** CSS stroke color for the {@link score} arc (defaults to amber). */
+  scoreColor?: string;
 }
 
 export interface ExpandableBadgeConfig<TData = any> {
@@ -343,6 +391,18 @@ export interface ExpandableBadgeConfig<TData = any> {
   items: (data: TData) => ExpandableBadgeItem[];
   /** Hover-expand panel placement (defaults: top / start / 6px gap). */
   expand?: { placement?: AnchorPlacement; align?: AnchorAlign; offset?: number };
+  /**
+   * Switch from hover-portal to CLICK-to-expand: the chip toggles a per-surface
+   * expanded state and reveals each item's glyph inline (no portal). Mirrors the
+   * active-target set badges. Resolve the surface id from the widget context
+   * (e.g. `(ctx) => ctx.customState?.surfaceKey`); falls back to `'default'`.
+   */
+  clickExpand?: boolean;
+  /** With {@link clickExpand}, stack the revealed glyphs upward (for bottom-anchored
+   *  clusters so they grow away from the card edge). */
+  growUp?: boolean;
+  /** Resolve the per-surface key for {@link clickExpand} from the render context. */
+  surfaceKey?: (context: WidgetContext) => string;
 }
 
 function BadgeGlyph({
@@ -351,18 +411,53 @@ function BadgeGlyph({
   title,
 }: {
   item: ExpandableBadgeItem;
-  size?: 4 | 5;
+  size?: 4 | 5 | 6;
   title?: string;
 }) {
-  const dim = size === 5 ? 'w-5 h-5' : 'w-4 h-4';
-  const iconSize = size === 5 ? 11 : 9;
+  const dim = size === 6 ? 'w-6 h-6' : size === 5 ? 'w-5 h-5' : 'w-4 h-4';
+  const px = size === 6 ? 24 : size === 5 ? 20 : 16;
+  const iconSize = size === 6 ? 13 : size === 5 ? 11 : 9;
   const tip = title ?? item.label;
+  // Score gauge: a partial arc whose sweep length encodes a 0..1 value, drawn
+  // in place of the solid ring. Used for graded signals (e.g. broken-video
+  // score) so the level reads at a glance rather than just present/absent.
+  const hasScore = typeof item.score === 'number';
+  const fraction = hasScore ? Math.max(0, Math.min(1, item.score as number)) : 0;
+  const stroke = 2;
+  const r = (px - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+
   return (
     <span
-      className={`inline-flex items-center justify-center ${dim} rounded-full bg-neutral-900/80 ring-2 ${item.ringClass ?? 'ring-white/40'}`}
+      className={`relative inline-flex items-center justify-center ${dim} rounded-full bg-neutral-900/80 ${
+        hasScore ? '' : `ring-2 ${item.ringClass ?? 'ring-white/40'}`
+      }`}
       title={tip}
       aria-label={tip}
     >
+      {hasScore && (
+        <svg
+          className="absolute inset-0 -rotate-90"
+          width={px}
+          height={px}
+          viewBox={`0 0 ${px} ${px}`}
+          fill="none"
+        >
+          {/* track */}
+          <circle cx={px / 2} cy={px / 2} r={r} stroke="rgba(255,255,255,0.18)" strokeWidth={stroke} />
+          {/* gauge arc */}
+          <circle
+            cx={px / 2}
+            cy={px / 2}
+            r={r}
+            stroke={item.scoreColor ?? '#fb923c'}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={circ}
+            strokeDashoffset={circ * (1 - fraction)}
+          />
+        </svg>
+      )}
       <Icon name={item.icon} size={iconSize} className="text-white" color="#fff" />
     </span>
   );
@@ -373,17 +468,102 @@ function BadgeGlyph({
  * like other canonical badges, and hover-expands a portal listing every item.
  * "Always combined" — there is no inline ≤N special case.
  */
+/** Glyph size for the click-expand cluster — a touch larger than the hover-chip
+ *  default so the score-arc gauge and icons stay legible. */
+const GLYPH_SIZE = 6 as const;
+
+/** Click-to-expand cluster: chip toggles a per-surface state, revealing each
+ *  glyph inline (optionally growing upward). Used by bottom-anchored clusters
+ *  that want the same expand/retract affordance as the active-target set row. */
+function ClickExpandBadge({
+  items,
+  className,
+  surfaceKey,
+  growUp,
+}: {
+  items: ExpandableBadgeItem[];
+  className?: string;
+  surfaceKey: string;
+  growUp?: boolean;
+}) {
+  const expanded = useBadgeClusterExpansionStore(
+    (s) => s.expandedBySurface[surfaceKey] ?? false,
+  );
+
+  if (items.length === 0) return null;
+  const lead = items[0];
+
+  // A single indicator can't be expanded any further — show its glyph directly.
+  if (items.length === 1) {
+    return <BadgeGlyph item={lead} size={GLYPH_SIZE} title={lead.label} />;
+  }
+
+  // Collapsed (and the toggle when expanded) is a count-in-circle — just the
+  // number inside a round badge, sized to match the glyphs — rather than the
+  // lead glyph + a number beside it (which read as an icon + loose digit).
+  const countCircle = (
+    <button
+      type="button"
+      // Keep focus on the body — focusing a portaled overlay button scrolls the
+      // page (see overlay-button-focus-scroll canon).
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        useBadgeClusterExpansionStore.getState().toggle(surfaceKey);
+      }}
+      className={`inline-flex items-center justify-center w-6 h-6 rounded-full bg-black/70 backdrop-blur-sm shadow-sm cursor-pointer hover:animate-hover-pop ring-2 ${
+        expanded ? 'ring-white/70' : 'ring-white/30'
+      } ${className ?? ''}`.trim()}
+      title={expanded ? 'Click to collapse' : `${items.length} indicators — click to expand`}
+      aria-label={`${items.length} indicators`}
+      aria-expanded={expanded}
+    >
+      <span className="text-[11px] font-bold text-white leading-none">{items.length}</span>
+    </button>
+  );
+
+  return (
+    <div
+      className={`inline-flex ${growUp ? 'flex-col-reverse' : 'flex-col'} items-start`}
+      // Match the canonical stack spacing (the same `compact` norm the active-target
+      // set glyphs get from SPACING_VALUES) instead of a hand-picked gap, so the
+      // two cluster affordances stay visually consistent.
+      style={{ gap: SPACING_VALUES.compact }}
+    >
+      {countCircle}
+      {expanded && items.map((it) => <BadgeGlyph key={it.id} item={it} size={GLYPH_SIZE} title={it.label} />)}
+    </div>
+  );
+}
+
 function ExpandableBadge({
   items,
   expand,
   className,
+  clickExpand = false,
+  growUp = false,
+  surfaceKey,
 }: {
   items: ExpandableBadgeItem[];
   expand?: ExpandableBadgeConfig['expand'];
   className?: string;
+  clickExpand?: boolean;
+  growUp?: boolean;
+  surfaceKey?: string;
 }) {
   const { isExpanded, handlers } = useHoverExpand({ expandDelay: 120, collapseDelay: 200 });
   const triggerRef = useRef<HTMLDivElement>(null);
+
+  if (clickExpand) {
+    return (
+      <ClickExpandBadge
+        items={items}
+        className={className}
+        surfaceKey={surfaceKey ?? 'default'}
+        growUp={growUp}
+      />
+    );
+  }
 
   if (items.length === 0) return null;
   const lead = items[0];
@@ -443,6 +623,9 @@ export function createExpandableBadge<TData = any>(
     className,
     items,
     expand,
+    clickExpand,
+    growUp,
+    surfaceKey,
   } = config;
 
   return {
@@ -456,8 +639,15 @@ export function createExpandableBadge<TData = any>(
     // The chip manages its own hover-expand + portal; the overlay wrapper must
     // not also apply button role / keyboard handlers.
     handlesOwnInteraction: true,
-    render: (data: TData) => (
-      <ExpandableBadge items={items(data)} expand={expand} className={className} />
+    render: (data: TData, context: WidgetContext) => (
+      <ExpandableBadge
+        items={items(data)}
+        expand={expand}
+        className={className}
+        clickExpand={clickExpand}
+        growUp={growUp}
+        surfaceKey={clickExpand ? (surfaceKey ? surfaceKey(context) : 'default') : undefined}
+      />
     ),
   };
 }

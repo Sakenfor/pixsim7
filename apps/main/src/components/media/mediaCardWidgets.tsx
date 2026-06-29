@@ -298,12 +298,18 @@ export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayW
     tooltip = srcId
       ? `${mediaType} — artificial extend (i2v from ${frameLabel} of #${srcId})`
       : `${mediaType} — artificial extend (i2v from ${frameLabel})`;
-  } else if (badgeConfig?.showStatusIcon && effectiveHasStatus && providerStatus !== 'flagged') {
-    // 'flagged' is intentionally dropped from the ring — the bottom-left
-    // warnings cluster (getAssetWarnings) is the single carrier for the
-    // filtered/moderated signal, so we don't stack a second red marker on the
-    // same card. Mirrors the same carve-out on the top-right status badge
-    // (ProviderStatusContent). ok/local_only/duplicate rings still draw.
+  } else if (
+    badgeConfig?.showStatusIcon &&
+    effectiveHasStatus &&
+    providerStatus !== 'flagged' &&
+    providerStatus !== 'local_only'
+  ) {
+    // 'flagged' AND 'local_only' are intentionally dropped from the ring — the
+    // bottom-left warnings cluster (getAssetWarnings) is now the single carrier
+    // for status/error signals, so we don't stack a second marker on the same
+    // card and the top corners stay free for higher-signal markers. Mirrors the
+    // carve-out on the top-right status badge (ProviderStatusContent). The
+    // remaining provider_ok / in-library ring still draws.
     hasRing = true;
     ringColor = effectiveRingColor;
   } else if (hashStatus === 'duplicate') {
@@ -484,13 +490,12 @@ function ProviderStatusContent({ data, widgetProps }: {
     : undefined;
   const textColor = (showModelOnBadge && modelFamily?.textColor) || '#fff';
 
-  // Status ring overlay. 'flagged' is intentionally dropped here — the
-  // bottom-left warnings pill now carries the filtered/moderated signal,
-  // so we avoid stacking two red rings on the same card.
+  // Status ring overlay is gone: both 'flagged' and 'local_only' now live solely
+  // in the bottom-left warnings cluster (getAssetWarnings), so the top-right
+  // badge no longer carries a status ring. Kept as '' so the badge chrome below
+  // is unchanged.
   const effectiveStatus = data.status || 'unknown';
-  const statusRing = effectiveStatus === 'local_only'
-    ? 'ring-2 ring-amber-400 ring-offset-1'
-    : '';
+  const statusRing = '';
 
   // Additional providers from cross-provider uploads AND failed upload attempts
   const additionalProviders = useMemo(() => {
@@ -790,6 +795,13 @@ export function createWarningsBadge(): OverlayWidget<MediaCardOverlayData> {
     ...BADGE_SLOT.bottomLeft,
     stackGroup: 'badges-bl',
     priority: BADGE_PRIORITY.important,
+    // The bottom-left cluster is now the single home for status/error signals
+    // (flagged, local-only, broken, recovered …). It collapses to a count chip
+    // and expands on click — same affordance as the active-target set badges —
+    // growing UP from the bottom-left corner so each glyph is visible per surface.
+    clickExpand: true,
+    growUp: true,
+    surfaceKey: (ctx) => (ctx.customState?.surfaceKey as string | undefined) ?? 'media-card',
     items: (data) => {
       const warnings = data.warnings;
       if (!warnings || warnings.length === 0) return [];
@@ -800,6 +812,10 @@ export function createWarningsBadge(): OverlayWidget<MediaCardOverlayData> {
           icon: w.icon,
           label: w.tooltip,
           ringClass: indicatorRingClass(w.severity),
+          // Graded signals (e.g. broken-video score) draw an arc gauge instead
+          // of a solid ring; orange to match the broken/warning context.
+          score: w.score,
+          scoreColor: w.score != null ? '#fb923c' : undefined,
         }));
     },
   });

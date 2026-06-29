@@ -647,6 +647,9 @@ function MediaPanelInner({ context }: MediaPanelProps) {
               className="cq-scale flex-1 min-h-0 relative flex flex-col"
               forceHovered={isCoarsePointer && overlayRevealed}
               validate={false}
+              // Surface id for click-expandable badge clusters (warnings), so the
+              // viewer keeps its own expand/retract state separate from the cards.
+              customState={{ surfaceKey: 'viewer' }}
             >
               {ActiveMain && (
                 <div className="absolute inset-0 z-10">

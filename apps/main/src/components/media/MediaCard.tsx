@@ -1240,6 +1240,9 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
           gesturePhase: gesture.phase,
           edgeInset: gesture.edgeInset,
           forcePlay: isAutoplayFocused || forcePlayProp,
+          // Surface id for click-expandable badge clusters (warnings) so the
+          // expand/retract state is shared per surface, like the set badges.
+          surfaceKey: 'media-card',
         }), [gesture.phase, gesture.edgeInset, isAutoplayFocused, forcePlayProp])}
         onWidgetClick={undefined}
       >

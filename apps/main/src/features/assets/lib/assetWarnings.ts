@@ -12,7 +12,12 @@
 
 import type { AssetModel } from '../models/asset';
 
-export type AssetWarningId = 'noReusableLastFrame' | 'recovered' | 'suspectBroken';
+export type AssetWarningId =
+  | 'noReusableLastFrame'
+  | 'recovered'
+  | 'suspectBroken'
+  | 'flagged'
+  | 'localOnly';
 
 export type AssetWarningSeverity = 'info' | 'warning' | 'error';
 
@@ -24,6 +29,12 @@ export interface AssetWarning {
   tooltip: string;
   /** Controls ring color on the chip. */
   severity: AssetWarningSeverity;
+  /**
+   * Optional 0..1 gauge value. When set, the chip glyph draws a partial arc of
+   * this sweep length (a progress ring) instead of a solid ring — e.g. the
+   * broken-video signal score, where a fuller arc = higher score.
+   */
+  score?: number;
 }
 
 function hasNoReusableLastFrame(asset: AssetModel): boolean {
@@ -40,11 +51,33 @@ function hasNoReusableLastFrame(asset: AssetModel): boolean {
 export function getAssetWarnings(asset: AssetModel | null | undefined): AssetWarning[] {
   if (!asset) return [];
   const warnings: AssetWarning[] = [];
+  // Provider-flagged (moderation/filtered) is the single red signal. It used to
+  // be a ring on the top-left/top-right status badges; it now lives ONLY here so
+  // every flagged asset — image or video, any provider — surfaces it in one
+  // place. The pixverse-video case keeps its more specific extend-failure
+  // tooltip via noReusableLastFrame instead of a generic "flagged" chip.
   if (hasNoReusableLastFrame(asset)) {
     warnings.push({
       id: 'noReusableLastFrame',
       icon: 'arrowRight',
       tooltip: 'Provider last-frame missing — synthetic extend may still fail moderation.',
+      severity: 'warning',
+    });
+  } else if (asset.providerStatus === 'flagged') {
+    warnings.push({
+      id: 'flagged',
+      icon: 'alertCircle',
+      tooltip: 'Flagged by the provider (moderation / filtered).',
+      severity: 'error',
+    });
+  }
+  // Local-only: stored in the library but not uploaded to a provider. Moved off
+  // the top-corner amber ring into the cluster alongside the other status chips.
+  if (asset.providerStatus === 'local_only') {
+    warnings.push({
+      id: 'localOnly',
+      icon: 'download',
+      tooltip: 'Local only — not uploaded to a provider.',
       severity: 'warning',
     });
   }
@@ -66,6 +99,12 @@ export function getAssetWarnings(asset: AssetModel | null | undefined): AssetWar
           typeof asset.signalScore === 'number' ? `, score ${asset.signalScore}` : ''
         }) — review in Triage.`,
       severity: 'warning',
+      // signal_score is 0..6 (>=3 = suspicious); render it as a gauge arc so the
+      // level reads at a glance — a fuller orange ring = higher (worse) score.
+      score:
+        typeof asset.signalScore === 'number'
+          ? Math.max(0, Math.min(1, asset.signalScore / 6))
+          : undefined,
     });
   }
   // Provenance, not a warning: this image was CDN-salvaged after the provider
