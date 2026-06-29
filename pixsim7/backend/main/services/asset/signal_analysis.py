@@ -87,6 +87,13 @@ SCANNER_VERSION = "v5"
 # firing equivalently. Approximate by design — it's a +1 nudge, not a primary.
 RMS_DB_THRESHOLD = -25.0            # audio-quiet axis: rms below this (was -28 @ volumedetect)
 PEAK_DB_THRESHOLD = -8.0           # audio-quiet axis: peak below this (was -10 @ volumedetect)
+# Near-silence is a PRIMARY signal (flags ~alone), distinct from the +1 quiet
+# corroboration: a near-digital-silent clip is broken audio the melody matcher
+# can't catch (silence has no melody to cross-correlate). On 436 labels nothing
+# clean sits below -40 dB while 18 broken do, so this flags with no labeled false
+# positives. Supersedes (doesn't stack with) the +1 quiet nudge.
+RMS_SILENCE_THRESHOLD = -40.0      # rms below this → near-silent (primary)
+SILENCE_POINTS = 3                 # enough to flag alone (>= SUSPICIOUS_THRESHOLD)
 PHASH_FIRST_TO_LAST_THRESHOLD = 20  # visual-static axis: first→last below this
 PHASH_MEAN_DIV_THRESHOLD = 22.0    # visual-static axis: mean-div below this
 
@@ -514,14 +521,16 @@ def score_metrics(
 ) -> tuple[int, bool]:
     """Compute (score, suspicious) from probed metrics + optional render ratio.
 
-    Two PRIMARY axes, each graded and each able to flag on its own:
-      * audio-fingerprint match vs the curated signalref:* references: 0/+2/+4
+    Three PRIMARY axes, each able to flag on its own:
+      * audio-fingerprint match vs the curated signalref:* references: 0/+1/+2/+4
         (v5's strongest audio discriminator — see _audio_ref_points);
-      * render time vs cohort: 0/+1/+2/+4.
+      * render time vs cohort: 0/+1/+2/+4;
+      * near-silence (rms < RMS_SILENCE_THRESHOLD): +SILENCE_POINTS — broken
+        silent audio the melody matcher structurally can't catch.
     Plus three CORROBORATING axes worth at most +1 each — tonal flatness (v5
     demoted it here from a primary axis), audio-quiet, and visual-static; the
     latter two each OR their two correlated sub-signals rather than summing them.
-    ``suspicious`` (score >= 3) is reachable via either primary axis alone; a
+    ``suspicious`` (score >= 3) is reachable via any primary axis alone; a
     single corroborating axis never flags, but all three lit together reach 3.
     """
     rms  = metrics.get("audio_rms_db")
@@ -531,6 +540,7 @@ def score_metrics(
     flatness = metrics.get("spectral_flatness")
     lra  = metrics.get("loudness_range_db")
 
+    near_silent = rms is not None and rms < RMS_SILENCE_THRESHOLD
     audio_quiet = (
         (rms  is not None and rms  < RMS_DB_THRESHOLD) or
         (peak is not None and peak < PEAK_DB_THRESHOLD)
@@ -540,11 +550,16 @@ def score_metrics(
         (mdf  is not None and mdf  < PHASH_MEAN_DIV_THRESHOLD)
     )
 
-    # Primaries (each can flag broken alone): audio-fingerprint match + render.
-    # Corroborating (≤ +1 each): tonal flatness, audio-quiet, visual-static.
+    # Primaries (each can flag broken alone): audio-fingerprint match, render,
+    # and near-silence. Corroborating (≤ +1 each): tonal flatness, audio-quiet,
+    # visual-static.
     score = _audio_ref_points(audio_ref_match, lra) + _render_points(render_ratio)
     score += _tonal_points(flatness)
-    if audio_quiet:
+    # Near-silence is the primary audio-level signal; it supersedes the +1 quiet
+    # nudge (don't double-count — near_silent implies audio_quiet).
+    if near_silent:
+        score += SILENCE_POINTS
+    elif audio_quiet:
         score += 1
     if visual_static:
         score += 1
