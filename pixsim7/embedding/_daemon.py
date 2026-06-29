@@ -25,6 +25,7 @@ from typing import Awaitable, Callable, Iterator
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 
 class DaemonState:
@@ -230,3 +231,92 @@ def build_daemon_app(
         return JSONResponse(status_code=code, content=body)
 
     return app
+
+
+class ModelSlot:
+    """A single warm-loaded model with atomic, no-downtime swap.
+
+    ``load(model_id) -> model`` runs in a worker thread. ``swap`` loads the new
+    model *fully* before replacing the current one, so the inference path and
+    ``/health`` never observe a half-loaded model — the previous model keeps
+    serving until the new one is ready. A failed *initial* load records
+    ``load_error`` (surfaced as 503 ``error``); a failed swap while a model is
+    already live keeps the live model and re-raises to the caller only, so the
+    daemon stays healthy. Swaps are serialized; a swap to the already-current id
+    is a no-op.
+
+    This is the single-model analog of the image daemon's ``_ModelRegistry``
+    (which adds multi-model hosting + LRU eviction); a text/embedding daemon
+    serving one model uses this instead of carrying that machinery.
+    """
+
+    def __init__(self, load: Callable[[str], object]) -> None:
+        self._load = load
+        self._current: tuple[str, object] | None = None
+        self._lock = asyncio.Lock()
+        self.load_error: str | None = None
+
+    @property
+    def ready(self) -> bool:
+        return self._current is not None
+
+    @property
+    def key(self) -> str | None:
+        """Currently-served model id (None until the first load completes)."""
+        return self._current[0] if self._current else None
+
+    def get(self) -> object:
+        """The live model object. Raises if no model is loaded yet — callers
+        guard on ``ready`` first and reply 503 ``model_loading``."""
+        if self._current is None:
+            raise RuntimeError("model not loaded")
+        return self._current[1]
+
+    async def swap(self, model_id: str) -> object:
+        """Warm-load ``model_id`` and atomically make it current. No-op if it is
+        already current. On failure: records ``load_error`` only when nothing was
+        loaded yet (initial load); otherwise keeps the live model and re-raises."""
+        async with self._lock:
+            if self._current is not None and self._current[0] == model_id:
+                return self._current[1]
+            try:
+                model = await asyncio.to_thread(self._load, model_id)
+            except Exception as exc:
+                if self._current is None:
+                    self.load_error = str(exc)
+                raise
+            self._current = (model_id, model)
+            self.load_error = None
+            return model
+
+
+def attach_config_route(app: FastAPI, slot: ModelSlot, *, path: str = "/config"):
+    """Register ``POST {path}`` on a single-model daemon: warm-swap the served
+    model without a restart.
+
+    Body ``{"model": "<id>"}`` → loads the model (keeping the current one live
+    until ready), then returns ``{"model_id": <now-current>}``. A load failure
+    returns 503 ``model_load_failed`` and leaves any live model untouched. This
+    is the single-model analog of the image daemon's ``/config/allowed-models``;
+    the backend pushes the active embedder's model here to keep the daemon in
+    sync with config (see services/embedding/daemon_sync.py)."""
+
+    class _ConfigBody(BaseModel):
+        model: str
+
+    @app.post(path)
+    async def set_model(body: _ConfigBody):
+        try:
+            await slot.swap(body.model)
+        except Exception as exc:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": "model_load_failed",
+                    "model_id": body.model,
+                    "detail": str(exc),
+                },
+            )
+        return {"model_id": slot.key}
+
+    return set_model

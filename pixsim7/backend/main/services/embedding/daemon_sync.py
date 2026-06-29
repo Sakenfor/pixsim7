@@ -28,6 +28,9 @@ logger = configure_logging("service.embedding")
 
 EMBEDDING_ANALYZER_ID = "asset:embedding"
 _DEFAULT_URL = "http://localhost:8002"
+_DEFAULT_TEXT_URL = "http://localhost:8003"
+TEXT_EMBED_MODEL_ENV = "PIXSIM_TEXT_EMBED_MODEL"
+_DEFAULT_TEXT_MODEL = "BAAI/bge-base-en-v1.5"
 
 
 async def compute_desired_embedding_models(db: AsyncSession) -> list[str]:
@@ -114,3 +117,61 @@ async def sync_embedding_daemon_models(db: AsyncSession) -> bool:
         logger.warning("embedding_daemon_sync_compute_failed error=%s", str(exc))
         return False
     return await push_allowed_models(desired, default)
+
+
+# ── text embedding daemon (single model) ─────────────────────────────────────
+#
+# The text daemon serves one model and warm-swaps it on POST /config. This is
+# the single-model analog of push_allowed_models; it intentionally mirrors that
+# function's shape (best-effort, caller headers) — they could share transport
+# once both settle.
+
+
+async def push_text_embedding_model(model_id: str) -> bool:
+    """POST the served model to the text-embedding daemon's /config. Best-effort:
+    False (never raises) if the model is empty or the daemon is unreachable /
+    rejects it. The daemon warm-swaps without a restart."""
+    if not model_id:
+        return False
+    base_url = os.environ.get(
+        "PIXSIM_TEXT_EMBEDDING_BASE_URL", _DEFAULT_TEXT_URL
+    ).rstrip("/")
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=3.0, read=5.0, write=3.0, pool=3.0)
+        ) as client:
+            resp = await client.post(
+                f"{base_url}/config",
+                json={"model": model_id},
+                headers={
+                    "X-PixSim-Caller": "backend:text_embedding_daemon_sync",
+                    "X-PixSim-Request-Kind": "config_text_model",
+                },
+            )
+        if resp.status_code != 200:
+            logger.warning(
+                "text_embedding_daemon_sync_rejected status=%s body=%s",
+                resp.status_code,
+                resp.text[:200],
+            )
+            return False
+        return True
+    except httpx.HTTPError as exc:
+        logger.info("text_embedding_daemon_sync_unreachable error=%s", str(exc))
+        return False
+
+
+def compute_desired_text_embedding_model() -> str:
+    """The HF model id the text daemon should serve.
+
+    Today this reads ``PIXSIM_TEXT_EMBED_MODEL`` (matching what the daemon loads
+    at startup). Plan analyzer-preset-driven-embedder-config (p5) replaces this
+    with the DB/analyzer-preset-resolved model, so changing the active text
+    embedder re-pushes here and the daemon warm-swaps without a restart."""
+    return os.environ.get(TEXT_EMBED_MODEL_ENV, _DEFAULT_TEXT_MODEL)
+
+
+async def sync_text_embedding_daemon() -> bool:
+    """Push the desired served model to the text daemon. Best-effort, never
+    raises. Returns whether the push landed."""
+    return await push_text_embedding_model(compute_desired_text_embedding_model())

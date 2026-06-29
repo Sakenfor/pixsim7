@@ -30,7 +30,13 @@ import os
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from pixsim7.embedding._daemon import DaemonState, InFlight, build_daemon_app
+from pixsim7.embedding._daemon import (
+    DaemonState,
+    InFlight,
+    ModelSlot,
+    attach_config_route,
+    build_daemon_app,
+)
 from pixsim7.embedding.cli.text_local import (
     MODEL_ID,
     embed_texts as _embed_texts,
@@ -41,17 +47,20 @@ _WEDGE_THRESHOLD_SEC = float(os.environ.get("PIXSIM_TEXT_EMBEDDING_WEDGE_SEC", "
 
 state = DaemonState()
 inflight = InFlight()
-# (model, tokenizer, device) once the warm-load completes; None until then.
-_loaded: tuple | None = None
+# Holds the served model with no-downtime warm-swap. `state` (managed by
+# build_daemon_app) tracks initial-load readiness for /health; the slot is the
+# live model the embed path reads and the /config route swaps.
+slot = ModelSlot(load=load_model)
 
 
 async def _warmup() -> None:
-    global _loaded
-    _loaded = await asyncio.to_thread(load_model)
+    await slot.swap(MODEL_ID)
 
 
 def _health_extra() -> dict:
-    return {"model_id": MODEL_ID}
+    # Report the model the slot actually serves (reflects a /config swap), not
+    # the startup default.
+    return {"model_id": slot.key or MODEL_ID}
 
 
 app = build_daemon_app(
@@ -62,6 +71,11 @@ app = build_daemon_app(
     wedge_threshold_sec=_WEDGE_THRESHOLD_SEC,
     health_extra=_health_extra,
 )
+
+# POST /config {"model": "<hf-id>"} — backend keeps the served model in sync with
+# the active embedder without a daemon restart (warm-swap; old model stays live
+# until the new one is ready).
+attach_config_route(app, slot)
 
 
 class EmbedTextsBody(BaseModel):
@@ -74,20 +88,20 @@ class EmbedTextsBody(BaseModel):
 @app.post("/embed_texts")
 async def embed_texts(body: EmbedTextsBody):
     if not body.texts:
-        return {"embeddings": [], "dim": 0, "model_id": MODEL_ID}
+        return {"embeddings": [], "dim": 0, "model_id": slot.key or MODEL_ID}
 
     # The model is warm-loaded in the background; until it's ready (or if the
-    # load errored) reply 503 so the caller retries / falls back gracefully —
-    # same contract as the image daemon's load-failure path.
-    if state.load_error:
+    # initial load errored) reply 503 so the caller retries / falls back
+    # gracefully — same contract as the image daemon's load-failure path.
+    if slot.load_error:
         return JSONResponse(
             status_code=503,
-            content={"error": "model_load_failed", "detail": state.load_error},
+            content={"error": "model_load_failed", "detail": slot.load_error},
         )
-    if _loaded is None:
+    if not slot.ready:
         return JSONResponse(status_code=503, content={"error": "model_loading"})
 
-    model, tokenizer, device = _loaded
+    model, tokenizer, device = slot.get()
     # torch inference is blocking — run off the event loop so /health stays
     # responsive and a genuine hang surfaces via the wedge guard.
     with inflight.track():
@@ -96,4 +110,4 @@ async def embed_texts(body: EmbedTextsBody):
         )
 
     dim = len(vectors[0]) if vectors else 0
-    return {"embeddings": vectors, "dim": dim, "model_id": MODEL_ID}
+    return {"embeddings": vectors, "dim": dim, "model_id": slot.key}

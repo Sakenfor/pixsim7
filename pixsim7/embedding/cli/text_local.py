@@ -42,10 +42,13 @@ POOLING = os.getenv("PIXSIM_TEXT_EMBED_POOLING", "cls").lower()
 MAX_TOKENS = int(os.getenv("PIXSIM_TEXT_EMBED_MAX_TOKENS", "512"))
 
 
-def load_model():
+def load_model(model_id: str = MODEL_ID):
+    """Load a text-embedding model. Defaults to the env-configured ``MODEL_ID``
+    (the one-shot CLI path); the text daemon passes an explicit id so it can
+    warm-swap the served model at runtime."""
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-    model = AutoModel.from_pretrained(MODEL_ID).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    model = AutoModel.from_pretrained(model_id).to(device)
     model.eval()
     return model, tokenizer, device
 
