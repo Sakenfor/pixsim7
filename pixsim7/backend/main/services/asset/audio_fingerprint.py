@@ -87,27 +87,31 @@ def expand_reference_rotations(references: list[Any]) -> list[Any]:
     return rotated
 
 
-# Single-slot cache of the width-grouped, stacked reference tensor. The SAME
-# pre-rotated `references` list is reused for every clip in a (re)score batch, so
-# stacking the 360 arrays once per batch (keyed on the list's identity) — instead
-# of per clip — saves ~96k re-stacks. We hold a ref to the list so its id() can't
-# be recycled out from under the cache mid-run.
-_REF_STACK_CACHE: dict[str, Any] = {"key": None, "list": None, "groups": None}
+# Per-list cache of the width-grouped, stacked reference tensor, keyed by the
+# list's identity. The SAME pre-rotated reference lists are reused for every clip
+# in a (re)score batch, so stacking once per list — not per clip — saves the
+# re-stack. MULTI-slot so the categorized matcher (one list per signalref
+# category) doesn't thrash a single slot. Each entry holds a ref to its list so
+# id() can't be recycled; a bounded clear keeps it from growing unbounded.
+_REF_STACK_CACHE: dict[int, Any] = {}
 
 
 def _grouped_ref_stacks(references: list[Any]) -> dict[int, Any]:
     """``{width: (G, 12, width) float32}`` — references stacked per fingerprint
-    width so the matcher can vectorise the ref axis. Cached for the batch."""
+    width so the matcher can vectorise the ref axis. Cached per list identity."""
     import numpy as np
 
     key = id(references)
-    if _REF_STACK_CACHE["key"] == key and _REF_STACK_CACHE["list"] is references:
-        return _REF_STACK_CACHE["groups"]
+    ent = _REF_STACK_CACHE.get(key)
+    if ent is not None and ent[0] is references:
+        return ent[1]
     by_w: dict[int, list] = {}
     for r in references:
         by_w.setdefault(int(r.shape[1]), []).append(r)
     groups = {w: np.stack(g) for w, g in by_w.items()}
-    _REF_STACK_CACHE.update(key=key, list=references, groups=groups)
+    if len(_REF_STACK_CACHE) > 32:
+        _REF_STACK_CACHE.clear()
+    _REF_STACK_CACHE[key] = (references, groups)
     return groups
 
 
@@ -170,16 +174,45 @@ def match_fingerprint(candidate_fp: Any, references: list[Any]) -> Optional[floa
     return round(max(0.0, best), 4)
 
 
-async def load_reference_fingerprints(db: AsyncSession) -> list[Any]:
-    """Decoded (12, N) chromagrams for every `signalref:*`-tagged clip that has a
-    stored fingerprint, PRE-EXPANDED through all 12 pitch-rotations
-    (``expand_reference_rotations``) so the matcher does no per-candidate
-    ``np.roll``. Empty until the references have been probed under the
-    fingerprint-capable scanner. Cheap enough to load once per (re)score batch.
+def match_fingerprint_labeled(
+    candidate_fp: Any, references_by_label: dict[str, list[Any]]
+) -> tuple[Optional[float], Optional[str]]:
+    """Best similarity (0..1) AND the winning category label.
+
+    ``references_by_label`` maps a signalref category (the tag name, e.g.
+    ``'squeal'`` / ``'melody'`` / ``'highpitch'``) to that category's PRE-ROTATED
+    arrays (from {@link load_reference_fingerprints}). The score is the same
+    ``max over ref × rotation × lag`` as {@link match_fingerprint} — categories
+    are only used to report WHICH pattern the best match came from (for the Triage
+    detection popup). Returns ``(score, label)``; ``label`` is None when there's
+    no usable match / no fingerprint.
+    """
+    cand = _to_chroma(candidate_fp)
+    if cand is None or not references_by_label:
+        return None, None
+    best, label = -1.0, None
+    for lab, refs in references_by_label.items():
+        if not refs:
+            continue
+        s = _best_xcorr_over_refs(cand, refs)
+        if s > best:
+            best, label = s, lab
+    score = round(max(0.0, best), 4)
+    return score, (label if best > 0 else None)
+
+
+async def load_reference_fingerprints(db: AsyncSession) -> dict[str, list[Any]]:
+    """``{category: [pre-rotated (12, N) arrays]}`` for every `signalref:*`-tagged
+    clip with a stored fingerprint, grouped by the tag NAME (category) and
+    expanded through all 12 pitch-rotations (so the matcher does no per-candidate
+    ``np.roll``). Empty dict until references have been probed under the
+    fingerprint-capable scanner. The categorized matcher reports which category a
+    clip matched; scoring still uses the single best score across categories.
     """
     rows = await db.execute(text(
         """
-        SELECT DISTINCT (a.media_metadata::jsonb)->'signal_metrics'->'chroma_fp' AS fp
+        SELECT DISTINCT t.name AS label,
+               (a.media_metadata::jsonb)->'signal_metrics'->'chroma_fp' AS fp
         FROM assets a
         JOIN asset_tag at ON at.asset_id = a.id
         JOIN tag t ON t.id = at.tag_id
@@ -187,9 +220,9 @@ async def load_reference_fingerprints(db: AsyncSession) -> list[Any]:
           AND (a.media_metadata::jsonb)->'signal_metrics'->'chroma_fp' IS NOT NULL
         """
     ))
-    out: list[Any] = []
     import json as _json
-    for (fp,) in rows.all():
+    by_label: dict[str, list[Any]] = {}
+    for label, fp in rows.all():
         if isinstance(fp, str):
             try:
                 fp = _json.loads(fp)
@@ -197,10 +230,9 @@ async def load_reference_fingerprints(db: AsyncSession) -> list[Any]:
                 continue
         arr = _to_chroma(fp)
         if arr is not None:
-            out.append(arr)
-    # Expand the 12 pitch-rotations once here (not per scored clip) — see
-    # expand_reference_rotations / match_fingerprint.
-    return expand_reference_rotations(out)
+            by_label.setdefault(label or "unlabeled", []).append(arr)
+    # Expand the 12 pitch-rotations once per category (not per scored clip).
+    return {lab: expand_reference_rotations(arrs) for lab, arrs in by_label.items()}
 
 
 # Process-local TTL cache of the (pre-rotated) reference set, for the hot

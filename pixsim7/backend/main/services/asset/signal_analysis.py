@@ -602,15 +602,18 @@ def build_signal_metrics_payload(
     metrics: dict[str, Any],
     render_context: Optional[dict[str, Any]] = None,
     audio_ref_match: Optional[float] = None,
+    audio_ref_label: Optional[str] = None,
 ) -> dict[str, Any]:
     """Wrap a probed metrics dict into the canonical `signal_metrics` shape.
 
     ``render_context`` (from ``cohort_baselines.render_context_for_asset``)
     supplies the render-time signal. ``audio_ref_match`` (from
-    ``audio_fingerprint.match_fingerprint`` against the `signalref:*` references)
-    is the primary audio signal — passed in by the caller because it needs the
-    loaded reference set. Both default to None → corroboration-only scoring.
-    Excludes `user_override` (only the override endpoint writes that).
+    ``audio_fingerprint.match_fingerprint_labeled`` against the `signalref:*`
+    references) is the primary audio signal, and ``audio_ref_label`` is the
+    category of the best-matching reference (e.g. ``'squeal'``) — purely
+    informational, surfaced in the Triage detection popup. All default to None →
+    corroboration-only scoring. Excludes `user_override` (only the override
+    endpoint writes that).
     """
     rc = render_context or {}
     render_ratio = rc.get("render_ratio")
@@ -635,6 +638,7 @@ def build_signal_metrics_payload(
         "onset_rate":                metrics.get("onset_rate"),
         "syllabic_mod":              metrics.get("syllabic_mod"),
         "audio_ref_match":           audio_ref_match,
+        "audio_ref_label":           audio_ref_label,
         "render_ratio":              render_ratio,
         "cohort_n":                  rc.get("cohort_n"),
         "cohort_p50_sec":            rc.get("cohort_p50_sec"),
@@ -650,24 +654,31 @@ _UNSET: Any = object()
 
 
 def _match_audio_ref(
-    chroma_fp: Any, ref_fingerprints: Optional[list[Any]]
-) -> Optional[float]:
-    """Best fingerprint match of a stored/probed chroma_fp to the references.
+    chroma_fp: Any, ref_fingerprints: Optional[dict[str, Any]]
+) -> tuple[Optional[float], Optional[str]]:
+    """Best fingerprint ``(score, category-label)`` of a chroma_fp to the
+    references (``{category: [...]}`` from ``load_reference_fingerprints``).
 
-    Best-effort: returns None when there's no fingerprint, no references, or the
-    matcher errors — so scoring cleanly falls back to render + corroboration.
-    Imported lazily to keep this module's import cheap and avoid a cycle.
+    Best-effort: returns ``(None, None)`` when there's no fingerprint, no
+    references, or the matcher errors — so scoring cleanly falls back to render +
+    corroboration. Imported lazily to keep this module's import cheap.
     """
     if not chroma_fp or not ref_fingerprints:
-        return None
+        return None, None
     try:
         from pixsim7.backend.main.services.asset.audio_fingerprint import (
-            match_fingerprint,
+            match_fingerprint_labeled,
         )
-        return match_fingerprint(chroma_fp, ref_fingerprints)
+        score, label = match_fingerprint_labeled(chroma_fp, ref_fingerprints)
+        # Only surface the category when the match is at least WEAK — i.e. it
+        # actually contributes to scoring. Below that the "winning" category is
+        # just the nearest noise and would mislabel the clip in Triage.
+        if score is None or score < AUDIO_REF_MATCH_WEAK:
+            label = None
+        return score, label
     except Exception as e:  # noqa: BLE001 — fingerprint match is best-effort
         logger.warning("signal_audio_ref_match_failed", error=str(e))
-        return None
+        return None, None
 
 
 # ---------- stale-video selection (shared by sync endpoint + durable run) ----------
@@ -846,9 +857,12 @@ class SignalAnalysisService:
                 get_reference_fingerprints_cached,
             )
             ref_fingerprints = await get_reference_fingerprints_cached(self.db)
-        audio_ref_match = _match_audio_ref(raw.get("chroma_fp"), ref_fingerprints)
+        audio_ref_match, audio_ref_label = _match_audio_ref(
+            raw.get("chroma_fp"), ref_fingerprints
+        )
         payload = build_signal_metrics_payload(
-            raw, render_context, audio_ref_match=audio_ref_match
+            raw, render_context,
+            audio_ref_match=audio_ref_match, audio_ref_label=audio_ref_label,
         )
 
         # Merge into media_metadata, preserving an existing user_override.
@@ -920,11 +934,14 @@ class SignalAnalysisService:
         # The batch backfill can run the (CPU-heavy) matcher in a thread pool and
         # hand the result in via precomputed_match; otherwise compute it inline.
         if precomputed_match is _UNSET:
-            audio_ref_match = _match_audio_ref(existing.get("chroma_fp"), ref_fingerprints)
+            audio_ref_match, audio_ref_label = _match_audio_ref(
+                existing.get("chroma_fp"), ref_fingerprints
+            )
         else:
-            audio_ref_match = precomputed_match
+            audio_ref_match, audio_ref_label = precomputed_match
         payload = build_signal_metrics_payload(
-            existing, render_context, audio_ref_match=audio_ref_match
+            existing, render_context,
+            audio_ref_match=audio_ref_match, audio_ref_label=audio_ref_label,
         )
         if existing.get("user_override") is not None:
             payload["user_override"] = existing["user_override"]
