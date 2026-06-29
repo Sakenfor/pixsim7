@@ -41,6 +41,13 @@ import { useSetBadgeExpansionStore } from '../stores/setBadgeExpansionStore';
 const COLLAPSED_PREVIEW_COUNT = 3;
 
 /**
+ * pillGroup id binding the active-target count badge and its set glyphs into one
+ * grey backing pill, so the related controls read as a connected group (and stay
+ * distinct from any other expandable cluster added to the same column later).
+ */
+const ACTIVE_SETS_PILL = 'active-sets';
+
+/**
  * Resolve the ordered active-target ids to the loaded manual sets, dropping any
  * that are missing or smart (membership ops apply to manual sets only).
  */
@@ -193,13 +200,13 @@ function buildSetBadgeToggle(
     id: 'set-target-toggle',
     type: 'custom',
     ...BADGE_SLOT.topRight,
+    // Bind the count badge into the same grey pill as its set glyphs so the
+    // related controls read as one group (the pill itself attaches them, so the
+    // old `-mt-1` nudge that pulled the count toward the glyphs is dropped).
+    pillGroup: ACTIVE_SETS_PILL,
     visibility: ACTIVE_TARGET_VISIBILITY,
-    // Last pinned item before the scrollable per-set glyphs: the stack renderer
-    // renders all pinned widgets before the scroll region, so this must sort
-    // below other top-right pinned badges to keep the count visually attached
-    // to the expanding set-glyph column.
+    // Sorts directly above the per-set glyphs so the count heads the pill.
     priority: BADGE_PRIORITY.status - 1,
-    style: { className: '-mt-1' },
     interactive: true,
     handlesOwnInteraction: true,
     render: () => (
@@ -293,7 +300,7 @@ function buildPerSetGlyphs(
 ): OverlayWidget[] {
   return activeSets.map((set) => {
     const isMember = set.assetIds.includes(assetId);
-    return buildTargetToggleWidget(
+    const widget = buildTargetToggleWidget(
       () => {
         const store = useAssetSetStore.getState();
         if (isMember) void store.removeAssetsFromSet(set.id, [assetId]);
@@ -309,6 +316,8 @@ function buildPerSetGlyphs(
         visibility: ACTIVE_TARGET_VISIBILITY,
       },
     );
+    // Share the count badge's pill so the whole set group sits in one backing.
+    return { ...widget, pillGroup: ACTIVE_SETS_PILL };
   });
 }
 

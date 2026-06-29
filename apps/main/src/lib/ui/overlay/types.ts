@@ -267,6 +267,12 @@ export interface OverlayWidget<TData = any> {
    *  status/favorite/tag badges out of view. */
   scrollable?: boolean;
 
+  /** Visually bind contiguous widgets in a stack: a run of adjacent widgets
+   *  (same priority-sorted neighbourhood) sharing one `pillGroup` id renders
+   *  inside a shared rounded grey backing pill, signalling they're related
+   *  (e.g. the active-target count badge + its quick-access set glyphs). */
+  pillGroup?: string;
+
   /** Exclude this widget from collision detection/repositioning.
    *  Useful for full-bleed overlays (e.g. video scrub layer) that are
    *  intentionally designed to overlap other widgets. */

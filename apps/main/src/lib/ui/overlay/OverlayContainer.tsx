@@ -65,7 +65,12 @@ const STACK_POP_SLACK = 5;
 
 function getStackItemExtent(el: HTMLDivElement, isColumn: boolean): number | null {
   for (const child of Array.from(el.children)) {
-    const item = child as HTMLElement;
+    let item = child as HTMLElement;
+    // A pill-group wrapper bundles several glyphs; measure a real glyph inside
+    // it, not the whole wrapper, so quantization stays per-glyph.
+    if (item.dataset?.overlayPill !== undefined && item.firstElementChild) {
+      item = item.firstElementChild as HTMLElement;
+    }
     // Use the layout box (offset*), NOT getBoundingClientRect: the latter
     // folds in CSS transforms, so a glyph mid hover-pop (scale ~1.18×) inflates
     // the measured extent. A re-measure firing on scroll while a glyph is
@@ -88,6 +93,81 @@ function quantizeStackExtent(cap: number, el: HTMLDivElement, isColumn: boolean)
 }
 
 /**
+ * Render a stack list, wrapping contiguous runs of widgets that share a
+ * `pillGroup` id in a rounded grey backing pill so they read as one connected
+ * group (e.g. the active-target count badge + its quick-access set glyphs).
+ * A run of length 1 renders bare — a lone pill is just noise.
+ */
+function renderStackList(
+  widgets: StackGroupInfo['widgets'],
+  renderWidget: (w: StackGroupInfo['widgets'][number]) => React.ReactNode,
+  flexStyle: React.CSSProperties,
+  revealed: boolean,
+): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  let i = 0;
+  while (i < widgets.length) {
+    const pg = widgets[i].pillGroup;
+    if (!pg) {
+      out.push(renderWidget(widgets[i]));
+      i += 1;
+      continue;
+    }
+    const run: StackGroupInfo['widgets'] = [];
+    while (i < widgets.length && widgets[i].pillGroup === pg) {
+      run.push(widgets[i]);
+      i += 1;
+    }
+    if (run.length <= 1) {
+      out.push(renderWidget(run[0]));
+      continue;
+    }
+    out.push(
+      <div
+        key={`pill:${pg}`}
+        data-overlay-pill=""
+        style={{
+          ...flexStyle,
+          // Paint the backing only while revealed. The wrapper itself always
+          // stays mounted (so its hover-gated children don't remount), but at
+          // rest those children collapse to ~0 height — without this gate the
+          // padding + bg would linger as a flattened pill where the badges were.
+          ...(revealed
+            ? {
+                padding: 3,
+                borderRadius: 13,
+                background: 'rgba(23,23,23,0.5)',
+                backdropFilter: 'blur(2px)',
+                // Double hairline (light inset + dark outer) so the pill edge
+                // reads on any background — the dark fill alone vanishes against
+                // a grey thumbnail; one of the two outlines always contrasts.
+                boxShadow:
+                  'inset 0 0 0 1px rgba(255,255,255,0.22), 0 0 0 1px rgba(0,0,0,0.28)',
+                // The pill's padding would otherwise inset its badges off the
+                // column's anchored edge, leaving them misaligned with the
+                // unpilled badges above (e.g. the set group sitting left of
+                // favorite/quick-tag). Pull the pill out by the padding on the
+                // aligned side so the badges' edge lines back up.
+                ...(flexStyle.alignItems === 'flex-end'
+                  ? { marginRight: -3 }
+                  : flexStyle.alignItems === 'flex-start'
+                    ? { marginLeft: -3 }
+                    : null),
+              }
+            : null),
+          // Visual backing only — clicks reach the badges inside (they set their
+          // own pointerEvents: auto).
+          pointerEvents: 'none',
+        }}
+      >
+        {run.map(renderWidget)}
+      </div>,
+    );
+  }
+  return out;
+}
+
+/**
  * A single auto-stacked badge group (e.g. the top-right column). Capped via
  * {@link STACK_MAX_EXTENT}; when the stack overflows it scrolls on the mouse
  * wheel with **no scrollbar**, showing curved bracket indicators at the
@@ -103,6 +183,7 @@ function StackGroupContainer({
   renderWidget,
   onRootRef,
   nudge,
+  revealed = false,
 }: {
   group: StackGroupInfo;
   baseStyle: React.CSSProperties;
@@ -111,6 +192,10 @@ function StackGroupContainer({
   onRootRef?: (el: HTMLDivElement | null) => void;
   /** Box-separation translate applied to the whole group, composed onto baseStyle. */
   nudge?: { dx: number; dy: number };
+  /** Container hover/reveal state. Pill-group backings only paint while revealed,
+   *  so a group of hover-gated badges doesn't leave a flattened pill behind when
+   *  its members collapse on hover-out. */
+  revealed?: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [overflowing, setOverflowing] = useState(false);
@@ -273,7 +358,7 @@ function StackGroupContainer({
         pointerEvents: 'none',
       }}
     >
-      {pinned.map(renderWidget)}
+      {renderStackList(pinned, renderWidget, flexStyle, revealed)}
       {scrollCount > 0 && (
         <div className="relative" style={{ ...flexStyle, pointerEvents: 'none' }}>
           {overflowing && !atStart && (
@@ -329,7 +414,7 @@ function StackGroupContainer({
               cursor: overflowing ? (isColumn ? 'ns-resize' : 'ew-resize') : undefined,
             }}
           >
-            {scrollWidgets.map(renderWidget)}
+            {renderStackList(scrollWidgets, renderWidget, flexStyle, revealed)}
           </div>
         </div>
       )}
@@ -758,6 +843,7 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
             baseStyle={containerStyle}
             onRootRef={getStackGroupRefCallback(group.key)}
             nudge={unitNudges.get(group.key)}
+            revealed={hoverActive}
             renderWidget={(widget) => (
               <OverlayWidget
                 key={widget.id}

@@ -527,8 +527,26 @@ function ClickExpandBadge({
       className={`inline-flex ${growUp ? 'flex-col-reverse' : 'flex-col'} items-start`}
       // Match the canonical stack spacing (the same `compact` norm the active-target
       // set glyphs get from SPACING_VALUES) instead of a hand-picked gap, so the
-      // two cluster affordances stay visually consistent.
-      style={{ gap: SPACING_VALUES.compact }}
+      // two cluster affordances stay visually consistent. When expanded, sit the
+      // group in a grey backing pill — the same grouping cue the stack pillGroup
+      // draws — so the revealed glyphs read as one connected cluster.
+      style={{
+        gap: SPACING_VALUES.compact,
+        ...(expanded
+          ? {
+              padding: 3,
+              borderRadius: 13,
+              background: 'rgba(23,23,23,0.5)',
+              backdropFilter: 'blur(2px)',
+              // Double hairline (light inset + dark outer) so the pill edge reads
+              // on any background — matches the stack pillGroup backing.
+              boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.22), 0 0 0 1px rgba(0,0,0,0.28)',
+              // Cancel the padding on the anchored (left) edge so the count
+              // circle keeps its position when the pill appears on expand.
+              marginLeft: -3,
+            }
+          : null),
+      }}
     >
       {countCircle}
       {expanded && items.map((it) => <BadgeGlyph key={it.id} item={it} size={GLYPH_SIZE} title={it.label} />)}
