@@ -631,6 +631,13 @@ async def agent_cmd_websocket(
                         error_details=error_details if isinstance(error_details, dict) else None,
                     )
 
+            elif msg_type == "unsolicited_result":
+                # A session auto-emitted a follow-up turn between dispatches (the
+                # report for a completed background task). Session-scoped, no
+                # task_id — persist + nudge out-of-band. See plan
+                # agent-unsolicited-report-delivery.
+                remote_cmd_bridge.handle_unsolicited_result(data)
+
             elif msg_type == "heartbeat":
                 # Timestamp-only tracking for bridge deadline extension
                 remote_cmd_bridge.record_heartbeat(resolved_bridge_client_id, data)

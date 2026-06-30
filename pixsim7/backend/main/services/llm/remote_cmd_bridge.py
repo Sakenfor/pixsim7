@@ -1464,6 +1464,55 @@ class RemoteCommandBridge:
             # rare; nothing to do, the cached result still lets reconnect work.
             pass
 
+    def handle_unsolicited_result(self, data: Dict[str, Any]) -> None:
+        """Persist an unsolicited follow-up reply forwarded by a bridge.
+
+        Fire-and-forget: a session auto-emitted a fresh turn between dispatches
+        (the report for a completed background task) with NO ``task_id`` — so it
+        belongs to no ``_pending_tasks`` entry and never flows through
+        ``resolve_task``. We persist it as an assistant message keyed by the
+        conversation's ``bridge_session_id`` (falling back to ``cli_session_id``);
+        ``_store_session_response`` resolves the row by PK or cli-session alias,
+        appends an assistant-only message (empty user turn), and emits the unread
+        pip when the session has a tab surface. See plan
+        agent-unsolicited-report-delivery.
+        """
+        if not isinstance(data, dict):
+            return
+        text = data.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return
+        session_id = data.get("bridge_session_id") or data.get("cli_session_id")
+        if not session_id:
+            logger.warning("unsolicited_result_no_session_id")
+            return
+
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            return  # no loop (tests) — nothing to schedule
+
+        async def _persist() -> None:
+            try:
+                from pixsim7.backend.main.api.v1.meta_contracts import _store_session_response
+                await _store_session_response(
+                    session_id=str(session_id),
+                    user_message="",
+                    assistant_response=text,
+                )
+                logger.info("unsolicited_result_persisted", session_id=str(session_id), text_len=len(text))
+            except Exception as exc:
+                logger.warning(
+                    "unsolicited_result_persist_failed",
+                    session_id=str(session_id),
+                    error=str(exc),
+                )
+
+        try:
+            loop.create_task(_persist())
+        except RuntimeError:
+            pass
+
     # Results older than this are evicted regardless of cache size.
     _COMPLETED_TTL_S = 300  # 5 minutes
 

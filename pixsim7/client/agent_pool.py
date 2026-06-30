@@ -167,6 +167,11 @@ class AgentPool:
         # MCP config (e.g. when Windows sweeps the temp file out from under us).
         # See plan: mcp-server-reliability — robust-fix-regenerate-on-missing.
         self._base_mcp_config_regenerator: Optional[MCPConfigRegenerator] = None
+        # Optional callback the bridge wires up to forward an *unsolicited*
+        # follow-up reply (the report a session auto-emits when a background
+        # task it launched completes) back to the backend. Signature:
+        # ``(session, text) -> Awaitable``. See plan agent-unsolicited-report-delivery.
+        self._on_unsolicited: "Callable[[AgentCmdSession, str], Awaitable[None]] | None" = None
         self._resume_session_id: Optional[str] = None
         self._sessions: Dict[str, AgentCmdSession] = {}
         self._health_task: Optional[asyncio.Task] = None
@@ -337,6 +342,35 @@ class AgentPool:
         """
         self._base_mcp_config_regenerator = regenerator
 
+    def set_unsolicited_handler(
+        self, handler: "Callable[[AgentCmdSession, str], Awaitable[None]] | None",
+    ) -> None:
+        """Wire a bridge-provided callback invoked with ``(session, text)`` when
+        a pool session emits an unsolicited follow-up reply (the report for a
+        completed background task). See plan agent-unsolicited-report-delivery.
+        """
+        self._on_unsolicited = handler
+
+    def _make_session_unsolicited_cb(
+        self, pool_key: str,
+    ) -> "Callable[[str], Awaitable[None]]":
+        """Build the per-session ``on_unsolicited`` closure.
+
+        Resolves the pool-level handler and the live session lazily (by
+        pool_key) so the handler can be wired before or after the session is
+        spawned, and so the callback sees the session's current
+        ``cli_session_id``/``bridge_session_id``.
+        """
+        async def _cb(text: str) -> None:
+            handler = self._on_unsolicited
+            if handler is None:
+                return
+            session = self._sessions.get(pool_key)
+            if session is None:
+                return
+            await handler(session, text)
+        return _cb
+
     def _make_session_mcp_regenerator(
         self, pool_key: str,
     ) -> MCPConfigRegenerator:
@@ -493,6 +527,7 @@ class AgentPool:
             workdir=workdir,
             token_file_path=token_file,
             owned_mcp_config_path=(session_mcp_config if owns_clone else None),
+            on_unsolicited=self._make_session_unsolicited_cb(pool_key),
         )
         self._sessions[pool_key] = session
 

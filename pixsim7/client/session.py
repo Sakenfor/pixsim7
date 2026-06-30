@@ -140,6 +140,7 @@ class AgentCmdSession:
         workdir: str | None = None,
         token_file_path: str | None = None,
         owned_mcp_config_path: str | None = None,
+        on_unsolicited: "Callable[[str], Awaitable[None]] | None" = None,
     ):
         from pixsim7.client.protocols import get_protocol
         self.session_id = session_id
@@ -185,6 +186,13 @@ class AgentCmdSession:
         # reassign _mcp_config_path, but the file we own to clean up does not
         # change. Plan: mcp-server-reliability / cleanup-must-not-delete-shared-base.
         self._owned_mcp_config_path = owned_mcp_config_path
+        # Callback for *unsolicited* follow-up turns: when this long-running CLI
+        # auto-emits a fresh turn (the report for a completed background task)
+        # while no send_message is consuming the queue, the reader fires this
+        # with the final reply text instead of dropping it. None = legacy
+        # behavior (callers that don't wire it lose nothing they had before).
+        # See plan: agent-unsolicited-report-delivery.
+        self._on_unsolicited = on_unsolicited
         self._log = get_logger().bind(session=session_id)
         self._process: Optional[asyncio.subprocess.Process] = None
         self._reader_task: Optional[asyncio.Task] = None
@@ -1610,6 +1618,35 @@ class AgentCmdSession:
                         self.cli_session_id = parsed.session_id
                         self.cli_model = parsed.model
                         self._log.debug("session_identified", cli_session=self.cli_session_id)
+
+                    # Unsolicited follow-up turn: a long-running CLI auto-emits a
+                    # fresh turn (init → assistant → result) on stdout — with NO
+                    # new stdin — when a backgrounded task it launched completes.
+                    # That turn arrives BETWEEN send_message calls, so no consumer
+                    # drains the queue and the next send_message flushes it → the
+                    # report is silently lost. Intercept ONLY the terminal
+                    # `result` of such a turn (state is not BUSY ⇔ no turn in
+                    # flight) and hand it to the callback instead of queueing it.
+                    # We divert just the `result` event: the in-turn result still
+                    # arrives while BUSY (send_message hasn't _mark_ready'd yet) so
+                    # it is never caught here, and control_response frames consumed
+                    # between turns by _exchange_control_request stay in the queue.
+                    # Verified 2026-06-30; see plan agent-unsolicited-report-delivery.
+                    if (
+                        self._on_unsolicited is not None
+                        and self.state != SessionState.BUSY
+                        and parsed.kind == "result"
+                        and not (parsed.raw or {}).get("is_error")
+                    ):
+                        followup_text = parsed.text or ""
+                        self._log.info(
+                            "session_unsolicited_result",
+                            cli_session=self.cli_session_id,
+                            text_len=len(followup_text),
+                        )
+                        asyncio.ensure_future(self._dispatch_unsolicited(followup_text))
+                        continue
+
                     await self._response_queue.put(event)
                 except json.JSONDecodeError:
                     self._log.debug("session_stdout", text=text)
@@ -1624,6 +1661,21 @@ class AgentCmdSession:
             self._response_queue.put_nowait(_EOF_SENTINEL)
         except asyncio.QueueFull:
             pass
+
+    async def _dispatch_unsolicited(self, text: str) -> None:
+        """Hand an unsolicited follow-up reply to the registered callback.
+
+        Runs as a detached task so a slow/blocking callback (WS emit) never
+        back-pressures the stdout reader. Empty replies are skipped; any
+        callback failure is logged, not raised (a dropped follow-up must not
+        crash the reader for the next real turn).
+        """
+        if not text or self._on_unsolicited is None:
+            return
+        try:
+            await self._on_unsolicited(text)
+        except Exception:
+            self._log.warning("on_unsolicited_failed", exc_info=True)
 
     async def _read_stderr(self) -> None:
         """Read stderr for debug/error output.

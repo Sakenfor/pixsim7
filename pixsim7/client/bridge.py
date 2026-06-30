@@ -715,6 +715,11 @@ class Bridge:
                 return path
 
             self._pool.set_base_mcp_config_regenerator(_regen_base_mcp_config)
+            # Forward unsolicited follow-up replies (a session's report for a
+            # completed background task, auto-emitted between turns) to the
+            # backend so they're persisted + surfaced instead of dropped.
+            # See plan agent-unsolicited-report-delivery.
+            self._pool.set_unsolicited_handler(self._forward_unsolicited)
 
             if server_system_prompt:
                 self._system_prompt = server_system_prompt
@@ -2204,6 +2209,49 @@ class Bridge:
         except Exception:
             pass
         return set()
+
+    async def _forward_unsolicited(self, session, text: str) -> None:
+        """Forward an unsolicited follow-up reply to the backend.
+
+        Fired by the pool when a session auto-emits a fresh turn between
+        dispatches (the report for a completed ``run_in_background`` task).
+        Session-scoped, NOT task-scoped — there is no ``task_id`` (the original
+        turn's task resolved long ago). The backend maps ``bridge_session_id``
+        to the ChatSession and persists it as an assistant message + unread pip.
+        If the bridge↔backend WS is down at this instant the report is dropped
+        (rare; no buffering for this path in v1). See plan
+        agent-unsolicited-report-delivery.
+        """
+        ws = self._active_ws
+        if not ws or not self._connected:
+            get_logger().warning(
+                "unsolicited_no_ws",
+                connected=self._connected,
+                has_ws=ws is not None,
+                cli_session=getattr(session, "cli_session_id", None),
+            )
+            return
+        bridge_session_id = (
+            getattr(session, "bridge_session_id", None)
+            or getattr(session, "cli_session_id", None)
+        )
+        if not bridge_session_id:
+            get_logger().warning("unsolicited_no_session_id")
+            return
+        try:
+            await ws.send(json.dumps({
+                "type": "unsolicited_result",
+                "bridge_session_id": bridge_session_id,
+                "cli_session_id": getattr(session, "cli_session_id", None),
+                "text": text,
+            }))
+            get_logger().info(
+                "unsolicited_forwarded",
+                bridge_session_id=bridge_session_id,
+                text_len=len(text or ""),
+            )
+        except Exception as exc:
+            get_logger().warning("unsolicited_forward_failed", error=str(exc))
 
     async def _hook_confirm(self, payload: dict) -> dict:
         """Called by hook_server when /confirm is hit.
