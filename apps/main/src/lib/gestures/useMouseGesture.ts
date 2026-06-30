@@ -66,6 +66,17 @@ interface UseMouseGestureOptions {
    * without polling the phase state.
    */
   onPhaseChange?: (phase: GesturePhase, gesture: ActiveGesture | null) => void;
+  /**
+   * Opt-in: fired once when the pointer dwells near its press point (the center
+   * / cancel zone) for `centerDwellMs` without swiping out — whether that's a
+   * press-and-hold from rest or a drag back to center after a committed swipe.
+   * The gesture is ended cleanly (no action, click suppressed) just before this
+   * fires, and the caller takes over (e.g. opens a preset switcher anchored at
+   * the returned `center`, in client coords).
+   */
+  onCenterDwell?: (center: { x: number; y: number }) => void;
+  /** Dwell duration for `onCenterDwell`. Default 350ms. */
+  centerDwellMs?: number;
 }
 
 interface UseMouseGestureResult {
@@ -97,6 +108,8 @@ export function useMouseGesture({
   edgeInset = 0.2,
   onGesture,
   onPhaseChange,
+  onCenterDwell,
+  centerDwellMs = 350,
 }: UseMouseGestureOptions): UseMouseGestureResult {
   const [activeGesture, setActiveGesture] = useState<ActiveGesture | null>(null);
 
@@ -114,6 +127,8 @@ export function useMouseGesture({
   onGestureRef.current = onGesture;
   const onPhaseChangeRef = useRef(onPhaseChange);
   onPhaseChangeRef.current = onPhaseChange;
+  const onCenterDwellRef = useRef(onCenterDwell);
+  onCenterDwellRef.current = onCenterDwell;
 
   const emitPhase = useCallback((phase: GesturePhase, gesture: ActiveGesture | null) => {
     onPhaseChangeRef.current?.(phase, gesture);
@@ -153,6 +168,17 @@ export function useMouseGesture({
         lockedDirection: null,
       };
 
+      // Center-dwell (preset switcher) timer — armed whenever the pointer rests
+      // in the cancel zone (from the initial press, or after returning from a
+      // swipe); cleared on any drift out / teardown.
+      let dwellTimer: ReturnType<typeof setTimeout> | null = null;
+      const clearDwell = () => {
+        if (dwellTimer != null) {
+          clearTimeout(dwellTimer);
+          dwellTimer = null;
+        }
+      };
+
       // Enter pending phase
       const pendingGesture: ActiveGesture = {
         type: 'swipe',
@@ -166,10 +192,36 @@ export function useMouseGesture({
       emitPhase('pending', pendingGesture);
 
       const cleanup = () => {
+        clearDwell();
         el.removeEventListener('pointermove', handleMove);
         el.removeEventListener('pointerup', handleUp);
         el.removeEventListener('pointercancel', handleUp);
         document.removeEventListener('keydown', handleKeyDown);
+      };
+
+      // Dwell elapsed: end the gesture as a clean no-op and hand off to the
+      // caller (the press is still physically down; the caller's UI takes over).
+      const fireDwell = () => {
+        const state = stateRef.current;
+        dwellTimer = null;
+        try {
+          el.releasePointerCapture(state.pointerId);
+        } catch {
+          /* capture may already be gone; ignore */
+        }
+        cleanup();
+        state.committed = false;
+        state.pointerId = -1;
+        setActiveGesture(null);
+        emitPhase('idle', null);
+        // Suppress the click that would otherwise follow the pointerup.
+        gestureConsumed.current = true;
+        requestAnimationFrame(() => { gestureConsumed.current = false; });
+        onCenterDwellRef.current?.({ x: state.startX, y: state.startY });
+      };
+      const armDwell = () => {
+        if (!onCenterDwellRef.current || dwellTimer != null) return;
+        dwellTimer = setTimeout(fireDwell, centerDwellMs);
       };
 
       const handleMove = (ev: PointerEvent) => {
@@ -177,6 +229,18 @@ export function useMouseGesture({
         const dx = ev.clientX - state.startX;
         const dy = ev.clientY - state.startY;
         const distance = Math.hypot(dx, dy);
+
+        // Center-dwell preset switcher (opt-in). Keep a single-shot timer armed
+        // whenever the pointer rests inside the cancel zone — whether that's the
+        // initial press or a drag back after a swipe. Any drift out disarms it,
+        // so it only fires on a steady hold.
+        if (onCenterDwellRef.current) {
+          if (distance <= threshold * 0.7) {
+            armDwell();
+          } else {
+            clearDwell();
+          }
+        }
 
         // Sub-threshold return: if committed but dragged back close to start,
         // revert to pending (hysteresis at 0.7× threshold prevents oscillation)
@@ -267,8 +331,13 @@ export function useMouseGesture({
       el.addEventListener('pointerup', handleUp);
       el.addEventListener('pointercancel', handleUp);
       document.addEventListener('keydown', handleKeyDown);
+
+      // Arm the dwell timer from the initial press so a still press-and-hold
+      // (no movement, hence no pointermove) still opens the switcher. A swipe
+      // disarms it as soon as the pointer leaves the zone in handleMove.
+      armDwell();
     },
-    [enabled, threshold, edgeInset, emitPhase],
+    [enabled, threshold, edgeInset, emitPhase, centerDwellMs],
   );
 
   return {

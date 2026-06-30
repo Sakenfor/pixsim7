@@ -24,6 +24,12 @@ export interface UseLongPressRadialOptions {
   anchor?: RefObject<HTMLElement | null>;
   /** Fired the moment the menu opens — e.g. to cancel a pending tap chain. */
   onOpen?: () => void;
+  /**
+   * Optional swipe-preset switcher for the radial's center pivot (mobile analog
+   * of the desktop center-dwell switcher). Passed straight through to
+   * `GestureRadialMenu`; omit it to keep the center as a plain ✕ dismiss.
+   */
+  presetSwitch?: { label: string; count: number; onCycle: () => void };
 }
 
 export interface UseLongPressRadialResult {
@@ -50,6 +56,7 @@ export function useLongPressRadial({
   commit,
   anchor,
   onOpen,
+  presetSwitch,
 }: UseLongPressRadialOptions): UseLongPressRadialResult {
   const openId = useGestureRadialStore((s) => s.openId);
   const open = useGestureRadialStore((s) => s.open);
@@ -137,6 +144,7 @@ export function useLongPressRadial({
       pointerId={pointerRef.current}
       onCommit={commit}
       onDismiss={() => close(id)}
+      presetSwitch={presetSwitch}
     />
   ) : null;
 

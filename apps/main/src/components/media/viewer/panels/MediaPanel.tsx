@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
-import { useViewerGestures, useLongPressRadial, GestureOverlay, GestureCancelOverlay, type ViewerGestureContext } from '@lib/gestures';
+import { useViewerGestures, useLongPressRadial, GestureOverlay, GestureCancelOverlay, GesturePresetPicker, type ViewerGestureContext } from '@lib/gestures';
 import { EdgeInsetsScope } from '@lib/layout/edgeInsets';
 import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 import { OverlayContainer } from '@lib/ui/overlay';
@@ -536,6 +536,15 @@ function MediaPanelInner({ context }: MediaPanelProps) {
     enabled: gesturesActive && viewerGesture.radialEnabled,
     arms: viewerGesture.radialArms,
     commit: viewerGesture.commitRadial,
+    // Mobile preset-switch: the radial's center pivot cycles swipe presets
+    // (desktop uses the center-dwell picker instead).
+    presetSwitch: viewerGesture.presetSwitch.hasMultiple
+      ? {
+          label: viewerGesture.presetSwitch.activeLabel,
+          count: viewerGesture.presetSwitch.presets.length,
+          onCycle: viewerGesture.presetSwitch.cycle,
+        }
+      : undefined,
   });
 
   const sourceAssetIds = useMemo(() => {
@@ -714,9 +723,22 @@ function MediaPanelInner({ context }: MediaPanelProps) {
             />
           )}
           {gesturesActive && viewerGesture.isReturning && viewerGesture.returningActionLabel && (
-            <GestureCancelOverlay actionLabel={viewerGesture.returningActionLabel} />
+            <GestureCancelOverlay
+              actionLabel={viewerGesture.returningActionLabel}
+              hint={viewerGesture.presetSwitch.enabled ? 'hold to switch preset' : undefined}
+            />
           )}
         </div>
+
+        {/* In-gesture swipe-preset switcher (opened by dwelling at center). */}
+        <GesturePresetPicker
+          open={viewerGesture.presetSwitch.open}
+          center={viewerGesture.presetSwitch.center}
+          presets={viewerGesture.presetSwitch.presets}
+          activeId={viewerGesture.presetSwitch.activeId}
+          onPick={viewerGesture.presetSwitch.pick}
+          onDismiss={viewerGesture.presetSwitch.dismiss}
+        />
 
         {asset && (
           <ViewerLayersPanel

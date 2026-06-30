@@ -23,6 +23,17 @@ export interface GestureRadialMenuProps {
   pointerId: number | null;
   onCommit: (direction: GestureDirection, tierIndex: number) => void;
   onDismiss: () => void;
+  /**
+   * Optional: turns the center pivot into a swipe-preset switcher. When present
+   * (and `count > 1`) the center shows the active preset and tapping it cycles
+   * to the next one — the arms re-render live to the new mappings. Dismiss then
+   * lives on the backdrop tap. Absent → the center stays a plain ✕ dismiss.
+   */
+  presetSwitch?: {
+    label: string;
+    count: number;
+    onCycle: () => void;
+  };
 }
 
 const DIRECTIONS: GestureDirection[] = ['up', 'down', 'left', 'right'];
@@ -58,7 +69,7 @@ const armTransform: Record<GestureDirection, string> = {
   right: `translate(-50%, -50%) translateX(${ARM_OFFSET_PX}px)`,
 };
 
-export function GestureRadialMenu({ arms, center, pointerId, onCommit, onDismiss }: GestureRadialMenuProps) {
+export function GestureRadialMenu({ arms, center, pointerId, onCommit, onDismiss, presetSwitch }: GestureRadialMenuProps) {
   const [mode, setMode] = useState<'slide' | 'tap'>(pointerId != null ? 'slide' : 'tap');
   // Slide highlight: which arm + tier the finger is currently over.
   const [active, setActive] = useState<{ dir: GestureDirection; tier: number } | null>(null);
@@ -176,16 +187,32 @@ export function GestureRadialMenu({ arms, center, pointerId, onCommit, onDismiss
         style={{ left: cx, top: cy }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {/* Center pivot — tap to dismiss in tap mode. */}
-        <button
-          type="button"
-          onPointerDown={(e) => e.preventDefault()}
-          onClick={() => onDismiss()}
-          className="absolute -translate-x-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-neutral-900/85 text-white/70 shadow-lg ring-1 ring-white/15"
-          aria-label="Close gesture menu"
-        >
-          <span className="text-lg leading-none">✕</span>
-        </button>
+        {/* Center pivot. With a preset switcher it shows the active preset and
+            cycles on tap (arms update live); dismiss moves to the backdrop.
+            Otherwise it's a plain ✕ dismiss. */}
+        {presetSwitch && presetSwitch.count > 1 ? (
+          <button
+            type="button"
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => presetSwitch.onCycle()}
+            className="absolute -translate-x-1/2 -translate-y-1/2 flex h-12 w-12 flex-col items-center justify-center gap-0 rounded-full bg-neutral-900/90 text-white shadow-lg ring-1 ring-white/15"
+            aria-label={`Swipe preset: ${presetSwitch.label} — tap to switch`}
+          >
+            <span className="text-[8px] uppercase tracking-wide text-white/45 leading-none">preset</span>
+            <span className="max-w-[44px] truncate text-[10px] font-semibold leading-tight">{presetSwitch.label}</span>
+            <span className="text-[11px] leading-none text-white/60">⇄</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => onDismiss()}
+            className="absolute -translate-x-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-neutral-900/85 text-white/70 shadow-lg ring-1 ring-white/15"
+            aria-label="Close gesture menu"
+          >
+            <span className="text-lg leading-none">✕</span>
+          </button>
+        )}
 
         {DIRECTIONS.map((dir) => {
           const tiers = arms[dir];

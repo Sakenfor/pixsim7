@@ -50,6 +50,19 @@ export { useCardGestures, type UseCardGesturesOptions, type UseCardGesturesResul
 export { useViewerGestures, type ViewerGestureContext, type UseViewerGesturesResult } from './useViewerGestures';
 export { GestureOverlay, GestureCancelOverlay } from './GestureOverlay';
 export { GestureRadialMenu, type RadialArms, type RadialArmTier } from './GestureRadialMenu';
+export { GesturePresetPicker, type GesturePresetPickerProps } from './GesturePresetPicker';
+export {
+  useGesturePresetStore,
+  useSurfaceGesturePresets,
+  useActiveGesturePresetOverrides,
+  type SurfaceGesturePresets,
+} from './gesturePresetStore';
+export {
+  SURFACE_GESTURE_PRESETS,
+  getSurfacePresets,
+  DEFAULT_PRESET_ID,
+  type GesturePreset,
+} from './gesturePresetDefaults';
 export { useGestureRadialStore, useIsRadialOpen } from './useGestureRadialStore';
 export {
   useLongPressRadial,

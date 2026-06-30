@@ -16,6 +16,7 @@ import {
   resolveCascadeAction,
   type GestureResolverContext,
 } from './gestureActions';
+import { useActiveGesturePresetOverrides } from './gesturePresetStore';
 import type { RadialArms } from './GestureRadialMenu';
 import {
   getCascadeActionsForDirection,
@@ -86,21 +87,27 @@ export function useCardGestures({
   const cfg = useSurfaceGestureConfig(surfaceId);
   const isMobile = useIsMobileViewport();
 
+  // Active gesture-preset overrides for this surface (the in-gesture switcher's
+  // selection). Precedence per field: an explicit `presetGestureOverrides` (e.g.
+  // the gallery's active overlay preset) wins, then the surface's active gesture
+  // preset, then the surface config.
+  const storeOverrides = useActiveGesturePresetOverrides(surfaceId);
+
   // Disable swipe/drag gestures on mobile — they clash with native touch
   // scrolling and tap affordances. Cards stay fully interactive via tap.
   const effectiveGestureEnabled =
-    !isMobile && (presetGestureOverrides?.enabled ?? cfg.enabled);
-  const effectiveGestureThreshold = presetGestureOverrides?.threshold ?? cfg.threshold;
-  const effectiveGestureEdgeInset = presetGestureOverrides?.edgeInset ?? cfg.edgeInset;
-  const effectiveCascadeStepPixels = presetGestureOverrides?.cascadeStepPixels ?? cfg.cascadeStepPixels;
-  const effectiveGestureUp = presetGestureOverrides?.gestureUp ?? cfg.gestureUp;
-  const effectiveGestureDown = presetGestureOverrides?.gestureDown ?? cfg.gestureDown;
-  const effectiveGestureLeft = presetGestureOverrides?.gestureLeft ?? cfg.gestureLeft;
-  const effectiveGestureRight = presetGestureOverrides?.gestureRight ?? cfg.gestureRight;
-  const effectiveChainUp = presetGestureOverrides?.chainUp ?? cfg.chainUp;
-  const effectiveChainDown = presetGestureOverrides?.chainDown ?? cfg.chainDown;
-  const effectiveChainLeft = presetGestureOverrides?.chainLeft ?? cfg.chainLeft;
-  const effectiveChainRight = presetGestureOverrides?.chainRight ?? cfg.chainRight;
+    !isMobile && (presetGestureOverrides?.enabled ?? storeOverrides?.enabled ?? cfg.enabled);
+  const effectiveGestureThreshold = presetGestureOverrides?.threshold ?? storeOverrides?.threshold ?? cfg.threshold;
+  const effectiveGestureEdgeInset = presetGestureOverrides?.edgeInset ?? storeOverrides?.edgeInset ?? cfg.edgeInset;
+  const effectiveCascadeStepPixels = presetGestureOverrides?.cascadeStepPixels ?? storeOverrides?.cascadeStepPixels ?? cfg.cascadeStepPixels;
+  const effectiveGestureUp = presetGestureOverrides?.gestureUp ?? storeOverrides?.gestureUp ?? cfg.gestureUp;
+  const effectiveGestureDown = presetGestureOverrides?.gestureDown ?? storeOverrides?.gestureDown ?? cfg.gestureDown;
+  const effectiveGestureLeft = presetGestureOverrides?.gestureLeft ?? storeOverrides?.gestureLeft ?? cfg.gestureLeft;
+  const effectiveGestureRight = presetGestureOverrides?.gestureRight ?? storeOverrides?.gestureRight ?? cfg.gestureRight;
+  const effectiveChainUp = presetGestureOverrides?.chainUp ?? storeOverrides?.chainUp ?? cfg.chainUp;
+  const effectiveChainDown = presetGestureOverrides?.chainDown ?? storeOverrides?.chainDown ?? cfg.chainDown;
+  const effectiveChainLeft = presetGestureOverrides?.chainLeft ?? storeOverrides?.chainLeft ?? cfg.chainLeft;
+  const effectiveChainRight = presetGestureOverrides?.chainRight ?? storeOverrides?.chainRight ?? cfg.chainRight;
 
   const gestureDirections = useMemo(
     () => ({

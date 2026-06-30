@@ -6,7 +6,7 @@
  * via the surface's `source` setting without touching this hook.
  */
 
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 
@@ -18,6 +18,12 @@ import {
   resolveGestureHandler,
   type GestureResolverContext,
 } from './gestureActions';
+import type { GesturePreset } from './gesturePresetDefaults';
+import {
+  useActiveGesturePresetOverrides,
+  useGesturePresetStore,
+  useSurfaceGesturePresets,
+} from './gesturePresetStore';
 import type { RadialArms } from './GestureRadialMenu';
 import {
   getCascadeActionsForDirection,
@@ -60,6 +66,27 @@ export interface UseViewerGesturesResult {
   radialEnabled: boolean;
   radialArms: RadialArms;
   commitRadial: (direction: GestureDirection, tierIndex: number) => void;
+  /**
+   * In-gesture preset switcher. Dwell in the cancel/center zone after a commit
+   * opens it (desktop, when the surface has >1 preset). Render with
+   * `GesturePresetPicker` and feed `pick`/`dismiss` back.
+   */
+  presetSwitch: {
+    /** Desktop center-dwell switcher is wired (`!isMobile` && >1 preset). */
+    enabled: boolean;
+    open: boolean;
+    center: { x: number; y: number };
+    presets: GesturePreset[];
+    activeId: string;
+    pick: (presetId: string) => void;
+    dismiss: () => void;
+    /** >1 preset exists for the surface (mobile radial uses this, not `enabled`). */
+    hasMultiple: boolean;
+    /** Label of the active preset, for the mobile radial's center pivot. */
+    activeLabel: string;
+    /** Advance to the next preset (wraps) — the mobile radial's center tap. */
+    cycle: () => void;
+  };
 }
 
 function resolveViewerGestureHandler(
@@ -89,45 +116,66 @@ export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesR
   const cfg = useSurfaceGestureConfig('viewer');
   const isMobile = useIsMobileViewport();
 
+  // Active gesture preset for this surface overrides the surface config per
+  // field (unset fields fall through). This is what the in-gesture switcher
+  // mutates — so a swap takes effect on the very next swipe.
+  const presetOverrides = useActiveGesturePresetOverrides('viewer');
+  const presetSet = useSurfaceGesturePresets('viewer');
+  const cycleActivePreset = useGesturePresetStore((s) => s.cycleActivePreset);
+
+  const eEnabled = presetOverrides?.enabled ?? cfg.enabled;
+  const eThreshold = presetOverrides?.threshold ?? cfg.threshold;
+  const eEdgeInset = presetOverrides?.edgeInset ?? cfg.edgeInset;
+  const eCascadeStepPixels = presetOverrides?.cascadeStepPixels ?? cfg.cascadeStepPixels;
+
   const gestureDirections = useMemo(
     () => ({
-      gestureUp: cfg.gestureUp,
-      gestureDown: cfg.gestureDown,
-      gestureLeft: cfg.gestureLeft,
-      gestureRight: cfg.gestureRight,
+      gestureUp: presetOverrides?.gestureUp ?? cfg.gestureUp,
+      gestureDown: presetOverrides?.gestureDown ?? cfg.gestureDown,
+      gestureLeft: presetOverrides?.gestureLeft ?? cfg.gestureLeft,
+      gestureRight: presetOverrides?.gestureRight ?? cfg.gestureRight,
     }),
-    [cfg.gestureUp, cfg.gestureDown, cfg.gestureLeft, cfg.gestureRight],
+    [presetOverrides, cfg.gestureUp, cfg.gestureDown, cfg.gestureLeft, cfg.gestureRight],
   );
 
   const chainDirections = useMemo(
     () => ({
-      chainUp: cfg.chainUp,
-      chainDown: cfg.chainDown,
-      chainLeft: cfg.chainLeft,
-      chainRight: cfg.chainRight,
+      chainUp: presetOverrides?.chainUp ?? cfg.chainUp,
+      chainDown: presetOverrides?.chainDown ?? cfg.chainDown,
+      chainLeft: presetOverrides?.chainLeft ?? cfg.chainLeft,
+      chainRight: presetOverrides?.chainRight ?? cfg.chainRight,
     }),
-    [cfg.chainUp, cfg.chainDown, cfg.chainLeft, cfg.chainRight],
+    [presetOverrides, cfg.chainUp, cfg.chainDown, cfg.chainLeft, cfg.chainRight],
   );
 
   const ctxRef = useRef(ctx);
   ctxRef.current = ctx;
 
+  // In-gesture preset switcher: dwell at center after a commit opens it.
+  const [picker, setPicker] = useState<{ open: boolean; center: { x: number; y: number } }>(
+    { open: false, center: { x: 0, y: 0 } },
+  );
+  const presetSwitchEnabled = !isMobile && presetSet.presets.length > 1;
+
   const { gestureHandlers, activeGesture, gestureConsumed } = useMouseGesture({
-    enabled: cfg.enabled,
-    threshold: cfg.threshold,
-    edgeInset: cfg.edgeInset,
+    enabled: eEnabled,
+    threshold: eThreshold,
+    edgeInset: eEdgeInset,
+    onCenterDwell: presetSwitchEnabled
+      ? (center) => setPicker({ open: true, center })
+      : undefined,
     onGesture: useCallback(
       (event: GestureEvent) => {
         if (event.type !== 'swipe') return;
         const cascadeActions = getCascadeActionsForDirection(gestureDirections, event.direction);
         const cascade = resolveCascadeAction(
-          cascadeActions, event.distance, cfg.threshold, cfg.cascadeStepPixels,
+          cascadeActions, event.distance, eThreshold, eCascadeStepPixels,
         );
         const handler = resolveViewerGestureHandler(cascade.actionId, ctxRef.current);
         if (!handler) return;
         handler();
       },
-      [gestureDirections, cfg.threshold, cfg.cascadeStepPixels],
+      [gestureDirections, eThreshold, eCascadeStepPixels],
     ),
   });
 
@@ -143,8 +191,8 @@ export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesR
     const cascade = resolveCascadeAction(
       getCascadeActionsForDirection(gestureDirections, activeGesture.direction),
       activeGesture.distance,
-      cfg.threshold,
-      cfg.cascadeStepPixels,
+      eThreshold,
+      eCascadeStepPixels,
     );
     lastCommittedRef.current = {
       direction: activeGesture.direction,
@@ -158,7 +206,7 @@ export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesR
 
   // ── Long-press radial (mobile) ────────────────────────────────────────────
   const radialArms = useMemo(() => buildRadialArms(gestureDirections), [gestureDirections]);
-  const radialEnabled = isMobile && cfg.enabled && hasAnyArm(radialArms);
+  const radialEnabled = isMobile && eEnabled && hasAnyArm(radialArms);
   const commitRadial = useCallback(
     (direction: GestureDirection, tierIndex: number) => {
       const tiers = getCascadeActionsForDirection(gestureDirections, direction).filter(
@@ -175,15 +223,15 @@ export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesR
     ? resolveCascadeAction(
         getCascadeActionsForDirection(gestureDirections, activeGesture.direction),
         activeGesture.distance,
-        cfg.threshold,
-        cfg.cascadeStepPixels,
+        eThreshold,
+        eCascadeStepPixels,
       )
     : null;
 
   const activeActionId = activeCascade?.actionId ?? null;
 
   const activeCount = isCommitted && activeActionId && activeCascade && !activeCascade.isCascade
-    ? computeGestureCount(Math.abs(activeGesture.dx), cfg.threshold)
+    ? computeGestureCount(Math.abs(activeGesture.dx), eThreshold)
     : undefined;
 
   const secondaryState = useGestureSecondaryStore();
@@ -199,7 +247,7 @@ export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesR
   return {
     gestureHandlers,
     gestureConsumed,
-    enabled: cfg.enabled,
+    enabled: eEnabled,
     isCommitted,
     direction: isCommitted ? activeGesture.direction : null,
     actionId: activeActionId,
@@ -217,5 +265,20 @@ export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesR
     radialEnabled,
     radialArms,
     commitRadial,
+    presetSwitch: {
+      enabled: presetSwitchEnabled,
+      open: picker.open,
+      center: picker.center,
+      presets: presetSet.presets,
+      activeId: presetSet.activeId,
+      pick: (presetId: string) => {
+        presetSet.setActivePreset(presetId);
+        setPicker((p) => ({ ...p, open: false }));
+      },
+      dismiss: () => setPicker((p) => ({ ...p, open: false })),
+      hasMultiple: presetSet.presets.length > 1,
+      activeLabel: presetSet.active?.label ?? '',
+      cycle: () => cycleActivePreset('viewer', 1),
+    },
   };
 }

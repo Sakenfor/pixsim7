@@ -15,8 +15,11 @@ const DIRECTION_ARROWS: Record<GestureDirection, string> = {
   right: '\u2192',
 };
 
-export function GestureCancelOverlay({ actionLabel }: {
+export function GestureCancelOverlay({ actionLabel, hint }: {
   actionLabel: string;
+  /** Optional sub-hint, e.g. "hold to switch preset" (shown when the surface
+   *  has a center-dwell preset switcher). */
+  hint?: string;
 }) {
   return (
     <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/25 rounded-t-md pointer-events-none select-none transition-opacity duration-150">
@@ -24,6 +27,11 @@ export function GestureCancelOverlay({ actionLabel }: {
       <span className="mt-1 text-xs font-medium text-white/50 drop-shadow-sm line-through">
         {actionLabel}
       </span>
+      {hint && (
+        <span className="mt-1 text-[10px] font-medium text-white/40 drop-shadow-sm">
+          {hint}
+        </span>
+      )}
     </div>
   );
 }
