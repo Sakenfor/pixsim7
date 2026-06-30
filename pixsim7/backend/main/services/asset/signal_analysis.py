@@ -149,6 +149,29 @@ def not_effectively_broken_clause():
     """
     return ~effectively_broken_clause()
 
+
+def heuristic_broken_clause(min_score: int = SUSPICIOUS_THRESHOLD):
+    """Higher-confidence "broken" predicate for surfaces that opt INTO hiding the
+    scoring heuristic (today: the similarity-badge cohort count + mini-gallery).
+
+    True when the CURRENT-version heuristic scored the clip at/above ``min_score``
+    AND the user hasn't rescued it with a Keep (``signal_override`` is not
+    ``'clean'``; NULL is fine). Distinct from :func:`effectively_broken_clause`,
+    which is manual-flag-only and governs the *default* gallery — that one stays
+    score-blind on purpose (the >=3 heuristic over-fires to hide by default).
+    A caller-supplied ``min_score`` lets each surface pick its own confidence
+    line; the higher it is, the fewer — and surer — the clips it drops.
+
+    Only the current ``SCANNER_VERSION`` counts, so a bumped scorer never leaves
+    stale prior-version flags discounting a cohort. NULL-safe at every leaf, so a
+    plain ``~`` keeps un-scanned clips.
+    """
+    return (
+        (Asset.signal_scanner_version == SCANNER_VERSION)
+        & (Asset.signal_score >= min_score)
+        & Asset.signal_override.is_distinct_from("clean")
+    )
+
 # Audio-fingerprint axis (v5 — PRIMARY). Best chroma cross-correlation to the
 # curated signalref:* references (audio_fingerprint.match_fingerprint). Validated
 # on 425 user labels: ~0.6 ≈ 86% precision. Strong flags broken alone (+4); weak

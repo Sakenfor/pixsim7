@@ -27,9 +27,10 @@ import { useSurfaceSetBadgesExpanded } from '@features/assets/stores/setBadgeExp
 import { buildMediaCardOverlayData } from '../mediaCardRuntimeWidgetBuilder';
 import type { MediaCardOverlayData } from '../mediaCardWidgets';
 import { createDefaultMediaCardWidgets } from '../mediaCardWidgets';
-import { useSiblingCountsStore } from '../siblingCountsStore';
 import { applyMediaOverlayPolicyChain } from '../overlayWidgetPolicy';
 import { resolveMediaCardOverlayProps } from '../resolveMediaCardOverlayProps';
+import { useSiblingCountsStore } from '../siblingCountsStore';
+import { getCohortBrokenCutoff } from '../siblingFacetStore';
 
 export interface UseOverlayWidgetsForAssetOptions {
   /** The asset to build widgets for (null = return empty config) */
@@ -121,7 +122,7 @@ function useFocusedAssetCohortCounts(asset: AssetModel | null): void {
     fetchedIdsRef.current.add(id);
 
     let cancelled = false;
-    getAssetCohortCounts(id)
+    getAssetCohortCounts(id, getCohortBrokenCutoff())
       .then((counts) => {
         if (!cancelled) useSiblingCountsStore.getState().set(id, counts);
       })

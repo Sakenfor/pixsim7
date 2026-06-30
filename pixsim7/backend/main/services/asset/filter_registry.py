@@ -1429,6 +1429,7 @@ def register_default_asset_filters() -> None:
     # what "broken" means. This is plumbing for the chrome-bar toggle, not a
     # user-facing filter chip (the frontend hides it from the filter bar).
     from pixsim7.backend.main.services.asset.signal_analysis import (
+        heuristic_broken_clause,
         not_effectively_broken_clause,
     )
 
@@ -1439,6 +1440,26 @@ def register_default_asset_filters() -> None:
             label="Hide broken",
             description="Exclude clips you manually flagged broken (signal override = broken).",
             condition_builder=lambda v: not_effectively_broken_clause() if v else None,
+        )
+    )
+    # Opt-in "hide high-confidence broken" used by the similarity-badge
+    # mini-gallery so its list matches the badge COUNT (which applies the same
+    # `heuristic_broken_clause` at the same cutoff). The value IS the score
+    # cutoff (current-version score >= cutoff, minus Keeps) — higher = surer /
+    # fewer dropped. Distinct from `exclude_broken` (manual-flag-only); both
+    # compose. Not a user-facing filter chip — plumbing for the cohort gallery.
+    asset_filter_registry.register(
+        FilterSpec(
+            key="broken_score_cutoff",
+            type="number",
+            label="Hide broken (score cutoff)",
+            description=(
+                "Exclude clips whose current-version heuristic score is >= this "
+                "value (and not manually kept)."
+            ),
+            condition_builder=lambda v: (
+                ~heuristic_broken_clause(int(v)) if v else None
+            ),
         )
     )
 

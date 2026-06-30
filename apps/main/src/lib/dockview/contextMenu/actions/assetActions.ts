@@ -51,6 +51,7 @@ import { upgradeModelForAsset } from '@features/generation/lib/assetGenerationAc
 import { useSettingsUiStore } from '@features/settings/stores/settingsUiStore';
 
 
+import { getCohortBrokenCutoff } from '@/components/media/siblingFacetStore';
 import { enrichAsset } from '@/lib/api/assets';
 import { BACKEND_BASE } from '@/lib/api/client';
 import { withCorrelationHeaders } from '@/lib/api/correlationHeaders';
@@ -1051,11 +1052,19 @@ export function openSimilarityGallery(
 
   if (parts.length === 0) return;
 
-  // Match the badge COUNT, which excludes broken clips (AssetSiblingCountService
-  // uses the same `not_effectively_broken_clause` predicate as this `exclude_broken`
-  // registry filter). Without it the mini-gallery would list flagged / heuristic-
-  // broken siblings the badge omitted from its count — a count/list mismatch.
+  // Match the badge COUNT exactly, so the mini-gallery never lists a sibling the
+  // badge omitted (a count/list mismatch).
+  //  - exclude_broken: always drop manually-flagged broken (matches the count's
+  //    unconditional `not_effectively_broken_clause`).
+  //  - broken_score_cutoff: when "hide broken" is on, ALSO drop high-confidence
+  //    heuristic-broken siblings at the SAME score cutoff the count fetch sends
+  //    (getCohortBrokenCutoff) — both resolve to `heuristic_broken_clause(cutoff)`
+  //    on the backend.
   filters.exclude_broken = true;
+  const brokenCutoff = getCohortBrokenCutoff();
+  if (typeof brokenCutoff === 'number') {
+    filters.broken_score_cutoff = brokenCutoff;
+  }
 
   void import('@features/workspace/stores/workspaceStore').then(({ useWorkspaceStore }) => {
     useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {

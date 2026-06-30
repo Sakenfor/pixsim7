@@ -125,6 +125,15 @@ async def get_asset(
 class BulkCohortCountsRequest(BaseModel):
     """Request body for batch cohort-count prefetch (e.g. a gallery page)."""
     asset_ids: List[int] = Field(description="List of asset IDs to count cohorts for")
+    broken_score_cutoff: Optional[int] = Field(
+        default=None,
+        description=(
+            "When set, also exclude siblings whose current-version heuristic "
+            "score is >= this (and not Keep-overridden) from the counts — the "
+            "similarity badge's 'hide high-confidence broken' setting. Manual "
+            "flags are always excluded regardless."
+        ),
+    )
 
 
 # Cap so a malformed/huge id list can't fan one request into a flood of GROUP BYs.
@@ -137,13 +146,16 @@ async def get_asset_cohort_counts(
     user: CurrentUser,
     asset_service: AssetSvc,
     db: DatabaseSession,
+    broken_score_cutoff: Optional[int] = None,
 ) -> dict[str, int]:
     """Cohort/sibling counts for a single asset's similarity badge.
 
     Returns ``{"i": n, "p": n, ...}`` keyed by lit-facet letters in canonical
     i<p<s order (i=inputs, p=prompt, s=seed); ``{}`` when the asset lacks every
-    facet. User-scoped to the asset's owner, broken siblings excluded — same
-    numbers ``AssetSiblingCountService.counts_map`` produced inline before.
+    facet. User-scoped to the asset's owner, manually-flagged-broken siblings
+    always excluded. Pass ``broken_score_cutoff`` to ALSO drop high-confidence
+    heuristic-broken siblings (the badge's "hide broken" setting) so the count
+    matches the mini-gallery the badge opens.
     """
     try:
         asset = await asset_service.get_asset_for_user(asset_id, user)
@@ -152,7 +164,9 @@ async def get_asset_cohort_counts(
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
 
-    counts = await AssetSiblingCountService(db).counts_map([asset], asset.user_id)
+    counts = await AssetSiblingCountService(db).counts_map(
+        [asset], asset.user_id, broken_score_cutoff=broken_score_cutoff
+    )
     return counts.get(asset.id, {})
 
 
@@ -186,7 +200,11 @@ async def bulk_get_cohort_counts(
         by_owner.setdefault(asset.user_id, []).append(asset)
     result: dict[int, dict[str, int]] = {}
     for owner_user_id, owned in by_owner.items():
-        result.update(await svc.counts_map(owned, owner_user_id))
+        result.update(
+            await svc.counts_map(
+                owned, owner_user_id, broken_score_cutoff=request.broken_score_cutoff
+            )
+        )
     return result
 
 

@@ -32,22 +32,31 @@ async def test_single_cohort_counts_returns_service_map(monkeypatch) -> None:
     asset_service = MagicMock()
     asset_service.get_asset_for_user = AsyncMock(return_value=asset)
 
+    seen_cutoff: list = []
+
     class _Svc:
         def __init__(self, db):
             pass
 
-        async def counts_map(self, assets, owner_user_id):
+        async def counts_map(self, assets, owner_user_id, broken_score_cutoff=None):
             assert owner_user_id == 42  # owner-scoped to the asset's user
+            seen_cutoff.append(broken_score_cutoff)
             return {a.id: {"p": 3, "ip": 2} for a in assets}
 
     monkeypatch.setattr(assets_api, "AssetSiblingCountService", _Svc)
 
     user = MagicMock()
     result = await assets_api.get_asset_cohort_counts(
-        asset_id=7, user=user, asset_service=asset_service, db=MagicMock()
+        asset_id=7,
+        user=user,
+        asset_service=asset_service,
+        db=MagicMock(),
+        broken_score_cutoff=5,
     )
 
     assert result == {"p": 3, "ip": 2}
+    # The badge's "hide broken" cutoff is threaded through to the count service.
+    assert seen_cutoff == [5]
     asset_service.get_asset_for_user.assert_awaited_once_with(7, user)
 
 
@@ -60,7 +69,7 @@ async def test_single_cohort_counts_empty_when_no_facets(monkeypatch) -> None:
         def __init__(self, db):
             pass
 
-        async def counts_map(self, assets, owner_user_id):
+        async def counts_map(self, assets, owner_user_id, broken_score_cutoff=None):
             return {}
 
     monkeypatch.setattr(assets_api, "AssetSiblingCountService", _Empty)
@@ -103,21 +112,22 @@ async def test_bulk_cohort_counts_groups_by_owner_and_skips_missing(monkeypatch)
         def __init__(self, db):
             pass
 
-        async def counts_map(self, assets, owner_user_id):
-            seen.append((owner_user_id, tuple(a.id for a in assets)))
+        async def counts_map(self, assets, owner_user_id, broken_score_cutoff=None):
+            seen.append((owner_user_id, tuple(a.id for a in assets), broken_score_cutoff))
             return {a.id: {"p": owner_user_id} for a in assets}
 
     monkeypatch.setattr(assets_api, "AssetSiblingCountService", _Svc)
 
-    request = assets_api.BulkCohortCountsRequest(asset_ids=[1, 2, 3, 404])
+    request = assets_api.BulkCohortCountsRequest(asset_ids=[1, 2, 3, 404], broken_score_cutoff=5)
     result = await assets_api.bulk_get_cohort_counts(
         request=request, user=MagicMock(), asset_service=asset_service, db=MagicMock()
     )
 
     # Missing id 404 is skipped; counts grouped within each owner's library.
     assert result == {1: {"p": 42}, 2: {"p": 42}, 3: {"p": 99}}
-    assert (42, (1, 2)) in seen
-    assert (99, (3,)) in seen
+    # The cutoff from the request body is threaded into each owner's count call.
+    assert (42, (1, 2), 5) in seen
+    assert (99, (3,), 5) in seen
 
 
 @pytest.mark.asyncio

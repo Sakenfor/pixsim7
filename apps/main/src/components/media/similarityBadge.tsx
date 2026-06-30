@@ -38,6 +38,7 @@ import type { MediaCardOverlayData } from './mediaCardWidgets';
 import { useSiblingCountsStore, type CohortCounts } from './siblingCountsStore';
 import {
   facetComboKey,
+  getCohortBrokenCutoff,
   MAX_LENSES,
   useSiblingFacetStore,
   type SiblingFacets,
@@ -355,7 +356,7 @@ function SimilarityBadgeStack({ asset }: { asset: AssetModel }) {
     if (!isBackendAssetId(asset.id)) return;
     if (useSiblingCountsStore.getState().counts.has(asset.id)) return;
     let cancelled = false;
-    getAssetCohortCounts(asset.id)
+    getAssetCohortCounts(asset.id, getCohortBrokenCutoff())
       .then((c) => {
         if (!cancelled) useSiblingCountsStore.getState().set(asset.id, c);
       })

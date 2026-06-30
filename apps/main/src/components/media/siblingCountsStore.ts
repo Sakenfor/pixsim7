@@ -27,6 +27,8 @@ interface SiblingCountsState {
   set: (id: number, counts: CohortCounts) => void;
   /** True once this asset has been fetched (entry present, possibly empty). */
   has: (id: number) => boolean;
+  /** Drop every cached entry (e.g. the cohort-broken policy changed). */
+  clear: () => void;
 }
 
 export const useSiblingCountsStore = create<SiblingCountsState>((set, get) => ({
@@ -38,4 +40,5 @@ export const useSiblingCountsStore = create<SiblingCountsState>((set, get) => ({
       return { counts: next };
     }),
   has: (id) => get().counts.has(id),
+  clear: () => set((state) => (state.counts.size === 0 ? state : { counts: new Map() })),
 }));

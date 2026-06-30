@@ -23,6 +23,7 @@ import { getAssetCohortCounts } from '@lib/api/assets';
 import { isBackendAssetId } from '@features/assets/lib/backendAssetId';
 
 import { useSiblingCountsStore } from './siblingCountsStore';
+import { getCohortBrokenCutoff } from './siblingFacetStore';
 
 /** Don't re-fetch the same card more than once per this window. */
 const REFRESH_COOLDOWN_MS = 4000;
@@ -61,7 +62,7 @@ export function useSiblingCountRefresh(
     if (now - lastRefreshRef.current < REFRESH_COOLDOWN_MS) return;
     lastRefreshRef.current = now;
     inFlightRef.current = true;
-    getAssetCohortCounts(numericId)
+    getAssetCohortCounts(numericId, getCohortBrokenCutoff())
       .then((counts) => {
         const sig = cohortSignature(counts);
         if (sig === lastSigRef.current) return;

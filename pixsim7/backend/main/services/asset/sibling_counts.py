@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.services.asset.signal_analysis import (
+    heuristic_broken_clause,
     not_effectively_broken_clause,
 )
 
@@ -59,9 +60,19 @@ class AssetSiblingCountService:
         self.db = db
 
     async def counts_map(
-        self, assets: Iterable[Asset], owner_user_id: int
+        self,
+        assets: Iterable[Asset],
+        owner_user_id: int,
+        broken_score_cutoff: int | None = None,
     ) -> Dict[int, Dict[str, int]]:
-        """Return ``{asset_id: {combo_key: count}}`` for every facet combo."""
+        """Return ``{asset_id: {combo_key: count}}`` for every facet combo.
+
+        When ``broken_score_cutoff`` is set, siblings whose CURRENT-version
+        heuristic score is at/above it (and not Keep-overridden) are also dropped
+        from the counts — the opt-in "hide high-confidence broken" the similarity
+        badge exposes in settings. Manual-flag-broken clips are always excluded
+        regardless (see ``not_effectively_broken_clause``).
+        """
         asset_list = [a for a in assets if a is not None]
         result: Dict[int, Dict[str, int]] = {
             a.id: {combo: 0 for combo in _COMBOS} for a in asset_list
@@ -70,7 +81,9 @@ class AssetSiblingCountService:
             return result
 
         for combo in _COMBOS:
-            await self._fill_combo(asset_list, owner_user_id, result, combo)
+            await self._fill_combo(
+                asset_list, owner_user_id, result, combo, broken_score_cutoff
+            )
         return result
 
     async def _fill_combo(
@@ -79,6 +92,7 @@ class AssetSiblingCountService:
         owner_user_id: int,
         result: Dict[int, Dict[str, int]],
         combo: str,
+        broken_score_cutoff: int | None = None,
     ) -> None:
         cols = [_FACETS[c][0] for c in combo]
         extractors = [_FACETS[c][1] for c in combo]
@@ -97,13 +111,18 @@ class AssetSiblingCountService:
             select(*cols, func.count(Asset.id))
             .where(Asset.user_id == owner_user_id)
             .where(tuple_(*cols).in_(list(keys)))
-            # Don't let broken clips inflate the cohort counts shown on cards —
-            # the same "effectively broken" definition the default gallery hides
-            # (manual flag OR current-version heuristic score >= 3, minus Keeps).
-            # See effectively_broken_clause for the shared predicate.
+            # Don't let broken clips inflate the cohort counts shown on cards.
+            # Always drop manually-flagged broken (the same definition the
+            # default gallery hides — see effectively_broken_clause).
             .where(not_effectively_broken_clause())
             .group_by(*cols)
         )
+        # Optionally also drop high-confidence heuristic-broken siblings (the
+        # similarity badge's "hide broken" setting). Kept SEPARATE from the
+        # manual clause above because the scoring heuristic over-fires for a
+        # blanket default hide — it's opt-in, with a caller-chosen score cutoff.
+        if broken_score_cutoff is not None:
+            q = q.where(~heuristic_broken_clause(broken_score_cutoff))
         counts: Dict[tuple, int] = {}
         for row in (await self.db.execute(q)).all():
             *key_vals, n = row

@@ -11,10 +11,12 @@ import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPa
 import { settingsRegistry } from '../../lib/core/registry';
 import { registerIconSettings } from '../../lib/schemas/icon.settings';
 import { registerModelBadgeSettings } from '../../lib/schemas/modelBadge.settings';
+import { registerSimilarityBadgeSettings } from '../../lib/schemas/similarityBadge.settings';
 import { DynamicSettingsPanel } from '../shared/DynamicSettingsPanel';
 
 registerIconSettings();
 registerModelBadgeSettings();
+registerSimilarityBadgeSettings();
 
 function IconsSettings() {
   return (
@@ -44,6 +46,14 @@ function SurfacesSettings() {
   return (
     <div className="flex-1 overflow-auto p-4">
       <DynamicSettingsPanel categoryId="appearance" tabId="surfaces" />
+    </div>
+  );
+}
+
+function SimilarityBadgeSettings() {
+  return (
+    <div className="flex-1 overflow-auto p-4">
+      <DynamicSettingsPanel categoryId="appearance" tabId="similarity-badge" />
     </div>
   );
 }
@@ -90,6 +100,12 @@ settingsRegistry.register({
       label: 'Model Badges',
       icon: 'tag',
       component: ModelBadgesSettings,
+    },
+    {
+      id: 'similarity-badge',
+      label: 'Similarity Badge',
+      icon: 'link',
+      component: SimilarityBadgeSettings,
     },
     {
       id: 'surfaces',
