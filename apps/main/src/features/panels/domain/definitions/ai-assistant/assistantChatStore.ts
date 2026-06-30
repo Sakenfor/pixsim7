@@ -740,6 +740,17 @@ function planReconcileAction(
 
   const recovery = evaluateTranscriptRecovery(localMessages, serverMessages);
   if (recovery.recoveredAssistantTail.length > 0) {
+    // An assistant-only tail with NO unresolved user turn is forward progress,
+    // not a recovered-after-loss reply: the last user message was already
+    // answered live and the server now has an EXTRA assistant message. This is
+    // the unsolicited follow-up case — e.g. a background-task report the agent
+    // emits after its turn ended (plan agent-unsolicited-report-delivery,
+    // Slice A). Append it cleanly via sync-tail so it reads as a normal message
+    // instead of carrying the "Response recovered from server" banner (which is
+    // reserved for genuinely lost replies, where an unresolved user turn exists).
+    if (!recovery.unresolvedUser) {
+      return { kind: 'sync-tail', tail: recovery.recoveredAssistantTail };
+    }
     return { kind: 'recover-tail', tail: recovery.recoveredAssistantTail };
   }
   if (recovery.pendingServerMessages > 0 && recovery.diverged) {

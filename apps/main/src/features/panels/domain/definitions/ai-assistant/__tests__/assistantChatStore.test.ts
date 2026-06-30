@@ -729,6 +729,30 @@ describe('Assistant Chat Store', () => {
       }
     });
 
+    it('returns sync-tail (no banner) for an unsolicited follow-up after an answered turn', () => {
+      // Background-task report case (plan agent-unsolicited-report-delivery):
+      // the last user turn was already answered live ("started"), then the
+      // agent emitted an EXTRA assistant message when the task finished. With
+      // no unresolved user turn this is forward progress, not a recovered-
+      // after-loss reply — it must append cleanly via sync-tail (no "Response
+      // recovered from server" banner).
+      const action = planReconcileAction(
+        [
+          makeMsg('user', 'run the task in the background and report'),
+          makeMsg('assistant', 'started'),
+        ],
+        [
+          makeMsg('user', 'run the task in the background and report'),
+          makeMsg('assistant', 'started'),
+          makeMsg('assistant', 'task done: HELLO'),
+        ],
+      );
+      expect(action.kind).toBe('sync-tail');
+      if (action.kind === 'sync-tail') {
+        expect(action.tail.map((m) => m.text)).toEqual(['task done: HELLO']);
+      }
+    });
+
     it('returns sync-tail when a peer user message advanced the transcript elsewhere', () => {
       // The asymmetry bug: this device sees only the agent reply, never the
       // user message typed on the other device. The verdict must be sync-tail
