@@ -890,17 +890,26 @@ async def list_analyzer_instances(
 
 
 async def _sync_embedding_daemon_if_needed(db, analyzer_id) -> None:
-    """When an asset:embedding instance changes, push the derived hosted set to
-    the daemon so its served models track the instances. Best-effort: a failure
-    (daemon down, etc.) must never break the instance write."""
-    if analyzer_id != "asset:embedding":
-        return
-    try:
-        from pixsim7.backend.main.services.embedding.daemon_sync import (
-            sync_embedding_daemon_models,
-        )
+    """When an embedding instance changes, push the derived model(s) to the
+    matching daemon so its served models track the instances. Best-effort: a
+    failure (daemon down, etc.) must never break the instance write.
 
-        await sync_embedding_daemon_models(db)
+    asset:embedding -> image daemon (hosted set); prompt:embedding -> text daemon
+    (single model warm-swap). Both derive the active instance via the shared
+    compute_desired_default_model."""
+    try:
+        if analyzer_id == "asset:embedding":
+            from pixsim7.backend.main.services.embedding.daemon_sync import (
+                sync_embedding_daemon_models,
+            )
+
+            await sync_embedding_daemon_models(db)
+        elif analyzer_id == "prompt:embedding":
+            from pixsim7.backend.main.services.embedding.daemon_sync import (
+                sync_text_embedding_daemon,
+            )
+
+            await sync_text_embedding_daemon(db)
     except Exception:  # noqa: BLE001 — advisory sync, never fatal
         pass
 

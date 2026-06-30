@@ -256,7 +256,8 @@ async def lifespan(app: FastAPI):
             from pixsim7.backend.main.services.embedding.daemon_sync import (
                 sync_text_embedding_daemon,
             )
-            await sync_text_embedding_daemon()
+            async with get_async_session() as sync_db:
+                await sync_text_embedding_daemon(sync_db)
         except Exception:  # noqa: BLE001 — advisory; never affect startup
             pass
 

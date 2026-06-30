@@ -95,21 +95,26 @@ async def test_resolve_text_model_hint_from_analyzer_config() -> None:
     assert daemon_sync._resolve_text_model_hint() == "BAAI/bge-base-en-v1.5"
 
 
-async def test_compute_text_model_prefers_resolver(monkeypatch) -> None:
-    # Resolver hint wins over env (the env var is the fallback, not the source).
-    monkeypatch.setattr(daemon_sync, "_resolve_text_model_hint", lambda: "org/from-config")
-    monkeypatch.setenv(daemon_sync.TEXT_EMBED_MODEL_ENV, "org/from-env")
-    assert daemon_sync.compute_desired_text_embedding_model() == "org/from-config"
+async def test_compute_text_model_instance_wins(monkeypatch) -> None:
+    # The active prompt:embedding instance's model beats the config hint —
+    # instance-driven, symmetric with the image daemon.
+    monkeypatch.setattr(daemon_sync, "_resolve_text_model_hint", lambda: "config/hint")
+    model = await daemon_sync.compute_desired_text_embedding_model(_FakeDb(["org/instance"]))
+    assert model == "org/instance"
 
 
-async def test_compute_text_model_env_then_default_fallback(monkeypatch) -> None:
-    # When the resolver yields nothing, fall back to env, then the baked default.
+async def test_compute_text_model_falls_back_when_no_instance(monkeypatch) -> None:
+    # No active instance -> analyzer-config hint, then env, then baked default.
+    monkeypatch.setattr(daemon_sync, "_resolve_text_model_hint", lambda: "config/hint")
+    assert await daemon_sync.compute_desired_text_embedding_model(_FakeDb([])) == "config/hint"
+
     monkeypatch.setattr(daemon_sync, "_resolve_text_model_hint", lambda: None)
     monkeypatch.setenv(daemon_sync.TEXT_EMBED_MODEL_ENV, "org/from-env")
-    assert daemon_sync.compute_desired_text_embedding_model() == "org/from-env"
+    assert await daemon_sync.compute_desired_text_embedding_model(_FakeDb([])) == "org/from-env"
+
     monkeypatch.delenv(daemon_sync.TEXT_EMBED_MODEL_ENV, raising=False)
     assert (
-        daemon_sync.compute_desired_text_embedding_model()
+        await daemon_sync.compute_desired_text_embedding_model(_FakeDb([]))
         == daemon_sync._DEFAULT_TEXT_MODEL
     )
 
@@ -126,9 +131,19 @@ async def test_sync_text_pushes_computed_model(monkeypatch) -> None:
         pushed.append(model_id)
         return True
 
-    monkeypatch.setattr(
-        daemon_sync, "compute_desired_text_embedding_model", lambda: "org/bge"
-    )
+    async def fake_compute(_db):
+        return "org/bge"
+
+    monkeypatch.setattr(daemon_sync, "compute_desired_text_embedding_model", fake_compute)
     monkeypatch.setattr(daemon_sync, "push_text_embedding_model", fake_push)
-    assert await daemon_sync.sync_text_embedding_daemon() is True
+    assert await daemon_sync.sync_text_embedding_daemon(_FakeDb([])) is True
     assert pushed == ["org/bge"]
+
+
+async def test_sync_text_swallows_compute_error(monkeypatch) -> None:
+    async def boom(_db):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(daemon_sync, "compute_desired_text_embedding_model", boom)
+    # Must not raise; returns False (nothing pushed).
+    assert await daemon_sync.sync_text_embedding_daemon(_FakeDb([])) is False

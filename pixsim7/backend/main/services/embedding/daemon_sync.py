@@ -27,6 +27,7 @@ from pixsim7.backend.main.domain.providers.models.provider_instance_config impor
 logger = configure_logging("service.embedding")
 
 EMBEDDING_ANALYZER_ID = "asset:embedding"
+TEXT_EMBEDDING_ANALYZER_ID = "prompt:embedding"
 _DEFAULT_URL = "http://localhost:8002"
 _DEFAULT_TEXT_URL = "http://localhost:8003"
 TEXT_EMBED_MODEL_ENV = "PIXSIM_TEXT_EMBED_MODEL"
@@ -47,16 +48,20 @@ async def compute_desired_embedding_models(db: AsyncSession) -> list[str]:
     return sorted({m for m in result.scalars().all() if m})
 
 
-async def compute_desired_default_model(db: AsyncSession) -> str | None:
-    """The active embedder's model — the one the daemon should keep warm.
+async def compute_desired_default_model(
+    db: AsyncSession, analyzer_id: str = EMBEDDING_ANALYZER_ID
+) -> str | None:
+    """The active embedder's model for ``analyzer_id`` — the one the daemon
+    should keep warm. The enabled, on_ingest instance (primary first, then
+    priority); None when there's no active instance.
 
-    Mirrors the app's "active instance" pick: the enabled, on_ingest
-    asset:embedding instance (primary first, then priority). None when there's
-    no active embedder, in which case the daemon keeps its startup default."""
+    Shared by both daemon syncs (image ``asset:embedding`` and text
+    ``prompt:embedding``) so the "active instance" pick is defined once rather
+    than mirrored per daemon."""
     stmt = (
         select(ProviderInstanceConfig.model_id)
         .where(ProviderInstanceConfig.kind == ProviderInstanceConfigKind.ANALYZER)
-        .where(ProviderInstanceConfig.analyzer_id == EMBEDDING_ANALYZER_ID)
+        .where(ProviderInstanceConfig.analyzer_id == analyzer_id)
         .where(ProviderInstanceConfig.enabled.is_(True))
         .where(ProviderInstanceConfig.on_ingest.is_(True))
         .where(ProviderInstanceConfig.model_id.is_not(None))
@@ -121,10 +126,13 @@ async def sync_embedding_daemon_models(db: AsyncSession) -> bool:
 
 # ── text embedding daemon (single model) ─────────────────────────────────────
 #
-# The text daemon serves one model and warm-swaps it on POST /config. This is
-# the single-model analog of push_allowed_models; it intentionally mirrors that
-# function's shape (best-effort, caller headers) — they could share transport
-# once both settle.
+# The text daemon serves one model and warm-swaps it on POST /config. The
+# "active instance" derivation is SHARED with the image daemon
+# (compute_desired_default_model, parameterized by analyzer_id) rather than
+# mirrored — so when we change how the active embedder is picked, both daemons
+# benefit. Only the transport differs (single model -> /config vs a set ->
+# /config/allowed-models); push_text_embedding_model is the single-model analog
+# of push_allowed_models and could share transport once both settle.
 
 
 async def push_text_embedding_model(model_id: str) -> bool:
@@ -177,22 +185,36 @@ def _resolve_text_model_hint() -> str | None:
     return str(hint) if hint else None
 
 
-def compute_desired_text_embedding_model() -> str:
+async def compute_desired_text_embedding_model(db: AsyncSession) -> str:
     """The HF model id the text daemon should serve.
 
-    Resolves from the ``prompt:embedding`` analyzer config (the preset-system
-    source of truth), falling back to ``PIXSIM_TEXT_EMBED_MODEL`` then a baked
-    default. Replaces the former env-only read (plan
-    analyzer-preset-driven-embedder-config, p5a): the served model now follows
-    the active embedder config rather than a single-tenant env var."""
+    Instance-driven, symmetric with the image daemon (shares
+    ``compute_desired_default_model``): the active ``prompt:embedding`` instance's
+    model wins. Falls back to the ``prompt:embedding`` analyzer-config hint (the
+    preset-system default), then ``PIXSIM_TEXT_EMBED_MODEL``, then a baked
+    default — so an install with no instances still serves the configured model.
+
+    plan analyzer-preset-driven-embedder-config: p5a wired the config-hint
+    derivation; the instance pick + the per-write resync (analyzers.py) make it
+    live, so changing the active text embedder warm-swaps the daemon without a
+    restart — the same path the image daemon already uses."""
+    instance_model = await compute_desired_default_model(
+        db, TEXT_EMBEDDING_ANALYZER_ID
+    )
     return (
-        _resolve_text_model_hint()
+        instance_model
+        or _resolve_text_model_hint()
         or os.environ.get(TEXT_EMBED_MODEL_ENV)
         or _DEFAULT_TEXT_MODEL
     )
 
 
-async def sync_text_embedding_daemon() -> bool:
-    """Push the desired served model to the text daemon. Best-effort, never
-    raises. Returns whether the push landed."""
-    return await push_text_embedding_model(compute_desired_text_embedding_model())
+async def sync_text_embedding_daemon(db: AsyncSession) -> bool:
+    """Derive the served model (active instance → config hint → env → default)
+    and push it to the text daemon. Best-effort, never raises."""
+    try:
+        model = await compute_desired_text_embedding_model(db)
+    except Exception as exc:  # noqa: BLE001 — advisory sync, never fatal
+        logger.warning("text_embedding_daemon_sync_compute_failed error=%s", str(exc))
+        return False
+    return await push_text_embedding_model(model)
