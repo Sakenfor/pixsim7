@@ -16,7 +16,6 @@ import { Button } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
-import { getAsset, setSignalOverride } from '@lib/api/assets';
 import { createBindingFromValue } from '@lib/editing-core';
 import { getVideoActivationPoolStats, setVideoActivationCap } from '@lib/media/videoActivationPool';
 import {
@@ -30,8 +29,8 @@ import { MediaCard, type MediaCardActions } from '@/components/media/MediaCard';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 
 import type { AssetsController } from '../hooks/useAssetsController';
-import { assetEvents } from '../lib/assetEvents';
 import { toggleFavoriteTag } from '../lib/favoriteTag';
+import { setSignalOverrideById } from '../lib/signalOverride';
 import {
   SIGNAL_REF_PRESETS,
   signalRefTags,
@@ -494,21 +493,17 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
       // Capture the prior override (before the write) so Undo can restore it.
       const prev = controller.assets.find((a) => a.id === assetId)?.signalOverride ?? null;
       try {
-        await setSignalOverride(assetId, decision);
+        // Persist AND emit a fresh asset so EVERY surface (gallery, viewer, the
+        // recent strip) reflects the new flag — not just this triage list. The
+        // to-do queues used to skip the emit and only drop the card locally,
+        // leaving other surfaces showing the stale red outline until a refetch.
+        await setSignalOverrideById(assetId, decision);
         // Broken/Borderline are to-do queues — acting resolves the item, so drop
-        // it from view. In Reviewed the asset stays reviewed (the override just
-        // flips clean<->broken), so keep it in place rather than making it vanish.
+        // it from this list. In Reviewed the asset stays reviewed (the override
+        // just flips clean<->broken); the emit above already refreshed its
+        // active-decision highlight, so keep it in place rather than vanishing it.
         if (queue !== 'overridden') {
           controller.removeAsset?.(assetId);
-        } else {
-          // Reviewed: keep the card, but refresh its model so the active-decision
-          // highlight (and any card state) reflects the new clean/broken choice.
-          try {
-            const refreshed = await getAsset(assetId);
-            assetEvents.emitAssetUpdated(refreshed);
-          } catch {
-            // Best effort — the highlight just won't flip until the list reloads.
-          }
         }
         setLastAction({ assetId, prev });
         setLabelTick((n) => n + 1);
@@ -526,7 +521,9 @@ export function SignalTriageContent({ controller, cardSize }: SignalTriageConten
     const { assetId, prev } = lastAction;
     setLastAction(null);
     try {
-      await setSignalOverride(assetId, prev);
+      // Emit (not just the raw API) so other surfaces revert their outline too;
+      // the local reset below slides the un-done card back into this bucket.
+      await setSignalOverrideById(assetId, prev);
       controller.reset();
       setLabelTick((n) => n + 1);
     } catch (e) {

@@ -171,7 +171,7 @@ const defaultSettings: ViewerSettings = {
   scopeLocked: false,
 };
 
-function areScopeAssetsEquivalent(prev: ViewerAsset[], next: ViewerAsset[]): boolean {
+export function areScopeAssetsEquivalent(prev: ViewerAsset[], next: ViewerAsset[]): boolean {
   if (prev === next) return true;
   if (prev.length !== next.length) return false;
 

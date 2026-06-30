@@ -8,31 +8,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { type AssetModel, toViewerAsset, toViewerAssets } from '../models/asset';
-import { useAssetViewerStore, type ViewerAsset } from '../stores/assetViewerStore';
+import { areScopeAssetsEquivalent, useAssetViewerStore, type ViewerAsset } from '../stores/assetViewerStore';
 import type { LocalAssetModel } from '../types/localFolderMeta';
-
-function areViewerScopeAssetsEquivalent(prev: ViewerAsset[], next: ViewerAsset[]): boolean {
-  if (prev === next) return true;
-  if (prev.length !== next.length) return false;
-
-  for (let i = 0; i < prev.length; i += 1) {
-    const a = prev[i];
-    const b = next[i];
-    if (
-      a.id !== b.id ||
-      a.url !== b.url ||
-      a.fullUrl !== b.fullUrl ||
-      a.name !== b.name ||
-      a.type !== b.type ||
-      a.source !== b.source ||
-      a.sourceGenerationId !== b.sourceGenerationId
-    ) {
-      return false;
-    }
-  }
-
-  return true;
-}
 
 /**
  * Registers a navigation scope with the asset viewer while the component is mounted.
@@ -67,7 +44,7 @@ export function useViewerScopeSync(
       last &&
       last.scopeId === scopeId &&
       last.label === label &&
-      areViewerScopeAssetsEquivalent(last.assets, assets)
+      areScopeAssetsEquivalent(last.assets, assets)
     ) {
       return;
     }
