@@ -55,6 +55,7 @@ export {
   useGesturePresetStore,
   useSurfaceGesturePresets,
   useActiveGesturePresetOverrides,
+  useGesturePresetSwitcherEnabled,
   type SurfaceGesturePresets,
 } from './gesturePresetStore';
 export {

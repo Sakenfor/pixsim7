@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import type { PresetGestureOverrides } from '@lib/ui/overlay';
 
@@ -16,7 +16,12 @@ import {
   resolveCascadeAction,
   type GestureResolverContext,
 } from './gestureActions';
-import { useActiveGesturePresetOverrides } from './gesturePresetStore';
+import type { GesturePreset } from './gesturePresetDefaults';
+import {
+  useActiveGesturePresetOverrides,
+  useGesturePresetStore,
+  useSurfaceGesturePresets,
+} from './gesturePresetStore';
 import type { RadialArms } from './GestureRadialMenu';
 import {
   getCascadeActionsForDirection,
@@ -71,6 +76,24 @@ export interface UseCardGesturesResult {
   radialEnabled: boolean;
   radialArms: RadialArms;
   commitRadial: (direction: GestureDirection, tierIndex: number) => void;
+  /**
+   * In-gesture preset switcher for this card's surface. Same shape as the
+   * viewer's: `enabled`/`open`/`center`/`pick`/`dismiss` drive a desktop
+   * `GesturePresetPicker`; `hasMultiple`/`activeLabel`/`cycle` drive the mobile
+   * radial center pivot. Gated by the global switcher toggle.
+   */
+  presetSwitch: {
+    enabled: boolean;
+    open: boolean;
+    center: { x: number; y: number };
+    presets: GesturePreset[];
+    activeId: string;
+    pick: (presetId: string) => void;
+    dismiss: () => void;
+    hasMultiple: boolean;
+    activeLabel: string;
+    cycle: () => void;
+  };
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -93,6 +116,16 @@ export function useCardGestures({
   // preset, then the surface config.
   const storeOverrides = useActiveGesturePresetOverrides(surfaceId);
 
+  // In-gesture preset switcher (this surface). Desktop opens via a center dwell;
+  // mobile cycles via the radial center pivot. Gated by the global toggle.
+  const presetSet = useSurfaceGesturePresets(surfaceId);
+  const cycleActivePreset = useGesturePresetStore((s) => s.cycleActivePreset);
+  const switcherEnabled = useGesturePresetStore((s) => s.switcherEnabled);
+  const presetSwitchAvailable = switcherEnabled && presetSet.presets.length > 1;
+  const [presetPicker, setPresetPicker] = useState<{ open: boolean; center: { x: number; y: number } }>(
+    { open: false, center: { x: 0, y: 0 } },
+  );
+
   // Disable swipe/drag gestures on mobile — they clash with native touch
   // scrolling and tap affordances. Cards stay fully interactive via tap.
   const effectiveGestureEnabled =
@@ -108,6 +141,10 @@ export function useCardGestures({
   const effectiveChainDown = presetGestureOverrides?.chainDown ?? storeOverrides?.chainDown ?? cfg.chainDown;
   const effectiveChainLeft = presetGestureOverrides?.chainLeft ?? storeOverrides?.chainLeft ?? cfg.chainLeft;
   const effectiveChainRight = presetGestureOverrides?.chainRight ?? storeOverrides?.chainRight ?? cfg.chainRight;
+
+  // Desktop-only center-dwell switcher (swipe is already disabled on mobile, so
+  // `effectiveGestureEnabled` implies desktop). Mobile uses the radial center.
+  const presetDwellEnabled = presetSwitchAvailable && effectiveGestureEnabled;
 
   const gestureDirections = useMemo(
     () => ({
@@ -146,6 +183,9 @@ export function useCardGestures({
     enabled: effectiveGestureEnabled,
     threshold: effectiveGestureThreshold,
     edgeInset: effectiveGestureEdgeInset,
+    onCenterDwell: presetDwellEnabled
+      ? (center) => setPresetPicker({ open: true, center })
+      : undefined,
     onGesture: useCallback(
       (event: GestureEvent) => {
         if (event.type !== 'swipe') return;
@@ -272,5 +312,20 @@ export function useCardGestures({
     isReturning,
     returningDirection: isReturning ? lastCommittedRef.current!.direction : null,
     returningActionLabel: isReturning ? lastCommittedRef.current!.actionLabel : null,
+    presetSwitch: {
+      enabled: presetDwellEnabled,
+      open: presetPicker.open,
+      center: presetPicker.center,
+      presets: presetSet.presets,
+      activeId: presetSet.activeId,
+      pick: (presetId: string) => {
+        presetSet.setActivePreset(presetId);
+        setPresetPicker((p) => ({ ...p, open: false }));
+      },
+      dismiss: () => setPresetPicker((p) => ({ ...p, open: false })),
+      hasMultiple: presetSwitchAvailable,
+      activeLabel: presetSet.active?.label ?? '',
+      cycle: () => cycleActivePreset(surfaceId, 1),
+    },
   };
 }

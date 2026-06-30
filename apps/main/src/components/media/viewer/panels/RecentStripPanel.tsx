@@ -14,7 +14,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useContextMenuItem } from '@lib/dockview';
-import { useCardGestures, useLongPressRadial } from '@lib/gestures';
+import { useCardGestures, useLongPressRadial, GesturePresetPicker } from '@lib/gestures';
 import { Icon } from '@lib/icons';
 
 import { useAssetEngagement, useAssetViewerStore, type ViewerAsset } from '@features/assets';
@@ -77,6 +77,7 @@ const StripThumb = memo(function StripThumb({ asset, isActive, isPending, onClic
     radialEnabled,
     radialArms,
     commitRadial,
+    presetSwitch,
   } = useCardGestures({
     id: numericId,
     surfaceId: 'strip',
@@ -91,6 +92,10 @@ const StripThumb = memo(function StripThumb({ asset, isActive, isPending, onClic
     arms: radialArms,
     commit: commitRadial,
     anchor: buttonRef,
+    // Mobile: cycle swipe presets from the radial's center pivot.
+    presetSwitch: presetSwitch.hasMultiple
+      ? { label: presetSwitch.activeLabel, count: presetSwitch.presets.length, onCycle: presetSwitch.cycle }
+      : undefined,
   });
 
   const committedBadge = isReturning
@@ -205,6 +210,15 @@ const StripThumb = memo(function StripThumb({ asset, isActive, isPending, onClic
         </span>
       )}
       {radial.node}
+      {/* Desktop: center-dwell swipe-preset switcher (portals to body). */}
+      <GesturePresetPicker
+        open={presetSwitch.open}
+        center={presetSwitch.center}
+        presets={presetSwitch.presets}
+        activeId={presetSwitch.activeId}
+        onPick={presetSwitch.pick}
+        onDismiss={presetSwitch.dismiss}
+      />
     </button>
   );
 });

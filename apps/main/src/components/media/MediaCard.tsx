@@ -29,6 +29,7 @@ import {
   useCardGestures,
   GestureOverlay,
   GestureCancelOverlay,
+  GesturePresetPicker,
   useLongPressRadial,
 } from '@lib/gestures';
 import { Icon } from '@lib/icons';
@@ -804,6 +805,14 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     onOpen: () => {
       tapStartRef.current = null;
     },
+    // Mobile: cycle swipe presets from the radial's center pivot.
+    presetSwitch: gesture.presetSwitch.hasMultiple
+      ? {
+          label: gesture.presetSwitch.activeLabel,
+          count: gesture.presetSwitch.presets.length,
+          onCycle: gesture.presetSwitch.cycle,
+        }
+      : undefined,
   });
 
   const handleRootPointerDownCapture = useCallback(
@@ -1378,9 +1387,19 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
           ) : gesture.isReturning && gesture.returningActionLabel ? (
             <GestureCancelOverlay
               actionLabel={gesture.returningActionLabel}
+              hint={gesture.presetSwitch.enabled ? 'hold to switch preset' : undefined}
             />
           ) : null}
           {radial.node}
+          {/* Desktop: center-dwell swipe-preset switcher (portals to body). */}
+          <GesturePresetPicker
+            open={gesture.presetSwitch.open}
+            center={gesture.presetSwitch.center}
+            presets={gesture.presetSwitch.presets}
+            activeId={gesture.presetSwitch.activeId}
+            onPick={gesture.presetSwitch.pick}
+            onDismiss={gesture.presetSwitch.dismiss}
+          />
           {mediaType === 'video' &&
             (layout?.enableHoverPreview === false || layout?.clickToPlay) &&
             (layout?.showPlayOverlay ?? true) && (

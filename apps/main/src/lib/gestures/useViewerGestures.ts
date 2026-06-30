@@ -122,6 +122,8 @@ export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesR
   const presetOverrides = useActiveGesturePresetOverrides('viewer');
   const presetSet = useSurfaceGesturePresets('viewer');
   const cycleActivePreset = useGesturePresetStore((s) => s.cycleActivePreset);
+  const switcherEnabled = useGesturePresetStore((s) => s.switcherEnabled);
+  const presetSwitchAvailable = switcherEnabled && presetSet.presets.length > 1;
 
   const eEnabled = presetOverrides?.enabled ?? cfg.enabled;
   const eThreshold = presetOverrides?.threshold ?? cfg.threshold;
@@ -155,7 +157,7 @@ export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesR
   const [picker, setPicker] = useState<{ open: boolean; center: { x: number; y: number } }>(
     { open: false, center: { x: 0, y: 0 } },
   );
-  const presetSwitchEnabled = !isMobile && presetSet.presets.length > 1;
+  const presetSwitchEnabled = presetSwitchAvailable && !isMobile;
 
   const { gestureHandlers, activeGesture, gestureConsumed } = useMouseGesture({
     enabled: eEnabled,
@@ -276,7 +278,7 @@ export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesR
         setPicker((p) => ({ ...p, open: false }));
       },
       dismiss: () => setPicker((p) => ({ ...p, open: false })),
-      hasMultiple: presetSet.presets.length > 1,
+      hasMultiple: presetSwitchAvailable,
       activeLabel: presetSet.active?.label ?? '',
       cycle: () => cycleActivePreset('viewer', 1),
     },

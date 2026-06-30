@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+ 
 /**
  * Gesture surface settings.
  *
@@ -9,6 +9,7 @@
 
 import {
   getAllGestureSurfaces,
+  useGesturePresetStore,
   useGestureSurfaceStore,
   useSurfaceOwnConfig,
   type GestureSurfaceDescriptor,
@@ -224,6 +225,51 @@ function makeAdapterHook(surfaceId: string) {
 
 export function categoryIdForSurface(surfaceId: string): string {
   return `gesture-surface:${surfaceId}`;
+}
+
+// ─── Global gesture settings (cross-surface) ─────────────────────────────────
+
+export const GESTURE_GENERAL_CATEGORY_ID = 'gesture-general';
+
+function useGeneralAdapter(): SettingStoreAdapter {
+  const switcherEnabled = useGesturePresetStore((s) => s.switcherEnabled);
+  const setSwitcherEnabled = useGesturePresetStore((s) => s.setSwitcherEnabled);
+  return {
+    get: (fieldId) => (fieldId === 'presetSwitcherEnabled' ? switcherEnabled : undefined),
+    set: (fieldId, value) => {
+      if (fieldId === 'presetSwitcherEnabled') setSwitcherEnabled(Boolean(value));
+    },
+    getAll: () => ({ presetSwitcherEnabled: switcherEnabled }),
+  };
+}
+
+const generalGroups: SettingGroup[] = [
+  {
+    id: 'gesture-general-switcher',
+    title: 'Preset Switcher',
+    description:
+      'Quickly swap which set of swipe actions is active, mid-gesture, across all surfaces.',
+    fields: [
+      {
+        id: 'presetSwitcherEnabled',
+        type: 'toggle',
+        label: 'In-gesture preset switcher',
+        description:
+          'Hold the center of a swipe (desktop) or tap the radial center (touch) to switch swipe presets.',
+        defaultValue: true,
+      },
+    ],
+  },
+];
+
+/** Register the global (cross-surface) gesture settings category. */
+export function registerGestureGeneralSettings(): () => void {
+  return settingsSchemaRegistry.register({
+    categoryId: GESTURE_GENERAL_CATEGORY_ID,
+    category: { label: 'General', icon: '⚙️', order: 0 },
+    groups: generalGroups,
+    useStore: useGeneralAdapter,
+  });
 }
 
 export function registerGestureSurfaceSettings(): () => void {

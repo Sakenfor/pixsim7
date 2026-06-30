@@ -28,9 +28,16 @@ import type { GestureSurfaceId } from './gestureSurfaces';
 interface GesturePresetState {
   /** Active preset id keyed by surface. Missing → the surface's first preset. */
   activeBySurface: Record<string, string>;
+  /**
+   * Global master switch for the in-gesture preset switcher (desktop center-
+   * dwell + mobile radial center-cycle), across all surfaces. When off, the
+   * switcher never appears; the active preset still applies. Default on.
+   */
+  switcherEnabled: boolean;
   setActivePreset: (surfaceId: GestureSurfaceId, presetId: string) => void;
   /** Cycle to the next/previous preset for a surface (wraps). */
   cycleActivePreset: (surfaceId: GestureSurfaceId, dir: 1 | -1) => void;
+  setSwitcherEnabled: (enabled: boolean) => void;
 }
 
 function resolveActiveId(activeBySurface: Record<string, string>, surfaceId: GestureSurfaceId): string {
@@ -44,6 +51,7 @@ export const useGesturePresetStore = create<GesturePresetState>()(
   persist(
     (set, get) => ({
       activeBySurface: {},
+      switcherEnabled: true,
       setActivePreset: (surfaceId, presetId) =>
         set((s) => ({ activeBySurface: { ...s.activeBySurface, [surfaceId]: presetId } })),
       cycleActivePreset: (surfaceId, dir) => {
@@ -54,11 +62,15 @@ export const useGesturePresetStore = create<GesturePresetState>()(
         const next = presets[(idx + dir + presets.length) % presets.length];
         set((s) => ({ activeBySurface: { ...s.activeBySurface, [surfaceId]: next.id } }));
       },
+      setSwitcherEnabled: (enabled) => set({ switcherEnabled: enabled }),
     }),
     {
       name: 'gesture-presets-v1',
       version: 1,
-      partialize: (state) => ({ activeBySurface: state.activeBySurface }),
+      partialize: (state) => ({
+        activeBySurface: state.activeBySurface,
+        switcherEnabled: state.switcherEnabled,
+      }),
     },
   ),
 );
@@ -91,6 +103,11 @@ export function useSurfaceGesturePresets(surfaceId: GestureSurfaceId): SurfaceGe
  * preset is the no-op Default (so callers cleanly fall through to surface
  * config). Stable reference while the selection is unchanged.
  */
+/** Global master switch for the in-gesture preset switcher (all surfaces). */
+export function useGesturePresetSwitcherEnabled(): boolean {
+  return useGesturePresetStore((s) => s.switcherEnabled);
+}
+
 export function useActiveGesturePresetOverrides(
   surfaceId: GestureSurfaceId,
 ): PresetGestureOverrides | undefined {
