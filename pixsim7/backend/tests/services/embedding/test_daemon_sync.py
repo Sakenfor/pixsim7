@@ -89,9 +89,24 @@ async def test_sync_pushes_computed_set_and_default(monkeypatch) -> None:
 # ── text embedding daemon (single model) ─────────────────────────────────────
 
 
-async def test_compute_desired_text_model_reads_env(monkeypatch) -> None:
-    monkeypatch.setenv(daemon_sync.TEXT_EMBED_MODEL_ENV, "org/custom-text")
-    assert daemon_sync.compute_desired_text_embedding_model() == "org/custom-text"
+async def test_resolve_text_model_hint_from_analyzer_config() -> None:
+    # The prompt:embedding analyzer config declares model_id_hint — the
+    # preset-system source of truth the daemon should serve.
+    assert daemon_sync._resolve_text_model_hint() == "BAAI/bge-base-en-v1.5"
+
+
+async def test_compute_text_model_prefers_resolver(monkeypatch) -> None:
+    # Resolver hint wins over env (the env var is the fallback, not the source).
+    monkeypatch.setattr(daemon_sync, "_resolve_text_model_hint", lambda: "org/from-config")
+    monkeypatch.setenv(daemon_sync.TEXT_EMBED_MODEL_ENV, "org/from-env")
+    assert daemon_sync.compute_desired_text_embedding_model() == "org/from-config"
+
+
+async def test_compute_text_model_env_then_default_fallback(monkeypatch) -> None:
+    # When the resolver yields nothing, fall back to env, then the baked default.
+    monkeypatch.setattr(daemon_sync, "_resolve_text_model_hint", lambda: None)
+    monkeypatch.setenv(daemon_sync.TEXT_EMBED_MODEL_ENV, "org/from-env")
+    assert daemon_sync.compute_desired_text_embedding_model() == "org/from-env"
     monkeypatch.delenv(daemon_sync.TEXT_EMBED_MODEL_ENV, raising=False)
     assert (
         daemon_sync.compute_desired_text_embedding_model()

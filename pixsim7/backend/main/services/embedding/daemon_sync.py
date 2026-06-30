@@ -161,14 +161,35 @@ async def push_text_embedding_model(model_id: str) -> bool:
         return False
 
 
+def _resolve_text_model_hint() -> str | None:
+    """HF model id from the ``prompt:embedding`` analyzer config — the
+    preset-system source of truth (``config['model_id_hint']``; approved presets
+    merge into that config at startup). None if the resolver can't supply one."""
+    try:
+        from pixsim7.backend.main.services.embedding.preset_resolver import (
+            resolve_embedder_command,
+        )
+
+        resolved = resolve_embedder_command("prompt:embedding")
+    except Exception:  # noqa: BLE001 — advisory; fall back to env/default
+        return None
+    hint = (resolved.extra or {}).get("model_id_hint")
+    return str(hint) if hint else None
+
+
 def compute_desired_text_embedding_model() -> str:
     """The HF model id the text daemon should serve.
 
-    Today this reads ``PIXSIM_TEXT_EMBED_MODEL`` (matching what the daemon loads
-    at startup). Plan analyzer-preset-driven-embedder-config (p5) replaces this
-    with the DB/analyzer-preset-resolved model, so changing the active text
-    embedder re-pushes here and the daemon warm-swaps without a restart."""
-    return os.environ.get(TEXT_EMBED_MODEL_ENV, _DEFAULT_TEXT_MODEL)
+    Resolves from the ``prompt:embedding`` analyzer config (the preset-system
+    source of truth), falling back to ``PIXSIM_TEXT_EMBED_MODEL`` then a baked
+    default. Replaces the former env-only read (plan
+    analyzer-preset-driven-embedder-config, p5a): the served model now follows
+    the active embedder config rather than a single-tenant env var."""
+    return (
+        _resolve_text_model_hint()
+        or os.environ.get(TEXT_EMBED_MODEL_ENV)
+        or _DEFAULT_TEXT_MODEL
+    )
 
 
 async def sync_text_embedding_daemon() -> bool:

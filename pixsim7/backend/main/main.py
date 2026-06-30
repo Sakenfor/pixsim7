@@ -247,8 +247,22 @@ async def lifespan(app: FastAPI):
         except Exception:  # noqa: BLE001 — advisory; never affect startup
             pass
 
+    # Best-effort: push the text daemon's served model (resolved from the
+    # prompt:embedding analyzer config) to its /config so it warm-swaps to the
+    # active embedder after a restart, without a card restart. No DB needed — the
+    # model comes from the in-memory analyzer registry.
+    async def _sync_text_embedding_daemon_bg() -> None:
+        try:
+            from pixsim7.backend.main.services.embedding.daemon_sync import (
+                sync_text_embedding_daemon,
+            )
+            await sync_text_embedding_daemon()
+        except Exception:  # noqa: BLE001 — advisory; never affect startup
+            pass
+
     import asyncio as _asyncio
     _asyncio.create_task(_sync_embedding_daemon_bg())
+    _asyncio.create_task(_sync_text_embedding_daemon_bg())
 
     logger.info("pixsim7_ready")
 
