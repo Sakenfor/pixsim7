@@ -56,6 +56,7 @@ import {
 import { Spinner } from './MaintenanceSpinner';
 import { ProviderConcurrencyRow } from './ProviderConcurrencyRow';
 import { ScoringTuningPanel } from './ScoringTuningPanel';
+import { SignalReferencePanel } from './SignalReferencePanel';
 import { SignalReprobeRunner } from './SignalReprobeRunner';
 
 const SURFACE = 'settings:maintenance-dashboard';
@@ -3516,6 +3517,11 @@ export function MaintenanceDashboard() {
       id: 'signal:calibration',
       label: 'Calibration',
       content: <div className="p-4 max-w-2xl"><CalibrationPanel /></div>,
+    },
+    {
+      id: 'signal:references',
+      label: 'References',
+      content: <div className="p-4"><SignalReferencePanel /></div>,
     },
     {
       id: 'signal:tuning',

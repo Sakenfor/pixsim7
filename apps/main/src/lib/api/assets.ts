@@ -70,8 +70,16 @@ export const deleteAssetFromProvider = assetsApi.deleteAssetFromProvider;
  */
 export function getAssetCohortCounts(
   assetId: number,
+  brokenScoreCutoff?: number,
 ): Promise<Record<string, number>> {
-  return pixsimClient.get<Record<string, number>>(`/assets/${assetId}/cohort-counts`);
+  // When set, the backend also drops high-confidence heuristic-broken siblings
+  // (the similarity badge's "hide broken" setting) so the count matches the
+  // mini-gallery the badge opens. Omitted → only manual flags are excluded.
+  const qs =
+    typeof brokenScoreCutoff === 'number'
+      ? `?broken_score_cutoff=${brokenScoreCutoff}`
+      : '';
+  return pixsimClient.get<Record<string, number>>(`/assets/${assetId}/cohort-counts${qs}`);
 }
 
 /**
@@ -81,11 +89,17 @@ export function getAssetCohortCounts(
  */
 export async function getCohortCountsByIds(
   ids: number[],
+  brokenScoreCutoff?: number,
 ): Promise<Record<number, Record<string, number>>> {
   if (ids.length === 0) return {};
   return pixsimClient.post<Record<number, Record<string, number>>>(
     '/assets/cohort-counts',
-    { asset_ids: ids },
+    {
+      asset_ids: ids,
+      ...(typeof brokenScoreCutoff === 'number'
+        ? { broken_score_cutoff: brokenScoreCutoff }
+        : {}),
+    },
   );
 }
 
@@ -187,6 +201,27 @@ export function getSignalMetrics(
   assetId: number,
 ): Promise<{ id: number; signal_metrics: SignalMetrics | null }> {
   return pixsimClient.get(`/assets/${assetId}/signal-metrics`);
+}
+
+/**
+ * A curated `signalref:*` reference clip + its stored fingerprint — the
+ * templates the broken-audio matcher cross-correlates against. Consumed by the
+ * Video-Health "References" panel.
+ */
+export interface SignalReferenceItem {
+  asset: AssetResponse;
+  chroma_fp?: number[] | null;
+  audio_ref_match?: number | null;
+  loudness_range_db?: number | null;
+  score?: number | null;
+}
+
+/** List the curated reference clips (admin-scoped, read-only). */
+export function getSignalReferences(): Promise<{
+  items: SignalReferenceItem[];
+  total: number;
+}> {
+  return pixsimClient.get('/assets/signal-references');
 }
 
 export const bulkDeleteAssets = assetsApi.bulkDeleteAssets;

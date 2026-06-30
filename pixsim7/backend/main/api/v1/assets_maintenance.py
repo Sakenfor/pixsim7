@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, AssetSvc, DatabaseSession
 from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
 from pixsim7.backend.main.domain.enums import MediaType
 from pixsim7.backend.main.services.asset.signal_scoring_params import ScoringParams
 from pixsim_logging import get_logger
@@ -2336,6 +2337,82 @@ async def preview_signal_calibration(
     )
 
     return await preview_calibration(db, admin.id, candidate)
+
+
+# ===== Reference fingerprint library (signalref:* clips) =====
+
+
+class SignalReferenceItem(BaseModel):
+    """A curated `signalref:*` reference clip + its stored fingerprint."""
+
+    asset: AssetResponse
+    chroma_fp: Optional[List[float]] = Field(
+        default=None, description="Stored 12×N melody fingerprint (null if unprobed)"
+    )
+    audio_ref_match: Optional[float] = None
+    loudness_range_db: Optional[float] = None
+    score: Optional[int] = None
+
+
+class SignalReferenceListResponse(BaseModel):
+    items: List[SignalReferenceItem]
+    total: int
+
+
+@router.get("/signal-references", response_model=SignalReferenceListResponse)
+async def list_signal_references(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+) -> SignalReferenceListResponse:
+    """List the curated `signalref:*` reference clips with their fingerprints.
+
+    These are the templates the broken-audio matcher cross-correlates against
+    (see audio_fingerprint.load_reference_fingerprints). The Video-Health
+    "References" panel renders each clip's chroma heatmap + melody from the
+    stored `chroma_fp`, grouped by voice (the signalref:* tag), so the curator
+    can hear/trim the reference set before a rescore. Read-only.
+    """
+    from pixsim7.backend.main.api.v1.assets_helpers import (
+        build_asset_responses_with_tags,
+    )
+
+    # Distinct asset ids tagged signalref:* for this user (matcher's own scope).
+    id_rows = await db.execute(
+        text(
+            """
+            SELECT DISTINCT a.id
+            FROM assets a
+            JOIN asset_tag at ON at.asset_id = a.id
+            JOIN tag t ON t.id = at.tag_id
+            WHERE t.namespace = 'signalref' AND a.user_id = :uid
+            """
+        ),
+        {"uid": admin.id},
+    )
+    ids = [r[0] for r in id_rows.all()]
+    if not ids:
+        return SignalReferenceListResponse(items=[], total=0)
+
+    assets = (
+        await db.execute(
+            select(Asset).where(Asset.id.in_(ids)).order_by(Asset.id.desc())
+        )
+    ).scalars().all()
+    responses = await build_asset_responses_with_tags(assets, db)
+
+    items: List[SignalReferenceItem] = []
+    for asset, resp in zip(assets, responses):
+        sm = (asset.media_metadata or {}).get("signal_metrics") or {}
+        items.append(
+            SignalReferenceItem(
+                asset=resp,
+                chroma_fp=sm.get("chroma_fp"),
+                audio_ref_match=sm.get("audio_ref_match"),
+                loudness_range_db=sm.get("loudness_range_db"),
+                score=sm.get("score"),
+            )
+        )
+    return SignalReferenceListResponse(items=items, total=len(items))
 
 
 # ===== Durable signal-scan reprobe runs =====
