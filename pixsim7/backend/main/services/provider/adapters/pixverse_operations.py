@@ -1133,6 +1133,21 @@ class PixverseOperationsMixin:
                     account_id=account.id,
                 )
             except Exception as e:
+                # Idempotent delete: Pixverse returns ErrCode 500064 ("The
+                # contents has been deleted") — and get_video-style "not found"
+                # — when the video is already gone from the account (e.g. the
+                # auto-delete-after-ingest removed it first). The goal state is
+                # achieved, so treat this as success rather than a failure.
+                err_code = _extract_pixverse_error_code(e)
+                low = str(e).lower()
+                if err_code == 500064 or "has been deleted" in low or "not found" in low:
+                    logger.info(
+                        "pixverse_delete_already_gone",
+                        provider_asset_id=provider_asset_id,
+                        account_id=account.id,
+                        err_code=err_code,
+                    )
+                    return
                 logger.error(
                     "pixverse_delete_failed",
                     provider_asset_id=provider_asset_id,

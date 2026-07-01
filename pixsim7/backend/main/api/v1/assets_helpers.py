@@ -64,6 +64,13 @@ def _compute_provider_status(asset) -> str:
     return "unknown"
 
 
+def _compute_provider_removal_failed(asset) -> bool:
+    """True when a provider-side removal was attempted but failed
+    (media_metadata.provider_removal_failed) — the remote copy is still there."""
+    meta = getattr(asset, "media_metadata", None) or {}
+    return bool(isinstance(meta, dict) and _metadata_truthy(meta.get("provider_removal_failed")))
+
+
 def _compute_recovered(asset) -> bool:
     """True when the asset was CDN-salvaged from a Pixverse false-filter /
     stuck-processing state (provider_service._try_pixverse_image_cdn_salvage
@@ -97,6 +104,7 @@ async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetRes
 
     ar = AssetResponse.model_validate(asset)
     ar.provider_status = _compute_provider_status(asset)
+    ar.provider_removal_failed = _compute_provider_removal_failed(asset)
     ar.recovered = _compute_recovered(asset)
     ar.tags = [_tag_summary_with_source(tag, source) for tag, source in tags]
     has_children_map = await AssetLineageService(db).has_children_map([asset.id])
@@ -134,6 +142,7 @@ async def build_asset_responses_with_tags(
     for asset in assets:
         ar = AssetResponse.model_validate(asset)
         ar.provider_status = _compute_provider_status(asset)
+        ar.provider_removal_failed = _compute_provider_removal_failed(asset)
         ar.recovered = _compute_recovered(asset)
         ar.tags = [
             _tag_summary_with_source(tag, source)

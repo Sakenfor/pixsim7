@@ -64,6 +64,9 @@ export interface AssetModel {
   providerAssetId: string;
   providerId: string;
   providerStatus?: AssetProviderStatus | null;
+  /** True when a "delete only on provider" attempt was rejected by the provider —
+   * the remote copy is still present and the removal needs a retry. */
+  providerRemovalFailed?: boolean;
   /** Purpose: 'content' (gallery), 'mask', 'guidance', 'reference' */
   assetKind?: string;
   /** Map of provider_id -> uploaded asset URL/ID for cross-provider operations */
@@ -216,6 +219,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     providerAssetId: response.provider_asset_id ?? '',
     providerId: response.provider_id ?? '',
     providerStatus: response.provider_status,
+    providerRemovalFailed: (response as any).provider_removal_failed ?? false,
     assetKind: (response as any).asset_kind ?? 'content',
     providerUploads: response.provider_uploads
       ? { ...response.provider_uploads }

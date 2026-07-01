@@ -30,16 +30,79 @@ logger = get_logger()
 def mark_provider_copy_removed(asset: Asset, *, reason: str | None = None) -> None:
     """
     Mark an asset's provider copy as removed while keeping provider IDs for history.
+
+    Clears any prior ``provider_removal_failed`` marker: a confirmed removal
+    supersedes a previous failed attempt.
     """
     meta = dict(asset.media_metadata or {})
     meta["provider_removed"] = True
     meta["provider_removed_at"] = datetime.now(timezone.utc).isoformat()
     if reason:
         meta["provider_removed_reason"] = reason
+    meta.pop("provider_removal_failed", None)
+    meta.pop("provider_removal_failed_at", None)
+    meta.pop("provider_removal_error", None)
     asset.media_metadata = meta
 
 
-async def delete_from_provider_by_snapshot(
+def mark_provider_removal_failed(asset: Asset, *, error: str | None = None) -> None:
+    """
+    Record that a provider-side removal was attempted but did NOT succeed.
+
+    Keeps ``provider_removed`` false so the local state stays honest — the
+    remote copy is still present — and stamps a ``provider_removal_failed``
+    marker the UI can surface.
+    """
+    meta = dict(asset.media_metadata or {})
+    meta["provider_removed"] = False
+    meta["provider_removal_failed"] = True
+    meta["provider_removal_failed_at"] = datetime.now(timezone.utc).isoformat()
+    if error:
+        meta["provider_removal_error"] = str(error)[:500]
+    asset.media_metadata = meta
+
+
+async def record_provider_removal_outcome(
+    *,
+    asset_id: int,
+    succeeded: bool,
+    reason: str | None = None,
+    error: str | None = None,
+) -> None:
+    """
+    Reflect the real result of a background provider deletion onto the asset.
+
+    Runs after the request-scoped session is closed (from the post-commit
+    background task), so it opens its own session. On success we set the honest
+    ``provider_removed`` marker; on failure we set ``provider_removal_failed``
+    (leaving ``provider_removed`` false) so the gallery can show the remote copy
+    is still there and the removal needs a retry.
+    """
+    from sqlalchemy.orm import attributes
+    from pixsim7.backend.main.infrastructure.database.session import get_async_session
+
+    try:
+        async with get_async_session() as db:
+            asset = await db.get(Asset, asset_id)
+            if not asset:
+                return
+            if succeeded:
+                mark_provider_copy_removed(asset, reason=reason)
+            else:
+                mark_provider_removal_failed(asset, error=error)
+            attributes.flag_modified(asset, "media_metadata")
+            db.add(asset)
+            await db.commit()
+    except Exception:
+        logger.warning(
+            "record_provider_removal_outcome_failed",
+            asset_id=asset_id,
+            succeeded=succeeded,
+            exc_info=True,
+        )
+
+
+async def delete_from_provider_by_snapshot_detailed(
     *,
     asset_id: int,
     provider_id: str,
@@ -47,12 +110,16 @@ async def delete_from_provider_by_snapshot(
     provider_account_id: int | None,
     media_type: Any | None,
     media_metadata: dict | None,
-) -> bool:
+) -> tuple[bool, str | None]:
     """
     Attempt to delete asset from provider using snapshotted values (best effort).
 
     Opens its own session so callers may invoke it after committing their
     current unit of work or from background/worker contexts.
+
+    Returns ``(succeeded, error_message)``. On success ``error_message`` is
+    None; on failure it carries a short human-readable reason the caller can
+    surface (provider rejection text, missing account, unsupported, …).
     """
     from pixsim7.backend.main.domain.providers.models import ProviderAccount
     from pixsim7.backend.main.infrastructure.database.session import get_async_session
@@ -67,7 +134,7 @@ async def delete_from_provider_by_snapshot(
                 provider_id=provider_id,
                 asset_id=asset_id,
             )
-            return False
+            return False, f"Provider '{provider_id}' does not support deletion"
 
         if not provider_account_id:
             logger.warning(
@@ -75,7 +142,7 @@ async def delete_from_provider_by_snapshot(
                 provider_id=provider_id,
                 asset_id=asset_id,
             )
-            return False
+            return False, "No provider account available to delete from"
 
         async with get_async_session() as db:
             account = await db.get(ProviderAccount, provider_account_id)
@@ -85,7 +152,7 @@ async def delete_from_provider_by_snapshot(
                     asset_id=asset_id,
                     provider_account_id=provider_account_id,
                 )
-                return False
+                return False, "Provider account not found"
 
             await provider.delete_asset(
                 account=account,
@@ -100,7 +167,7 @@ async def delete_from_provider_by_snapshot(
             asset_id=asset_id,
             provider_asset_id=provider_asset_id,
         )
-        return True
+        return True, None
 
     except Exception as e:
         logger.error(
@@ -112,7 +179,30 @@ async def delete_from_provider_by_snapshot(
             error_type=e.__class__.__name__,
             exc_info=True,
         )
-        return False
+        return False, str(e)
+
+
+async def delete_from_provider_by_snapshot(
+    *,
+    asset_id: int,
+    provider_id: str,
+    provider_asset_id: str,
+    provider_account_id: int | None,
+    media_type: Any | None,
+    media_metadata: dict | None,
+) -> bool:
+    """Bool-returning wrapper around
+    :func:`delete_from_provider_by_snapshot_detailed` for callers that only
+    care whether the remote copy was removed."""
+    ok, _error = await delete_from_provider_by_snapshot_detailed(
+        asset_id=asset_id,
+        provider_id=provider_id,
+        provider_asset_id=provider_asset_id,
+        provider_account_id=provider_account_id,
+        media_type=media_type,
+        media_metadata=media_metadata,
+    )
+    return ok
 
 
 class AssetDeletionMixin:
@@ -278,11 +368,14 @@ class AssetDeletionMixin:
         Pixverse) but keep the asset in their local library. This is the third
         delete mode alongside local-only and local+provider.
 
-        Records a `provider_removed` marker in media_metadata so the state stays
-        honest (provider_id / provider_asset_id are NOT-NULL columns and are left
-        in place for history). Returns a dict with asset_id and a
-        `post_commit_cleanup` coroutine that runs the best-effort provider
-        deletion in a background task.
+        The `provider_removed` marker is written only AFTER the background
+        deletion confirms the remote copy is gone — provider_id /
+        provider_asset_id are NOT-NULL columns and are left in place for
+        history. If the provider rejects the delete, a `provider_removal_failed`
+        marker is written instead so the UI can surface that the remote copy is
+        still present. Returns a dict with asset_id and a `post_commit_cleanup`
+        coroutine that runs the best-effort provider deletion in a background
+        task.
         """
         asset = await self.get_asset_for_user(asset_id, user)
 
@@ -300,23 +393,29 @@ class AssetDeletionMixin:
         if not provider_account_id:
             raise InvalidOperationError("Asset has no provider account to delete from")
 
-        # Record an honest marker: the local record stays, but the provider copy
-        # is being removed. Reassign the dict so SQLAlchemy sees the JSON change.
-        mark_provider_copy_removed(asset, reason="manual")
-        self.db.add(asset)
-        await self.db.commit()
-
         deleted_by_user_id = resolve_effective_user_id(user)
 
         async def _post_commit_cleanup():
-            """Best-effort provider deletion that runs after the response is sent."""
-            await self._delete_from_provider_by_snapshot(
+            """Best-effort provider deletion that runs after the response is sent.
+
+            The local `provider_removed` / `provider_removal_failed` marker is
+            written to match the *actual* provider outcome, so the gallery never
+            claims a copy is gone when the provider rejected the delete.
+            """
+            ok, error = await delete_from_provider_by_snapshot_detailed(
                 asset_id=asset_id,
                 provider_id=provider_id,
                 provider_asset_id=provider_asset_id,
                 provider_account_id=provider_account_id,
                 media_type=media_type,
                 media_metadata=media_metadata,
+            )
+
+            await record_provider_removal_outcome(
+                asset_id=asset_id,
+                succeeded=ok,
+                reason="manual",
+                error=error,
             )
 
             await event_bus.publish(ASSET_UPDATED, {

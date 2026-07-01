@@ -17,7 +17,8 @@ export type AssetWarningId =
   | 'recovered'
   | 'suspectBroken'
   | 'flagged'
-  | 'localOnly';
+  | 'localOnly'
+  | 'providerRemovalFailed';
 
 export type AssetWarningSeverity = 'info' | 'warning' | 'error';
 
@@ -79,6 +80,17 @@ export function getAssetWarnings(asset: AssetModel | null | undefined): AssetWar
       icon: 'download',
       tooltip: 'Local only — not uploaded to a provider.',
       severity: 'warning',
+    });
+  }
+  // "Delete only on provider" was attempted but the provider rejected it — the
+  // remote copy is still there. Surface it so the user knows the removal didn't
+  // take (instead of the old behaviour that silently marked it removed).
+  if (asset.providerRemovalFailed) {
+    warnings.push({
+      id: 'providerRemovalFailed',
+      icon: 'alertTriangle',
+      tooltip: 'Provider-side delete failed — the remote copy is still there. Try removing it again.',
+      severity: 'error',
     });
   }
   // Video-health heuristic. User's manual flag wins (authoritative); otherwise

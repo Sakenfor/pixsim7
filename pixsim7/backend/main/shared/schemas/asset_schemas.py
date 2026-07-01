@@ -245,6 +245,12 @@ class AssetResponse(BaseModel):
     # Provider status (derived field)
     provider_status: Optional[Literal["ok", "local_only", "unknown", "flagged"]] = None
 
+    # True when a provider-side removal ("delete only on provider") was attempted
+    # but the provider rejected it — the remote copy is still present. Derived
+    # from media_metadata.provider_removal_failed. Lets the gallery flag that the
+    # removal didn't take and needs a retry.
+    provider_removal_failed: bool = False
+
     # Recovered from a Pixverse false-filter / stuck-processing state
     # (derived from media_metadata.image_false_filter_recovered). Set for
     # every CDN-salvaged image regardless of the original 7/8/9/processing
