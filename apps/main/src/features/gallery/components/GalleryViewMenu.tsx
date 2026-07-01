@@ -66,10 +66,11 @@ export function GalleryViewMenu({
         onClick={() => setOpen((v) => !v)}
         className="h-7 px-1.5 text-xs inline-flex items-center gap-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
         title="View options & panels"
+        aria-label="View options & panels"
       >
         <Icon name="eye" size={13} />
-        <span>View</span>
-        <Icon name="chevronDown" size={10} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        <span className="hidden sm:inline">View</span>
+        <Icon name="chevronDown" size={10} className={`hidden sm:inline transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       <Dropdown
         isOpen={open}

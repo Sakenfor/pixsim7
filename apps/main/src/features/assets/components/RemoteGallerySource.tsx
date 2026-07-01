@@ -56,6 +56,7 @@ import { useSurfaceSetBadgesExpanded } from '../stores/setBadgeExpansionStore';
 import { ClusterCard } from './ClusterCard';
 import { DynamicFilters, ChipContextMenu } from './DynamicFilters';
 import { FilterPresetBar } from './FilterPresetBar';
+import { GallerySortMenu } from './GallerySortMenu';
 import { GroupBreadcrumb } from './GroupBreadcrumb';
 import { GroupFolderTile, GroupListRow } from './GroupCards';
 import {
@@ -1602,15 +1603,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
             <div className="h-4 w-px bg-neutral-200 dark:bg-neutral-700" />
 
             {/* Sort */}
-            <select
-              className="h-7 px-1.5 text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 focus:outline-none focus:border-accent transition-colors"
-              value={controller.filters.sort}
-              onChange={(e) => setFilters({ sort: e.target.value as any })}
-            >
-              <option value="new">Newest First</option>
-              <option value="old">Oldest First</option>
-              <option value="alpha">A-Z</option>
-            </select>
+            <GallerySortMenu
+              value={controller.filters.sort ?? 'new'}
+              onChange={(sort) => setFilters({ sort })}
+            />
 
             {/* Injected toolbar controls from parent shell (surface switcher,
                 card-preset picker, and the "View" menu that now holds the
