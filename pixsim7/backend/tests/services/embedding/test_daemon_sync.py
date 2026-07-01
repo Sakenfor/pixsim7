@@ -103,6 +103,22 @@ async def test_compute_text_model_instance_wins(monkeypatch) -> None:
     assert model == "org/instance"
 
 
+async def test_compute_text_model_does_not_require_on_ingest(monkeypatch) -> None:
+    # Text picks the active instance WITHOUT the asset-ingest on_ingest filter
+    # (prompt:embedding has no on_ingest option, so it could never be set true).
+    captured: dict = {}
+
+    async def fake_default(db, analyzer_id, *, require_on_ingest=True):
+        captured["analyzer_id"] = analyzer_id
+        captured["require_on_ingest"] = require_on_ingest
+        return "org/instance"
+
+    monkeypatch.setattr(daemon_sync, "compute_desired_default_model", fake_default)
+    model = await daemon_sync.compute_desired_text_embedding_model(_FakeDb([]))
+    assert model == "org/instance"
+    assert captured == {"analyzer_id": "prompt:embedding", "require_on_ingest": False}
+
+
 async def test_compute_text_model_falls_back_when_no_instance(monkeypatch) -> None:
     # No active instance -> analyzer-config hint, then env, then baked default.
     monkeypatch.setattr(daemon_sync, "_resolve_text_model_hint", lambda: "config/hint")

@@ -49,29 +49,38 @@ async def compute_desired_embedding_models(db: AsyncSession) -> list[str]:
 
 
 async def compute_desired_default_model(
-    db: AsyncSession, analyzer_id: str = EMBEDDING_ANALYZER_ID
+    db: AsyncSession,
+    analyzer_id: str = EMBEDDING_ANALYZER_ID,
+    *,
+    require_on_ingest: bool = True,
 ) -> str | None:
     """The active embedder's model for ``analyzer_id`` — the one the daemon
-    should keep warm. The enabled, on_ingest instance (primary first, then
-    priority); None when there's no active instance.
+    should keep warm. The enabled instance with the highest priority (primary
+    first, then priority); None when there's no active instance.
 
     Shared by both daemon syncs (image ``asset:embedding`` and text
     ``prompt:embedding``) so the "active instance" pick is defined once rather
-    than mirrored per daemon."""
+    than mirrored per daemon.
+
+    ``require_on_ingest`` gates on the ``on_ingest`` flag — right for the image
+    embedder (which runs on asset ingest), but off for text, where ``on_ingest``
+    is an asset-ingest semantic that doesn't apply (prompt:embedding declares no
+    on_ingest instance-option, so it can never be set true) — the active text
+    instance is simply the enabled, highest-priority one."""
     stmt = (
         select(ProviderInstanceConfig.model_id)
         .where(ProviderInstanceConfig.kind == ProviderInstanceConfigKind.ANALYZER)
         .where(ProviderInstanceConfig.analyzer_id == analyzer_id)
         .where(ProviderInstanceConfig.enabled.is_(True))
-        .where(ProviderInstanceConfig.on_ingest.is_(True))
         .where(ProviderInstanceConfig.model_id.is_not(None))
-        .order_by(
-            ProviderInstanceConfig.is_primary.desc(),
-            ProviderInstanceConfig.priority.desc(),
-            ProviderInstanceConfig.id.desc(),
-        )
-        .limit(1)
     )
+    if require_on_ingest:
+        stmt = stmt.where(ProviderInstanceConfig.on_ingest.is_(True))
+    stmt = stmt.order_by(
+        ProviderInstanceConfig.is_primary.desc(),
+        ProviderInstanceConfig.priority.desc(),
+        ProviderInstanceConfig.id.desc(),
+    ).limit(1)
     result = await db.execute(stmt)
     return result.scalars().first()
 
@@ -199,7 +208,7 @@ async def compute_desired_text_embedding_model(db: AsyncSession) -> str:
     live, so changing the active text embedder warm-swaps the daemon without a
     restart — the same path the image daemon already uses."""
     instance_model = await compute_desired_default_model(
-        db, TEXT_EMBEDDING_ANALYZER_ID
+        db, TEXT_EMBEDDING_ANALYZER_ID, require_on_ingest=False
     )
     return (
         instance_model
