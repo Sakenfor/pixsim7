@@ -67,8 +67,10 @@ import { useSimilarPromptsSearch } from '../hooks/useSimilarPromptsSearch';
 import { useVariantOutcomes } from '../hooks/useVariantOutcomes';
 import { relatedFacets, resolveFacet, suggestFacets } from '../lib/facetRecognition';
 import { ghostDiffExtension, type GhostDiffConfig } from '../lib/ghostDiffExtension';
+import { extractInlineVarValues } from '../lib/inlineVarValues';
 import { operatorEditExtension, type OperatorRange } from '../lib/operatorEditExtension';
 import type { PrimitiveProjectionHypothesis } from '../lib/parsePrimitiveMatch';
+import { projectStructuredPrompt } from '../lib/projectStructuredPrompt';
 import {
   getCachedAnalysis,
   setCachedAnalysis,
@@ -81,6 +83,11 @@ import {
   isDefaultVariableClass,
   parseVariableName,
 } from '../lib/promptVariableName';
+import {
+  buildVariableTransformMap,
+  buildVariableValueMap,
+  resolvePromptVariables,
+} from '../lib/resolvePromptVariables';
 import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
 import { shiftCandidates } from '../lib/shiftAnalysisPositions';
 import {
@@ -754,6 +761,22 @@ export function PromptComposer({
   const [compareExtraSource, setCompareExtraSource] = useState<CompareSource | null>(null);
   const operatorVocabulary = useOperatorVocabulary();
   const relationRecipes = useRelationRecipes();
+
+  // Outbound preview: what generation will send when projection is on — mirrors
+  // the backend pipeline (inline-collapse -> project -> resolve). Shown inline
+  // under the editor, independent of the shadow-analysis panel. Null when
+  // projection is off or the result is unchanged.
+  const outboundPreview = useMemo(() => {
+    if (mode !== 'text' || projectionMode === 'off') return null;
+    const { values: inlineValues, collapsed } = extractInlineVarValues(value);
+    const projected = projectStructuredPrompt(collapsed, relationRecipes.recipes);
+    const resolved = resolvePromptVariables(
+      projected,
+      { ...buildVariableValueMap(savedVariableEntries), ...inlineValues },
+      buildVariableTransformMap(savedVariableEntries),
+    );
+    return resolved !== value ? resolved : null;
+  }, [mode, projectionMode, value, relationRecipes.recipes, savedVariableEntries]);
 
   // --- Ghost diff (inline comparison backdrop) ---
   const [ghostSource, setGhostSource] = useState<GhostDiffSource | null>(null);
@@ -2506,6 +2529,17 @@ export function PromptComposer({
                     extensions={buildCmExtensions(emphasizedRole)}
                     editorRef={promptEditorRef}
                   />
+                  {outboundPreview && (
+                    <div
+                      className="mt-1 shrink-0 px-2 py-1 rounded text-[11px] leading-snug bg-sky-50/70 dark:bg-sky-900/20 border border-sky-200/70 dark:border-sky-800/50 text-sky-800 dark:text-sky-300 max-h-20 overflow-y-auto whitespace-pre-wrap break-words"
+                      title="What generation will send (projection + variable resolution)"
+                    >
+                      <span className="uppercase tracking-wider text-[9px] text-sky-500 dark:text-sky-400 mr-1.5 select-none">
+                        Sends
+                      </span>
+                      {outboundPreview}
+                    </div>
+                  )}
                   <ReferencePicker
                     ref={referencePickerRef}
                     visible={cmRefInput.active && cmRefInput.anchor !== null}
