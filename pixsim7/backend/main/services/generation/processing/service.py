@@ -1156,6 +1156,376 @@ async def _pre_submit_gate(
     return None, adaptive_submit_gate
 
 
+async def _acquire_account(
+    *,
+    db,
+    generation,
+    generation_id: int,
+    account_service,
+    generation_service,
+    gen_params,
+    gen_model,
+    required_credit_hint,
+    required_credit_types_hint,
+    gen_logger,
+    debug,
+) -> tuple[dict | None, object | None]:
+    """Select and reserve a provider account (preferred -> reuse -> pinned
+    guard -> credit-verified fallback selection).
+
+    Returns (terminal_result_or_None, account). A terminal dict means stop
+    (pinned account deferred, or permanently unavailable); otherwise the
+    reserved account is returned. Raises AccountExhaustedError when the whole
+    pool is dry -- the caller's outer handler turns that into a capacity-wait
+    requeue."""
+    # Select and reserve account atomically (prevents race conditions)
+    # If generation already has an account_id (from previous attempt), try to reuse it
+    MAX_ACCOUNT_RETRIES = 10
+    account = None
+
+    # Try preferred account first (user-selected).
+    # When the user explicitly selects an account, honor that choice
+    # without requiring credits — some operations are free (0-cost models),
+    # and the provider API will reject with a clear error if credits are
+    # actually needed but unavailable.
+    if not account and getattr(generation, 'preferred_account_id', None) and not generation.account_id:
+        try:
+            pref_account = await db.get(ProviderAccount, generation.preferred_account_id)
+            if pref_account and pref_account.provider_id == generation.provider_id:
+                # For user-selected preferred accounts, check hard blockers
+                # (disabled/cooldown/daily limit) and concurrency capacity.
+                skip_reason = pref_account.get_operational_skip_reason()
+                if skip_reason is None:
+                    reserved = await account_service.reserve_account_if_available(pref_account.id)
+                    if reserved:
+                        account = reserved
+                        gen_logger.info("preferred_account_used", account_id=account.id)
+                        debug.worker("preferred_account_used", account_id=account.id)
+                    else:
+                        gen_logger.info("preferred_account_at_capacity", account_id=pref_account.id)
+                else:
+                    gen_logger.info("preferred_account_unavailable", account_id=pref_account.id, reason=skip_reason)
+            elif pref_account:
+                gen_logger.info("preferred_account_provider_mismatch",
+                                account_id=pref_account.id,
+                                account_provider=pref_account.provider_id,
+                                generation_provider=generation.provider_id)
+        except Exception as e:
+            gen_logger.warning("preferred_account_failed", account_id=generation.preferred_account_id, error=str(e))
+
+    # Try to reuse previous account on retry.
+    # Skip credit checks — the generation already had a slot on this
+    # account.  Check hard blockers (disabled/cooldown/daily limit)
+    # and concurrency capacity before reserving.
+    if generation.account_id:
+        try:
+            prev_account = await db.get(ProviderAccount, generation.account_id)
+            if prev_account:
+                skip_reason = prev_account.get_operational_skip_reason()
+                if skip_reason is None:
+                    reserved = await account_service.reserve_account_if_available(prev_account.id)
+                    if reserved:
+                        account = reserved
+                        gen_logger.info("account_reused", account_id=account.id, provider_id=generation.provider_id)
+                        debug.worker("account_reused", account_id=account.id, provider_id=generation.provider_id)
+                        AccountEventService.record("selected", account.id, provider_id=generation.provider_id, generation_id=generation_id, extra={"reason": "reused"})
+                    else:
+                        gen_logger.info("account_reuse_at_capacity", account_id=prev_account.id)
+                else:
+                    gen_logger.info("account_reuse_unavailable", account_id=prev_account.id, reason=skip_reason)
+        except Exception as e:
+            gen_logger.warning("account_reuse_failed", prev_account_id=generation.account_id, error=str(e))
+
+    # Pinned account guard: if user explicitly selected an account
+    # and it couldn't be used, don't silently use a different account.
+    # Cooldown → defer until it expires.  Permanent issue → fail.
+    # Skip this guard entirely if the preferred account is for a
+    # different provider — fall through to normal account selection.
+    _skip_pinned_guard = False
+    if not account and getattr(generation, 'preferred_account_id', None):
+        pref_id = generation.preferred_account_id
+        try:
+            _pref_acct = await db.get(ProviderAccount, pref_id)
+        except Exception:
+            _pref_acct = None
+
+        # Provider mismatch — preferred account belongs to a different
+        # provider than this generation targets.  Skip the entire
+        # pinned guard so we fall through to normal account selection
+        # instead of deferring forever on the wrong provider's capacity.
+        if _pref_acct and _pref_acct.provider_id != generation.provider_id:
+            gen_logger.warning(
+                "preferred_account_provider_mismatch_skip_pin",
+                account_id=pref_id,
+                account_provider=_pref_acct.provider_id,
+                generation_provider=generation.provider_id,
+            )
+            _skip_pinned_guard = True
+
+        if not _skip_pinned_guard:
+            # Temporary cooldown — defer until it expires instead of failing
+            if (
+                _pref_acct
+                and _pref_acct.cooldown_until
+                and _pref_acct.cooldown_until > datetime.now(timezone.utc)
+            ):
+                remaining = (
+                    _pref_acct.cooldown_until - datetime.now(timezone.utc)
+                ).total_seconds()
+                defer_seconds = max(
+                    int(remaining) + _pinned_wait_padding_seconds(),
+                    _min_pinned_cooldown_defer_seconds(),
+                )
+                gen_logger.info(
+                    "preferred_account_cooldown_defer",
+                    account_id=pref_id,
+                    generation_id=generation_id,
+                    defer_seconds=defer_seconds,
+                )
+                defer_result = await _defer_pinned_generation(
+                    db=db,
+                    generation=generation,
+                    generation_id=generation_id,
+                    account_id=pref_id,
+                    defer_seconds=defer_seconds,
+                    reason="pinned_account_cooldown_wait",
+                    gen_logger=gen_logger,
+                    increment_retry=False,
+                )
+                if defer_result:
+                    return defer_result, None
+                # Fall through to fail if defer itself fails
+
+            # Account is operationally OK — defer until a slot frees up.
+            # This covers both the explicit at-capacity case and the race
+            # condition where capacity freed between the reservation attempt
+            # and this check.
+            if _pref_acct and _pref_acct.get_operational_skip_reason() is None:
+                base_cooldown = _get_concurrent_limit_cooldown_seconds(
+                    generation, _pref_acct
+                )
+                defer_seconds = base_cooldown + _pinned_wait_padding_seconds()
+                gen_logger.info(
+                    "preferred_account_capacity_defer",
+                    account_id=pref_id,
+                    defer_seconds=defer_seconds,
+                    base_cooldown_seconds=base_cooldown,
+                    has_capacity=_pref_acct.has_capacity(),
+                )
+                defer_result = await _defer_pinned_generation(
+                    db=db,
+                    generation=generation,
+                    generation_id=generation_id,
+                    account_id=pref_id,
+                    defer_seconds=defer_seconds,
+                    reason="pinned_account_capacity_wait",
+                    gen_logger=gen_logger,
+                    increment_retry=False,
+                )
+                if defer_result:
+                    return defer_result, None
+
+            # Permanent unavailability (disabled, daily limit, etc.)
+            gen_logger.warning(
+                "preferred_account_pinned_unavailable",
+                account_id=pref_id,
+                generation_id=generation_id,
+                skip_reason=_pref_acct.get_operational_skip_reason() if _pref_acct else "account_not_found",
+            )
+            debug.worker("preferred_account_pinned_unavailable", account_id=pref_id)
+            await generation_service.mark_failed(
+                generation_id,
+                f"Selected account #{pref_id} is not available (disabled or at daily limit)",
+            )
+            get_health_tracker().increment_failed()
+            return {
+                "status": "failed",
+                "reason": "preferred_account_unavailable",
+                "generation_id": generation_id,
+            }, None
+
+    # If no account yet (first attempt or reuse failed), select a new one
+    if not account:
+        # For non-pinned generations, exclude accounts where
+        # pending pinned work would fill all remaining capacity.
+        # Only PENDING pinned gens need reservation — PROCESSING
+        # ones already consume current_processing_jobs slots.
+        _pinned_exclude_ids: list[int] = []
+        if not getattr(generation, 'preferred_account_id', None):
+            try:
+                # Count PENDING pinned demand per account
+                _pinned_demand_q = (
+                    sa_select(
+                        Generation.preferred_account_id,
+                        sa_func.count(Generation.id).label("pinned_pending"),
+                    )
+                    .where(
+                        Generation.preferred_account_id.isnot(None),
+                        Generation.provider_id == generation.provider_id,
+                        Generation.status == GenStatus.PENDING,
+                        Generation.id != generation.id,
+                    )
+                    .group_by(Generation.preferred_account_id)
+                )
+                _pinned_demand_result = await db.execute(_pinned_demand_q)
+                _pinned_demand: dict[int, int] = {
+                    int(acct_id): int(cnt)
+                    for acct_id, cnt in _pinned_demand_result.all()
+                    if acct_id is not None
+                }
+
+                if _pinned_demand:
+                    # Check each account's free capacity
+                    _cap_q = sa_select(
+                        ProviderAccount.id,
+                        ProviderAccount.max_concurrent_jobs,
+                        ProviderAccount.current_processing_jobs,
+                    ).where(
+                        ProviderAccount.id.in_(list(_pinned_demand.keys()))
+                    )
+                    _cap_result = await db.execute(_cap_q)
+                    for _acct_id, _max_jobs, _cur_jobs in _cap_result.all():
+                        _free = max(0, (_max_jobs or 0) - (_cur_jobs or 0))
+                        _pending = _pinned_demand.get(int(_acct_id), 0)
+                        if _pending >= _free:
+                            _pinned_exclude_ids.append(int(_acct_id))
+
+                if _pinned_exclude_ids:
+                    gen_logger.info(
+                        "excluding_pinned_accounts",
+                        excluded_ids=_pinned_exclude_ids,
+                        pinned_demand=_pinned_demand,
+                    )
+            except Exception as _pin_err:
+                gen_logger.warning("pinned_account_query_failed", error=str(_pin_err))
+
+        # Track accounts rejected during credit verification so that
+        # acquire_account never re-selects the same account within this
+        # fallback loop (prevents wasting attempts on accounts that have
+        # *some* credits but not enough for this operation).
+        _rejected_account_ids: list[int] = []
+
+        async def acquire_account():
+            """Select and reserve next account. Raises if pool empty."""
+            # Combine pinned exclusions with accounts already rejected
+            # in this fallback loop.
+            exclude_ids = list(_pinned_exclude_ids)
+            exclude_ids.extend(_rejected_account_ids)
+            try:
+                # Do not include exhausted accounts in the selection pool by default.
+                # Using `bool(gen_model)` here made almost every request include
+                # EXHAUSTED accounts, causing fallback loops over zero-credit accounts.
+                include_exhausted_candidates = False
+                acct = await account_service.select_and_reserve_account(
+                    provider_id=generation.provider_id,
+                    user_id=generation.user_id,
+                    include_exhausted=include_exhausted_candidates,
+                    min_credits=required_credit_hint,
+                    required_credit_types=required_credit_types_hint,
+                    exclude_account_ids=exclude_ids or None,
+                    operation_type=_get_operation_value(generation),
+                    model=gen_model,
+                )
+                return acct
+            except (NoAccountAvailableError, AccountCooldownError) as e:
+                # Never fall back to pinned accounts — stealing a pinned
+                # slot blocks both the pinned queue and the non-pinned job
+                # (which gets stuck behind pinned work).  Better to defer.
+                gen_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__)
+                debug.worker("no_account_available", error=str(e), error_type=e.__class__.__name__)
+                raise  # Propagate - no more accounts to try
+
+        _last_refreshed_credits: dict = {}
+
+        async def verify_credits(acct: ProviderAccount) -> bool:
+            """Check if account has sufficient credits (skip for unlimited models)."""
+            nonlocal _last_refreshed_credits
+            _last_refreshed_credits = {}
+            provider_metadata = getattr(acct, "provider_metadata", None) or {}
+            if isinstance(provider_metadata, dict) and provider_metadata.get("accountless"):
+                return True
+            if is_unlimited_model(acct, gen_model):
+                return True
+            if required_credit_hint == 0:
+                return True
+            required_credit_types = resolve_required_credit_types(
+                generation,
+                gen_params,
+                account=acct,
+            )
+            credits_data = await refresh_account_credits(acct, account_service, gen_logger)
+            _last_refreshed_credits = credits_data or {}
+            if not credits_data:
+                # Credit fetch failed or returned empty — reject so we
+                # try another account rather than submitting blind.
+                gen_logger.warning(
+                    "credits_fetch_empty",
+                    account_id=acct.id,
+                    msg="credit check returned no data, rejecting account",
+                )
+                return False
+            min_credits = required_credit_hint if required_credit_hint and required_credit_hint > 0 else 1
+            return has_sufficient_credits(
+                credits_data,
+                min_credits=min_credits,
+                required_credit_types=required_credit_types,
+            )
+
+        async def reject_account(acct: ProviderAccount) -> None:
+            """Release account and exclude from further attempts in this loop."""
+            gen_logger.warning("account_no_credits", account_id=acct.id)
+            debug.worker("account_no_credits", account_id=acct.id)
+            _rejected_account_ids.append(acct.id)
+            await account_service.release_account(acct.id)
+            # Only mark exhausted if the account has zero credits across
+            # all types.  If it has *some* credits (just not enough for
+            # this job), leave it ACTIVE so cheaper operations can use it.
+            if not has_positive_credits(_last_refreshed_credits):
+                await account_service.mark_exhausted(acct.id)
+
+        try:
+            account = await with_fallback(
+                acquire=acquire_account,
+                verify=verify_credits,
+                on_reject=reject_account,
+                on_attempt=lambda n, a: (
+                    gen_logger.info("account_selected", account_id=a.id, provider_id=generation.provider_id, attempt=n),
+                    debug.worker("account_selected", account_id=a.id, provider_id=generation.provider_id, attempt=n),
+                    AccountEventService.record("selected", a.id, provider_id=generation.provider_id, generation_id=generation_id, attempt=n),
+                ),
+                max_attempts=MAX_ACCOUNT_RETRIES,
+            )
+        except FallbackExhaustedError as exhausted_error:
+            last_account = exhausted_error.last_resource
+            last_account_id = getattr(last_account, "id", None)
+            fallback_account_id = (
+                int(last_account_id)
+                if isinstance(last_account_id, int)
+                else (generation.account_id if generation.account_id is not None else -1)
+            )
+            gen_logger.warning(
+                "all_accounts_exhausted",
+                attempts=MAX_ACCOUNT_RETRIES,
+                last_account_id=last_account_id,
+                rejected_account_ids=_rejected_account_ids,
+            )
+            debug.worker(
+                "all_accounts_exhausted",
+                attempts=MAX_ACCOUNT_RETRIES,
+                last_account_id=last_account_id,
+            )
+            AccountEventService.record(
+                "all_exhausted",
+                fallback_account_id,
+                provider_id=generation.provider_id,
+                generation_id=generation_id,
+                attempt=MAX_ACCOUNT_RETRIES,
+            )
+            raise AccountExhaustedError(fallback_account_id, generation.provider_id)
+
+    return None, account
+
+
 async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> dict:
     """
     Process a single generation, returning a terminal result dict.
@@ -1231,357 +1601,28 @@ async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> d
             except Exception as wait_clear_err:
                 gen_logger.debug("wait_meta_clear_failed", error=str(wait_clear_err))
 
-            # Select and reserve account atomically (prevents race conditions)
-            # If generation already has an account_id (from previous attempt), try to reuse it
-            MAX_ACCOUNT_RETRIES = 10
-            account = None
-            adaptive_submit_gate: dict[str, Any] | None = None
-
-            # Try preferred account first (user-selected).
-            # When the user explicitly selects an account, honor that choice
-            # without requiring credits — some operations are free (0-cost models),
-            # and the provider API will reject with a clear error if credits are
-            # actually needed but unavailable.
-            if not account and getattr(generation, 'preferred_account_id', None) and not generation.account_id:
-                try:
-                    pref_account = await db.get(ProviderAccount, generation.preferred_account_id)
-                    if pref_account and pref_account.provider_id == generation.provider_id:
-                        # For user-selected preferred accounts, check hard blockers
-                        # (disabled/cooldown/daily limit) and concurrency capacity.
-                        skip_reason = pref_account.get_operational_skip_reason()
-                        if skip_reason is None:
-                            reserved = await account_service.reserve_account_if_available(pref_account.id)
-                            if reserved:
-                                account = reserved
-                                gen_logger.info("preferred_account_used", account_id=account.id)
-                                debug.worker("preferred_account_used", account_id=account.id)
-                            else:
-                                gen_logger.info("preferred_account_at_capacity", account_id=pref_account.id)
-                        else:
-                            gen_logger.info("preferred_account_unavailable", account_id=pref_account.id, reason=skip_reason)
-                    elif pref_account:
-                        gen_logger.info("preferred_account_provider_mismatch",
-                                        account_id=pref_account.id,
-                                        account_provider=pref_account.provider_id,
-                                        generation_provider=generation.provider_id)
-                except Exception as e:
-                    gen_logger.warning("preferred_account_failed", account_id=generation.preferred_account_id, error=str(e))
-
-            # Resolve model name for unlimited-model credit bypass
+            # Resolve model name for unlimited-model credit bypass (shared by
+            # account selection, the pre-submit gate, submit, and error policy).
             gen_params = generation.canonical_params or {}
             gen_model = gen_params.get("model")
             required_credit_hint = _required_generation_credit_hint(generation, gen_params)
             required_credit_types_hint = resolve_required_credit_types(generation, gen_params)
 
-            # Try to reuse previous account on retry.
-            # Skip credit checks — the generation already had a slot on this
-            # account.  Check hard blockers (disabled/cooldown/daily limit)
-            # and concurrency capacity before reserving.
-            if generation.account_id:
-                try:
-                    prev_account = await db.get(ProviderAccount, generation.account_id)
-                    if prev_account:
-                        skip_reason = prev_account.get_operational_skip_reason()
-                        if skip_reason is None:
-                            reserved = await account_service.reserve_account_if_available(prev_account.id)
-                            if reserved:
-                                account = reserved
-                                gen_logger.info("account_reused", account_id=account.id, provider_id=generation.provider_id)
-                                debug.worker("account_reused", account_id=account.id, provider_id=generation.provider_id)
-                                AccountEventService.record("selected", account.id, provider_id=generation.provider_id, generation_id=generation_id, extra={"reason": "reused"})
-                            else:
-                                gen_logger.info("account_reuse_at_capacity", account_id=prev_account.id)
-                        else:
-                            gen_logger.info("account_reuse_unavailable", account_id=prev_account.id, reason=skip_reason)
-                except Exception as e:
-                    gen_logger.warning("account_reuse_failed", prev_account_id=generation.account_id, error=str(e))
-
-            # Pinned account guard: if user explicitly selected an account
-            # and it couldn't be used, don't silently use a different account.
-            # Cooldown → defer until it expires.  Permanent issue → fail.
-            # Skip this guard entirely if the preferred account is for a
-            # different provider — fall through to normal account selection.
-            _skip_pinned_guard = False
-            if not account and getattr(generation, 'preferred_account_id', None):
-                pref_id = generation.preferred_account_id
-                try:
-                    _pref_acct = await db.get(ProviderAccount, pref_id)
-                except Exception:
-                    _pref_acct = None
-
-                # Provider mismatch — preferred account belongs to a different
-                # provider than this generation targets.  Skip the entire
-                # pinned guard so we fall through to normal account selection
-                # instead of deferring forever on the wrong provider's capacity.
-                if _pref_acct and _pref_acct.provider_id != generation.provider_id:
-                    gen_logger.warning(
-                        "preferred_account_provider_mismatch_skip_pin",
-                        account_id=pref_id,
-                        account_provider=_pref_acct.provider_id,
-                        generation_provider=generation.provider_id,
-                    )
-                    _skip_pinned_guard = True
-
-                if not _skip_pinned_guard:
-                    # Temporary cooldown — defer until it expires instead of failing
-                    if (
-                        _pref_acct
-                        and _pref_acct.cooldown_until
-                        and _pref_acct.cooldown_until > datetime.now(timezone.utc)
-                    ):
-                        remaining = (
-                            _pref_acct.cooldown_until - datetime.now(timezone.utc)
-                        ).total_seconds()
-                        defer_seconds = max(
-                            int(remaining) + _pinned_wait_padding_seconds(),
-                            _min_pinned_cooldown_defer_seconds(),
-                        )
-                        gen_logger.info(
-                            "preferred_account_cooldown_defer",
-                            account_id=pref_id,
-                            generation_id=generation_id,
-                            defer_seconds=defer_seconds,
-                        )
-                        defer_result = await _defer_pinned_generation(
-                            db=db,
-                            generation=generation,
-                            generation_id=generation_id,
-                            account_id=pref_id,
-                            defer_seconds=defer_seconds,
-                            reason="pinned_account_cooldown_wait",
-                            gen_logger=gen_logger,
-                            increment_retry=False,
-                        )
-                        if defer_result:
-                            return defer_result
-                        # Fall through to fail if defer itself fails
-
-                    # Account is operationally OK — defer until a slot frees up.
-                    # This covers both the explicit at-capacity case and the race
-                    # condition where capacity freed between the reservation attempt
-                    # and this check.
-                    if _pref_acct and _pref_acct.get_operational_skip_reason() is None:
-                        base_cooldown = _get_concurrent_limit_cooldown_seconds(
-                            generation, _pref_acct
-                        )
-                        defer_seconds = base_cooldown + _pinned_wait_padding_seconds()
-                        gen_logger.info(
-                            "preferred_account_capacity_defer",
-                            account_id=pref_id,
-                            defer_seconds=defer_seconds,
-                            base_cooldown_seconds=base_cooldown,
-                            has_capacity=_pref_acct.has_capacity(),
-                        )
-                        defer_result = await _defer_pinned_generation(
-                            db=db,
-                            generation=generation,
-                            generation_id=generation_id,
-                            account_id=pref_id,
-                            defer_seconds=defer_seconds,
-                            reason="pinned_account_capacity_wait",
-                            gen_logger=gen_logger,
-                            increment_retry=False,
-                        )
-                        if defer_result:
-                            return defer_result
-
-                    # Permanent unavailability (disabled, daily limit, etc.)
-                    gen_logger.warning(
-                        "preferred_account_pinned_unavailable",
-                        account_id=pref_id,
-                        generation_id=generation_id,
-                        skip_reason=_pref_acct.get_operational_skip_reason() if _pref_acct else "account_not_found",
-                    )
-                    debug.worker("preferred_account_pinned_unavailable", account_id=pref_id)
-                    await generation_service.mark_failed(
-                        generation_id,
-                        f"Selected account #{pref_id} is not available (disabled or at daily limit)",
-                    )
-                    get_health_tracker().increment_failed()
-                    return {
-                        "status": "failed",
-                        "reason": "preferred_account_unavailable",
-                        "generation_id": generation_id,
-                    }
-
-            # If no account yet (first attempt or reuse failed), select a new one
-            if not account:
-                # For non-pinned generations, exclude accounts where
-                # pending pinned work would fill all remaining capacity.
-                # Only PENDING pinned gens need reservation — PROCESSING
-                # ones already consume current_processing_jobs slots.
-                _pinned_exclude_ids: list[int] = []
-                if not getattr(generation, 'preferred_account_id', None):
-                    try:
-                        # Count PENDING pinned demand per account
-                        _pinned_demand_q = (
-                            sa_select(
-                                Generation.preferred_account_id,
-                                sa_func.count(Generation.id).label("pinned_pending"),
-                            )
-                            .where(
-                                Generation.preferred_account_id.isnot(None),
-                                Generation.provider_id == generation.provider_id,
-                                Generation.status == GenStatus.PENDING,
-                                Generation.id != generation.id,
-                            )
-                            .group_by(Generation.preferred_account_id)
-                        )
-                        _pinned_demand_result = await db.execute(_pinned_demand_q)
-                        _pinned_demand: dict[int, int] = {
-                            int(acct_id): int(cnt)
-                            for acct_id, cnt in _pinned_demand_result.all()
-                            if acct_id is not None
-                        }
-
-                        if _pinned_demand:
-                            # Check each account's free capacity
-                            _cap_q = sa_select(
-                                ProviderAccount.id,
-                                ProviderAccount.max_concurrent_jobs,
-                                ProviderAccount.current_processing_jobs,
-                            ).where(
-                                ProviderAccount.id.in_(list(_pinned_demand.keys()))
-                            )
-                            _cap_result = await db.execute(_cap_q)
-                            for _acct_id, _max_jobs, _cur_jobs in _cap_result.all():
-                                _free = max(0, (_max_jobs or 0) - (_cur_jobs or 0))
-                                _pending = _pinned_demand.get(int(_acct_id), 0)
-                                if _pending >= _free:
-                                    _pinned_exclude_ids.append(int(_acct_id))
-
-                        if _pinned_exclude_ids:
-                            gen_logger.info(
-                                "excluding_pinned_accounts",
-                                excluded_ids=_pinned_exclude_ids,
-                                pinned_demand=_pinned_demand,
-                            )
-                    except Exception as _pin_err:
-                        gen_logger.warning("pinned_account_query_failed", error=str(_pin_err))
-
-                # Track accounts rejected during credit verification so that
-                # acquire_account never re-selects the same account within this
-                # fallback loop (prevents wasting attempts on accounts that have
-                # *some* credits but not enough for this operation).
-                _rejected_account_ids: list[int] = []
-
-                async def acquire_account():
-                    """Select and reserve next account. Raises if pool empty."""
-                    # Combine pinned exclusions with accounts already rejected
-                    # in this fallback loop.
-                    exclude_ids = list(_pinned_exclude_ids)
-                    exclude_ids.extend(_rejected_account_ids)
-                    try:
-                        # Do not include exhausted accounts in the selection pool by default.
-                        # Using `bool(gen_model)` here made almost every request include
-                        # EXHAUSTED accounts, causing fallback loops over zero-credit accounts.
-                        include_exhausted_candidates = False
-                        acct = await account_service.select_and_reserve_account(
-                            provider_id=generation.provider_id,
-                            user_id=generation.user_id,
-                            include_exhausted=include_exhausted_candidates,
-                            min_credits=required_credit_hint,
-                            required_credit_types=required_credit_types_hint,
-                            exclude_account_ids=exclude_ids or None,
-                            operation_type=_get_operation_value(generation),
-                            model=gen_model,
-                        )
-                        return acct
-                    except (NoAccountAvailableError, AccountCooldownError) as e:
-                        # Never fall back to pinned accounts — stealing a pinned
-                        # slot blocks both the pinned queue and the non-pinned job
-                        # (which gets stuck behind pinned work).  Better to defer.
-                        gen_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__)
-                        debug.worker("no_account_available", error=str(e), error_type=e.__class__.__name__)
-                        raise  # Propagate - no more accounts to try
-
-                _last_refreshed_credits: dict = {}
-
-                async def verify_credits(acct: ProviderAccount) -> bool:
-                    """Check if account has sufficient credits (skip for unlimited models)."""
-                    nonlocal _last_refreshed_credits
-                    _last_refreshed_credits = {}
-                    provider_metadata = getattr(acct, "provider_metadata", None) or {}
-                    if isinstance(provider_metadata, dict) and provider_metadata.get("accountless"):
-                        return True
-                    if is_unlimited_model(acct, gen_model):
-                        return True
-                    if required_credit_hint == 0:
-                        return True
-                    required_credit_types = resolve_required_credit_types(
-                        generation,
-                        gen_params,
-                        account=acct,
-                    )
-                    credits_data = await refresh_account_credits(acct, account_service, gen_logger)
-                    _last_refreshed_credits = credits_data or {}
-                    if not credits_data:
-                        # Credit fetch failed or returned empty — reject so we
-                        # try another account rather than submitting blind.
-                        gen_logger.warning(
-                            "credits_fetch_empty",
-                            account_id=acct.id,
-                            msg="credit check returned no data, rejecting account",
-                        )
-                        return False
-                    min_credits = required_credit_hint if required_credit_hint and required_credit_hint > 0 else 1
-                    return has_sufficient_credits(
-                        credits_data,
-                        min_credits=min_credits,
-                        required_credit_types=required_credit_types,
-                    )
-
-                async def reject_account(acct: ProviderAccount) -> None:
-                    """Release account and exclude from further attempts in this loop."""
-                    gen_logger.warning("account_no_credits", account_id=acct.id)
-                    debug.worker("account_no_credits", account_id=acct.id)
-                    _rejected_account_ids.append(acct.id)
-                    await account_service.release_account(acct.id)
-                    # Only mark exhausted if the account has zero credits across
-                    # all types.  If it has *some* credits (just not enough for
-                    # this job), leave it ACTIVE so cheaper operations can use it.
-                    if not has_positive_credits(_last_refreshed_credits):
-                        await account_service.mark_exhausted(acct.id)
-
-                try:
-                    account = await with_fallback(
-                        acquire=acquire_account,
-                        verify=verify_credits,
-                        on_reject=reject_account,
-                        on_attempt=lambda n, a: (
-                            gen_logger.info("account_selected", account_id=a.id, provider_id=generation.provider_id, attempt=n),
-                            debug.worker("account_selected", account_id=a.id, provider_id=generation.provider_id, attempt=n),
-                            AccountEventService.record("selected", a.id, provider_id=generation.provider_id, generation_id=generation_id, attempt=n),
-                        ),
-                        max_attempts=MAX_ACCOUNT_RETRIES,
-                    )
-                except FallbackExhaustedError as exhausted_error:
-                    last_account = exhausted_error.last_resource
-                    last_account_id = getattr(last_account, "id", None)
-                    fallback_account_id = (
-                        int(last_account_id)
-                        if isinstance(last_account_id, int)
-                        else (generation.account_id if generation.account_id is not None else -1)
-                    )
-                    gen_logger.warning(
-                        "all_accounts_exhausted",
-                        attempts=MAX_ACCOUNT_RETRIES,
-                        last_account_id=last_account_id,
-                        rejected_account_ids=_rejected_account_ids,
-                    )
-                    debug.worker(
-                        "all_accounts_exhausted",
-                        attempts=MAX_ACCOUNT_RETRIES,
-                        last_account_id=last_account_id,
-                    )
-                    AccountEventService.record(
-                        "all_exhausted",
-                        fallback_account_id,
-                        provider_id=generation.provider_id,
-                        generation_id=generation_id,
-                        attempt=MAX_ACCOUNT_RETRIES,
-                    )
-                    raise AccountExhaustedError(fallback_account_id, generation.provider_id)
+            _acq_terminal, account = await _acquire_account(
+                db=db,
+                generation=generation,
+                generation_id=generation_id,
+                account_service=account_service,
+                generation_service=generation_service,
+                gen_params=gen_params,
+                gen_model=gen_model,
+                required_credit_hint=required_credit_hint,
+                required_credit_types_hint=required_credit_types_hint,
+                gen_logger=gen_logger,
+                debug=debug,
+            )
+            if _acq_terminal is not None:
+                return _acq_terminal
 
             # Save account_id on generation so UI can show which account is being used
             if generation.account_id != account.id:
