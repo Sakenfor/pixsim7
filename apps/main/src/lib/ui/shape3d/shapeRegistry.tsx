@@ -28,15 +28,17 @@ export interface RenderShapeOpts {
   content?: ReactNode;
   /** Status colour traced on the shape (3D edge glow / outline). */
   outline?: string;
+  /** Intensity multiplier for the status `outline` glow (1 = default). */
+  glow?: number;
   /** Active 3D motion; pulse/nudge envelopes are applied by the caller. */
   motion?: Shape3DMotion;
 }
 
 export function renderShape(id: ShapeId, opts: RenderShapeOpts): ReactNode {
-  const { size, color, content, outline, motion } = opts;
+  const { size, color, content, outline, glow, motion } = opts;
 
   if (id === 'star') {
-    return <StarMedallion size={size} color={color} content={content} outline={outline} motion={motion} />;
+    return <StarMedallion size={size} color={color} content={content} outline={outline} glow={glow} motion={motion} />;
   }
 
   if (id === 'gem') {
@@ -56,6 +58,7 @@ export function renderShape(id: ShapeId, opts: RenderShapeOpts): ReactNode {
       tilt={{ x: -16, y: 20 }}
       hoverTilt={{ x: -24, y: 34 }}
       outline={outline}
+      glow={glow}
       motion={motion}
       faces={{ front: { color, content } }}
     />

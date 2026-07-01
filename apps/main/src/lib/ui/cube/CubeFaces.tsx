@@ -40,6 +40,12 @@ export interface CubeFacesProps {
    * it. Falls back to a faint white edge when omitted.
    */
   outline?: string;
+  /**
+   * Intensity multiplier for the status {@link outline} glow (1 = default).
+   * Values > 1 thicken the edge, widen the halo, and add a second outer glow
+   * layer so a low-contrast status (e.g. an unread reply) stays legible.
+   */
+  glow?: number;
   /** Resting tilt (deg). Default isometric pose shows front + right + top. */
   tilt?: { x: number; y: number };
   /** Tilt while hovered (deg). Omit to disable the hover nudge. */
@@ -119,6 +125,7 @@ export function CubeFaces({
   hoverTilt = DEFAULT_HOVER_TILT,
   shade = true,
   outline,
+  glow = 1,
   spin,
   sway,
   toss,
@@ -126,6 +133,15 @@ export function CubeFaces({
   className,
 }: CubeFacesProps) {
   const half = size / 2;
+  // Per-face status glow. At glow=1 this is the original single 5px halo; a
+  // boosted glow (>1) widens it, adds spread, and layers a second outer glow
+  // so the cube still signals through a low-contrast status colour.
+  const baseShadow = 'inset 0 0 4px rgba(0,0,0,0.35)';
+  const faceShadow = outline
+    ? glow > 1
+      ? `${baseShadow}, 0 0 ${(5 * glow).toFixed(1)}px 1px ${outline}, 0 0 ${(9 * glow).toFixed(1)}px ${outline}`
+      : `${baseShadow}, 0 0 5px ${outline}`
+    : baseShadow;
   const faceTransforms: Record<CubeFaceName, string> = {
     front: `translateZ(${half}px)`,
     back: `rotateY(180deg) translateZ(${half}px)`,
@@ -159,11 +175,9 @@ export function CubeFaces({
               backfaceVisibility: 'hidden',
               background: skin?.color ?? neutral,
               color: '#fff',
-              border: `1px solid ${outline ?? 'rgba(255,255,255,0.25)'}`,
+              border: `${glow > 1 ? 1.5 : 1}px solid ${outline ?? 'rgba(255,255,255,0.25)'}`,
               borderRadius: 2,
-              boxShadow: outline
-                ? `inset 0 0 4px rgba(0,0,0,0.35), 0 0 5px ${outline}`
-                : 'inset 0 0 4px rgba(0,0,0,0.35)',
+              boxShadow: faceShadow,
               filter: shade ? `brightness(${FACE_BRIGHTNESS[face]})` : undefined,
             }}
           >

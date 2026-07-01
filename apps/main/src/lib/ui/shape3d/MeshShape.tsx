@@ -35,7 +35,7 @@ function SpinningMesh({
 }) {
   const ref = useRef<Mesh>(null);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const m = ref.current;
     if (!m) return;
     m.rotation.x = REST_X;
@@ -45,7 +45,10 @@ function SpinningMesh({
       return;
     }
     if (motion.type === 'spin') {
-      m.rotation.y = (t / parseDur(motion.duration, 2.2)) * Math.PI * 2;
+      // Accumulate off the frame delta (not absolute time) so a live change of
+      // `duration` — e.g. the generations gem speeding up as more work lands —
+      // shifts the angular velocity smoothly instead of snapping the phase.
+      m.rotation.y += (delta / parseDur(motion.duration, 2.2)) * Math.PI * 2;
     } else if (motion.type === 'sway') {
       m.rotation.y = Math.sin((t / parseDur(motion.duration, 1.6)) * Math.PI * 2) * (Math.PI / 5);
     } else if (motion.type === 'toss') {

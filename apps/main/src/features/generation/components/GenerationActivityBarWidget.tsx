@@ -26,10 +26,28 @@ import { GenerationActivityFlyout } from './GenerationActivityFlyout';
 /** Recency window reconciled from the API each time the flyout opens. */
 const FLYOUT_RECONCILE_LIMIT = 100;
 
+// Gem spin cadence scales with how many jobs are *actively rendering* (status
+// 'processing') — NOT the queue depth. A single running job spins calmly; the
+// rate ramps up with concurrency and clamps to a floor. The floor stays slow
+// enough to never strobe, and the ramp is spread across a realistic high-
+// concurrency range (i2i ~8, video ~10-20, peaks 30-40) so a busy burst still
+// reads distinctly faster than a couple of jobs rather than pegging instantly.
+const SPIN_SLOW_S = 2.6; // one running generation (calm)
+const SPIN_FAST_S = 1.1; // floor — fastest the gem ever spins (still legible)
+const SPIN_RAMP_CAP = 20; // running count at which the floor is reached
+
+function spinDurationFor(runningCount: number): string {
+  const t = Math.min(Math.max(runningCount - 1, 0) / (SPIN_RAMP_CAP - 1), 1);
+  return `${(SPIN_SLOW_S - (SPIN_SLOW_S - SPIN_FAST_S) * t).toFixed(2)}s`;
+}
+
 type BadgeMode = 'active' | 'total' | 'polling' | 'rendering';
 
 interface GenerationWidgetStats {
   activeCount: number;
+  /** Jobs the provider is actively working (status === 'processing'), i.e. NOT
+   *  queued/pending. Drives the spin *speed* so a deep queue doesn't peg it. */
+  runningCount: number;
   totalCount: number;
   pollingCount: number;
   renderingCount: number;
@@ -54,9 +72,10 @@ export function GenerationActivityBarWidget() {
   // the fast-fail window) is reflected even between backend pushes. Ticks only
   // while something is active; see the effect below.
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const { activeCount, totalCount, pollingCount, renderingCount, refilteringCount } =
+  const { activeCount, runningCount, totalCount, pollingCount, renderingCount, refilteringCount } =
     useMemo<GenerationWidgetStats>(() => {
       let active = 0;
+      let running = 0;
       let total = 0;
       let polling = 0;
       let rendering = 0;
@@ -64,6 +83,9 @@ export function GenerationActivityBarWidget() {
       for (const g of generations.values()) {
         total++;
         if (isActiveStatus(g.status)) active++;
+        // 'processing' = actually generating at the provider; 'queued'/'pending'
+        // are waiting in line and must NOT inflate the spin speed.
+        if (g.status === 'processing') running++;
         const granular = resolveGranularStatus(g, nowMs);
         if (granular === 'polling') polling++;
         if (granular === 'rendering') rendering++;
@@ -71,6 +93,7 @@ export function GenerationActivityBarWidget() {
       }
       return {
         activeCount: active,
+        runningCount: running,
         totalCount: total,
         pollingCount: polling,
         renderingCount: rendering,
@@ -209,7 +232,7 @@ export function GenerationActivityBarWidget() {
         {renderShape('gem', {
           size: 22,
           color: isActive ? '#fbbf24' : '#9ca3af',
-          motion: isActive ? { type: 'spin' } : undefined,
+          motion: isActive ? { type: 'spin', duration: spinDurationFor(runningCount) } : undefined,
         })}
 
         {/* Connection dot — red when disconnected for visibility */}

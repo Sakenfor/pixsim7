@@ -76,6 +76,7 @@ export function EngineProfileIcon({
   className = '',
   health = 'unknown',
   statusOutline,
+  statusGlow,
   statusMotion,
 }: {
   engine: string | null | undefined;
@@ -89,6 +90,12 @@ export function EngineProfileIcon({
    * health-derived outline. Ignored in flat skin.
    */
   statusOutline?: string;
+  /**
+   * Cube-skin only: intensity multiplier for the {@link statusOutline} glow
+   * (1 = default). Boost it for low-contrast statuses (e.g. unread) so the edge
+   * glow stays legible. Ignored in flat skin.
+   */
+  statusGlow?: number;
   /**
    * Cube-skin only: animate the cube to signal activity. 3D motions —
    * `sway` rocks it (icon stays visible), `toss` snaps a periodic full turn then
@@ -145,6 +152,7 @@ export function EngineProfileIcon({
       size: shapeSize,
       color: 'rgb(var(--color-accent))',
       outline,
+      glow: statusGlow,
       motion: motion3d,
       content: <Icon name={icon} size={Math.round(size * 0.9)} color="rgb(var(--color-accent-text))" />,
     });

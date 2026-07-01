@@ -24,10 +24,12 @@ export interface StarMedallionProps {
   content?: ReactNode;
   /** Status colour — drawn as an outer glow tracing the star outline. */
   outline?: string;
+  /** Glow intensity multiplier for the status {@link outline} (1 = default). */
+  glow?: number;
   motion?: Shape3DMotion;
 }
 
-export function StarMedallion({ size, color, content, outline, motion }: StarMedallionProps) {
+export function StarMedallion({ size, color, content, outline, glow = 1, motion }: StarMedallionProps) {
   return (
     <ShapeStage size={size} tilt={{ x: 0, y: 0 }} motion={motion} motionFamily="medallion">
       <div
@@ -36,7 +38,11 @@ export function StarMedallion({ size, color, content, outline, motion }: StarMed
           inset: 0,
           background: color,
           clipPath: STAR_CLIP,
-          filter: outline ? `drop-shadow(0 0 2.5px ${outline}) drop-shadow(0 0 1px ${outline})` : undefined,
+          filter: outline
+            ? glow > 1
+              ? `drop-shadow(0 0 ${(2.5 * glow).toFixed(1)}px ${outline}) drop-shadow(0 0 ${(1.5 * glow).toFixed(1)}px ${outline}) drop-shadow(0 0 1px ${outline})`
+              : `drop-shadow(0 0 2.5px ${outline}) drop-shadow(0 0 1px ${outline})`
+            : undefined,
         }}
       />
       {content && (

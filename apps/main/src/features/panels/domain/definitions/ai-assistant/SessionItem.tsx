@@ -157,22 +157,26 @@ export function SessionItem({
   // (`workPulse`); passive states use the preset's fixed cadence. The flat skin
   // keeps using `ring`/`pulse` regardless of preset.
   const preset = CUBE_MOTION_PRESETS[cubeMotionPreset];
+  // `color` is the raw status hue (drives both the flat halo and the cube edge
+  // glow). `glow` is an intensity multiplier (1 = default): unread is boosted
+  // because `--info` is a calm, low-contrast blue that otherwise washes out —
+  // it's the "come look" signal and should read as the strongest passive state.
   const status: {
-    ring: string;
     color: string;
     title: string;
     pulse: string | null;
+    glow?: number;
     motion?: { type: 'spin' | 'sway' | 'toss' | 'tumble' | 'pulse' | 'nudge'; duration?: string };
   } | null = isFailedCreate
-    ? { ring: 'ring-signal-error', color: 'rgb(var(--error))', title: "Couldn't save this tab to the server — retry or dismiss", pulse: null }
+    ? { color: 'rgb(var(--error))', title: "Couldn't save this tab to the server — retry or dismiss", pulse: null }
     : hasLimitStop
-      ? { ring: 'ring-signal-error', color: 'rgb(var(--error))', title: 'Stopped: agent session or rate limit hit', pulse: null }
+      ? { color: 'rgb(var(--error))', title: 'Stopped: agent session or rate limit hit', pulse: null }
       : hasPendingQuestion
-        ? { ring: 'ring-signal-warning', color: 'rgb(var(--warning))', title: 'Agent is waiting on your answer', pulse: '1.4s', motion: preset.waiting ?? undefined }
+        ? { color: 'rgb(var(--warning))', title: 'Agent is waiting on your answer', pulse: '1.4s', motion: preset.waiting ?? undefined }
         : isSending
-          ? { ring: 'ring-signal-success', color: 'rgb(var(--success))', title: 'Working…', pulse: workPulse, motion: workingMotionFor(preset.working, workPulse) }
+          ? { color: 'rgb(var(--success))', title: 'Working…', pulse: workPulse, motion: workingMotionFor(preset.working, workPulse) }
           : hasUnread
-            ? { ring: 'ring-signal-info', color: 'rgb(var(--info))', title: 'Unread reply', pulse: '2.8s', motion: preset.unread ?? undefined }
+            ? { color: 'rgb(var(--info))', title: 'Unread reply', pulse: '2.8s', glow: 1.8, motion: preset.unread ?? undefined }
             : null;
 
   return (
@@ -203,15 +207,25 @@ export function SessionItem({
           icon={tabIcon}
           size={12}
           statusOutline={iconSkin !== 'flat' ? status?.color : undefined}
+          statusGlow={iconSkin !== 'flat' ? status?.glow : undefined}
           statusMotion={iconSkin !== 'flat' ? status?.motion : undefined}
         />
         {/* Flat skin: 2D status halo. Shape skins (cube/star) route the status
-            to the shape itself (above), so the flat ring is suppressed there. */}
+            to the shape itself (above), so the flat ring is suppressed there.
+            Rendered inline off `status.color` (not a Tailwind ring) so the
+            glow blur/spread can scale with `status.glow` for boosted states. */}
         {status && iconSkin === 'flat' && (
           <span
             aria-hidden="true"
-            className={`pointer-events-none absolute -inset-0.5 rounded-full ring-2 ${status.ring} shadow-[0_0_5px_var(--tw-ring-color)] ${status.pulse ? 'animate-pulse' : ''}`}
-            style={status.pulse ? { animationDuration: status.pulse } : undefined}
+            className={`pointer-events-none absolute -inset-0.5 rounded-full ${status.pulse ? 'animate-pulse' : ''}`}
+            style={{
+              border: `2px solid ${status.color}`,
+              boxShadow:
+                (status.glow ?? 1) > 1
+                  ? `0 0 ${(5 * (status.glow ?? 1)).toFixed(0)}px 1px ${status.color}`
+                  : `0 0 5px ${status.color}`,
+              ...(status.pulse ? { animationDuration: status.pulse } : {}),
+            }}
           />
         )}
       </div>
