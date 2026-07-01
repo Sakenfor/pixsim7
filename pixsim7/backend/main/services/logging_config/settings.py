@@ -35,7 +35,10 @@ class LoggingSettings(SettingsBase):
     log_db_min_level: str = Field(
         "INFO",
         description="Minimum level for DB log ingestion (DEBUG/INFO/WARNING/ERROR). "
-        "Prevents DEBUG console logging from flooding the log database.",
+        "Prevents DEBUG console logging from flooding the log database. "
+        "FOOTGUN: setting this above INFO SILENTLY drops all app INFO/WARNING "
+        "from the log DB (console is unaffected) — leave at INFO for full "
+        "queryable history. Use per-domain overrides for targeted noise control.",
     )
     sql_logging: bool = Field(
         False,

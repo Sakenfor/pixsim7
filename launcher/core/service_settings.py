@@ -48,8 +48,8 @@ TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
         {
             "key": "log_level",
             "type": "select",
-            "label": "Log Level",
-            "description": "Uvicorn server log level (app logs use Debug tab)",
+            "label": "Server Log Level",
+            "description": "Uvicorn's own server/access log level — NOT the app log level. App (structlog) logs are controlled in the Debug tab → Logging.",
             "options": ["debug", "info", "warning", "error"],
             "default": "info",
             "arg_map": "--log-level",
@@ -132,8 +132,8 @@ TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
         {
             "key": "log_level",
             "type": "select",
-            "label": "Log Level",
-            "description": "Uvicorn server log level",
+            "label": "Server Log Level",
+            "description": "Uvicorn's own server/access log level — NOT the app log level. App (structlog) logs are controlled in the Debug tab → Logging.",
             "options": ["debug", "info", "warning", "error"],
             "default": "info",
             "arg_map": "--log-level",
@@ -143,11 +143,11 @@ TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
         {
             "key": "log_level",
             "type": "select",
-            "label": "Log Level",
-            "description": "Python logging level for the worker process",
+            "label": "App Log Level (startup)",
+            "description": "Worker app (structlog) log level at startup. Runtime changes apply live from the Debug tab → Logging without a restart. (Maps to PIXSIM_LOG_LEVEL, which structlog actually reads — the old LOG_LEVEL env was inert.)",
             "options": ["debug", "info", "warning", "error"],
             "default": "info",
-            "env_map": "LOG_LEVEL",
+            "env_map": "PIXSIM_LOG_LEVEL",
         },
         {
             "key": "max_jobs",

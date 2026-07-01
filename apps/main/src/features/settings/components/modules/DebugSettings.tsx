@@ -348,6 +348,14 @@ function LogDatabaseSettings() {
               ))}
             </select>
           </div>
+          {/* Footgun guard: above INFO silently drops app INFO/WARNING from the
+              DB (console is unaffected). Surface it so an ERROR/WARNING clamp
+              isn't an invisible "why are there no logs" trap. */}
+          {['WARNING', 'ERROR'].includes((config.log_db_min_level || '').toUpperCase()) && (
+            <div className="text-[10px] text-amber-600 dark:text-amber-400">
+              ⚠ App INFO/WARNING logs are not stored in the DB at this level (console still shows them). Set to INFO for full queryable history; use Domain Level Overrides for targeted noise control.
+            </div>
+          )}
 
           {/* Retention */}
           <RetentionSlider

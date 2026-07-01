@@ -93,6 +93,33 @@ def _apply_logging_config(data: dict) -> None:
         from pixsim7.backend.main.infrastructure.database.session import set_sql_echo
         set_sql_echo(bool(data["sql_logging"]))
 
+    # Announce the EFFECTIVE thresholds after applying. This was previously
+    # silent, which let a persisted db_min_level clamp (e.g. ERROR) invisibly
+    # blackhole app INFO/WARNING from the log DB for weeks — the only earlier
+    # signal ("log_db_ingestion_ready" at startup) reports the PRE-clamp state.
+    # Emitted to the console (never clamped by db_min_level) so a raised floor is
+    # always discoverable; escalated to WARNING when above INFO, the case that
+    # silently drops history.
+    try:
+        from pixsim_logging import get_logger
+        _log = get_logger().bind(service="api")
+        _db_min = str(data.get("log_db_min_level") or "").upper()
+        if _db_min in {"WARNING", "ERROR", "CRITICAL"}:
+            _log.warning(
+                "log_db_ingestion_clamped_above_info",
+                db_min_level=_db_min,
+                note="app INFO/WARNING are NOT written to the log DB at this level",
+            )
+        _log.info(
+            "logging_config_applied",
+            global_level=data.get("log_level"),
+            db_min_level=data.get("log_db_min_level"),
+            domain_overrides=len(data.get("log_domain_levels") or {}),
+            sql_logging=data.get("sql_logging"),
+        )
+    except Exception:
+        pass
+
 
 register_applier("logging", _apply_logging_config)
 
