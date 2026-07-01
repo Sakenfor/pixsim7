@@ -293,9 +293,13 @@ async def create_generation(
 
     Rate limited: 10 requests per 60 seconds per user/IP
     """
-    # Rate limit check (per-user; agents limited as the delegating user)
-    identifier = await get_client_identifier(req, user)
-    await job_create_limiter.check(identifier)
+    # Rate limit check (per-user; agents limited as the delegating user).
+    # Admins bypass — they queue large batches deliberately and shouldn't be
+    # throttled. Agents acting on behalf of an admin carry a non-admin token,
+    # so they stay limited.
+    if not user.is_admin():
+        identifier = await get_client_identifier(req, user)
+        await job_create_limiter.check(identifier)
 
     try:
         # Build or enrich social context if world_id and session_id available
@@ -659,9 +663,11 @@ async def create_simple_image_to_video(
 
   It is primarily intended for tooling like the Chrome extension's Quick Generate.
   """
-  # Rate limit check (reuse same limiter; per-user, agents as delegating user)
-  identifier = await get_client_identifier(req, user)
-  await job_create_limiter.check(identifier)
+  # Rate limit check (reuse same limiter; per-user, agents as delegating user).
+  # Admins bypass (see generate_full); agents on behalf of an admin stay limited.
+  if not user.is_admin():
+    identifier = await get_client_identifier(req, user)
+    await job_create_limiter.check(identifier)
 
   try:
     # Convert flat request to structured generation_config format
