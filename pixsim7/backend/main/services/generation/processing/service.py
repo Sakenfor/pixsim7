@@ -1022,6 +1022,140 @@ async def _guards(
     return None
 
 
+async def _pre_submit_gate(
+    *,
+    db,
+    generation,
+    generation_id: int,
+    account,
+    account_service,
+    generation_service,
+    gen_model,
+    gen_logger,
+) -> tuple[dict | None, dict | None]:
+    """Pinned-account adaptive-concurrency pre-submit gate.
+
+    Returns (terminal_result_or_None, adaptive_submit_gate). A terminal dict
+    means stop (the generation was deferred or failed); None means proceed to
+    submit. The gate payload is threaded back so the submit-success and
+    provider-error paths can read the attempted adaptive level."""
+    adaptive_submit_gate: dict[str, Any] | None = None
+    # Adaptive provider concurrency guard for pinned accounts: learn
+    # a lower effective cap when the provider starts rejecting submits
+    # below the configured account cap, and only probe above that cap
+    # periodically to see if the provider limit increased again.
+    if _is_pinned_account(generation, account):
+        adaptive_submit_gate = await _adaptive_provider_concurrency_pre_submit_gate(
+            generation=generation,
+            account=account,
+            model=gen_model,
+            gen_logger=gen_logger,
+        )
+        if adaptive_submit_gate.get("action") == "defer":
+            concurrent_plan = await _plan_pinned_concurrent_defer(
+                db=db,
+                generation=generation,
+                account=account,
+                concurrent_cooldown_seconds=_get_concurrent_limit_cooldown_seconds(generation, account),
+                current_retry_count=getattr(generation, "retry_count", 0) or 0,
+                gen_logger=gen_logger,
+                adaptive_recommended_defer_seconds=int(adaptive_submit_gate.get("defer_seconds") or 1),
+            )
+            if concurrent_plan.get("action") == "stop":
+                # Generation giving up — allow wake so the freed slot
+                # can be used by another pinned generation.
+                await _release_account_reservation(
+                    account_service=account_service,
+                    account_id=account.id,
+                    gen_logger=gen_logger,
+                )
+                await _clear_pinned_concurrent_wait_count(generation.id, gen_logger=gen_logger)
+                await generation_service.mark_failed(
+                    generation_id,
+                    (
+                        f"Pinned account #{account.id} exceeded max concurrent wait defers "
+                        f"({concurrent_plan.get('max_waits')}) while provider concurrency was limited"
+                    ),
+                )
+                gen_logger.warning(
+                    "pinned_concurrent_max_waits_exceeded",
+                    generation_id=generation.id,
+                    account_id=account.id,
+                    concurrent_wait_count=concurrent_plan.get("wait_count"),
+                    max_waits=concurrent_plan.get("max_waits"),
+                    phase="pre_submit_gate",
+                )
+                get_health_tracker().increment_failed()
+                return {
+                    "status": "failed",
+                    "reason": "pinned_concurrent_max_waits",
+                    "generation_id": generation_id,
+                }, adaptive_submit_gate
+            # Defer path — suppress wake because other pinned
+            # generations would hit the same adaptive cap and
+            # cascade through wasted reserve+release cycles.
+            await _release_account_reservation(
+                account_service=account_service,
+                account_id=account.id,
+                gen_logger=gen_logger,
+                skip_wake=True,
+            )
+            gen_logger.info(
+                "adaptive_concurrency_defer_before_submit",
+                generation_id=generation.id,
+                account_id=account.id,
+                provider_id=account.provider_id,
+                operation_type=_get_operation_value(generation),
+                model=gen_model,
+                local_concurrency=adaptive_submit_gate.get("local_concurrency"),
+                effective_cap=adaptive_submit_gate.get("effective_cap"),
+                configured_cap=adaptive_submit_gate.get("configured_cap"),
+                defer_seconds=concurrent_plan.get("defer_seconds"),
+                seconds_until_probe=adaptive_submit_gate.get("seconds_until_probe"),
+                concurrent_wait_count=concurrent_plan.get("concurrent_wait_count"),
+            )
+            defer_result = await _defer_pinned_generation(
+                db=db,
+                generation=generation,
+                generation_id=generation_id,
+                account_id=account.id,
+                defer_seconds=int(concurrent_plan.get("defer_seconds") or 1),
+                reason=str(concurrent_plan.get("reason") or "pinned_account_adaptive_concurrent_wait"),
+                gen_logger=gen_logger,
+                increment_retry=bool(concurrent_plan.get("increment_retry")),
+            )
+            if defer_result:
+                return defer_result, adaptive_submit_gate
+            # Defer failed but account already released — cannot
+            # continue to submit without a reservation.
+            gen_logger.warning(
+                "adaptive_defer_failed_after_release",
+                generation_id=generation.id,
+                account_id=account.id,
+            )
+            get_health_tracker().increment_failed()
+            return {
+                "status": "failed",
+                "reason": "adaptive_defer_failed",
+                "generation_id": generation_id,
+            }, adaptive_submit_gate
+        elif adaptive_submit_gate.get("action") == "allow_probe":
+            gen_logger.info(
+                "adaptive_concurrency_probe_allowed",
+                generation_id=generation.id,
+                account_id=account.id,
+                provider_id=account.provider_id,
+                operation_type=_get_operation_value(generation),
+                model=gen_model,
+                local_concurrency=adaptive_submit_gate.get("local_concurrency"),
+                effective_cap=adaptive_submit_gate.get("effective_cap"),
+                configured_cap=adaptive_submit_gate.get("configured_cap"),
+                next_probe_delay_seconds=adaptive_submit_gate.get("next_probe_delay_seconds"),
+            )
+
+    return None, adaptive_submit_gate
+
+
 async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> dict:
     """
     Process a single generation, returning a terminal result dict.
@@ -1456,118 +1590,18 @@ async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> d
                 await db.commit()
                 await db.refresh(generation)
 
-            # Adaptive provider concurrency guard for pinned accounts: learn
-            # a lower effective cap when the provider starts rejecting submits
-            # below the configured account cap, and only probe above that cap
-            # periodically to see if the provider limit increased again.
-            if _is_pinned_account(generation, account):
-                adaptive_submit_gate = await _adaptive_provider_concurrency_pre_submit_gate(
-                    generation=generation,
-                    account=account,
-                    model=gen_model,
-                    gen_logger=gen_logger,
-                )
-                if adaptive_submit_gate.get("action") == "defer":
-                    concurrent_plan = await _plan_pinned_concurrent_defer(
-                        db=db,
-                        generation=generation,
-                        account=account,
-                        concurrent_cooldown_seconds=_get_concurrent_limit_cooldown_seconds(generation, account),
-                        current_retry_count=getattr(generation, "retry_count", 0) or 0,
-                        gen_logger=gen_logger,
-                        adaptive_recommended_defer_seconds=int(adaptive_submit_gate.get("defer_seconds") or 1),
-                    )
-                    if concurrent_plan.get("action") == "stop":
-                        # Generation giving up — allow wake so the freed slot
-                        # can be used by another pinned generation.
-                        await _release_account_reservation(
-                            account_service=account_service,
-                            account_id=account.id,
-                            gen_logger=gen_logger,
-                        )
-                        await _clear_pinned_concurrent_wait_count(generation.id, gen_logger=gen_logger)
-                        await generation_service.mark_failed(
-                            generation_id,
-                            (
-                                f"Pinned account #{account.id} exceeded max concurrent wait defers "
-                                f"({concurrent_plan.get('max_waits')}) while provider concurrency was limited"
-                            ),
-                        )
-                        gen_logger.warning(
-                            "pinned_concurrent_max_waits_exceeded",
-                            generation_id=generation.id,
-                            account_id=account.id,
-                            concurrent_wait_count=concurrent_plan.get("wait_count"),
-                            max_waits=concurrent_plan.get("max_waits"),
-                            phase="pre_submit_gate",
-                        )
-                        get_health_tracker().increment_failed()
-                        return {
-                            "status": "failed",
-                            "reason": "pinned_concurrent_max_waits",
-                            "generation_id": generation_id,
-                        }
-                    # Defer path — suppress wake because other pinned
-                    # generations would hit the same adaptive cap and
-                    # cascade through wasted reserve+release cycles.
-                    await _release_account_reservation(
-                        account_service=account_service,
-                        account_id=account.id,
-                        gen_logger=gen_logger,
-                        skip_wake=True,
-                    )
-                    gen_logger.info(
-                        "adaptive_concurrency_defer_before_submit",
-                        generation_id=generation.id,
-                        account_id=account.id,
-                        provider_id=account.provider_id,
-                        operation_type=_get_operation_value(generation),
-                        model=gen_model,
-                        local_concurrency=adaptive_submit_gate.get("local_concurrency"),
-                        effective_cap=adaptive_submit_gate.get("effective_cap"),
-                        configured_cap=adaptive_submit_gate.get("configured_cap"),
-                        defer_seconds=concurrent_plan.get("defer_seconds"),
-                        seconds_until_probe=adaptive_submit_gate.get("seconds_until_probe"),
-                        concurrent_wait_count=concurrent_plan.get("concurrent_wait_count"),
-                    )
-                    defer_result = await _defer_pinned_generation(
-                        db=db,
-                        generation=generation,
-                        generation_id=generation_id,
-                        account_id=account.id,
-                        defer_seconds=int(concurrent_plan.get("defer_seconds") or 1),
-                        reason=str(concurrent_plan.get("reason") or "pinned_account_adaptive_concurrent_wait"),
-                        gen_logger=gen_logger,
-                        increment_retry=bool(concurrent_plan.get("increment_retry")),
-                    )
-                    if defer_result:
-                        return defer_result
-                    # Defer failed but account already released — cannot
-                    # continue to submit without a reservation.
-                    gen_logger.warning(
-                        "adaptive_defer_failed_after_release",
-                        generation_id=generation.id,
-                        account_id=account.id,
-                    )
-                    get_health_tracker().increment_failed()
-                    return {
-                        "status": "failed",
-                        "reason": "adaptive_defer_failed",
-                        "generation_id": generation_id,
-                    }
-                elif adaptive_submit_gate.get("action") == "allow_probe":
-                    gen_logger.info(
-                        "adaptive_concurrency_probe_allowed",
-                        generation_id=generation.id,
-                        account_id=account.id,
-                        provider_id=account.provider_id,
-                        operation_type=_get_operation_value(generation),
-                        model=gen_model,
-                        local_concurrency=adaptive_submit_gate.get("local_concurrency"),
-                        effective_cap=adaptive_submit_gate.get("effective_cap"),
-                        configured_cap=adaptive_submit_gate.get("configured_cap"),
-                        next_probe_delay_seconds=adaptive_submit_gate.get("next_probe_delay_seconds"),
-                    )
+            _gate_terminal, adaptive_submit_gate = await _pre_submit_gate(
+                db=db,
+                generation=generation,
+                generation_id=generation_id,
+                account=account,
+                account_service=account_service,
+                generation_service=generation_service,
+                gen_model=gen_model,
+                gen_logger=gen_logger,
+            )
+            if _gate_terminal is not None:
+                return _gate_terminal
 
             # Mark generation as started (atomically guarded by SELECT FOR UPDATE)
             try:
