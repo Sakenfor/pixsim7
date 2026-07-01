@@ -1526,6 +1526,147 @@ async def _acquire_account(
     return None, account
 
 
+async def _submit(
+    *,
+    db,
+    generation,
+    generation_id: int,
+    account,
+    account_service,
+    generation_service,
+    provider_service,
+    gen_logger,
+    debug,
+    gen_model,
+    gen_params,
+    required_credit_hint,
+    adaptive_submit_gate,
+    is_final_try: bool,
+    job_try: int,
+    state: _HandlerState,
+) -> dict:
+    """Submit the generation to the provider and handle the outcome.
+
+    Commits the mark_started transaction, staggers concurrent dispatches,
+    calls the provider, and on success records health / adaptive-concurrency
+    and fires an immediate status poll. A provider error is delegated to
+    _handle_provider_error (which returns a terminal dict or re-raises for an
+    ARQ retry). Non-provider exceptions propagate to _process's handlers."""
+    # Close the transaction before the dispatch stagger + provider submit
+    # below. mark_started() committed, but its trailing refresh left an
+    # open read-transaction; holding it across the stagger sleep and the
+    # (often multi-second) provider HTTP submit can exceed Postgres'
+    # idle_in_transaction_session_timeout (30s), which terminates the
+    # connection mid-submit. commit() (not rollback()) is used because
+    # the session is expire_on_commit=False, so `generation`/`account`
+    # stay populated for execute_generation; rollback would expire them
+    # and trigger lazy-load IO outside the async greenlet.
+    await db.commit()
+
+    # Stagger concurrent dispatches to avoid thundering-herd on provider API
+    concurrent = getattr(account, "current_processing_jobs", 0) or 0
+    if concurrent > 1:
+        stagger = random.uniform(
+            0,
+            min(
+                concurrent * _dispatch_stagger_per_slot_seconds(),
+                _max_dispatch_stagger_seconds(),
+            ),
+        )
+        if stagger > 0.1:
+            gen_logger.info("dispatch_stagger", stagger_seconds=round(stagger, 2), concurrent_jobs=concurrent)
+            await asyncio.sleep(stagger)
+
+    # Execute generation via provider
+    try:
+        submission = await provider_service.execute_generation(
+            generation=generation,
+            account=account,
+            params=generation.canonical_params,
+        )
+
+        # Note: Concurrency was already incremented by select_and_reserve_account
+
+        gen_logger.info(
+            "provider:submit",
+            provider_job_id=submission.provider_job_id,
+            account_id=account.id,
+            msg="generation_submitted_to_provider"
+        )
+        debug.provider(
+            "provider_submit",
+            provider_id=generation.provider_id,
+            provider_job_id=submission.provider_job_id,
+            account_id=account.id,
+        )
+
+        # Credit tracking for Pixverse is now unified for both images and videos:
+        # All credits are deducted on successful completion in the status poller.
+        # This ensures failed/filtered generations don't charge credits.
+
+        # Note: Credits refreshed before submission; status_poller refreshes on completion
+
+        # Track successful generation
+        get_health_tracker().increment_processed()
+        await _clear_pinned_concurrent_wait_count(generation.id, gen_logger=gen_logger)
+
+        await _adaptive_provider_concurrency_record_submit_success(
+            generation=generation,
+            account=account,
+            model=gen_model,
+            local_concurrency=getattr(account, "current_processing_jobs", None),
+            attempted_level_hint=(
+                int(adaptive_submit_gate.get("attempted_level"))
+                if adaptive_submit_gate and adaptive_submit_gate.get("attempted_level")
+                else None
+            ),
+            gen_logger=gen_logger,
+        )
+
+        # Fire a one-shot status poll immediately so we race the
+        # short-lived early-CDN window (~1-2 s for Pixverse moderated
+        # content) before the next 2 s cron tick could miss it.
+        # Best-effort: enqueue failures are logged but never block the
+        # submit-success path, since the cron will still catch it on
+        # the next tick.
+        try:
+            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+            arq_pool = await get_arq_pool()
+            await enqueue_immediate_poll(arq_pool, generation_id)
+        except Exception as enqueue_err:
+            gen_logger.warning(
+                "immediate_poll_enqueue_error",
+                error=str(enqueue_err),
+            )
+
+        return {
+            "status": "submitted",
+            "provider_job_id": submission.provider_job_id,
+            "generation_id": generation_id,
+        }
+
+    except ProviderError as e:
+        _err_outcome = await _handle_provider_error(
+            e,
+            db=db,
+            generation=generation,
+            generation_id=generation_id,
+            account=account,
+            account_service=account_service,
+            generation_service=generation_service,
+            gen_logger=gen_logger,
+            debug=debug,
+            gen_params=gen_params,
+            gen_model=gen_model,
+            required_credit_hint=required_credit_hint,
+            adaptive_submit_gate=adaptive_submit_gate,
+            is_final_try=is_final_try,
+            job_try=job_try,
+            state=state,
+        )
+        return _err_outcome
+
+
 async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> dict:
     """
     Process a single generation, returning a terminal result dict.
@@ -1669,119 +1810,24 @@ async def _process(generation_id: int, *, is_final_try: bool, job_try: int) -> d
             gen_logger.info("generation_started")
             debug.worker("generation_started", generation_id=generation_id)
 
-            # Close the transaction before the dispatch stagger + provider submit
-            # below. mark_started() committed, but its trailing refresh left an
-            # open read-transaction; holding it across the stagger sleep and the
-            # (often multi-second) provider HTTP submit can exceed Postgres'
-            # idle_in_transaction_session_timeout (30s), which terminates the
-            # connection mid-submit. commit() (not rollback()) is used because
-            # the session is expire_on_commit=False, so `generation`/`account`
-            # stay populated for execute_generation; rollback would expire them
-            # and trigger lazy-load IO outside the async greenlet.
-            await db.commit()
-
-            # Stagger concurrent dispatches to avoid thundering-herd on provider API
-            concurrent = getattr(account, "current_processing_jobs", 0) or 0
-            if concurrent > 1:
-                stagger = random.uniform(
-                    0,
-                    min(
-                        concurrent * _dispatch_stagger_per_slot_seconds(),
-                        _max_dispatch_stagger_seconds(),
-                    ),
-                )
-                if stagger > 0.1:
-                    gen_logger.info("dispatch_stagger", stagger_seconds=round(stagger, 2), concurrent_jobs=concurrent)
-                    await asyncio.sleep(stagger)
-
-            # Execute generation via provider
-            try:
-                submission = await provider_service.execute_generation(
-                    generation=generation,
-                    account=account,
-                    params=generation.canonical_params,
-                )
-
-                # Note: Concurrency was already incremented by select_and_reserve_account
-
-                gen_logger.info(
-                    "provider:submit",
-                    provider_job_id=submission.provider_job_id,
-                    account_id=account.id,
-                    msg="generation_submitted_to_provider"
-                )
-                debug.provider(
-                    "provider_submit",
-                    provider_id=generation.provider_id,
-                    provider_job_id=submission.provider_job_id,
-                    account_id=account.id,
-                )
-
-                # Credit tracking for Pixverse is now unified for both images and videos:
-                # All credits are deducted on successful completion in the status poller.
-                # This ensures failed/filtered generations don't charge credits.
-
-                # Note: Credits refreshed before submission; status_poller refreshes on completion
-
-                # Track successful generation
-                get_health_tracker().increment_processed()
-                await _clear_pinned_concurrent_wait_count(generation.id, gen_logger=gen_logger)
-
-                await _adaptive_provider_concurrency_record_submit_success(
-                    generation=generation,
-                    account=account,
-                    model=gen_model,
-                    local_concurrency=getattr(account, "current_processing_jobs", None),
-                    attempted_level_hint=(
-                        int(adaptive_submit_gate.get("attempted_level"))
-                        if adaptive_submit_gate and adaptive_submit_gate.get("attempted_level")
-                        else None
-                    ),
-                    gen_logger=gen_logger,
-                )
-
-                # Fire a one-shot status poll immediately so we race the
-                # short-lived early-CDN window (~1-2 s for Pixverse moderated
-                # content) before the next 2 s cron tick could miss it.
-                # Best-effort: enqueue failures are logged but never block the
-                # submit-success path, since the cron will still catch it on
-                # the next tick.
-                try:
-                    from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-                    arq_pool = await get_arq_pool()
-                    await enqueue_immediate_poll(arq_pool, generation_id)
-                except Exception as enqueue_err:
-                    gen_logger.warning(
-                        "immediate_poll_enqueue_error",
-                        error=str(enqueue_err),
-                    )
-
-                return {
-                    "status": "submitted",
-                    "provider_job_id": submission.provider_job_id,
-                    "generation_id": generation_id,
-                }
-
-            except ProviderError as e:
-                _err_outcome = await _handle_provider_error(
-                    e,
-                    db=db,
-                    generation=generation,
-                    generation_id=generation_id,
-                    account=account,
-                    account_service=account_service,
-                    generation_service=generation_service,
-                    gen_logger=gen_logger,
-                    debug=debug,
-                    gen_params=gen_params,
-                    gen_model=gen_model,
-                    required_credit_hint=required_credit_hint,
-                    adaptive_submit_gate=adaptive_submit_gate,
-                    is_final_try=is_final_try,
-                    job_try=job_try,
-                    state=_err_state,
-                )
-                return _err_outcome
+            return await _submit(
+                db=db,
+                generation=generation,
+                generation_id=generation_id,
+                account=account,
+                account_service=account_service,
+                generation_service=generation_service,
+                provider_service=provider_service,
+                gen_logger=gen_logger,
+                debug=debug,
+                gen_model=gen_model,
+                gen_params=gen_params,
+                required_credit_hint=required_credit_hint,
+                adaptive_submit_gate=adaptive_submit_gate,
+                is_final_try=is_final_try,
+                job_try=job_try,
+                state=_err_state,
+            )
 
         except (NoAccountAvailableError, AccountCooldownError, AccountExhaustedError) as e:
             generation_ref = generation if "generation" in locals() else None
