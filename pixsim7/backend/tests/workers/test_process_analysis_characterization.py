@@ -24,11 +24,13 @@ from pixsim7.backend.main.shared.errors import (
 )
 from pixsim7.embedding.protocol import EmbeddingServiceError
 from pixsim7.backend.main.workers import analysis_processor
+from pixsim7.backend.main.services.analysis import embedding_analysis_service
 
-# Where the embedding collaborators are patched. After the extraction this flips
-# to the new service module (the entrypoint keeps delegating), mirroring how the
-# generation suite retargeted from job_processor -> processing.service.
-EMBED_HOST = analysis_processor
+# Where the embedding collaborators are patched. The embedding orchestration now
+# lives in services/analysis/embedding_analysis_service (the worker entrypoint
+# delegates to it), mirroring how the generation suite retargeted from
+# job_processor -> processing.service.
+EMBED_HOST = embedding_analysis_service
 
 
 class _NoopLogger:
