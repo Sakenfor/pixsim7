@@ -51,6 +51,12 @@ class _ExecuteResult:
     def scalars(self):
         return _ScalarResult(self._scalars)
 
+    def first(self):
+        # AsyncSession.execute(...).first() — used by the has_tab_surface probe
+        # in _store_pending_user_message / _store_session_response. Returns the
+        # first row (here reusing the scalar list) or None.
+        return self._scalars[0] if self._scalars else None
+
 
 class _FakeDB:
     def __init__(self):

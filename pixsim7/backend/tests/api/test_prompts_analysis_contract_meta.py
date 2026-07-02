@@ -12,6 +12,7 @@ from pixsim7.backend.main.api.v1.prompts.meta import (
     get_prompt_analysis_contract,
     get_prompt_authoring_contract,
 )
+from pixsim7.backend.main.services.prompt.parser.registry import analyzer_registry
 
 
 def _user_with_defaults(default_ids: list[str] | None = None) -> SimpleNamespace:
@@ -24,7 +25,7 @@ def _user_with_defaults(default_ids: list[str] | None = None) -> SimpleNamespace
 
 @pytest.mark.asyncio
 async def test_prompt_analysis_contract_exposes_endpoint_schema_and_analyzers() -> None:
-    result = await get_prompt_analysis_contract(current_user=_user_with_defaults(["prompt:openai"]))
+    result = await get_prompt_analysis_contract(current_user=_user_with_defaults(["prompt:openai"]), analyzers=analyzer_registry)
 
     assert result.version == PROMPT_ANALYSIS_CONTRACT_VERSION
     assert result.endpoint == "/api/v1/prompts/analyze"
@@ -47,7 +48,7 @@ async def test_prompt_analysis_contract_exposes_endpoint_schema_and_analyzers() 
 
 @pytest.mark.asyncio
 async def test_prompt_analysis_contract_includes_deprecation_and_user_default_note() -> None:
-    result = await get_prompt_analysis_contract(current_user=_user_with_defaults(["prompt:local"]))
+    result = await get_prompt_analysis_contract(current_user=_user_with_defaults(["prompt:local"]), analyzers=analyzer_registry)
 
     assert any(
         item.get("field") == "provider_hints.prompt_analysis" for item in result.deprecations
@@ -61,7 +62,7 @@ async def test_prompt_analysis_contract_includes_deprecation_and_user_default_no
 
 @pytest.mark.asyncio
 async def test_prompt_contract_deprecation_behavior_is_consistent() -> None:
-    analysis = await get_prompt_analysis_contract(current_user=_user_with_defaults())
+    analysis = await get_prompt_analysis_contract(current_user=_user_with_defaults(), analyzers=analyzer_registry)
     authoring = await get_prompt_authoring_contract(current_user=_user_with_defaults())
 
     analysis_dep = next(
@@ -137,10 +138,19 @@ async def test_prompt_authoring_contract_exposes_workflows() -> None:
     edit_wf = next(wf for wf in result.workflows if wf.id == "iterative_edit")
     assert edit_wf.steps[0].precondition is not None
 
-    # all built-in workflows have audience ["agent", "user"]
+    # Every workflow declares a non-empty audience ⊆ {agent, user}. The core
+    # user-facing flows are dual-audience (a human wizard + agent recipe);
+    # cross-contract orchestration recipes with no single UI wizard (e.g.
+    # character_authoring: species→character→prompt-family) are legitimately
+    # agent-only.
+    core_dual_audience = {"quick_draft", "analyzed_authoring", "continuation", "iterative_edit"}
     for wf in result.workflows:
-        assert "agent" in wf.audience
-        assert "user" in wf.audience
+        assert wf.audience, f"{wf.id} has empty audience"
+        assert set(wf.audience) <= {"agent", "user"}, f"{wf.id} audience {wf.audience}"
+        if wf.id in core_dual_audience:
+            assert "agent" in wf.audience and "user" in wf.audience, (
+                f"core workflow {wf.id} must be dual-audience, got {wf.audience}"
+            )
 
 
 @pytest.mark.asyncio

@@ -24,17 +24,25 @@ from pixsim7.backend.main.api.v1.prompts.meta import (
     get_prompt_analysis_contract,
     get_prompt_authoring_contract,
 )
+from pixsim7.backend.main.services.prompt.parser.registry import analyzer_registry
 from pixsim7.backend.main.api.v1.prompts.schemas import CreatePromptVersionRequest
 
 _ROUTE_MANIFEST_MODULE_BY_PATH_PREFIX: Sequence[Tuple[str, str]] = (
     ("/api/v1/assets", "pixsim7.backend.main.routes.assets.manifest"),
     ("/api/v1/block-templates", "pixsim7.backend.main.routes.block_templates.manifest"),
     ("/api/v1/characters", "pixsim7.backend.main.routes.characters.manifest"),
+    ("/api/v1/chat-tabs", "pixsim7.backend.main.routes.chat_tabs.manifest"),
     ("/api/v1/dev/plans", "pixsim7.backend.main.routes.dev_plans.manifest"),
     ("/api/v1/dev/ontology", "pixsim7.backend.main.routes.dev_ontology.manifest"),
+    ("/api/v1/dev/testing", "pixsim7.backend.main.routes.dev_testing.manifest"),
     ("/api/v1/devtools/codegen", "pixsim7.backend.main.routes.codegen.manifest"),
+    ("/api/v1/files", "pixsim7.backend.main.routes.project_files.manifest"),
     ("/api/v1/game/meta", "pixsim7.backend.main.routes.game_meta.manifest"),
     ("/api/v1/game/scenes", "pixsim7.backend.main.routes.game_scenes.manifest"),
+    # generation-* prefixes are disjoint from /generations — list them first anyway.
+    ("/api/v1/generation-batches", "pixsim7.backend.main.routes.generations.manifest"),
+    ("/api/v1/generation-chains", "pixsim7.backend.main.routes.generation_chains.manifest"),
+    ("/api/v1/generation-operations", "pixsim7.backend.main.routes.generations.manifest"),
     ("/api/v1/generations", "pixsim7.backend.main.routes.generations.manifest"),
     ("/api/v1/meta/ui", "pixsim7.backend.main.routes.meta_ui.manifest"),
     ("/api/v1/meta", "pixsim7.backend.main.routes.meta_contracts.manifest"),
@@ -149,7 +157,7 @@ def _extract_deprecation_status_codes(
 @pytest.mark.asyncio
 async def test_meta_contract_declared_endpoints_exist_in_routes() -> None:
     contracts_index = await list_contract_endpoints()
-    analysis_contract = await get_prompt_analysis_contract(current_user=_user_with_defaults())
+    analysis_contract = await get_prompt_analysis_contract(current_user=_user_with_defaults(), analyzers=analyzer_registry)
     authoring_contract = await get_prompt_authoring_contract(current_user=_user_with_defaults())
 
     declared_path_only: List[Tuple[str, str]] = []
@@ -244,7 +252,7 @@ async def test_prompt_authoring_precheck_contract_refs_resolve() -> None:
 
 @pytest.mark.asyncio
 async def test_prompt_contract_examples_validate_against_schemas() -> None:
-    analysis_contract = await get_prompt_analysis_contract(current_user=_user_with_defaults())
+    analysis_contract = await get_prompt_analysis_contract(current_user=_user_with_defaults(), analyzers=analyzer_registry)
     authoring_contract = await get_prompt_authoring_contract(current_user=_user_with_defaults())
 
     authoring_endpoints_by_method_path = {
@@ -308,7 +316,7 @@ async def test_prompt_contract_examples_validate_against_schemas() -> None:
 
 @pytest.mark.asyncio
 async def test_prompt_deprecation_status_matches_runtime() -> None:
-    analysis_contract = await get_prompt_analysis_contract(current_user=_user_with_defaults())
+    analysis_contract = await get_prompt_analysis_contract(current_user=_user_with_defaults(), analyzers=analyzer_registry)
     authoring_contract = await get_prompt_authoring_contract(current_user=_user_with_defaults())
 
     analysis_codes = _extract_deprecation_status_codes(
