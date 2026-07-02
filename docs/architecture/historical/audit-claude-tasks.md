@@ -55,7 +55,7 @@ Key areas of interest (sample; verify by scanning the tree):
 
 Goals:
 - Identify top 50 largest files and categorize by responsibility.
-- Find God-objects: files/classes/functions exceeding ~400–600 lines or mixing concerns.
+- Find God-objects: files/classes/functions that **mix concerns**. Size (~400–600 lines) is only a rough *trigger to look closer* — NOT a split target. Priority is functional cohesion, not line count: a large file that is one coherent thing (a single service class, one algorithm) should stay whole, while a smaller file bundling unrelated concerns is the real monolith. Never split a cohesive unit just to hit a line number, and never fragment past the natural concept boundary (that just scatters related logic and adds import hops). When the smell is one giant function/class rather than many unrelated features, the fix is decomposing that unit — not slicing the file.
 - Produce a dependency overview (who imports whom) at a coarse level.
 
 Deliverables:

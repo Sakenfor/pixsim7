@@ -813,7 +813,7 @@ grep -r "feature_name" apps/main/src/components/game/HudLayoutEditor.tsx
 ### 2. When Refactoring
 
 **Extraction candidates:**
-- Any component > 300 lines
+- A component that **mixes concerns** — size (> 300 lines) is only a rough *trigger to look closer*, NOT a split target. Priority is cohesion: a large component that is one coherent thing stays whole; don't split it just to hit a line number, and don't fragment past the natural concept boundary.
 - Duplicated logic between editors
 - Hardcoded values that should be configurable
 
