@@ -90,10 +90,19 @@ const GROUPED_FILTER_KEYS = new Set(
  * Registry filters that exist for backend plumbing but must NOT render as
  * user-facing filter chips. `exclude_broken` is driven by the gallery chrome's
  * "Show broken" toggle (galleryViewPrefsStore → RemoteGallerySource injects it),
- * so surfacing it again as a loose chip is redundant and confusing. Hidden here
- * rather than dropped from filter metadata so the toggle can still send the key.
+ * so surfacing it again as a loose chip is redundant and confusing.
+ * `broken_score_cutoff` is plumbing for the similarity-badge cohort count /
+ * mini-gallery (read directly, not via the bar); as a numeric filter it has no
+ * options, so it renders as an empty chip if surfaced. Score-based hiding for
+ * users lives in the `signal_*` chips (Video Health). Hidden here rather than
+ * dropped from filter metadata so the toggle / cohort plumbing can still send
+ * the key.
  */
-const HIDDEN_FILTER_KEYS = new Set(['exclude_broken', 'exclude_override_broken']);
+const HIDDEN_FILTER_KEYS = new Set([
+  'exclude_broken',
+  'exclude_override_broken',
+  'broken_score_cutoff',
+]);
 
 /** Filters whose options are grouped into collapsible namespaces. */
 const GROUPED_FILTER_CONFIG: Record<string, {

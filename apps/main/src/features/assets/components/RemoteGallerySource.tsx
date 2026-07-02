@@ -596,8 +596,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   );
   // Read-only here: the "Show broken" toggle now lives in the chrome "View" menu
   // (GalleryViewMenu) which writes galleryViewPrefsStore; we just consume the
-  // flag to inject `exclude_broken` into the query on the default surface.
+  // flag (+ opt-in score cutoff) to inject `exclude_broken` / `broken_score_cutoff`
+  // into the query on the default surface.
   const hideBroken = useGalleryViewPrefsStore((s) => s.hideBroken);
+  const brokenScoreCutoff = useGalleryViewPrefsStore((s) => s.brokenScoreCutoff);
 
   const groupSearchOverrides = useMemo(() => {
     // Build union of asset IDs from checked filter sets
@@ -621,15 +623,25 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
 
     const groupPart = isLeafGroup ? { group_path: groupPathPayload, group_filter: groupFilter } : {};
     const idsPart = asset_ids ? { asset_ids } : {};
+    // Baseline hide: `exclude_broken` drops MANUALLY-flagged broken clips (the
+    // manual-only `effectively_broken_clause` — same predicate the cohort badge
+    // counts use). When the user has opted into a score cutoff, ALSO send
+    // `broken_score_cutoff` so the gallery additionally hides clips scoring
+    // >= cutoff (heuristic_broken_clause, which exempts your Keeps). Both are
+    // registry filters not in the generated AssetSearchRequest type but the
+    // backend accepts them; cast like other pass-through registry filters.
     const hidePart =
-      isDefaultGallerySurface && hideBroken ? { exclude_broken: true } : {};
-    // exclude_broken is a registry filter not in the generated AssetSearchRequest
-    // type; the backend accepts it. It drops both manually-flagged AND
-    // heuristic-high-score (>= 3, not kept) clips — same predicate the cohort
-    // badge counts use. Cast like other pass-through registry filters.
+      isDefaultGallerySurface && hideBroken
+        ? {
+            exclude_broken: true,
+            ...(typeof brokenScoreCutoff === 'number'
+              ? { broken_score_cutoff: brokenScoreCutoff }
+              : {}),
+          }
+        : {};
     const merged = { ...groupPart, ...idsPart, ...hidePart } as Partial<AssetSearchRequest>;
     return Object.keys(merged).length > 0 ? merged : undefined;
-  }, [groupFilter, groupPathPayload, isLeafGroup, filterSetIds, allSets, setsStatus, isDefaultGallerySurface, hideBroken]);
+  }, [groupFilter, groupPathPayload, isLeafGroup, filterSetIds, allSets, setsStatus, isDefaultGallerySurface, hideBroken, brokenScoreCutoff]);
   const initialPageRef = useRef(parsePageParam(location.search));
   const controller = useAssetsController({
     initialPage: initialPageRef.current,

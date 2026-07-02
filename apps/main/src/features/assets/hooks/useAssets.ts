@@ -273,15 +273,19 @@ export function useAssets(options?: {
   // Track whether server-only overrides/filters are active so the prepend
   // subscriber can skip when it can't validate the asset client-side.
   //
-  // `exclude_broken` is deliberately NOT counted here: it's the default gallery's
-  // "hide broken" override, but unlike group/set/asset_ids overrides it IS
-  // client-verifiable (a freshly created asset is never manually-flagged broken),
-  // so it must not disable live-prepend. Counting it was why the default gallery
-  // stopped showing new generations live while Recent (which has no overrides)
-  // kept updating — the override is always on by default. The exclude_broken
-  // constraint is instead enforced in the client-side matchesFilters check below.
+  // `exclude_broken` / `broken_score_cutoff` are deliberately NOT counted here:
+  // they're the default gallery's "hide broken" override, but unlike
+  // group/set/asset_ids overrides they're client-verifiable (a freshly created
+  // asset is never manually-flagged broken, and an unscored one is NULL-safe-kept
+  // by the score clause), so they must not disable live-prepend. Counting
+  // exclude_broken was why the default gallery stopped showing new generations
+  // live while Recent (which has no overrides) kept updating — the override is
+  // always on by default. The broken constraints are (a) enforced server-side by
+  // lifting them into `filters` in buildQueryParams and (b) mirrored in the
+  // client-side matchesFilters check below for the live-prepend decision.
+  const BROKEN_OVERRIDE_KEYS = new Set(['exclude_broken', 'broken_score_cutoff']);
   const scopingOverrideKeys = (o?: Partial<AssetSearchRequest>) =>
-    o ? Object.keys(o).filter((k) => k !== 'exclude_broken') : [];
+    o ? Object.keys(o).filter((k) => !BROKEN_OVERRIDE_KEYS.has(k)) : [];
   const hasRequestOverridesRef = useRef(scopingOverrideKeys(requestOverrides).length > 0);
   hasRequestOverridesRef.current = scopingOverrideKeys(requestOverrides).length > 0;
   const excludeBrokenActiveRef = useRef(false);
@@ -323,9 +327,27 @@ export function useAssets(options?: {
     if (!requestOverrides || Object.keys(requestOverrides).length === 0) {
       return base;
     }
+    // Registry filters (exclude_broken / broken_score_cutoff) only take effect
+    // inside `request.filters` — the backend drops unknown TOP-LEVEL keys (empty
+    // model_config → extra="ignore"). So lift them out of the flat override and
+    // merge them into filters instead of spreading them where they'd be silently
+    // dropped. Other overrides (group_path, group_filter, asset_ids) are real
+    // top-level fields and pass through untouched.
+    const { exclude_broken, broken_score_cutoff, ...restOverrides } =
+      requestOverrides as Partial<AssetSearchRequest> & {
+        exclude_broken?: boolean;
+        broken_score_cutoff?: number;
+      };
+    const brokenFilters: Record<string, unknown> = {};
+    if (exclude_broken !== undefined) brokenFilters.exclude_broken = exclude_broken;
+    if (broken_score_cutoff !== undefined) brokenFilters.broken_score_cutoff = broken_score_cutoff;
+    const mergedFilters = Object.keys(brokenFilters).length
+      ? { ...(base.filters ?? {}), ...brokenFilters }
+      : base.filters;
     return {
       ...base,
-      ...requestOverrides,
+      ...restOverrides,
+      filters: mergedFilters,
       limit: base.limit,
       offset: base.offset,
       cursor: base.cursor,

@@ -48,6 +48,8 @@ export function GalleryViewMenu({
 
   const hideBroken = useGalleryViewPrefsStore((s) => s.hideBroken);
   const setHideBroken = useGalleryViewPrefsStore((s) => s.setHideBroken);
+  const brokenScoreCutoff = useGalleryViewPrefsStore((s) => s.brokenScoreCutoff);
+  const setBrokenScoreCutoff = useGalleryViewPrefsStore((s) => s.setBrokenScoreCutoff);
   const { isConnected: live } = useGenerationWebSocket();
 
   const openPanel = (id: string) => {
@@ -93,13 +95,53 @@ export function GalleryViewMenu({
           </>
         )}
         {showBrokenToggle && (
-          <DropdownItem
-            icon={<Icon name="alertTriangle" size={13} />}
-            onClick={() => setHideBroken(!hideBroken)}
-            rightSlot={<span>{hideBroken ? 'Off' : 'On'}</span>}
-          >
-            Show broken
-          </DropdownItem>
+          <>
+            <DropdownItem
+              icon={<Icon name="alertTriangle" size={13} />}
+              onClick={() => setHideBroken(!hideBroken)}
+              rightSlot={<span>{hideBroken ? 'Off' : 'On'}</span>}
+            >
+              Show broken
+            </DropdownItem>
+            {/* Opt-in heuristic-score cutoff layered on the manual-flag baseline.
+                0 = off (manual flags only); N = also hide clips scoring >= N
+                (your Keeps are never re-hidden). Only meaningful while broken
+                clips are hidden. */}
+            {hideBroken && (
+              <div className="flex items-center gap-1.5 px-2 py-1">
+                {/* Left = lower cutoff = hides MORE (amber eye-off). Right = higher
+                    cutoff = hides FEWER, only the surest-broken (emerald eye). The
+                    icons carry the direction so you don't have to remember that a
+                    higher score means "more broken". */}
+                <span title="Left: hides more — lower score catches even mildly-suspicious clips">
+                  <Icon name="eyeOff" size={12} className="text-amber-500 shrink-0" />
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="11"
+                  step="1"
+                  value={brokenScoreCutoff ?? 0}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setBrokenScoreCutoff(v === 0 ? null : v);
+                  }}
+                  className="flex-1 h-1 bg-neutral-300 dark:bg-neutral-600 rounded-lg appearance-none cursor-pointer accent-accent"
+                  title={
+                    brokenScoreCutoff == null
+                      ? 'Score cutoff off — hide manually-flagged clips only'
+                      : `Also hide clips scoring ≥ ${brokenScoreCutoff}`
+                  }
+                />
+                <span title="Right: hides fewer — higher score keeps all but the surest-broken">
+                  <Icon name="eye" size={12} className="text-emerald-500 shrink-0" />
+                </span>
+                <span className="text-[10px] text-neutral-500 dark:text-neutral-400 tabular-nums whitespace-nowrap w-16 text-right">
+                  {brokenScoreCutoff == null ? 'Manual only' : `Score ≥ ${brokenScoreCutoff}`}
+                </span>
+              </div>
+            )}
+          </>
         )}
 
         <DropdownSectionHeader first={!canShowLayout && !showBrokenToggle}>Panels</DropdownSectionHeader>
