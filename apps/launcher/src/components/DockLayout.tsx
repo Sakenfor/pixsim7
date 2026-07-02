@@ -67,12 +67,16 @@ const CATEGORY_LABELS: Record<string, string> = {
   launcher: 'Launcher',
 }
 
+// Service keys that get the live "Worker" detail panel. Must mirror the backend
+// WORKER_FAMILIES service keys (launcher/core/worker_tasks.py) — a family added
+// there without being listed here shows a Service card with no Worker tab.
 const ARQ_WORKER_SERVICE_KEYS = new Set([
   'worker',
   'generation-retry',
   'simulation-worker',
   'automation-worker',
   'media-maintenance-worker',
+  'derivatives-worker',
 ])
 
 function groupByCategory(services: ServiceState[]): { category: string; label: string; services: ServiceState[] }[] {
