@@ -60,6 +60,7 @@ import { usePromptHistory } from '../hooks/usePromptHistory';
 import { usePromptProjection } from '../hooks/usePromptProjection';
 import { usePromptVariables } from '../hooks/usePromptVariables';
 import { matchOperator, matchRecipe, useRelationRecipes } from '../hooks/useRelationRecipes';
+import { useResolvedPreview } from '../hooks/useResolvedPreview';
 import { useSavedFacets } from '../hooks/useSavedFacets';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
@@ -67,10 +68,8 @@ import { useSimilarPromptsSearch } from '../hooks/useSimilarPromptsSearch';
 import { useVariantOutcomes } from '../hooks/useVariantOutcomes';
 import { relatedFacets, resolveFacet, suggestFacets } from '../lib/facetRecognition';
 import { ghostDiffExtension, type GhostDiffConfig } from '../lib/ghostDiffExtension';
-import { extractInlineVarValues } from '../lib/inlineVarValues';
 import { operatorEditExtension, type OperatorRange } from '../lib/operatorEditExtension';
 import type { PrimitiveProjectionHypothesis } from '../lib/parsePrimitiveMatch';
-import { projectStructuredPrompt } from '../lib/projectStructuredPrompt';
 import {
   getCachedAnalysis,
   setCachedAnalysis,
@@ -83,11 +82,6 @@ import {
   isDefaultVariableClass,
   parseVariableName,
 } from '../lib/promptVariableName';
-import {
-  buildVariableTransformMap,
-  buildVariableValueMap,
-  resolvePromptVariables,
-} from '../lib/resolvePromptVariables';
 import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
 import { shiftCandidates } from '../lib/shiftAnalysisPositions';
 import {
@@ -763,20 +757,23 @@ export function PromptComposer({
   const relationRecipes = useRelationRecipes();
 
   // Outbound preview: what generation will send when projection is on — mirrors
-  // the backend pipeline (inline-collapse -> project -> resolve). Shown inline
+  // the backend pipeline (inline-collapse -> project -> resolve) via the pure
+  // /prompts/resolve-preview endpoint, the single source of truth. Shown inline
   // under the editor, independent of the shadow-analysis panel. Null when
-  // projection is off or the result is unchanged.
-  const outboundPreview = useMemo(() => {
-    if (mode !== 'text' || projectionMode === 'off') return null;
-    const { values: inlineValues, collapsed } = extractInlineVarValues(value);
-    const projected = projectStructuredPrompt(collapsed, relationRecipes.recipes);
-    const resolved = resolvePromptVariables(
-      projected,
-      { ...buildVariableValueMap(savedVariableEntries), ...inlineValues },
-      buildVariableTransformMap(savedVariableEntries),
-    );
-    return resolved !== value ? resolved : null;
-  }, [mode, projectionMode, value, relationRecipes.recipes, savedVariableEntries]);
+  // projection is off, not in text mode, or the result is unchanged.
+  // Only ask for a preview when something *could* resolve: projection is on, or
+  // a saved variable actually carries a value. Otherwise there's nothing to
+  // show (and no need to hit the endpoint).
+  const hasResolvableVars = useMemo(
+    () => savedVariableEntries.some((entry) => !!entry.value),
+    [savedVariableEntries],
+  );
+  const outboundPreview = useResolvedPreview({
+    text: mode === 'text' && (projectionMode !== 'off' || hasResolvableVars) ? value : '',
+    project: projectionMode !== 'off',
+    entries: savedVariableEntries,
+  });
+  const [sendsExpanded, setSendsExpanded] = useState(false);
 
   // --- Ghost diff (inline comparison backdrop) ---
   const [ghostSource, setGhostSource] = useState<GhostDiffSource | null>(null);
@@ -2530,14 +2527,32 @@ export function PromptComposer({
                     editorRef={promptEditorRef}
                   />
                   {outboundPreview && (
-                    <div
-                      className="mt-1 shrink-0 px-2 py-1 rounded text-[11px] leading-snug bg-sky-50/70 dark:bg-sky-900/20 border border-sky-200/70 dark:border-sky-800/50 text-sky-800 dark:text-sky-300 max-h-20 overflow-y-auto whitespace-pre-wrap break-words"
-                      title="What generation will send (projection + variable resolution)"
-                    >
-                      <span className="uppercase tracking-wider text-[9px] text-sky-500 dark:text-sky-400 mr-1.5 select-none">
-                        Sends
-                      </span>
-                      {outboundPreview}
+                    <div className="mt-1 shrink-0 rounded border border-sky-200/70 dark:border-sky-800/50 bg-sky-50/70 dark:bg-sky-900/20 text-sky-800 dark:text-sky-300">
+                      <button
+                        type="button"
+                        onClick={() => setSendsExpanded((v) => !v)}
+                        title="What generation will send (projection + variable resolution)"
+                        className="flex w-full items-center gap-1 px-2 py-1 text-left"
+                      >
+                        <Icon
+                          name={sendsExpanded ? 'chevronDown' : 'chevronRight'}
+                          size={12}
+                          className="shrink-0 text-sky-500 dark:text-sky-400"
+                        />
+                        <span className="uppercase tracking-wider text-[9px] text-sky-500 dark:text-sky-400 select-none shrink-0">
+                          Sends
+                        </span>
+                        {!sendsExpanded && (
+                          <span className="ml-1 min-w-0 truncate text-[11px] text-sky-700/80 dark:text-sky-300/80">
+                            {outboundPreview}
+                          </span>
+                        )}
+                      </button>
+                      {sendsExpanded && (
+                        <div className="px-2 pb-1 text-[11px] leading-snug max-h-32 overflow-y-auto whitespace-pre-wrap break-words">
+                          {outboundPreview}
+                        </div>
+                      )}
                     </div>
                   )}
                   <ReferencePicker
