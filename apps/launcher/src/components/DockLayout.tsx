@@ -27,6 +27,7 @@ import { checkWindowAvailable, applyHookConfig } from '../api/client'
 import type { ServiceState } from '../api/client'
 import { getWorkerOverview, type WorkerOverview, type WorkerTask } from '../api/workers'
 import { usePollWhenVisible } from '../hooks/usePollWhenVisible'
+import { useWorkerServiceKeys } from '../hooks/useWorkerServiceKeys'
 
 // ── Tab icons (rendered at 14px in the flexlayout tab bar) ──
 
@@ -66,18 +67,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   models: 'Models',
   launcher: 'Launcher',
 }
-
-// Service keys that get the live "Worker" detail panel. Must mirror the backend
-// WORKER_FAMILIES service keys (launcher/core/worker_tasks.py) — a family added
-// there without being listed here shows a Service card with no Worker tab.
-const ARQ_WORKER_SERVICE_KEYS = new Set([
-  'worker',
-  'generation-retry',
-  'simulation-worker',
-  'automation-worker',
-  'media-maintenance-worker',
-  'derivatives-worker',
-])
 
 function groupByCategory(services: ServiceState[]): { category: string; label: string; services: ServiceState[] }[] {
   const groups = new Map<string, ServiceState[]>()
@@ -177,12 +166,13 @@ export function ServiceInfoPanel() {
   const selectedSection = useServicesStore((s) => s.selectedSection)
   const services = useServicesStore((s) => s.services)
   const service = services.find((s) => s.key === selectedKey)
+  const workerServiceKeys = useWorkerServiceKeys()
 
   if (!service) {
     return <div className="h-full flex items-center justify-center text-sm text-gray-500">Select a service</div>
   }
 
-  const isArqWorker = ARQ_WORKER_SERVICE_KEYS.has(service.key)
+  const isArqWorker = workerServiceKeys.has(service.key)
 
   return (
     <div className="p-3 space-y-3 overflow-y-auto h-full text-xs">
