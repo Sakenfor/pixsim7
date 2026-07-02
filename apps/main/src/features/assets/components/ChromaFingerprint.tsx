@@ -137,12 +137,15 @@ function ChromaHeatmap({
             </span>
           ))}
       </div>
+      {/* `min-w-0` lets the flex item shrink below the canvas's intrinsic
+          (attribute) width — without it a narrow container can't shrink the
+          canvas and it overflows the card on the right. */}
       <canvas
         ref={canvasRef}
         width={grid.bins * CELL_W}
         height={12 * CELL_H}
-        className="flex-1 rounded ring-1 ring-black/20"
-        style={{ imageRendering: 'pixelated', width: '100%', height }}
+        className="min-w-0 flex-1 rounded ring-1 ring-black/20"
+        style={{ imageRendering: 'pixelated', height }}
       />
     </div>
   );
@@ -250,6 +253,9 @@ export interface ChromaFingerprintProps {
   /** Heatmap height in px. */
   height?: number;
   className?: string;
+  /** Render the play/stop control as an icon-only button (saves horizontal
+   *  space in tight card layouts). Default false → icon + "Play melody" label. */
+  iconOnly?: boolean;
 }
 
 /** Heatmap + "Play melody" for a chroma fingerprint. Self-contained: owns its
@@ -261,13 +267,40 @@ export function ChromaFingerprint({
   emptyHint = 'No melody fingerprint (too little audio / older scan).',
   height,
   className,
+  iconOnly = false,
 }: ChromaFingerprintProps) {
   const grid = decodeChroma(chromaFp);
   const { playing, playheadBin, play, stop } = useChromaMelody(grid, durationSec ?? null);
 
+  // Shared play/stop control. In `iconOnly` mode it overlays the heatmap
+  // (bottom-left) instead of sitting in a header row — a lone right-aligned
+  // button in an otherwise-empty header reads as misplaced, and the overlay
+  // also reclaims the header's vertical space.
+  const playBtn = grid ? (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (playing) stop();
+        else play();
+      }}
+      className={
+        iconOnly
+          ? 'absolute bottom-1 right-1 z-10 inline-flex items-center justify-center rounded bg-black/55 p-1 text-white hover:bg-black/75'
+          : 'inline-flex items-center gap-1 rounded border border-neutral-300 px-1.5 py-0.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-800'
+      }
+      title={playing ? 'Stop melody' : "Play the fingerprint's dominant-pitch melody"}
+      aria-label={playing ? 'Stop melody' : 'Play melody'}
+    >
+      <Icon name={playing ? 'stop' : 'play'} size={iconOnly ? 12 : 11} color={iconOnly ? '#fff' : undefined} />
+      {!iconOnly && (playing ? 'Stop' : 'Play melody')}
+    </button>
+  ) : null;
+
   return (
     <div className={`space-y-1.5 ${className ?? ''}`}>
-      {(label || grid) && (
+      {(label || (grid && !iconOnly)) && (
         <div className="flex items-center justify-between gap-2">
           {label ? (
             <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
@@ -276,26 +309,18 @@ export function ChromaFingerprint({
           ) : (
             <span />
           )}
-          {grid && (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (playing) stop();
-                else play();
-              }}
-              className="inline-flex items-center gap-1 rounded border border-neutral-300 px-1.5 py-0.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-800"
-              title="Play the fingerprint's dominant-pitch melody"
-            >
-              <Icon name={playing ? 'stop' : 'play'} size={11} />
-              {playing ? 'Stop' : 'Play melody'}
-            </button>
-          )}
+          {!iconOnly && playBtn}
         </div>
       )}
       {grid ? (
-        <ChromaHeatmap grid={grid} playheadBin={playheadBin} height={height} />
+        iconOnly ? (
+          <div className="relative">
+            <ChromaHeatmap grid={grid} playheadBin={playheadBin} height={height} />
+            {playBtn}
+          </div>
+        ) : (
+          <ChromaHeatmap grid={grid} playheadBin={playheadBin} height={height} />
+        )
       ) : (
         <div className="rounded bg-neutral-100 py-3 text-center text-[11px] text-neutral-400 dark:bg-neutral-800">
           {emptyHint}

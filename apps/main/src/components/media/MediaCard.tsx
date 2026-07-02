@@ -58,6 +58,7 @@ import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 import { buildMediaCardPickerWidgets } from './mediaCardPickerWidgets';
 import { MediaCardQueueNav } from './MediaCardQueueNav';
 import { buildMediaCardOverlayData } from './mediaCardRuntimeWidgetBuilder';
+import type { MediaCardWidgetVisibility } from './mediaCardWidgetIds';
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
 import { applyMediaOverlayPolicyChain } from './overlayWidgetPolicy';
 import { ThumbnailImage } from './ThumbnailImage';
@@ -277,6 +278,8 @@ export interface MediaCardLayoutProps {
   showPlayOverlay?: boolean;
   /** Override the overlay policy chain context (default: density==='compact' uses 'compact', else 'gallery'). */
   overlayContext?: import('@lib/widgets').OverlayContextId;
+  /** Trim the overlay widget set to just what this surface needs. */
+  widgets?: MediaCardWidgetVisibility;
 }
 
 // ─── Resolved flat shape (runtime + asset-derived) — widget factories use this ─
@@ -968,9 +971,15 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       'generation-button-group',
       'version-badge',
     ]);
-    const defaultWidgets = isCompact
-      ? allDefaultWidgets.filter((w) => COMPACT_ALLOWED_WIDGET_IDS.has(w.id))
-      : allDefaultWidgets;
+    // An explicit `only` allow-list is the source of truth for which runtime
+    // widgets survive — it overrides the compact-density default trim, so a
+    // small card can still opt the scrubber (or any dropped widget) back in.
+    const explicitOnly = layout?.widgets?.only ? new Set(layout.widgets.only) : null;
+    const defaultWidgets = explicitOnly
+      ? allDefaultWidgets
+      : isCompact
+        ? allDefaultWidgets.filter((w) => COMPACT_ALLOWED_WIDGET_IDS.has(w.id))
+        : allDefaultWidgets;
 
     // Picker-surface widgets (compact mode: remove, skip toggle, locked frame,
     // generate button) participate in collision detection alongside default
@@ -1071,6 +1080,21 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       }),
     };
 
+    // Final per-instance widget trim (allow-list, then deny-list). This has the
+    // last word over preset/runtime/custom widgets so a surface can guarantee a
+    // lean card regardless of the merged defaults.
+    const hideSet = layout?.widgets?.hide ? new Set(layout.widgets.hide) : null;
+    if (explicitOnly || hideSet) {
+      result = {
+        ...result,
+        widgets: result.widgets.filter((w) => {
+          if (explicitOnly && !explicitOnly.has(w.id)) return false;
+          if (hideSet && hideSet.has(w.id)) return false;
+          return true;
+        }),
+      };
+    }
+
     return result;
   }, [
     resolved,
@@ -1082,6 +1106,8 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     layout?.enableHoverPreview,
     layout?.clickToPlay,
     layout?.overlayContext,
+    layout?.widgets?.only,
+    layout?.widgets?.hide,
     isCompact,
     picker?.showRemoveButton,
     picker?.onRemove,
