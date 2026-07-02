@@ -214,6 +214,12 @@ export interface SignalReferenceItem {
   audio_ref_match?: number | null;
   loudness_range_db?: number | null;
   score?: number | null;
+  /**
+   * Per-category leave-one-out match (full `signalref:*` slug → 0..1): how well
+   * this clip fits the rest of that category. Low = odd-one-out. Absent for a
+   * clip that is the only member of its category.
+   */
+  cohesion?: Record<string, number> | null;
 }
 
 /** List the curated reference clips (admin-scoped, read-only). */

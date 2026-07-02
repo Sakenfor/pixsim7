@@ -203,6 +203,29 @@ def match_fingerprint_labeled(
     return best, (best_label if best > 0 else None), scores
 
 
+def self_cohesion(references: list[Any]) -> list[Optional[float]]:
+    """Leave-one-out cohesion of a reference GROUP.
+
+    For each (12, N) chromagram in ``references``, its best rotation × time-lag
+    match to the OTHER members of the same group — i.e. how well that clip fits
+    the rest of its category. A low value flags a reference that doesn't sound
+    like its group (a mis-tag, or a genuinely distinct variant worth its own
+    slot). Uses the exact production matcher (:func:`_best_xcorr_over_refs` over
+    :func:`expand_reference_rotations` of the others), so it's deterministic and
+    cheap — no per-clip probe. Returns one score per input (same order);
+    ``None`` when there's no sibling to compare against (group size < 2).
+    """
+    n = len(references)
+    if n < 2:
+        return [None] * n
+    out: list[Optional[float]] = []
+    for i, cand in enumerate(references):
+        others = references[:i] + references[i + 1 :]
+        best = _best_xcorr_over_refs(cand, expand_reference_rotations(others))
+        out.append(round(max(0.0, best), 4))
+    return out
+
+
 async def load_reference_fingerprints(db: AsyncSession) -> dict[str, list[Any]]:
     """``{category: [pre-rotated (12, N) arrays]}`` for every `signalref:*`-tagged
     clip with a stored fingerprint, grouped by the tag NAME (category) and
