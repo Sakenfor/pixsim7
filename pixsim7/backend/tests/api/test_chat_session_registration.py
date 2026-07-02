@@ -62,7 +62,7 @@ async def test_register_chat_session_creates_new_session(monkeypatch):
     async def mock_upsert(**kwargs):
         upsert_called.update(kwargs)
     monkeypatch.setattr(
-        "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+        "pixsim7.backend.main.api.v1.meta_contracts.routes._upsert_chat_session",
         mock_upsert,
     )
 
@@ -96,7 +96,7 @@ async def test_register_chat_session_updates_existing_session(monkeypatch):
     async def mock_upsert(**kwargs):
         upsert_called.update(kwargs)
     monkeypatch.setattr(
-        "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+        "pixsim7.backend.main.api.v1.meta_contracts.routes._upsert_chat_session",
         mock_upsert,
     )
 
@@ -133,7 +133,7 @@ async def test_register_chat_session_resolves_default_profile_for_generic_cli_id
         return SimpleNamespace(id="assistant:codex")
 
     monkeypatch.setattr(
-        "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+        "pixsim7.backend.main.api.v1.meta_contracts.routes._upsert_chat_session",
         mock_upsert,
     )
     monkeypatch.setattr(
@@ -171,7 +171,7 @@ async def test_register_chat_session_resolves_default_profile_when_missing(monke
         return SimpleNamespace(id="assistant:claude")
 
     monkeypatch.setattr(
-        "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+        "pixsim7.backend.main.api.v1.meta_contracts.routes._upsert_chat_session",
         mock_upsert,
     )
     monkeypatch.setattr(
@@ -207,7 +207,7 @@ async def test_register_chat_session_resolves_default_profile_when_unknown(monke
         return SimpleNamespace(id="assistant:codex")
 
     monkeypatch.setattr(
-        "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+        "pixsim7.backend.main.api.v1.meta_contracts.routes._upsert_chat_session",
         mock_upsert,
     )
     monkeypatch.setattr(
@@ -242,7 +242,7 @@ async def test_register_chat_session_keeps_explicit_profile_without_fallback(mon
         raise AssertionError("resolve_agent_profile should not run for explicit profile IDs")
 
     monkeypatch.setattr(
-        "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+        "pixsim7.backend.main.api.v1.meta_contracts.routes._upsert_chat_session",
         mock_upsert,
     )
     monkeypatch.setattr(
@@ -492,7 +492,7 @@ async def test_register_chat_session_falls_back_to_user_id_when_only_id_present(
         return SimpleNamespace(id="assistant:claude")
 
     monkeypatch.setattr(
-        "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+        "pixsim7.backend.main.api.v1.meta_contracts.routes._upsert_chat_session",
         mock_upsert,
     )
     monkeypatch.setattr(
@@ -534,7 +534,7 @@ async def test_register_chat_session_anon_user_attributed_to_zero(monkeypatch):
         return SimpleNamespace(id="assistant:claude")
 
     monkeypatch.setattr(
-        "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+        "pixsim7.backend.main.api.v1.meta_contracts.routes._upsert_chat_session",
         mock_upsert,
     )
     monkeypatch.setattr(
@@ -570,7 +570,7 @@ async def test_register_chat_session_does_not_increment_message_count(monkeypatc
         upsert_kwargs.update(kwargs)
 
     monkeypatch.setattr(
-        "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+        "pixsim7.backend.main.api.v1.meta_contracts.routes._upsert_chat_session",
         mock_upsert,
     )
 

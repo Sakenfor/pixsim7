@@ -45,7 +45,7 @@ def _stub_chat_notification():
     request this fixture and assert on the returned mock instead.
     """
     with patch(
-        "pixsim7.backend.main.api.v1.meta_contracts._emit_chat_message_notification",
+        "pixsim7.backend.main.api.v1.meta_contracts.chat_store._emit_chat_message_notification",
         new_callable=AsyncMock,
     ) as m:
         yield m
@@ -520,7 +520,7 @@ class TestChatMessageNotificationSource:
         session = _make_session(messages=[])
         db = _mock_db(session)
         with _patch_db(db), patch(
-            "pixsim7.backend.main.api.v1.meta_contracts._emit_chat_message_notification",
+            "pixsim7.backend.main.api.v1.meta_contracts.chat_store._emit_chat_message_notification",
             new_callable=AsyncMock,
             side_effect=RuntimeError("notif backend down"),
         ):
