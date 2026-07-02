@@ -294,7 +294,7 @@ class TestGetChatSession:
         db.get_values["sess-1"] = session_obj
 
         monkeypatch.setattr(
-            meta_contracts.routes,
+            meta_contracts.routes.chat_sessions,
             "_load_recovered_tail",
             lambda cli_id, snap: [
                 {"role": "assistant", "text": "recovered reply",
@@ -337,7 +337,7 @@ class TestGetChatSession:
             called["n"] += 1
             raise AssertionError("recovery should not run for a healthy snapshot")
 
-        monkeypatch.setattr(meta_contracts.routes, "_load_recovered_tail", _boom)
+        monkeypatch.setattr(meta_contracts.routes.chat_sessions, "_load_recovered_tail", _boom)
 
         app = _app(db)
         async with _client(app) as c:

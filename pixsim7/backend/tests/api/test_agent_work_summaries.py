@@ -203,7 +203,7 @@ class TestSessionRegistration:
             upsert_kwargs.update(kwargs)
 
         monkeypatch.setattr(
-            "pixsim7.backend.main.api.v1.meta_contracts.routes._upsert_chat_session",
+            "pixsim7.backend.main.api.v1.meta_contracts.routes.chat_sessions._upsert_chat_session",
             mock_upsert,
         )
 
@@ -248,7 +248,7 @@ class TestSessionRegistration:
             return None
 
         monkeypatch.setattr(
-            "pixsim7.backend.main.api.v1.meta_contracts.routes._upsert_chat_session",
+            "pixsim7.backend.main.api.v1.meta_contracts.routes.chat_sessions._upsert_chat_session",
             mock_upsert,
         )
         monkeypatch.setattr(
