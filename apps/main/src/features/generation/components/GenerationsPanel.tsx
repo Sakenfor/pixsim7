@@ -7,7 +7,7 @@
 import { DisclosureSection, Dropdown, DropdownItem, DropdownDivider, FoldableJson, ToolbarToggleButton, ConfirmModal, PromptModal, useToast } from '@pixsim7/shared.ui';
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 
-import { patchGenerationPrompt, retryGeneration, cancelGeneration, pauseGeneration, resumeGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
+import { patchGenerationPrompt, retryGeneration, cancelGeneration, pauseGeneration, resumeGeneration, deleteGeneration, getGeneration, fetchAllActiveGenerationIds } from '@lib/api/generations';
 import { Icons, Icon } from '@lib/icons';
 
 import { useAsset, getAssetDisplayUrls } from '@features/assets';
@@ -290,6 +290,37 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     });
   }, [batchCancel, requestConfirm, toast]);
 
+  // "Cancel all active" — reaches the whole queue, not just the loaded window.
+  // The panel only fetches a bounded page, so a store-driven cancel misses
+  // fanout items and older running rows outside it; fetch the authoritative
+  // active set from the backend (unioned with loaded active ids as a belt for
+  // rows too fresh to be queryable) so nothing is silently left running.
+  const handleCancelAllActive = useCallback(() => {
+    requestConfirm('Cancel every active generation in the queue?', async () => {
+      const loadedActive = allGenerations
+        .filter((g) => isGenerationActive(g.status))
+        .map((g) => g.id);
+      let fetched: number[] = [];
+      try {
+        fetched = await fetchAllActiveGenerationIds();
+      } catch {
+        // Backend paging failed — fall back to whatever the store knows.
+        fetched = [];
+      }
+      const ids = Array.from(new Set([...fetched, ...loadedActive]));
+      if (ids.length === 0) {
+        toast.success('No active generations to cancel');
+        return;
+      }
+      const result = await batchCancel(ids);
+      if (result.failed > 0) {
+        toast.error(`Cancelled ${result.succeeded}, failed ${result.failed}: ${result.errors.join(', ')}`);
+      } else {
+        toast.success(`Cancelled ${result.succeeded} generation(s)`);
+      }
+    }, 'danger');
+  }, [allGenerations, batchCancel, requestConfirm, toast]);
+
   const handleRetry = useCallback(async (id: number) => {
     try {
       const newGeneration = await retryGeneration(id);
@@ -430,6 +461,18 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
               <div className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-green-500 animate-pulse-subtle' : 'bg-neutral-400'}`} />
               {wsConnected ? 'Live' : 'Offline'}
             </div>
+            {/* Cancel all active — whole queue, not just the loaded window */}
+            {hasActiveGenerations && (
+              <button
+                onClick={handleCancelAllActive}
+                disabled={isBatchCancelling}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
+                title="Cancel every active generation in the queue (including items outside the visible list)"
+              >
+                <Icon name="x" size={12} />
+                Cancel all
+              </button>
+            )}
             {/* Manual refresh */}
             <button
               onClick={() => void handleRefresh()}

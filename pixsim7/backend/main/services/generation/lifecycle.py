@@ -83,6 +83,26 @@ class GenerationLifecycleService:
                     requested_status=status.value,
                 )
                 return generation
+            # Refuse to resurrect a terminal generation into PROCESSING. This is
+            # the cancel-during-pickup race: a PENDING generation is cancelled
+            # (→ CANCELLED) while a worker is between the pending _guards check
+            # and mark_started (account acquisition / pre-submit gate can take
+            # seconds). Without this, mark_started would flip CANCELLED→PROCESSING
+            # and submit to the provider, resurrecting a job the user explicitly
+            # cancelled and spending credits. Raise so the worker's mark_started
+            # handler aborts and releases the reserved account slot — same path
+            # as a duplicate pickup. In-flight (already PROCESSING) generations
+            # are untouched; those still complete via the poller as before.
+            if status == GenerationStatus.PROCESSING:
+                logger.info(
+                    "generation_pickup_aborted_terminal",
+                    generation_id=generation_id,
+                    current_status=generation.status.value,
+                )
+                raise InvalidOperationError(
+                    f"Generation {generation_id} is {generation.status.value}; "
+                    f"cannot transition to PROCESSING (cancelled during pickup)"
+                )
 
         if generation.status == status:
             # If another worker already transitioned to PROCESSING, this is a

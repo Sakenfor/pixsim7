@@ -68,6 +68,44 @@ export async function listGenerations(query?: ListGenerationsQuery): Promise<Gen
   return generationsApi.listGenerations(query);
 }
 
+/** Backend statuses that are still "active" (running or queued to run). `paused`
+ *  is intentionally excluded — a paused generation isn't consuming a slot and is
+ *  resumed explicitly, so it isn't part of "cancel everything running". */
+const ACTIVE_BACKEND_STATUSES = ['pending', 'processing'] as const;
+const ACTIVE_FETCH_PAGE_SIZE = 200;
+/** Safety cap so a paging bug can never loop forever (200 * 50 = 10k rows/status). */
+const ACTIVE_FETCH_MAX_PAGES = 50;
+
+/**
+ * Fetch the IDs of every active (pending/processing) generation for the current
+ * user, paging past the panel's fixed display window.
+ *
+ * The activity panel only loads a bounded page of generations, so a batch cancel
+ * driven off the store misses anything outside that window — fanout/"Each" items
+ * that registered after the fetch, older still-running rows, etc. "Cancel all
+ * active" uses this to reach them so a cancel can't silently leave work running.
+ */
+export async function fetchAllActiveGenerationIds(): Promise<number[]> {
+  const ids = new Set<number>();
+  for (const status of ACTIVE_BACKEND_STATUSES) {
+    let offset = 0;
+    for (let page = 0; page < ACTIVE_FETCH_MAX_PAGES; page++) {
+      const res = await listGenerations({
+        status: status as ListGenerationsQuery['status'],
+        limit: ACTIVE_FETCH_PAGE_SIZE,
+        offset,
+      });
+      const batch = res.generations ?? [];
+      for (const g of batch) {
+        if (typeof g.id === 'number') ids.add(g.id);
+      }
+      if (batch.length < ACTIVE_FETCH_PAGE_SIZE) break;
+      offset += ACTIVE_FETCH_PAGE_SIZE;
+    }
+  }
+  return Array.from(ids);
+}
+
 /**
  * Cancel a generation
  */

@@ -136,6 +136,67 @@ async def test_cancel_terminal_rejected():
 
 
 # ---------------------------------------------------------------------------
+# update_status — resurrection guard (cancel-during-pickup race)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_status_refuses_to_resurrect_cancelled_into_processing():
+    """Cancel-during-pickup race: a PENDING generation cancelled while a worker
+    is between the pending guard and mark_started must NOT be flipped back to
+    PROCESSING. update_status raises so the worker aborts and releases the slot,
+    instead of resurrecting a cancelled job and spending credits."""
+    gen = _make_generation(status="cancelled")
+    svc = _make_lifecycle(gen)
+
+    with pytest.raises(InvalidOperationError):
+        await svc.update_status(1, GenerationStatus.PROCESSING)
+
+    # Row untouched — still cancelled, no PROCESSING transition committed.
+    assert gen.status == GenerationStatus.CANCELLED
+    svc.db.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_mark_started_aborts_when_cancelled_during_pickup():
+    """mark_started delegates to update_status(PROCESSING); a CANCELLED row
+    raises rather than resurrecting into an active state."""
+    gen = _make_generation(status="cancelled")
+    svc = _make_lifecycle(gen)
+
+    with pytest.raises(InvalidOperationError):
+        await svc.mark_started(1)
+
+    assert gen.status == GenerationStatus.CANCELLED
+
+
+@pytest.mark.asyncio
+async def test_update_status_terminal_to_terminal_still_silently_skips():
+    """The resurrection guard must NOT change the existing terminal→terminal
+    behavior (poller writing COMPLETED over CANCELLED): that still returns the
+    row unchanged, no raise."""
+    gen = _make_generation(status="cancelled")
+    svc = _make_lifecycle(gen)
+
+    result = await svc.update_status(1, GenerationStatus.COMPLETED)
+
+    assert result is gen
+    assert gen.status == GenerationStatus.CANCELLED  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_mark_started_pending_still_starts():
+    """A genuinely PENDING generation still transitions to PROCESSING — the
+    guard only blocks terminal rows, so the normal pickup path is unaffected."""
+    gen = _make_generation(status="pending")
+    svc = _make_lifecycle(gen)
+
+    result = await svc.mark_started(1)
+
+    assert result.status == GenerationStatus.PROCESSING
+
+
+# ---------------------------------------------------------------------------
 # pause_generation
 # ---------------------------------------------------------------------------
 
