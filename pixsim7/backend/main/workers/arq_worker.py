@@ -15,8 +15,6 @@ Redis configuration:
     (settings.redis_url). Override via REDIS_URL in .env when needed.
 """
 
-import asyncio
-import os
 from typing import Optional
 
 # Load .env file BEFORE any other imports that need env vars
@@ -56,7 +54,6 @@ from pixsim7.backend.main.workers.health import (
     update_automation_heartbeat,
     update_media_maintenance_heartbeat,
     update_derivatives_heartbeat,
-    get_health_tracker,
 )
 from pixsim7.backend.main.workers.log_cleanup import cleanup_old_logs
 from pixsim7.backend.main.workers.world_simulation import tick_active_worlds
@@ -78,24 +75,11 @@ from pixsim7.backend.main.infrastructure.queue import (
     MEDIA_MAINTENANCE_QUEUE_NAME,
     DERIVATIVES_QUEUE_NAME,
 )
-from pixsim7.backend.main.shared.debug import load_global_debug_from_env
-from pixsim_logging import configure_logging, configure_stdlib_root_logger, bind_domain_context
-from pixsim7.backend.main.services.account_event_service import AccountEventService
-import logging as stdlib_logging
-from pixsim7.backend.main.infrastructure.events.redis_bridge import (
-    start_event_bus_bridge,
-    stop_event_bus_bridge,
+from pixsim7.backend.main.workers.lifecycle import (
+    build_worker_lifecycle,
+    logger,
+    _sync_preload_system_config,
 )
-from pixsim7.backend.main.infrastructure.sleep_inhibit import inhibit_sleep, allow_sleep
-from pixsim7.backend.main.infrastructure.database.session import close_database
-
-# Configure structured logging and optional ingestion via env
-logger = configure_logging("worker").bind(channel="system", domain="system")
-configure_stdlib_root_logger()
-
-
-_event_bridge = None
-_retry_event_bridge = None
 
 
 def _redis_settings() -> RedisSettings:
@@ -103,44 +87,6 @@ def _redis_settings() -> RedisSettings:
     s.conn_retries = 20
     s.retry_on_timeout = True
     return s
-
-
-def _sync_preload_system_config() -> None:
-    """Pre-load DB-persisted config so class-level attributes see updated values.
-
-    Uses a temporary event loop. Must dispose the engine afterward so pooled
-    connections don't linger bound to the closed loop (causes
-    'Event loop is closed' errors when ARQ's own loop later tries to clean up).
-    """
-    import asyncio
-    try:
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(_load_persisted_system_config_for_worker())
-        loop.run_until_complete(close_database())
-        loop.close()
-    except Exception:
-        pass  # Falls back to env var / Pydantic default
-
-
-async def _load_persisted_system_config_for_worker() -> None:
-    """Best-effort load of persisted system config into worker process memory."""
-    try:
-        from pixsim7.backend.main.infrastructure.database.session import get_async_session
-        from pixsim7.backend.main.services.system_config import apply_all_from_db
-        import pixsim7.backend.main.services.system_config.appliers  # noqa: F401
-
-        async with get_async_session() as db:
-            # Migrate file-based settings to DB on first run
-            from pixsim7.backend.main.services.system_config.migration import migrate_file_settings_to_db
-            migrated = await migrate_file_settings_to_db(db)
-            if migrated:
-                logger.info("worker_system_config_migrated", namespaces=migrated)
-
-            applied = await apply_all_from_db(db)
-        if applied:
-            logger.info("worker_system_config_loaded", namespaces=applied)
-    except Exception as e:
-        logger.warning("worker_system_config_load_failed", error=str(e))
 
 
 async def reload_logging_config(ctx: dict) -> None:
@@ -210,149 +156,19 @@ def _register_system_config_subscriber() -> None:
 _register_system_config_subscriber()
 
 
-# arq logs an INFO start/end pair for every job and cron fire, e.g.
-#   "1.01s → cron:poll_job_statuses()" / "0.10s ← cron:poll_job_statuses ●".
-# A few crons fire very frequently (poll every 2s, heartbeats every 30s, reload
-# and requeue) and those scaffolding lines carry no information — the functions
-# log their own meaningful events. On the main worker the 2s poller alone is
-# ~60 lines/min, burying real logs. Drop just those INFO lines while keeping
-# real job logs, arq's periodic "recording health" summary, and any
-# WARNING/ERROR (including failures of these same crons).
-_QUIET_CRON_NAMES = (
-    "cron:poll_job_statuses",
-    "cron:update_main_heartbeat",
-    "cron:update_retry_heartbeat",
-    "cron:update_simulation_heartbeat",
-    "cron:update_automation_heartbeat",
-    "cron:reload_logging_config",
-    "cron:requeue_pending_generations",
-    "cron:requeue_pending_analyses",
-)
+# ---------------------------------------------------------------------------
+# Per-family lifecycle handlers, built from the shared build_worker_lifecycle
+# skeleton. Only the genuine per-family variation lives below: the startup
+# reconcilers (self-guarding coroutines), the component-registered "announcement"
+# logs (pure data), and the factory flags. The uniform core (logger normalize ->
+# health tracker -> worker_start -> persisted-config load -> heartbeat; and, on
+# shutdown, drain -> close_database) lives once in workers/lifecycle.py.
+# ---------------------------------------------------------------------------
 
 
-class _QuietHighFrequencyCronFilter(stdlib_logging.Filter):
-    """Drop arq's routine INFO start/end lines for high-frequency crons.
-
-    Only INFO (and below) records are dropped; WARNING/ERROR about the same
-    crons pass through untouched so failures stay visible.
-    """
-
-    def filter(self, record: stdlib_logging.LogRecord) -> bool:
-        if record.levelno > stdlib_logging.INFO:
-            return True
-        message = record.getMessage()
-        return not any(name in message for name in _QUIET_CRON_NAMES)
-
-
-_quiet_cron_filter = _QuietHighFrequencyCronFilter()
-
-
-def _normalize_arq_logger_handlers() -> None:
-    """Drop ARQ's default plain-text handler so events flow once via pixsim_logging.
-
-    The `arq` CLI applies its own logging dictConfig after importing this module.
-    That handler emits `%(asctime)s: %(message)s` lines in parallel with the
-    structured stdlib root handler configured by pixsim_logging, causing duplicates.
-
-    Also installs a filter on ``arq.worker`` that suppresses the routine INFO
-    start/end lines for the high-frequency crons (see _QUIET_CRON_NAMES).
-    """
-    removed = 0
-    for logger_name in ("arq", "arq.worker"):
-        arq_logger = stdlib_logging.getLogger(logger_name)
-        for handler in list(arq_logger.handlers):
-            arq_logger.removeHandler(handler)
-            removed += 1
-        arq_logger.propagate = True
-        arq_logger.disabled = False
-
-    # The job/cron start-end lines are emitted by the "arq.worker" logger, so
-    # the filter must be attached there (logger filters don't apply to records
-    # propagated up from children). Idempotent across repeated startup calls.
-    arq_worker_logger = stdlib_logging.getLogger("arq.worker")
-    if not any(isinstance(f, _QuietHighFrequencyCronFilter) for f in arq_worker_logger.filters):
-        arq_worker_logger.addFilter(_quiet_cron_filter)
-
-    if removed:
-        logger.info("arq_logger_handlers_removed", removed_handlers=removed)
-
-
-async def startup(ctx: dict) -> None:
-    """
-    Worker startup handler
-
-    Called once when the worker starts.
-    Initialize any shared resources here.
-    """
-    # Initialize account event satellite handler
-    AccountEventService.initialize()
-    _normalize_arq_logger_handlers()
-    get_health_tracker()
-
-    global _event_bridge
-
-    # Log effective log level for diagnostics
-    import logging as stdlib_logging
-    effective_level = stdlib_logging.getLogger().level
-    level_name = stdlib_logging.getLevelName(effective_level)
-    logger.info(
-        "worker_start",
-        msg="PixSim7 ARQ Worker Starting",
-        log_level=level_name,
-        log_level_env=os.getenv("LOG_LEVEL", "not set")
-    )
-
-    # Initialize global worker debug flags from environment (if set)
-    debug_flags = load_global_debug_from_env()
-    if debug_flags:
-        enabled = [name for name, enabled in debug_flags.items() if enabled]
-        logger.info("worker_debug_flags", flags=",".join(sorted(enabled)))
-    else:
-        logger.info("worker_debug_flags", flags="none")
-
-    # Register providers (required for generation processing)
-    from pixsim7.backend.main.domain.providers.registry import register_default_providers
-    await _load_persisted_system_config_for_worker()
-    register_default_providers()
-    logger.info("worker_providers_registered", msg="Provider plugins loaded")
-
-    # Bind all sibling-package capabilities registered for this host. Single
-    # source of truth: backend/main/capability_registry.py.
-    from pixsim7.backend.main.capability_registry import bind_for_host
-    bind_for_host("main_worker")
-    logger.info("worker_component_registered", component="process_generation")
-    logger.info("worker_component_registered", component="process_analysis")
-    logger.info("worker_component_registered", component="process_derivatives")
-    logger.info("worker_component_registered", component="process_ingestion")
-    logger.info("worker_component_registered", component="process_prompt_tagging")
-    logger.info("worker_component_registered", component="process_prompt_embedding")
-    logger.info("worker_component_registered", component="process_chain_execution")
-    logger.info("worker_component_registered", component="process_ephemeral_chain_execution")
-    logger.info("worker_component_registered", component="process_ephemeral_fanout_execution")
-    logger.info("worker_component_registered", component="run_analysis_backfill_batch")
-    logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/2s")
-    logger.info("worker_component_registered", component="requeue_pending_generations", schedule="*/30s")
-    logger.info("worker_component_registered", component="requeue_pending_analyses", schedule="*/30s")
-    logger.info("worker_component_registered", component="update_main_heartbeat", schedule="*/30s")
-    logger.info(
-        "worker_component_externalized",
-        component="tick_active_worlds",
-        worker="SimulationWorkerSettings",
-        queue=SIMULATION_SCHEDULER_QUEUE_NAME,
-    )
-    logger.info(
-        "worker_component_externalized",
-        component="process_automation",
-        worker="AutomationWorkerSettings",
-        queue=AUTOMATION_QUEUE_NAME,
-    )
-
-    logger.info(
-        "worker_effective_config",
-        arq_max_jobs=settings.arq_max_jobs,
-    )
-
-    # Recover stale PROCESSING generations (from crash/sleep — must run before counter reconcile)
+async def _startup_recover_stale(ctx: dict) -> None:
+    """Recover stale PROCESSING generations (from crash/sleep — must run before
+    the counter reconcile). Self-guarding: logs its own success/failure."""
     try:
         stale_result = await recover_stale_processing_generations(ctx)
         if stale_result.get("failed", 0) > 0:
@@ -364,7 +180,9 @@ async def startup(ctx: dict) -> None:
     except Exception as e:
         logger.warning("startup_stale_recovery_failed", error=str(e))
 
-    # Reconcile account counters on startup (fixes counter drift from crashes)
+
+async def _startup_reconcile_counters(ctx: dict) -> None:
+    """Reconcile account counters on startup (fixes counter drift from crashes)."""
     try:
         reconcile_result = await reconcile_account_counters(ctx)
         if reconcile_result.get("reconciled", 0) > 0:
@@ -375,246 +193,6 @@ async def startup(ctx: dict) -> None:
             )
     except Exception as e:
         logger.warning("startup_reconciliation_failed", error=str(e))
-
-    # Start distributed event bridge
-    _event_bridge = await start_event_bus_bridge(role="arq_worker")
-
-    # Send initial heartbeat
-    await update_main_heartbeat(ctx)
-
-    # Prevent Windows from sleeping while the worker is active
-    inhibit_sleep()
-
-
-async def _drain_arq_pool(ctx: dict) -> None:
-    """Force-close arq's Redis pool connections before arq's own pool.close() runs.
-
-    arq cancels its main_task (poll loop) and job tasks before calling on_shutdown.
-    If any were mid-pipeline (WATCH/MULTI/EXEC) when cancelled, their connections
-    return to the pool with dirty transaction state. arq's subsequent
-    pool.close(close_connection_pool=True) then reuses one of those connections and
-    raises ExecAbortError: "Transaction discarded because of previous errors".
-
-    Disconnecting all connections here (including in-use ones) severs any half-built
-    transactions cleanly, so arq's cleanup has nothing poisoned to trip over.
-    """
-    pool = ctx.get("redis")
-    if pool is None:
-        return
-    try:
-        # Yield once so any just-cancelled pipeline coroutines can unwind first.
-        await asyncio.sleep(0)
-        await pool.connection_pool.disconnect(inuse_connections=True)
-    except Exception as e:
-        logger.warning("worker_shutdown_arq_pool_drain_error", error=str(e))
-
-
-async def shutdown(ctx: dict) -> None:
-    """
-    Worker shutdown handler
-
-    Called once when the worker stops.
-    Clean up any resources here.
-    """
-    global _event_bridge
-    logger.info("worker_shutdown", msg="PixSim7 ARQ Worker Shutting Down")
-
-    if _event_bridge:
-        try:
-            await stop_event_bus_bridge()
-        except Exception as e:
-            logger.warning("worker_shutdown_event_bridge_error", error=str(e))
-        _event_bridge = None
-
-    try:
-        AccountEventService.shutdown()
-    except Exception as e:
-        logger.warning("worker_shutdown_account_event_error", error=str(e))
-
-    try:
-        from pixsim7.backend.main.capability_registry import shutdown_for_host
-        await shutdown_for_host("main_worker")
-    except Exception as e:
-        logger.warning("worker_shutdown_capabilities_error", error=str(e))
-
-    await _drain_arq_pool(ctx)
-
-    try:
-        await close_database()
-    except Exception as e:
-        logger.warning("worker_shutdown_database_close_error", error=str(e))
-
-    allow_sleep()
-
-
-async def retry_startup(ctx: dict) -> None:
-    """Startup for generation retry worker (no cron/bootstrap side effects)."""
-    global _retry_event_bridge
-    AccountEventService.initialize()
-    _normalize_arq_logger_handlers()
-    get_health_tracker()
-    logger.info("worker_start", msg="PixSim7 Generation Retry Worker Starting")
-
-    debug_flags = load_global_debug_from_env()
-    if debug_flags:
-        enabled = [name for name, enabled in debug_flags.items() if enabled]
-        logger.info("worker_debug_flags", flags=",".join(sorted(enabled)))
-
-    from pixsim7.backend.main.domain.providers.registry import register_default_providers
-
-    await _load_persisted_system_config_for_worker()
-    register_default_providers()
-    logger.info("worker_component_registered", component="process_generation", queue=GENERATION_RETRY_QUEUE_NAME)
-    logger.info("worker_component_registered", component="update_retry_heartbeat", schedule="*/30s")
-    _retry_event_bridge = await start_event_bus_bridge(role="arq_generation_retry_worker")
-    await update_retry_heartbeat(ctx)
-
-    # Prevent Windows from sleeping while retry generation processing is active.
-    inhibit_sleep()
-
-
-async def retry_shutdown(ctx: dict) -> None:
-    """Shutdown for generation retry worker."""
-    global _retry_event_bridge
-    logger.info("worker_shutdown", msg="PixSim7 Generation Retry Worker Shutting Down")
-
-    if _retry_event_bridge:
-        try:
-            await stop_event_bus_bridge()
-        except Exception as e:
-            logger.warning("worker_shutdown_event_bridge_error", error=str(e))
-        _retry_event_bridge = None
-
-    try:
-        AccountEventService.shutdown()
-    except Exception as e:
-        logger.warning("worker_shutdown_account_event_error", error=str(e))
-
-    await _drain_arq_pool(ctx)
-
-    try:
-        await close_database()
-    except Exception as e:
-        logger.warning("worker_shutdown_database_close_error", error=str(e))
-
-    allow_sleep()
-
-
-async def simulation_startup(ctx: dict) -> None:
-    """Startup for dedicated simulation scheduler worker."""
-    _normalize_arq_logger_handlers()
-    get_health_tracker()
-    logger.info("worker_start", msg="PixSim7 Simulation Scheduler Worker Starting")
-    await _load_persisted_system_config_for_worker()
-    logger.info(
-        "worker_component_registered",
-        component="tick_active_worlds",
-        schedule="*/5s",
-        queue=SIMULATION_SCHEDULER_QUEUE_NAME,
-    )
-    logger.info("worker_component_registered", component="update_simulation_heartbeat", schedule="*/30s")
-    await update_simulation_heartbeat(ctx)
-
-
-async def simulation_shutdown(ctx: dict) -> None:
-    """Shutdown for dedicated simulation scheduler worker."""
-    logger.info("worker_shutdown", msg="PixSim7 Simulation Scheduler Worker Shutting Down")
-    await _drain_arq_pool(ctx)
-    try:
-        await close_database()
-    except Exception as e:
-        logger.warning("worker_shutdown_database_close_error", error=str(e))
-
-
-async def automation_startup(ctx: dict) -> None:
-    """Startup for dedicated automation worker."""
-    _normalize_arq_logger_handlers()
-    get_health_tracker()
-    logger.info("worker_start", msg="PixSim7 Automation Worker Starting")
-
-    debug_flags = load_global_debug_from_env()
-    if debug_flags:
-        enabled = [name for name, enabled in debug_flags.items() if enabled]
-        logger.info("worker_debug_flags", flags=",".join(sorted(enabled)))
-
-    from pixsim7.backend.main.domain.providers.registry import register_default_providers
-    await _load_persisted_system_config_for_worker()
-    register_default_providers()
-
-    # Bind all sibling-package capabilities registered for this host. Single
-    # source of truth: backend/main/capability_registry.py.
-    from pixsim7.backend.main.capability_registry import bind_for_host
-    bind_for_host("automation_worker")
-
-    logger.info("worker_component_registered", component="process_automation", queue=AUTOMATION_QUEUE_NAME)
-    logger.info("worker_component_registered", component="run_automation_loops", schedule="*/30s")
-    logger.info("worker_component_registered", component="queue_pending_executions", schedule="*/15s")
-    logger.info("worker_component_registered", component="poll_device_ads", schedule="*/5s")
-    logger.info("worker_component_registered", component="poll_device_reconnects", schedule="*/30s")
-    logger.info("worker_component_registered", component="update_automation_heartbeat", schedule="*/30s")
-
-    await update_automation_heartbeat(ctx)
-
-
-async def automation_shutdown(ctx: dict) -> None:
-    """Shutdown for dedicated automation worker."""
-    logger.info("worker_shutdown", msg="PixSim7 Automation Worker Shutting Down")
-    await _drain_arq_pool(ctx)
-    try:
-        await close_database()
-    except Exception as e:
-        logger.warning("worker_shutdown_database_close_error", error=str(e))
-
-
-async def media_maintenance_startup(ctx: dict) -> None:
-    """Startup for the dedicated media-maintenance worker.
-
-    Hosts the slow bulk asset jobs — archive relocate/restore and durable
-    signal-scan reprobe. Loads persisted system config so the ``storage_roots``
-    applier binds the ``archive`` S3 backend before any relocation job builds the
-    storage service.
-    """
-    _normalize_arq_logger_handlers()
-    get_health_tracker()
-    logger.info("worker_start", msg="PixSim7 Media Maintenance Worker Starting")
-    await _load_persisted_system_config_for_worker()
-    logger.info(
-        "worker_component_registered",
-        component="process_relocation",
-        queue=MEDIA_MAINTENANCE_QUEUE_NAME,
-    )
-    logger.info(
-        "worker_component_registered",
-        component="process_restore",
-        queue=MEDIA_MAINTENANCE_QUEUE_NAME,
-    )
-    logger.info(
-        "worker_component_registered",
-        component="run_signal_backfill_batch",
-        queue=MEDIA_MAINTENANCE_QUEUE_NAME,
-    )
-    logger.info("worker_component_registered", component="update_media_maintenance_heartbeat", schedule="*/30s")
-
-    # Retire any relocation/restore job left non-terminal by a crash/restart so
-    # the UI doesn't show a phantom in-flight job. This belongs HERE, not in the
-    # main worker: relocation/restore run exclusively on this family, so only
-    # *this* worker's startup actually implies "no batch is mid-flight". Calling
-    # it from the main worker would both miss orphans (this worker can die while
-    # main stays up) and false-positive a live job (main restarts mid-batch).
-    for reconcile in (
-        _reconcile_relocation_on_startup,
-        _reconcile_restore_on_startup,
-    ):
-        try:
-            retired = await reconcile()
-            if retired:
-                logger.info("startup_media_maintenance_reconcile_complete", job_id=retired)
-        except Exception as e:
-            logger.warning("startup_media_maintenance_reconcile_failed", error=str(e))
-
-    await update_media_maintenance_heartbeat(ctx)
-    # Slow archive uploads can run for a long time; keep the machine awake.
-    inhibit_sleep()
 
 
 async def _reconcile_relocation_on_startup() -> Optional[str]:
@@ -631,47 +209,176 @@ async def _reconcile_restore_on_startup() -> Optional[str]:
     return await reconcile_orphaned_restore_job()
 
 
-async def media_maintenance_shutdown(ctx: dict) -> None:
-    """Shutdown for the dedicated media-maintenance worker."""
-    logger.info("worker_shutdown", msg="PixSim7 Media Maintenance Worker Shutting Down")
-    await _drain_arq_pool(ctx)
-    try:
-        await close_database()
-    except Exception as e:
-        logger.warning("worker_shutdown_database_close_error", error=str(e))
-    allow_sleep()
+async def _startup_media_maintenance_reconcile(ctx: dict) -> None:
+    """Retire any relocation/restore job left non-terminal by a crash/restart so
+    the UI doesn't show a phantom in-flight job. This belongs on the
+    media-maintenance family, NOT the main worker: relocation/restore run
+    exclusively here, so only *this* worker's startup actually implies "no batch
+    is mid-flight". Running it from the main worker would both miss orphans (this
+    worker can die while main stays up) and false-positive a live job (main
+    restarts mid-batch)."""
+    for reconcile in (_reconcile_relocation_on_startup, _reconcile_restore_on_startup):
+        try:
+            retired = await reconcile()
+            if retired:
+                logger.info("startup_media_maintenance_reconcile_complete", job_id=retired)
+        except Exception as e:
+            logger.warning("startup_media_maintenance_reconcile_failed", error=str(e))
 
 
-async def derivatives_startup(ctx: dict) -> None:
-    """Startup for the dedicated derivatives (thumbnail/preview) worker.
+# Per-family "announcements": component-registered / effective-config log lines.
+# Pure data (no side effects), emitted verbatim after the bind step.
+_MAIN_ANNOUNCEMENTS = [
+    ("worker_component_registered", {"component": "process_generation"}),
+    ("worker_component_registered", {"component": "process_analysis"}),
+    ("worker_component_registered", {"component": "process_derivatives"}),
+    ("worker_component_registered", {"component": "process_ingestion"}),
+    ("worker_component_registered", {"component": "process_prompt_tagging"}),
+    ("worker_component_registered", {"component": "process_prompt_embedding"}),
+    ("worker_component_registered", {"component": "process_chain_execution"}),
+    ("worker_component_registered", {"component": "process_ephemeral_chain_execution"}),
+    ("worker_component_registered", {"component": "process_ephemeral_fanout_execution"}),
+    ("worker_component_registered", {"component": "run_analysis_backfill_batch"}),
+    ("worker_component_registered", {"component": "poll_job_statuses", "schedule": "*/2s"}),
+    ("worker_component_registered", {"component": "requeue_pending_generations", "schedule": "*/30s"}),
+    ("worker_component_registered", {"component": "requeue_pending_analyses", "schedule": "*/30s"}),
+    ("worker_component_registered", {"component": "update_main_heartbeat", "schedule": "*/30s"}),
+    ("worker_component_externalized", {
+        "component": "tick_active_worlds",
+        "worker": "SimulationWorkerSettings",
+        "queue": SIMULATION_SCHEDULER_QUEUE_NAME,
+    }),
+    ("worker_component_externalized", {
+        "component": "process_automation",
+        "worker": "AutomationWorkerSettings",
+        "queue": AUTOMATION_QUEUE_NAME,
+    }),
+    ("worker_effective_config", {"arq_max_jobs": settings.arq_max_jobs}),
+]
 
-    Runs the CPU-bound ffmpeg derivative jobs off the MAIN worker so a burst of
-    generations can't pin every core and starve generation/API. Loads persisted
-    system config so the storage-roots applier is bound before a job writes its
-    thumbnail/preview derivatives. Jobs are short, so (unlike media-maintenance)
-    it doesn't inhibit sleep or reconcile orphaned long-running batches.
-    """
-    _normalize_arq_logger_handlers()
-    get_health_tracker()
-    logger.info("worker_start", msg="PixSim7 Derivatives Worker Starting")
-    await _load_persisted_system_config_for_worker()
-    logger.info(
-        "worker_component_registered",
-        component="process_derivatives",
-        queue=DERIVATIVES_QUEUE_NAME,
-    )
-    logger.info("worker_component_registered", component="update_derivatives_heartbeat", schedule="*/30s")
-    await update_derivatives_heartbeat(ctx)
+_RETRY_ANNOUNCEMENTS = [
+    ("worker_component_registered", {"component": "process_generation", "queue": GENERATION_RETRY_QUEUE_NAME}),
+    ("worker_component_registered", {"component": "update_retry_heartbeat", "schedule": "*/30s"}),
+]
+
+_SIMULATION_ANNOUNCEMENTS = [
+    ("worker_component_registered", {
+        "component": "tick_active_worlds",
+        "schedule": "*/5s",
+        "queue": SIMULATION_SCHEDULER_QUEUE_NAME,
+    }),
+    ("worker_component_registered", {"component": "update_simulation_heartbeat", "schedule": "*/30s"}),
+]
+
+_AUTOMATION_ANNOUNCEMENTS = [
+    ("worker_component_registered", {"component": "process_automation", "queue": AUTOMATION_QUEUE_NAME}),
+    ("worker_component_registered", {"component": "run_automation_loops", "schedule": "*/30s"}),
+    ("worker_component_registered", {"component": "queue_pending_executions", "schedule": "*/15s"}),
+    ("worker_component_registered", {"component": "poll_device_ads", "schedule": "*/5s"}),
+    ("worker_component_registered", {"component": "poll_device_reconnects", "schedule": "*/30s"}),
+    ("worker_component_registered", {"component": "update_automation_heartbeat", "schedule": "*/30s"}),
+]
+
+_MEDIA_MAINTENANCE_ANNOUNCEMENTS = [
+    ("worker_component_registered", {"component": "process_relocation", "queue": MEDIA_MAINTENANCE_QUEUE_NAME}),
+    ("worker_component_registered", {"component": "process_restore", "queue": MEDIA_MAINTENANCE_QUEUE_NAME}),
+    ("worker_component_registered", {"component": "run_signal_backfill_batch", "queue": MEDIA_MAINTENANCE_QUEUE_NAME}),
+    ("worker_component_registered", {"component": "update_media_maintenance_heartbeat", "schedule": "*/30s"}),
+]
+
+_DERIVATIVES_ANNOUNCEMENTS = [
+    ("worker_component_registered", {"component": "process_derivatives", "queue": DERIVATIVES_QUEUE_NAME}),
+    ("worker_component_registered", {"component": "update_derivatives_heartbeat", "schedule": "*/30s"}),
+]
 
 
-async def derivatives_shutdown(ctx: dict) -> None:
-    """Shutdown for the dedicated derivatives worker."""
-    logger.info("worker_shutdown", msg="PixSim7 Derivatives Worker Shutting Down")
-    await _drain_arq_pool(ctx)
-    try:
-        await close_database()
-    except Exception as e:
-        logger.warning("worker_shutdown_database_close_error", error=str(e))
+# Per-family lifecycle specs. Kept as data (spread into build_worker_lifecycle)
+# so the characterization test can import the exact production kwargs and assert
+# the emitted call-sequence without re-specifying — no test/prod drift.
+
+# The main worker: registers all generation/analysis/etc. capabilities, binds
+# the main_worker host, runs the crash-recovery reconcilers, hosts the event
+# bridge, and inhibits sleep while active.
+_MAIN_LIFECYCLE = dict(
+    worker_start_msg="PixSim7 ARQ Worker Starting",
+    shutdown_msg="PixSim7 ARQ Worker Shutting Down",
+    heartbeat=update_main_heartbeat,
+    detailed_worker_start=True,
+    log_debug_flags=True,
+    log_debug_flags_when_empty=True,
+    account_events=True,
+    register_providers=True,
+    log_providers=True,
+    bind_host="main_worker",
+    unbind_on_shutdown=True,
+    event_bridge_role="arq_worker",
+    inhibit_sleep_while_active=True,
+    announcements=_MAIN_ANNOUNCEMENTS,
+    startup_reconcilers=(_startup_recover_stale, _startup_reconcile_counters),
+)
+
+# Deferred/retry generation worker: providers + event bridge + sleep-inhibit,
+# but no capability bind, no crons/bootstrap reconcilers.
+_RETRY_LIFECYCLE = dict(
+    worker_start_msg="PixSim7 Generation Retry Worker Starting",
+    shutdown_msg="PixSim7 Generation Retry Worker Shutting Down",
+    heartbeat=update_retry_heartbeat,
+    log_debug_flags=True,
+    account_events=True,
+    register_providers=True,
+    event_bridge_role="arq_generation_retry_worker",
+    inhibit_sleep_while_active=True,
+    announcements=_RETRY_ANNOUNCEMENTS,
+)
+
+# Simulation scheduler worker: config load + heartbeat only.
+_SIMULATION_LIFECYCLE = dict(
+    worker_start_msg="PixSim7 Simulation Scheduler Worker Starting",
+    shutdown_msg="PixSim7 Simulation Scheduler Worker Shutting Down",
+    heartbeat=update_simulation_heartbeat,
+    announcements=_SIMULATION_ANNOUNCEMENTS,
+)
+
+# Automation worker: providers + capability bind (automation_worker), but does
+# NOT tear the host down on shutdown (unbind_on_shutdown=False) — preserving the
+# historical asymmetry; see build_worker_lifecycle's docstring.
+_AUTOMATION_LIFECYCLE = dict(
+    worker_start_msg="PixSim7 Automation Worker Starting",
+    shutdown_msg="PixSim7 Automation Worker Shutting Down",
+    heartbeat=update_automation_heartbeat,
+    log_debug_flags=True,
+    register_providers=True,
+    bind_host="automation_worker",
+    unbind_on_shutdown=False,
+    announcements=_AUTOMATION_ANNOUNCEMENTS,
+)
+
+# Media-maintenance worker: config load, orphaned-batch reconcile, sleep-inhibit
+# (slow archive uploads run long).
+_MEDIA_MAINTENANCE_LIFECYCLE = dict(
+    worker_start_msg="PixSim7 Media Maintenance Worker Starting",
+    shutdown_msg="PixSim7 Media Maintenance Worker Shutting Down",
+    heartbeat=update_media_maintenance_heartbeat,
+    inhibit_sleep_while_active=True,
+    announcements=_MEDIA_MAINTENANCE_ANNOUNCEMENTS,
+    startup_reconcilers=(_startup_media_maintenance_reconcile,),
+)
+
+# Derivatives worker: config load + heartbeat only. Jobs are short, so (unlike
+# media-maintenance) it doesn't inhibit sleep or reconcile long-running batches.
+_DERIVATIVES_LIFECYCLE = dict(
+    worker_start_msg="PixSim7 Derivatives Worker Starting",
+    shutdown_msg="PixSim7 Derivatives Worker Shutting Down",
+    heartbeat=update_derivatives_heartbeat,
+    announcements=_DERIVATIVES_ANNOUNCEMENTS,
+)
+
+startup, shutdown = build_worker_lifecycle(**_MAIN_LIFECYCLE)
+retry_startup, retry_shutdown = build_worker_lifecycle(**_RETRY_LIFECYCLE)
+simulation_startup, simulation_shutdown = build_worker_lifecycle(**_SIMULATION_LIFECYCLE)
+automation_startup, automation_shutdown = build_worker_lifecycle(**_AUTOMATION_LIFECYCLE)
+media_maintenance_startup, media_maintenance_shutdown = build_worker_lifecycle(**_MEDIA_MAINTENANCE_LIFECYCLE)
+derivatives_startup, derivatives_shutdown = build_worker_lifecycle(**_DERIVATIVES_LIFECYCLE)
 
 
 _sync_preload_system_config()
