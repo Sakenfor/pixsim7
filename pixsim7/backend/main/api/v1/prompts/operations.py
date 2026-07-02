@@ -1343,10 +1343,19 @@ class ResolvePreviewRequest(BaseModel):
     )
 
 
+class ResolvedVariablePreview(BaseModel):
+    name: str = Field(..., description="Variable name (uppercase).")
+    resolved: str = Field(..., description="What this variable expands to (value + transform).")
+
+
 class ResolvePreviewResponse(BaseModel):
     resolved: Optional[str] = Field(
         None,
         description="Resolved prompt, or null when resolution is a no-op (== input).",
+    )
+    variables: List[ResolvedVariablePreview] = Field(
+        default_factory=list,
+        description="Per-variable resolved values (inline + stored), for per-site reveal in the editor.",
     )
 
 
@@ -1370,4 +1379,18 @@ async def resolve_prompt_preview(request: ResolvePreviewRequest):
     resolved = resolve_prompt_variables(
         projected, merged_values, transforms=request.transforms
     )
-    return ResolvePreviewResponse(resolved=resolved if resolved != source else None)
+    # Per-variable breakdown: what each name expands to (value + transform),
+    # recursively — the editor uses this to reveal a resolution inline at each
+    # variable site. The client filters to names actually present in the doc.
+    variables = [
+        ResolvedVariablePreview(
+            name=name,
+            resolved=resolve_prompt_variables(name, merged_values, transforms=request.transforms),
+        )
+        for name in sorted(merged_values)
+        if merged_values.get(name)
+    ]
+    return ResolvePreviewResponse(
+        resolved=resolved if resolved != source else None,
+        variables=variables,
+    )
