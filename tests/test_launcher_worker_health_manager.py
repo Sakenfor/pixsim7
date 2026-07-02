@@ -26,6 +26,18 @@ def _http_state() -> ServiceState:
     return ServiceState(definition=definition)
 
 
+def _bridge_state() -> ServiceState:
+    definition = ServiceDefinition(
+        key="ai-client",
+        title="AI Client (Bridge)",
+        program="python",
+        args=["-m", "pixsim7.client"],
+        cwd=".",
+        health_url=None,
+    )
+    return ServiceState(definition=definition)
+
+
 def test_worker_requires_pid_even_when_redis_is_healthy(monkeypatch):
     state = _worker_state()
     mgr = HealthManager(states={"worker": state})
@@ -97,6 +109,98 @@ def test_http_probe_failure_sets_reason_and_clears_on_recovery(monkeypatch):
 
     assert state.health == HealthStatus.HEALTHY
     assert state.last_error == ""
+
+
+# ── AI client bridge: liveness-file health probe ─────────────────
+# Plan: launcher-health-probe-stability. The bridge has no HTTP port and no
+# Redis heartbeat, so PID-liveness alone lets a loop-wedged (post-sleep)
+# process show green. A freshness file closes that gap.
+
+
+def test_bridge_healthy_when_pid_alive_and_heartbeat_fresh(monkeypatch):
+    state = _bridge_state()
+    state.pid = 4321
+    mgr = HealthManager(states={"ai-client": state})
+
+    monkeypatch.setattr(mgr, "_is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr(mgr, "_bridge_heartbeat_age", lambda: 5.0)
+
+    mgr._check_service("ai-client", state)
+
+    assert state.status == ServiceStatus.RUNNING
+    assert state.health == HealthStatus.HEALTHY
+    assert state.requested_running is True
+
+
+def test_bridge_stopped_when_pid_alive_but_heartbeat_stale(monkeypatch):
+    """The core sleep/resume wedge: PID alive but the loop stopped writing.
+    Past grace this must report STOPPED — the only status the RestartSupervisor
+    acts on — so the wedged process is killed and respawned rather than left
+    showing green forever."""
+    state = _bridge_state()
+    state.pid = 4321
+    state.status = ServiceStatus.RUNNING
+    state.health = HealthStatus.HEALTHY
+    state.requested_running = True
+    state.definition.health_grace_attempts = 0  # no grace → first stale is fatal
+    mgr = HealthManager(states={"ai-client": state})
+
+    monkeypatch.setattr(mgr, "_is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr(mgr, "_bridge_heartbeat_age", lambda: 999.0)
+
+    mgr._check_service("ai-client", state)
+
+    assert state.status == ServiceStatus.STOPPED
+    assert state.health == HealthStatus.STOPPED
+    assert "wedged" in (state.last_error or "")
+
+
+def test_bridge_missing_heartbeat_tolerated_within_grace(monkeypatch):
+    """Right after start the file may not exist yet — stay STARTING, not
+    UNHEALTHY, until grace is exhausted."""
+    state = _bridge_state()
+    state.pid = 4321
+    state.status = ServiceStatus.STARTING
+    state.requested_running = True
+    mgr = HealthManager(states={"ai-client": state})
+
+    monkeypatch.setattr(mgr, "_is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr(mgr, "_bridge_heartbeat_age", lambda: None)
+
+    mgr._check_service("ai-client", state)
+
+    assert state.health == HealthStatus.STARTING
+
+
+def test_bridge_no_pid_is_stopped(monkeypatch):
+    state = _bridge_state()
+    state.status = ServiceStatus.RUNNING
+    state.detected_pid = 4321
+    state.requested_running = True
+    mgr = HealthManager(states={"ai-client": state})
+
+    monkeypatch.setattr(mgr, "_is_pid_alive", lambda _pid: False)
+    monkeypatch.setattr(mgr, "_detect_headless_service", lambda _key, _defn: None)
+    monkeypatch.setattr(mgr, "_bridge_heartbeat_age", lambda: 5.0)
+
+    mgr._check_service("ai-client", state)
+
+    assert state.detected_pid is None
+    assert state.status == ServiceStatus.STOPPED
+    assert state.health == HealthStatus.STOPPED
+
+
+def test_bridge_heartbeat_age_reads_file_mtime(monkeypatch, tmp_path):
+    hb = tmp_path / "bridge_heartbeat"
+    hb.write_text("123.0", encoding="utf-8")
+    monkeypatch.setenv("PIXSIM_BRIDGE_HEARTBEAT_FILE", str(hb))
+    mgr = HealthManager(states={})
+
+    age = mgr._bridge_heartbeat_age()
+    assert age is not None and age >= 0.0
+
+    hb.unlink()
+    assert mgr._bridge_heartbeat_age() is None
 
 
 # ── Headless adoption respects requested-stopped intent ──────────

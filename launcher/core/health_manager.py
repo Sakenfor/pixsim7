@@ -26,6 +26,12 @@ logger = logging.getLogger("launcher.core.health")
 MAX_FAILURE_COUNT = 50
 HEALTH_ERROR_PREFIX = "Health check failed: "
 
+# The ai-client bridge has no HTTP health port and no Redis heartbeat, so it
+# writes a liveness file (~/.pixsim/bridge_heartbeat) every ~15s while its event
+# loop is alive. Stale beyond this (≈6 missed writes) with a live PID means the
+# loop wedged (e.g. host sleep/resume) — see Bridge._liveness_heartbeat_loop.
+BRIDGE_HEARTBEAT_MAX_AGE_SEC = 90.0
+
 
 class HealthManager:
     """
@@ -464,6 +470,27 @@ class HealthManager:
         except Exception:
             return False
 
+    @staticmethod
+    def _bridge_heartbeat_path() -> str:
+        """Liveness file the ai-client bridge rewrites while its loop runs.
+
+        Must match ``Bridge._resolve_liveness_heartbeat_path`` (unnamespaced
+        launcher-managed bridge). Env override mirrors the writer side so tests
+        and non-default deployments can relocate it.
+        """
+        explicit = (os.environ.get("PIXSIM_BRIDGE_HEARTBEAT_FILE") or "").strip()
+        if explicit:
+            return os.path.expanduser(explicit)
+        return os.path.expanduser(os.path.join("~", ".pixsim", "bridge_heartbeat"))
+
+    def _bridge_heartbeat_age(self) -> Optional[float]:
+        """Seconds since the bridge last wrote its liveness file, or None if absent."""
+        try:
+            mtime = os.path.getmtime(self._bridge_heartbeat_path())
+        except OSError:
+            return None
+        return max(0.0, time.time() - mtime)
+
     def _check_service(self, key: str, state: ServiceState):
         """Check health for a single service."""
         definition = state.definition
@@ -652,6 +679,69 @@ class HealthManager:
                         HealthStatus.UNHEALTHY,
                         details={"reason": redis_reason},
                     )
+            return
+
+        # ── AI client bridge (liveness-file health check) ──
+        # The bridge is a local WS client with no HTTP health port and no Redis
+        # heartbeat, so a bare PID check can't tell a live-but-wedged process
+        # (event loop frozen after host sleep → WS dead, reconnect loop never
+        # runs) from a healthy one. It writes a freshness file we poll here,
+        # mirroring the arq-worker Redis probe above. Stale file + live PID ⇒
+        # UNHEALTHY, which the RestartSupervisor bounces.
+        # Plan: launcher-health-probe-stability.
+        if definition.key == "ai-client":
+            if state.requested_running is False and state.status.value == 'stopped':
+                if state.health != HealthStatus.STOPPED:
+                    self._emit_health_update(key, HealthStatus.STOPPED)
+                return
+
+            # Keep PID state honest — a stale PID would otherwise mask the wedge.
+            if state.pid and not self._is_pid_alive(state.pid):
+                state.pid = None
+            if state.detected_pid and not self._is_pid_alive(state.detected_pid):
+                state.detected_pid = None
+            has_bridge_pid = bool(state.pid or state.detected_pid)
+
+            if not has_bridge_pid:
+                self._increment_failures(key)
+                state.status = ServiceStatus.STOPPED
+                state.externally_managed = False
+                self._emit_health_update(
+                    key,
+                    HealthStatus.STOPPED,
+                    details={"reason": "bridge process not detected"},
+                )
+                return
+
+            age = self._bridge_heartbeat_age()
+            if age is not None and age <= BRIDGE_HEARTBEAT_MAX_AGE_SEC:
+                self.failure_counts[key] = 0
+                self._handle_healthy(key, state)
+                self._emit_health_update(
+                    key,
+                    HealthStatus.HEALTHY,
+                    details={"reason": f"bridge liveness heartbeat is fresh ({age:.0f}s old)"},
+                )
+            else:
+                self._increment_failures(key)
+                if age is None:
+                    reason = "bridge liveness heartbeat file missing"
+                else:
+                    reason = (
+                        f"bridge liveness heartbeat stale ({age:.0f}s > "
+                        f"{BRIDGE_HEARTBEAT_MAX_AGE_SEC:.0f}s) — event loop wedged"
+                    )
+                if self.failure_counts[key] < definition.health_grace_attempts:
+                    # Grace: the file lags briefly on startup and a busy loop can
+                    # skip a write. Hold STARTING rather than kill a warming bridge.
+                    self._emit_health_update(key, HealthStatus.STARTING, details={"reason": reason})
+                else:
+                    # Past grace the loop is wedged (dead WS, no reconnect) even
+                    # though the PID lives. Report STOPPED — the only status the
+                    # RestartSupervisor acts on — so it kills+respawns the process.
+                    # Supervisor backoff/give-up guards against a kill loop.
+                    state.status = ServiceStatus.STOPPED
+                    self._emit_health_update(key, HealthStatus.STOPPED, details={"reason": reason})
             return
 
         # ── Standard HTTP health check ──

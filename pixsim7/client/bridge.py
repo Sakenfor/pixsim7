@@ -446,6 +446,67 @@ class Bridge:
     _DEFAULT_WS_PING_INTERVAL = 20.0
     _DEFAULT_WS_PING_TIMEOUT = 60.0
 
+    # ── Liveness heartbeat (launcher health probe) ───────────────────
+    # The launcher supervises this process by PID only — unlike the arq
+    # workers it has no HTTP health port and no Redis heartbeat. A live PID
+    # is a poor liveness signal: after a host sleep/resume the asyncio event
+    # loop can wedge (the WS silently dies and the reconnect loop never runs
+    # again) while the PID stays alive, so the launcher card shows green even
+    # though the AI Assistant panel reports "No agent connected".
+    #
+    # This file is a freshness signal the launcher's HealthManager polls
+    # (mirrors the arq-worker Redis heartbeat). A dedicated asyncio task
+    # rewrites it every _LIVENESS_HEARTBEAT_INTERVAL seconds; if the event
+    # loop wedges the file goes stale and the RestartSupervisor bounces us.
+    # It deliberately tracks *event-loop liveness*, NOT WS connectivity, so a
+    # legitimately-reconnecting bridge (backend down) keeps writing and is
+    # never restarted. Plan: launcher-health-probe-stability.
+    _LIVENESS_HEARTBEAT_INTERVAL = 15.0
+
+    def _resolve_liveness_heartbeat_path(self) -> Path:
+        """Path the launcher HealthManager polls for bridge liveness.
+
+        Namespaced like the buffered-results dir so parallel bridges don't
+        clobber each other; the launcher-managed (unnamespaced) bridge writes
+        the plain ``~/.pixsim/bridge_heartbeat`` the probe looks for. The probe
+        side is ``HealthManager._bridge_heartbeat_path`` — keep the two in sync.
+        """
+        explicit = str(os.environ.get("PIXSIM_BRIDGE_HEARTBEAT_FILE") or "").strip()
+        if explicit:
+            try:
+                return Path(explicit).expanduser()
+            except Exception:
+                pass
+        namespace = self._normalize_bridge_id_namespace(
+            os.environ.get("PIXSIM_BRIDGE_ID_NAMESPACE") or ""
+        )
+        name = f"bridge_heartbeat_{namespace}" if namespace else "bridge_heartbeat"
+        return Path.home() / ".pixsim" / name
+
+    def _write_liveness_heartbeat(self) -> None:
+        try:
+            path = self._resolve_liveness_heartbeat_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(str(time.time()), encoding="utf-8")
+        except OSError as e:
+            get_logger().debug("liveness_heartbeat_write_failed", error=str(e))
+
+    async def _liveness_heartbeat_loop(self) -> None:
+        """Rewrite the liveness file on a fixed cadence while the loop runs."""
+        try:
+            while True:
+                self._write_liveness_heartbeat()
+                await asyncio.sleep(self._LIVENESS_HEARTBEAT_INTERVAL)
+        except asyncio.CancelledError:
+            return
+
+    def _clear_liveness_heartbeat(self) -> None:
+        """Remove the file on graceful shutdown so a stopped bridge reads stale."""
+        try:
+            self._resolve_liveness_heartbeat_path().unlink()
+        except OSError:
+            pass
+
     @classmethod
     def _resolve_ws_ping_timing(cls) -> tuple[float, float]:
         """(ping_interval, ping_timeout) for ws_connect, env-overridable.
@@ -499,6 +560,11 @@ class Bridge:
 
         self._shutdown_requested = False
         consecutive_failures = 0
+        # Liveness heartbeat for the launcher health probe (see helpers above).
+        # Write once up front so the file exists before the first probe cycle,
+        # then let the background task keep it fresh.
+        self._write_liveness_heartbeat()
+        self._liveness_task = asyncio.create_task(self._liveness_heartbeat_loop())
         try:
             while not self._shutdown_requested:
                 # Supervise the MCP HTTP server task. If it crashed (uvicorn
@@ -597,6 +663,14 @@ class Bridge:
                     get_logger().info("reconnecting", delay_s=delay, attempt=consecutive_failures, booting=booting)
                     await asyncio.sleep(delay)
         finally:
+            liveness_task = getattr(self, "_liveness_task", None)
+            if liveness_task and not liveness_task.done():
+                liveness_task.cancel()
+                try:
+                    await liveness_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            self._clear_liveness_heartbeat()
             await self._hook_server.stop()
             if self._mcp_server_task and not self._mcp_server_task.done():
                 self._mcp_server_task.cancel()
