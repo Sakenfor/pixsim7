@@ -45,6 +45,15 @@ from ..agent_send import (
 
 router = APIRouter(tags=["meta"])
 
+# Handle to a *server-spawned* bridge subprocess (as opposed to a launcher-managed
+# one). None when the bridge is managed by the launcher or not running. This MUST
+# exist at module scope: get_bridge_status reads it on every poll, but only
+# start/stop_server_bridge assign it — and both read it before assigning while the
+# launcher-managed Connect path returns before assigning at all. Without this
+# initializer that read raises NameError → HTTP 500, which the frontend poll
+# swallows as `connected = 0` ("No agent connected") even while a bridge is live.
+_server_bridge_process: Optional["subprocess.Popen"] = None
+
 
 async def _resolve_effective_user_id_from_authorization(
     authorization: Optional[str],
