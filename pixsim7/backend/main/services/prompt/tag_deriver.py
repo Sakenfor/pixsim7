@@ -16,28 +16,16 @@ visual style adjectives, mood, specific design choices in the prompt text.
 """
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, List, Optional
 from uuid import UUID
 
+from pixsim7.backend.main.services.prompt.subject_tag_providers import (
+    get_subject_tag_provider,
+    tag as _tag,
+)
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
-
-
-def _slugify(value: str) -> str:
-    """Lowercase, replace spaces/underscores with hyphens, strip non-slug chars."""
-    value = value.lower().strip()
-    value = re.sub(r"[\s_]+", "-", value)
-    value = re.sub(r"[^a-z0-9-]", "", value)
-    return value.strip("-")
-
-
-def _tag(prefix: str, value: Optional[str]) -> Optional[str]:
-    """Build a prefix:value slug, or None if value is empty."""
-    if not value:
-        return None
-    slug = _slugify(value)
-    return f"{prefix}:{slug}" if slug else None
 
 
 async def derive_structural_tags(
@@ -69,28 +57,15 @@ async def derive_structural_tags(
         except Exception:
             pass
 
-    # ── 2. Character record ────────────────────────────────────────────────
+    # ── 2. Family subject (Character today; pluggable via subject providers) ─
+    # The subject is what the family is *about*. Dispatched through the
+    # subject-tag registry so new subject types (location, prop, …) can
+    # contribute tags without changing this control flow. Today the only
+    # subject is primary_character_id → the "character" provider.
     if primary_character_id:
-        try:
-            from sqlalchemy import select
-            from pixsim7.backend.main.domain.game.entities.character import Character
-
-            result = await db.execute(
-                select(Character).where(Character.id == primary_character_id)
-            )
-            char = result.scalar_one_or_none()
-            if char:
-                if t := _tag("character", char.species or char.category):
-                    tags.append(t)
-                if t := _tag("archetype", char.archetype):
-                    tags.append(t)
-                # Surface the broad category only if species is present
-                # (avoids duplicate when species==category)
-                if char.species and char.category and char.species != char.category:
-                    if t := _tag("kind", char.category):
-                        tags.append(t)
-        except Exception:
-            pass
+        provider = get_subject_tag_provider("character")
+        if provider:
+            tags.extend(await provider.derive_tags(primary_character_id, db))
 
     # ── 3. PromptFamily classification fields ──────────────────────────────
     if t := _tag("type", prompt_type):
